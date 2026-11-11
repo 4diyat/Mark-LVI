@@ -157,18 +157,38 @@ jobs:
         # `shell: python` rather than bash: Git Bash on Windows ships no
         # `python` on PATH, so the bash version of this step exited 127 there
         # while the same command was running fine in the step above it.
+        #
+        # THE OUTPUT IS WRITTEN WITH THE RUNNER'S OWN COMMANDS. A step running
+        # `shell: python` does not get ::error:: lines parsed the way a bash
+        # step does — on two of the three runners this step then failed with
+        # bare "exit code 250" / "-1" and no annotation at all, which is the
+        # same blindness the step was added to fix, one layer up. The runner
+        # package exposes the one API GitHub documents for this.
         shell: python
         run: |
           import re
           import subprocess
           import sys
 
+          try:
+              from runner_utils import RunnerUtils  # provided by actions/runner
+          except Exception:                        # pragma: no cover
+              RunnerUtils = None
+
           proc = subprocess.run([sys.executable, "-m", "providers._tests"],
-                                capture_output=True, text=True, env=None)
+                                capture_output=True, text=True)
           out = (proc.stdout or "") + (proc.stderr or "")
-          print(out)
+          print(out, flush=True)
           if proc.returncode != 0:
-              for line in out.splitlines():
-                  if re.match(r"^\s*(FAIL|SKIP|   - )", line):
-                      print(f"::error::{line.strip()}")
+              # FAIL lines only: a SKIP is reported in the log for the record
+              # and must not fail a run, or the macOS headless skip would turn
+              # a green build red.
+              bad = [l.strip() for l in out.splitlines()
+                     if re.match(r"^\s*(FAIL|   - )", l)]
+              if RunnerUtils:
+                  for line in bad:
+                      RunnerUtils.issue_error(line)
+              else:                                 # fall back to the old syntax
+                  for line in bad:
+                      print(f"::error::{line}", flush=True)
               raise SystemExit(proc.returncode)
