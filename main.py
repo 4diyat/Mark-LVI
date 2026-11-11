@@ -92,6 +92,15 @@ from core.wake_word            import (
 # again (wake-word mode only).
 WAKE_SLEEP_TIMEOUT = 120.0   # seconds (2 minutes)
 
+# ── Keep what the console forgets ────────────────────────────────────────────
+# Started before anything else imports and can fail, so the first failure is in
+# the file too. `pythonw main.py` (what the desktop shortcut runs) has no
+# console at all, which is why a bug report could describe a message nobody
+# could ever produce. See core/logbook.py.
+from core import logbook as _logbook
+_LOG_PATH = _logbook.setup()
+LOGBOOK = _logbook.get("main")
+
 def get_base_dir():
     if getattr(sys, "frozen", False):
         return Path(sys.executable).parent
@@ -2690,6 +2699,8 @@ class JarvisLive:
             await asyncio.sleep(delay)
 
 def main():
+    if _LOG_PATH:
+        print(f"[JARVIS] Log: {_LOG_PATH}")
     ui = JarvisUI("face.png")
 
     def runner():

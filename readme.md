@@ -576,7 +576,14 @@ python -m providers._tests   # the provider engine's own suite (mocks its own se
 ```
 
 Both run on every push, on **Linux, macOS and Windows**, against Python 3.11
-and 3.12. See [CONTRIBUTING.md](CONTRIBUTING.md) for what is enforced and, more
+and 3.12.
+
+**If something goes wrong, there is a file to read.** `logs/jarvis.log` (next to
+`main.py`, rotated at 2 MB × 3) is written from the first line of startup. It
+exists because the desktop shortcut runs `pythonw.exe`, which has no console at
+all — every diagnostic used to go to a null device, so a bug report could name a
+message nobody could reproduce. Attach that file to an issue instead of a
+screenshot of a terminal. See [CONTRIBUTING.md](CONTRIBUTING.md) for what is enforced and, more
 usefully, for the four rules that are not obvious from reading the code: the
 config file has exactly one writer, a path that came from a model is untrusted
 input, no Qt outside the Qt thread, and no claimed outcome that was not

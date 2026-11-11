@@ -360,6 +360,55 @@ untuk mencegah regresi kelas P0.
 
 ---
 
+## 5b. Status Pengerjaan
+
+### ✅ Sprint 1 — selesai (commit `0fc3826`, PR #1)
+
+| Item | Status | Bukti |
+|---|---|---|
+| P0-1 path traversal `dev_agent` | ✅ | `_safe_target()`; `tests/test_paths.py` (13 kasus) |
+| P0-2 firewall Linux `NameError` | ✅ | `for port in ports`; diverifikasi dengan menjalankan fungsinya |
+| P0-3 re-configure menggantung + config terhapus | ✅ | overlay disimpan & disambung; `save_setup()` merge |
+| Lapisan config aman | ✅ | `update_config()`: lock + atomic `os.replace()` + `chmod 600` |
+| Quality gate | ✅ | `pyproject.toml`, 43 test, `.gitattributes`, CI 3 OS × 2 versi, pre-commit |
+| 57 temuan lint | ✅ | `ruff check .` → All checks passed |
+
+### ✅ Sprint 2 — selesai
+
+**Pengerasan dashboard** (`dashboard/server.py`), semuanya ada test di `tests/test_dashboard.py`:
+
+| Perbaikan | Sebelum | Sesudah |
+|---|---|---|
+| Security headers | tidak ada | CSP + nonce, `X-Frame-Options`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`, `no-store` |
+| Scope token | semua token bisa segalanya | `read` vs `command`; device bisa diberi akses lihat saja |
+| Umur token | TTL 12 jam saja | + idle 2 jam (dipakai → diperpanjang) |
+| Token device | berlaku selamanya | kedaluwarsa setelah 30 hari tak dipakai |
+| Body `/api/command` | tanpa batas | 64 KB, teks dipotong 2.000 karakter |
+| `/login` & `/api/command` | `req.json()` melempar 500 | 400 yang rapi + batas ukuran |
+| Upload | 500 MB/file, folder tanpa batas | kuota total 2 GB + sapu file > 14 hari |
+| Audit | tidak ada | 200 aksi terakhir + `/api/devices`, `/api/audit` |
+| `except: pass` menyembunyikan kegagalan | 16 di file ini | yang relevan menulis ke log |
+| Cache AES key | tumbuh tanpa batas | dibatasi 32 entri |
+
+**Logging terstruktur** (`core/logbook.py`) — `logs/jarvis.log`, rotasi 2 MB × 3,
+`sys.excepthook` ditangkap. Ini yang membuat 140 `except: pass` bisa mulai
+dijadikan `except ... : log.debug(...)` tanpa kehilangan informasi. 5 test.
+
+> Temuan saat verifikasi: klaim lama di docstring (`request.state` menyimpan
+> nonce) tidak benar — middleware sempat akan menimpa CSP dari route dan
+> memblokir `<script>` halaman sendiri. Sudah diperbaiki dengan `setdefault`,
+> dan sekarang dikunci oleh `test_inline_script_nonce_matches_the_policy`.
+
+### ⏭️ Sprint berikutnya
+
+| Sprint | Fokus | Ukuran "selesai" |
+|---|---|---|
+| 3 | Pecah `ui.py` → `ui/`, `main.py` → `app/` | tidak ada file > 1.500 baris; `AGENTS.md` & kontrak plugin tidak berubah |
+| 4 | Coverage `core/` ≥ 40 %, i18n 47 label UI | `pytest --cov` di CI, `assets/i18n/*.json` |
+| 5 | Secret ke OS keychain, `shell=True` audit, marketplace plugin | `keyring` dipakai; 0 `shell=True` yang tak perlu |
+
+---
+
 ## 6. Roadmap yang Disarankan
 
 | Sprint | Fokus | Hasil yang bisa diukur |
@@ -371,16 +420,18 @@ untuk mencegah regresi kelas P0.
 
 ---
 
-## 7. Quick Wins yang Bisa Dikerjakan Sekarang (< 1 jam total)
+## 7. Quick Wins — status
 
-1. `dashboard/server.py`: `for port in ports:` → bug Linux hilang (P0-2).
-2. `actions/dev_agent.py`: tambahkan `_safe_rel()` guard (P0-1).
-3. `ui.py` `_show_setup`: simpan & sambungkan overlay, tulis config via merge (P0-3).
-4. Hapus `core/llm_client.py` (kode mati) atau tandai `_deprecated`.
-5. `.gitattributes` + normalisasi EOL.
-6. `pyproject.toml` minimal + `requirements-dev.txt` (ruff, pytest).
-7. Bersihkan 33 unused import + 9 f-string (otomatis: `ruff --fix`).
-8. Hapus `shell=True` di `dashboard/server.py:393`.
+| # | Item | Status |
+|---|---|---|
+| 1 | `for port in ports:` (P0-2) | ✅ Sprint 1 |
+| 2 | `_safe_target()` di `dev_agent` (P0-1) | ✅ Sprint 1 |
+| 3 | `_show_setup` simpan overlay + merge config (P0-3) | ✅ Sprint 1 |
+| 4 | `shell=True` di `dashboard/server.py` | ✅ Sprint 1 (`cmd /c`) |
+| 5 | `.gitattributes` + normalisasi EOL | ✅ Sprint 1 |
+| 6 | `pyproject.toml` + `requirements-dev.txt` | ✅ Sprint 1 |
+| 7 | 33 unused import + 9 f-string | ✅ Sprint 1 |
+| 8 | `core/llm_client.py` kode mati | ⏳ Sprint 3 (menyentuh `providers/`; lebih aman bersamaan restructure) |
 
 ---
 

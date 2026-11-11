@@ -79,6 +79,24 @@ write files are expected to follow it.
 - Never block the session thread: `time.sleep` in an `async def` freezes the
   microphone, the avatar and the reply at once. Use `asyncio.to_thread`.
 
+### When something may fail
+`core/logbook.get("<area>")` gives you a logger that writes to `logs/jarvis.log`
+as well as the console. Use it in `except` blocks:
+
+```python
+from core.logbook import get as _log
+try:
+    optional_thing()
+except Exception as e:
+    _log("audio").warning("optional_thing failed: %s", e)
+```
+
+A silent `pass` is only acceptable for something genuinely cosmetic, and even
+then a `debug` line costs nothing. The Linux firewall branch in
+`dashboard/server.py` was unreachable for a whole release because its NameError
+landed in a bare `except` — the fix was not removing the handler, it was
+letting it speak.
+
 ### Comments
 This codebase explains **why** a line exists, especially when the obvious
 version was tried and failed. Keep that. A comment that restates the code
