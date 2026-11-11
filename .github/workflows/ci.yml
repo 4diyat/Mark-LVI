@@ -31,8 +31,8 @@ jobs:
     name: Lint (ruff, pyflakes rules)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
       - name: Install ruff
@@ -61,8 +61,8 @@ jobs:
       # offscreen backend anyway so a future widget test does not need a display.
       QT_QPA_PLATFORM: offscreen
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
           cache: pip
@@ -91,8 +91,8 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
@@ -118,7 +118,9 @@ jobs:
               print(line)
           names = sorted(registry.names())
           print(f"{len(names)} actions active: {names}")
-          rejected = [line for line in lines if "rejected" in line.lower()]
+          # Same trap as the plugin step: the summary line contains the word.
+          rejected = [line for line in lines
+                      if "rejected" in line.lower() and "discovery complete" not in line.lower()]
           if rejected:
               raise SystemExit("actions failed to load:\n" + "\n".join(rejected))
       - name: Load every plugin through the real loader
@@ -135,7 +137,11 @@ jobs:
           for line in lines:
               print(line)
           print(f"plugin loader OK: {len(registry.list_for_ui())} visible")
-          rejected = [line for line in lines if "rejected" in line.lower()]
+          # The summary line itself says "0 active, 0 rejected, 0 total" — so a
+          # naive substring match flags a clean run. Only real rejections start
+          # a line about a file.
+          rejected = [line for line in lines
+                      if "rejected" in line.lower() and "discovery complete" not in line.lower()]
           if rejected:
               raise SystemExit("plugins failed to load:\n" + "\n".join(rejected))
       - name: Providers self-test (owns its own mocks, needs no network)
