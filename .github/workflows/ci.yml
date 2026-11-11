@@ -80,6 +80,12 @@ jobs:
   install:
     name: Install real deps + load every action (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    env:
+      # `shell: python` writes the step body to a TEMP file and runs it, so
+      # sys.path[0] is that temp folder and `import core` fails. The repo root
+      # has to be named explicitly. (Found by this job on its first run — which
+      # is the entire argument for having it.)
+      PYTHONPATH: .
     strategy:
       fail-fast: false
       matrix:
