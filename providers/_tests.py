@@ -957,6 +957,55 @@ def test_voices_follow_the_language():
           not _accepts_language(SystemTTS({})))
 
 
+# Runs in a child process; see test_panel_settings_survive. It reports exactly
+# one verdict on its last line, so the parent never has to guess what an exit
+# code meant:
+#
+#     ok: <n> boxes   the panel builds — run the real checks
+#     ENV: ...        this machine has no usable Qt — skip, do not fail
+#     CODE: ...       the panel itself is broken — fail
+#
+# A child that dies without printing anything is an ENV verdict too: that is
+# Qt aborting the process, which is a property of the machine, not of the code.
+_PANEL_PROBE = """
+import os
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+
+def env(reason):
+    print("ENV: " + reason)
+    raise SystemExit(0)
+
+
+def code(reason):
+    print("CODE: " + reason)
+    raise SystemExit(0)
+
+
+try:
+    from PyQt6.QtWidgets import QApplication, QComboBox
+    app = QApplication.instance() or QApplication([])
+except BaseException as e:
+    env("Qt cannot construct a widget: %s: %s" % (type(e).__name__, e))
+
+try:
+    import ui
+except BaseException as e:
+    if isinstance(e, ImportError) and "PyQt6" in str(e):
+        env("ui needs a Qt this machine does not have: %s" % e)
+    code("ui does not import: %s: %s" % (type(e).__name__, e))
+
+try:
+    panel = ui.ProvidersOverlay()
+    combos = panel.findChildren(QComboBox)
+except BaseException as e:
+    code("the panel does not build: %s: %s" % (type(e).__name__, e))
+
+print("ok: %d boxes" % len(combos))
+"""
+
+
 def test_panel_settings_survive():
     """The settings panel: does what you choose come back?
 
@@ -987,62 +1036,54 @@ def test_panel_settings_survive():
     except Exception as e:
         check("PyQt6 installed", False, str(e))
         return
-    # AND A THIRD: Qt ITSELF CAN KILL THE PROCESS.
+
+    # AND A THIRD WAY: QT CAN KILL THE PROCESS INSTEAD OF RAISING.
     #
     #     On macOS with no window server a QApplication does not raise — it
     #     calls abort() and the interpreter dies with SIGABRT, taking the rest
-    #     of this suite with it (sections 11-19 never ran, and every later
-    #     check was reported as missing rather than as failed). No try/except
-    #     catches that. So the widget toolkit is probed in a CHILD process
-    #     first: if the child dies, this process only learns that it died.
+    #     of this suite with it (in one run sections 11-19 never ran, and every
+    #     later check was reported as missing rather than as failed). On
+    #     Windows, `import ui` pulls in QtMultimedia at module level and, with
+    #     no audio device, aborts with 0xC0000409 — a fail-fast, not an
+    #     exception. No try/except catches either of those.
+    #
+    #     So the panel is BUILT IN A CHILD PROCESS FIRST. If the child dies,
+    #     this process only learns that it died, and the section is skipped
+    #     with a note; if the child reports a fault in our own code, that is a
+    #     failure here — a child is only worth the trouble if it still tells
+    #     the two apart.
     import subprocess
     import sys as _sys
-    # THE PROBE HAS TO IMPORT EVERYTHING THE SECTION DOES.
-    #
-    #     Its first version only built a QApplication. On Windows that succeeds
-    #     and the section then ran — and died inside `import ui`, which pulls in
-    #     QtMultimedia and aborts the process there with 0xC0000409 (a
-    #     fail-fast, not an exception). The transcript stopped mid-line and the
-    #     job reported a status code of 3221226505, which means nothing to
-    #     anybody. A probe that does not do what the thing it is probing does is
-    #     not a probe.
-    # WHAT IS PROBED, EXACTLY: importing ui.
-    #
-    #     ui imports QtMultimedia at module level, which on a machine with no
-    #     audio device can abort the interpreter — that is the 0xC0000409. The
-    #     probe builds no widget, because building one is a different failure
-    #     mode with a different cause (no display, no libxkbcommon) and the
-    #     section handles that one itself, with a stack trace it can print.
+    # The probe runs the whole setup, not just the Qt part. An earlier version
+    # built a bare QApplication and the real section then died inside
+    # `import ui` on Windows — a probe that does not do what the thing it is
+    # probing does is not a probe.
     probe = subprocess.run(
-        [_sys.executable, "-c",
-         "import os; os.environ.setdefault('QT_QPA_PLATFORM','offscreen');"
-         "from PyQt6.QtWidgets import QApplication;"
-         "app = QApplication([]);"
-         "import ui;"
-         "print('ok')"],
+        [_sys.executable, "-c", _PANEL_PROBE],
         capture_output=True, text=True, timeout=180,
         encoding="utf-8", errors="replace",
         cwd=str(Path(__file__).resolve().parent.parent),
-        # ANSI code page for the child's own error text; it is only ever shown
-        # to a person reading a skipped check.
-        env={**__import__("os").environ, "PYTHONIOENCODING": "utf-8:replace",
+        env={**os.environ,
+             # The child writes the console's code page on Windows; decoding it
+             # as UTF-8 with the default handler kills THIS step.
+             "PYTHONIOENCODING": "utf-8:replace",
+             # The multimedia backend has opinions about a machine with no
+             # sound card, and none of them are worth printing.
              "QT_LOGGING_RULES": "qt.multimedia.*=false"})
-    if probe.returncode != 0 or probe.stdout.strip() != "ok":
-        detail = (probe.stderr or probe.stdout).strip().splitlines()
-        print(f"  SKIP  Qt cannot build a widget here "
-              f"(exit {probe.returncode}{': ' + detail[-1] if detail else ''})")
+    verdicts = [line for line in (probe.stdout or "").splitlines() if line.strip()]
+    verdict = verdicts[-1] if verdicts else ""
+    if verdict.startswith("ok"):
+        pass
+    elif verdict.startswith("CODE:"):
+        check("the settings panel can be built", False, verdict[len("CODE:"):].strip())
+        return
+    else:
+        print(f"  SKIP  Qt cannot run the panel on this machine "
+              f"({verdict or f'process died with exit {probe.returncode}'})")
         print("  SKIP  the panel checks need a Qt that can construct a widget")
         return
 
-    try:
-        from PyQt6.QtWidgets import QApplication, QComboBox
-        app = QApplication.instance() or QApplication([])
-        del app
-    except Exception as e:
-        print(f"  SKIP  Qt cannot open a display ({e.__class__.__name__}: {e})")
-        print("  SKIP  the panel checks need a Qt that can construct a widget")
-        return
-
+    from PyQt6.QtWidgets import QComboBox
     import ui as UI
     from memory.config_manager import (get_pipeline, get_provider_config,
                                        get_provider_mode, save_pipeline,
