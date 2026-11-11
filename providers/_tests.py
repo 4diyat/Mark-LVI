@@ -1006,17 +1006,27 @@ def test_panel_settings_survive():
     #     job reported a status code of 3221226505, which means nothing to
     #     anybody. A probe that does not do what the thing it is probing does is
     #     not a probe.
+    # WHAT IS PROBED, EXACTLY: importing ui.
+    #
+    #     ui imports QtMultimedia at module level, which on a machine with no
+    #     audio device can abort the interpreter — that is the 0xC0000409. The
+    #     probe builds no widget, because building one is a different failure
+    #     mode with a different cause (no display, no libxkbcommon) and the
+    #     section handles that one itself, with a stack trace it can print.
     probe = subprocess.run(
         [_sys.executable, "-c",
          "import os; os.environ.setdefault('QT_QPA_PLATFORM','offscreen');"
-         "from PyQt6.QtWidgets import QApplication, QComboBox;"
+         "from PyQt6.QtWidgets import QApplication;"
          "app = QApplication([]);"
          "import ui;"
-         "w = ui._ScrollSafeCombo();"
          "print('ok')"],
         capture_output=True, text=True, timeout=180,
         encoding="utf-8", errors="replace",
-        cwd=str(Path(__file__).resolve().parent.parent))
+        cwd=str(Path(__file__).resolve().parent.parent),
+        # ANSI code page for the child's own error text; it is only ever shown
+        # to a person reading a skipped check.
+        env={**__import__("os").environ, "PYTHONIOENCODING": "utf-8:replace",
+             "QT_LOGGING_RULES": "qt.multimedia.*=false"})
     if probe.returncode != 0 or probe.stdout.strip() != "ok":
         detail = (probe.stderr or probe.stdout).strip().splitlines()
         print(f"  SKIP  Qt cannot build a widget here "
