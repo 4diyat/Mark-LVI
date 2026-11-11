@@ -148,47 +148,40 @@ jobs:
         # Exits non-zero on a failed check. The PyQt6-dependent panel check
         # skips itself when Qt cannot load, which is the case on a bare runner.
         #
-        # Its output is also turned into ANNOTATIONS. A job log lives in blob
-        # storage behind a signed URL that expires, so "which of the 88 checks
-        # failed on Windows" cannot be answered from the API later — and that
-        # is exactly the question this step exists to answer. The annotations
-        # endpoint stays readable, and each failing check names itself.
+        # WHY IT IS THIS SHAPE
+        #     This step has now failed three times for reasons that had nothing
+        #     to do with the code it tests, and each version looked reasonable:
         #
-        # `shell: python` rather than bash: Git Bash on Windows ships no
-        # `python` on PATH, so the bash version of this step exited 127 there
-        # while the same command was running fine in the step above it.
+        #       bash, `python -m ...`   → exit 127 on Windows. Git Bash ships
+        #                                 no `python` on PATH.
+        #       shell: python           → exit 250 / -1 on Windows and macOS.
+        #                                 A step running `shell: python` does not
+        #                                 get its stdout parsed for ::error::
+        #                                 the way a bash step does, so the run
+        #                                 failed with a bare code and no
+        #                                 annotation — the same blindness this
+        #                                 step exists to remove.
+        #       bash, `${pythonLocation}/bin/python`
+        #                               → right on Linux and macOS, wrong on
+        #                                 Windows, where setup-python puts the
+        #                                 interpreter in Scripts/.
+        #       bash, `grep --line-buffered`, heredoc
+        #                               → GNU-only flag on a BSD grep, and an
+        #                                 indented heredoc terminator that bash
+        #                                 does not accept.
         #
-        # THE OUTPUT IS WRITTEN WITH THE RUNNER'S OWN COMMANDS. A step running
-        # `shell: python` does not get ::error:: lines parsed the way a bash
-        # step does — on two of the three runners this step then failed with
-        # bare "exit code 250" / "-1" and no annotation at all, which is the
-        # same blindness the step was added to fix, one layer up. The runner
-        # package exposes the one API GitHub documents for this.
-        shell: python
+        #     What is left is deliberately boring: find the interpreter in the
+        #     two places it can be, run the suite into a file, print the file,
+        #     convert only FAIL lines into annotations, exit with the suite's
+        #     own code. No pipe for the exit status to get lost in, no flag that
+        #     only one grep has, no construct YAML indentation can break.
+        shell: bash
         run: |
-          import re
-          import subprocess
-          import sys
-
-          try:
-              from runner_utils import RunnerUtils  # provided by actions/runner
-          except Exception:                        # pragma: no cover
-              RunnerUtils = None
-
-          proc = subprocess.run([sys.executable, "-m", "providers._tests"],
-                                capture_output=True, text=True)
-          out = (proc.stdout or "") + (proc.stderr or "")
-          print(out, flush=True)
-          if proc.returncode != 0:
-              # FAIL lines only: a SKIP is reported in the log for the record
-              # and must not fail a run, or the macOS headless skip would turn
-              # a green build red.
-              bad = [l.strip() for l in out.splitlines()
-                     if re.match(r"^\s*(FAIL|   - )", l)]
-              if RunnerUtils:
-                  for line in bad:
-                      RunnerUtils.issue_error(line)
-              else:                                 # fall back to the old syntax
-                  for line in bad:
-                      print(f"::error::{line}", flush=True)
-              raise SystemExit(proc.returncode)
+          PYBIN="${pythonLocation}/bin/python"
+          [ -x "$PYBIN" ] || PYBIN="${pythonLocation}/Scripts/python"
+          "$PYBIN" -m providers._tests > providers-test.txt 2>&1
+          status=$?
+          cat providers-test.txt
+          grep -E "^  FAIL" providers-test.txt | sed -e 's/^/::error::/' || true
+          echo "$(grep -c '^  PASS' providers-test.txt || true) passed, $(grep -c '^  FAIL' providers-test.txt || true) failed"
+          exit $status
