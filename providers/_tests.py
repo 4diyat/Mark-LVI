@@ -997,11 +997,25 @@ def test_panel_settings_survive():
     #     first: if the child dies, this process only learns that it died.
     import subprocess
     import sys as _sys
+    # THE PROBE HAS TO IMPORT EVERYTHING THE SECTION DOES.
+    #
+    #     Its first version only built a QApplication. On Windows that succeeds
+    #     and the section then ran — and died inside `import ui`, which pulls in
+    #     QtMultimedia and aborts the process there with 0xC0000409 (a
+    #     fail-fast, not an exception). The transcript stopped mid-line and the
+    #     job reported a status code of 3221226505, which means nothing to
+    #     anybody. A probe that does not do what the thing it is probing does is
+    #     not a probe.
     probe = subprocess.run(
         [_sys.executable, "-c",
          "import os; os.environ.setdefault('QT_QPA_PLATFORM','offscreen');"
-         "from PyQt6.QtWidgets import QApplication; QApplication([]); print('ok')"],
+         "from PyQt6.QtWidgets import QApplication, QComboBox;"
+         "app = QApplication([]);"
+         "import ui;"
+         "w = ui._ScrollSafeCombo();"
+         "print('ok')"],
         capture_output=True, text=True, timeout=180,
+        encoding="utf-8", errors="replace",
         cwd=str(Path(__file__).resolve().parent.parent))
     if probe.returncode != 0 or probe.stdout.strip() != "ok":
         detail = (probe.stderr or probe.stdout).strip().splitlines()
