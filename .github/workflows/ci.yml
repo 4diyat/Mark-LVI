@@ -212,4 +212,11 @@ jobs:
             exit 0
           fi
           echo "::error::providers self-test did not complete (status=${status})"
+          # THE TAIL, AS ANNOTATIONS. Job logs are not always readable from
+          # outside, but annotations are — and a suite that dies mid-run leaves
+          # its last line as the only evidence of where. GitHub renders up to
+          # ten error annotations per step, so this asks for the last eight.
+          if [ -f providers-test.txt ]; then
+            tail -n 8 providers-test.txt | sed -e 's/^/::error::last: /'
+          fi
           exit 1
