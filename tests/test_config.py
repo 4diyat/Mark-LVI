@@ -253,3 +253,32 @@ def test_config_module_imports_without_the_app_running():
                          capture_output=True, text=True, timeout=60)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip() == "", f"unexpected heavy imports: {out.stdout.strip()}"
+
+# ── the two APIs that answer the same question ───────────────────────────────
+
+def test_config_module_reads_the_same_file_as_the_writer(isolated_config, monkeypatch):
+    """`config.is_windows()` used to look in a folder of its own.
+
+    The package built its path from `Path(__file__).parent`, which is right in
+    a checkout and wrong in a bundle: frozen with PyInstaller, `__file__` lives
+    in the temporary extraction folder, so the app read a config file that did
+    not exist — and its bare `except` turned that into "no OS configured",
+    silently answering Linux on a Windows machine. It now asks
+    memory.config_manager where the file is, which already handles `frozen`.
+    """
+    isolated_config.save_setup("key-aaaaaaaaaaaaaaaa", "windows")
+
+    import config
+
+    monkeypatch.setattr(config, "_CONFIG_PATH", isolated_config.CONFIG_FILE)
+    assert config.get_os() == "windows"
+    assert config.is_windows() and not config.is_linux()
+
+
+def test_config_module_still_answers_when_there_is_no_file(tmp_path, monkeypatch):
+    """No config file is a normal first run, not an error: detect the OS."""
+    import config
+
+    monkeypatch.setattr(config, "_CONFIG_PATH", tmp_path / "absent.json")
+    assert config.get_config() == {}
+    assert config.get_os() in {"windows", "mac", "linux"}
