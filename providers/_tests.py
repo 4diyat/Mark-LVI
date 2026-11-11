@@ -969,12 +969,32 @@ def test_panel_settings_survive():
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
     section("[10] The settings panel remembers")
+
+    # TWO WAYS TO NOT HAVE A PANEL, AND ONLY ONE OF THEM IS A FAILURE.
+    #
+    #   * PyQt6 is not installed — the dependency is missing, the app cannot
+    #     start at all, and this is a real failure.
+    #   * PyQt6 is installed but Qt will not load — no display, no
+    #     libxkbcommon, a stripped-down container or an SSH session. The app is
+    #     fine and the panel is fine on a real desktop; this process simply
+    #     cannot construct a widget.
+    #
+    # Both used to be "FAIL PyQt6 available", which made this suite red on any
+    # headless machine — including every CI runner. A test that fails for an
+    # environment reason is a test people learn to ignore.
+    try:
+        from PyQt6.QtCore import QT_VERSION_STR  # noqa: F401 — import check only
+    except Exception as e:
+        check("PyQt6 installed", False, str(e))
+        return
     try:
         from PyQt6.QtWidgets import QApplication, QComboBox
+        app = QApplication.instance() or QApplication([])
+        del app
     except Exception as e:
-        check("PyQt6 available", False, str(e))
+        print(f"  SKIP  Qt cannot open a display ({e.__class__.__name__}: {e})")
+        print("  SKIP  the panel checks need a Qt that can construct a widget")
         return
-    app = QApplication.instance() or QApplication([])
 
     import ui as UI
     from memory.config_manager import (get_pipeline, get_provider_config,
