@@ -144,44 +144,46 @@ jobs:
                       if "rejected" in line.lower() and "discovery complete" not in line.lower()]
           if rejected:
               raise SystemExit("plugins failed to load:\n" + "\n".join(rejected))
-      - name: Providers self-test (owns its own mocks, needs no network)
-        # Exits non-zero on a failed check. The PyQt6-dependent panel check
-        # skips itself when Qt cannot load, which is the case on a bare runner.
-        #
-        # WHY IT IS THIS SHAPE
-        #     This step has now failed three times for reasons that had nothing
-        #     to do with the code it tests, and each version looked reasonable:
-        #
-        #       bash, `python -m ...`   → exit 127 on Windows. Git Bash ships
-        #                                 no `python` on PATH.
-        #       shell: python           → exit 250 / -1 on Windows and macOS.
-        #                                 A step running `shell: python` does not
-        #                                 get its stdout parsed for ::error::
-        #                                 the way a bash step does, so the run
-        #                                 failed with a bare code and no
-        #                                 annotation — the same blindness this
-        #                                 step exists to remove.
-        #       bash, `${pythonLocation}/bin/python`
-        #                               → right on Linux and macOS, wrong on
-        #                                 Windows, where setup-python puts the
-        #                                 interpreter in Scripts/.
-        #       bash, `grep --line-buffered`, heredoc
-        #                               → GNU-only flag on a BSD grep, and an
-        #                                 indented heredoc terminator that bash
-        #                                 does not accept.
-        #
-        #     What is left is deliberately boring: find the interpreter in the
-        #     two places it can be, run the suite into a file, print the file,
-        #     convert only FAIL lines into annotations, exit with the suite's
-        #     own code. No pipe for the exit status to get lost in, no flag that
-        #     only one grep has, no construct YAML indentation can break.
+      # ── The providers self-test, in two steps, for a reason ────────────────
+      # One step cannot do both jobs it needs to do:
+      #
+      #   * run the suite — needs a real interpreter. `shell: python` has one on
+      #     every runner (the step above proves it); a bash step does not, on
+      #     Windows, whatever form of the path it is given.
+      #   * report the failures as ANNOTATIONS — parsed by the runner only on a
+      #     bash/PowerShell step, not on `shell: python`.
+      #
+      # Four earlier versions of this tried to do it in one step and failed in
+      # the harness each time (127, 250, -1, 127) — never in the code being
+      # tested. So: the Python step runs it and leaves the transcript and the
+      # exit code on disk; the bash step prints the transcript, converts FAIL
+      # lines into annotations, and exits with the recorded code.
+      - name: Providers self-test (runs offline; owns its own mocks)
+        shell: python
+        run: |
+          import pathlib
+          import re
+          import subprocess
+          import sys
+
+          proc = subprocess.run([sys.executable, "-m", "providers._tests"],
+                                capture_output=True, text=True)
+          out = (proc.stdout or "") + (proc.stderr or "")
+          print(out, flush=True)
+          pathlib.Path("providers-test.txt").write_text(out, encoding="utf-8")
+          pathlib.Path("providers-test.status").write_text(str(proc.returncode))
+          # Deliberately 0: the bash step below is the one that fails the job,
+          # and it can only do that after it has printed the annotations.
+          print(f"self-test exit code: {proc.returncode}")
+
+      - name: Report the self-test (annotations + status)
+        if: always()
         shell: bash
         run: |
-          PYBIN="${pythonLocation}/bin/python"
-          [ -x "$PYBIN" ] || PYBIN="${pythonLocation}/Scripts/python"
-          "$PYBIN" -m providers._tests > providers-test.txt 2>&1
-          status=$?
-          cat providers-test.txt
+          cat providers-test.txt || true
           grep -E "^  FAIL" providers-test.txt | sed -e 's/^/::error::/' || true
-          echo "$(grep -c '^  PASS' providers-test.txt || true) passed, $(grep -c '^  FAIL' providers-test.txt || true) failed"
-          exit $status
+          pass=$(grep -c "^  PASS" providers-test.txt || true)
+          fail=$(grep -c "^  FAIL" providers-test.txt || true)
+          echo "${pass} passed, ${fail} failed"
+          status=$(cat providers-test.status 2>/dev/null || echo 1)
+          exit "${status:-1}"
