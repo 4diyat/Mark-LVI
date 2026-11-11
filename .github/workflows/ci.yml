@@ -153,12 +153,22 @@ jobs:
         # failed on Windows" cannot be answered from the API later — and that
         # is exactly the question this step exists to answer. The annotations
         # endpoint stays readable, and each failing check names itself.
-        shell: bash
+        #
+        # `shell: python` rather than bash: Git Bash on Windows ships no
+        # `python` on PATH, so the bash version of this step exited 127 there
+        # while the same command was running fine in the step above it.
+        shell: python
         run: |
-          set -o pipefail
-          python -m providers._tests > providers-test.txt 2>&1 && status=0 || status=$?
-          cat providers-test.txt
-          if [ "$status" -ne 0 ]; then
-            grep -E "^  FAIL|^   - " providers-test.txt | sed 's/^/::error::/' || true
-            exit "$status"
-          fi
+          import re
+          import subprocess
+          import sys
+
+          proc = subprocess.run([sys.executable, "-m", "providers._tests"],
+                                capture_output=True, text=True, env=None)
+          out = (proc.stdout or "") + (proc.stderr or "")
+          print(out)
+          if proc.returncode != 0:
+              for line in out.splitlines():
+                  if re.match(r"^\s*(FAIL|SKIP|   - )", line):
+                      print(f"::error::{line.strip()}")
+              raise SystemExit(proc.returncode)

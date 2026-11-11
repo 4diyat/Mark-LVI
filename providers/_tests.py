@@ -987,6 +987,29 @@ def test_panel_settings_survive():
     except Exception as e:
         check("PyQt6 installed", False, str(e))
         return
+    # AND A THIRD: Qt ITSELF CAN KILL THE PROCESS.
+    #
+    #     On macOS with no window server a QApplication does not raise — it
+    #     calls abort() and the interpreter dies with SIGABRT, taking the rest
+    #     of this suite with it (sections 11-19 never ran, and every later
+    #     check was reported as missing rather than as failed). No try/except
+    #     catches that. So the widget toolkit is probed in a CHILD process
+    #     first: if the child dies, this process only learns that it died.
+    import subprocess
+    import sys as _sys
+    probe = subprocess.run(
+        [_sys.executable, "-c",
+         "import os; os.environ.setdefault('QT_QPA_PLATFORM','offscreen');"
+         "from PyQt6.QtWidgets import QApplication; QApplication([]); print('ok')"],
+        capture_output=True, text=True, timeout=180,
+        cwd=str(Path(__file__).resolve().parent.parent))
+    if probe.returncode != 0 or probe.stdout.strip() != "ok":
+        detail = (probe.stderr or probe.stdout).strip().splitlines()
+        print(f"  SKIP  Qt cannot build a widget here "
+              f"(exit {probe.returncode}{': ' + detail[-1] if detail else ''})")
+        print("  SKIP  the panel checks need a Qt that can construct a widget")
+        return
+
     try:
         from PyQt6.QtWidgets import QApplication, QComboBox
         app = QApplication.instance() or QApplication([])
