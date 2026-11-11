@@ -1149,20 +1149,32 @@ def test_panel_settings_survive():
                          "tts": "elevenlabs@elevenlabs"})
         ov._rebuild_body()
 
-        import pathlib
+        # COUNT THE WRITES TO api_keys.json, WHEREVER THEY HAPPEN.
+        #
+        #     The config is written atomically: a temp file, then os.replace.
+        #     So Path.write_text is often not the call that lands the change at
+        #     all — counting only that reported zero in CI, on every OS, while
+        #     the setting was in fact saved. The count belongs around both
+        #     write_text and replace.
+        import os as _os
         writes = [0]
-        real = pathlib.Path.write_text
+        real_write, real_replace = Path.write_text, _os.replace
 
-        def counted(self, *a, **k):
+        def counted_write(self, *a, **k):
             if self.name == "api_keys.json":
                 writes[0] += 1
-            return real(self, *a, **k)
+            return real_write(self, *a, **k)
 
-        pathlib.Path.write_text = counted
+        def counted_replace(src, dst, *a, **k):
+            if Path(dst).name == "api_keys.json":
+                writes[0] += 1
+            return real_replace(src, dst, *a, **k)
+
+        Path.write_text, _os.replace = counted_write, counted_replace
         try:
             ov._apply()
         finally:
-            pathlib.Path.write_text = real
+            Path.write_text, _os.replace = real_write, real_replace
 
         check("APPLY writes the config once", writes[0] == 1, str(writes[0]))
         check("the mode was stored", get_provider_mode() == "pipeline",
