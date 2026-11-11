@@ -147,4 +147,18 @@ jobs:
       - name: Providers self-test (owns its own mocks, needs no network)
         # Exits non-zero on a failed check. The PyQt6-dependent panel check
         # skips itself when Qt cannot load, which is the case on a bare runner.
-        run: python -m providers._tests
+        #
+        # Its output is also turned into ANNOTATIONS. A job log lives in blob
+        # storage behind a signed URL that expires, so "which of the 88 checks
+        # failed on Windows" cannot be answered from the API later — and that
+        # is exactly the question this step exists to answer. The annotations
+        # endpoint stays readable, and each failing check names itself.
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m providers._tests > providers-test.txt 2>&1 && status=0 || status=$?
+          cat providers-test.txt
+          if [ "$status" -ne 0 ]; then
+            grep -E "^  FAIL|^   - " providers-test.txt | sed 's/^/::error::/' || true
+            exit "$status"
+          fi
