@@ -160,14 +160,20 @@ jobs:
       # lines into annotations, and exits with the recorded code.
       - name: Providers self-test (runs offline; owns its own mocks)
         shell: python
+        # encoding= is not optional here. On Windows the child writes its
+        # output in the console's code page, and decoding it as UTF-8 with the
+        # default error handler kills the PARENT step — which then exits with a
+        # code that has nothing to do with the test (observed: 9, reported as
+        # "9 checks failed" by nobody). errors="replace" keeps the transcript
+        # readable and lets the bash step report whatever the child actually said.
         run: |
           import pathlib
-          import re
           import subprocess
           import sys
 
           proc = subprocess.run([sys.executable, "-m", "providers._tests"],
-                                capture_output=True, text=True)
+                                capture_output=True, text=True,
+                                encoding="utf-8", errors="replace")
           out = (proc.stdout or "") + (proc.stderr or "")
           print(out, flush=True)
           pathlib.Path("providers-test.txt").write_text(out, encoding="utf-8")
