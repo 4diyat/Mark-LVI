@@ -90,10 +90,39 @@ a small built-in fallback — instead of crashing.
   `_show_content` is the pattern to copy.
 - Colours come from the `C` palette class; fonts are `QFont("Courier New", size)`.
 
+## Writing a path that came from a model
+
+A path inside a model's JSON is **untrusted input**, not a name. It can climb
+(`../`), ignore the left side entirely (an absolute path), or name another drive
+(`C:\\...`). `dev_agent` used to do `project_dir / file_path` and write it, which
+is how a "new project" could place a `.py` outside the project and then run it.
+
+- Take every model-supplied path through `_safe_rel()` / `_safe_target()` in
+  `actions/dev_agent.py` before reading or writing anything.
+- `tests/test_paths.py` is the list of shapes that must be refused. Add to it
+  when you find a new one.
+
+## Testing and lint before you hand work back
+
+- `ruff check .` must print "All checks passed!" — the enabled rules are `F` and
+  `E9` only (undefined names, unused imports and variables, syntax). An
+  undefined name is not a style issue here: it is a branch that can never run,
+  and the Linux firewall path in `dashboard/server.py` was nine of them.
+- `python -m pytest -q` must be green. No test may need an API key, a
+  microphone, a display or the network.
+- If you fix a bug, add the test that fails without the fix. Check it against
+  the previous commit — a test that passes before and after proves nothing.
+- Rejected actions are easy to miss because the loader survives them. If you
+  touched an action, run the loader and read the rejections:
+  `python -c "from pathlib import Path; from core.action_loader import discover_actions; discover_actions(Path('actions'), set(), print)"`
+
 ## General
 
 - Never send a child process's output to `DEVNULL` without logging it, and
   never report success without checking that the thing actually happened.
 - Settings and keys live in `config/api_keys.json` through
-  `memory/config_manager.py`; never write that file directly.
+  `memory/config_manager.py`; never write that file directly. Use
+  `set_config_values()` / `update_config()` — they hold a lock and write
+  atomically, because four threads write this file at the same time.
+  `tests/test_config.py` fails if a module bypasses them.
 - Keep to the libraries already in `requirements.txt`.

@@ -1,0 +1,138 @@
+name: CI
+
+# ── WHY THIS FILE EXISTS AT ALL ──────────────────────────────────────────────
+# Before it, the project had no automated check of any kind. 39,000 lines, 67
+# modules, three operating systems claimed in the README, and the only thing
+# that ever looked at a change was the author's memory.
+#
+#     The Linux firewall code in dashboard/server.py referenced a variable that
+#     does not exist (`port` when the parameter is `*ports`) in NINE places.
+#     Every branch caught only FileNotFoundError, so the NameError escaped into
+#     a bare `except Exception` in the caller. The whole Linux path was dead
+#     code that looked alive, and no test would have executed it.
+#
+# A lint step running `F821 undefined-name` says so in one second. That is the
+# whole argument for this file.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  # A push that supersedes an edit in flight is not worth finishing.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── 1. Static checks: fast, no dependencies, no OS differences ─────────────
+  lint:
+    name: Lint (ruff, pyflakes rules)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install ruff
+        run: pip install "ruff>=0.6,<1"
+      - name: Enforced rules (F + E9) — must be clean
+        run: ruff check .
+      - name: Style families — informational, not yet enforced
+        run: |
+          echo "Housekeeping, not a gate. pyproject.toml explains why this set"
+          echo "is not enforced yet: 39k lines of legacy would bury the signal."
+          ruff check --select E,W,I,UP,B,SIM --statistics --exit-zero . | tail -30
+      - name: Whole tree parses
+        run: python -m compileall -q . -x "__pycache__" && echo "compileall OK"
+
+  # ── 2. Tests, on every OS the README claims support for ────────────────────
+  test:
+    name: Tests (${{ matrix.os }}, py${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.11", "3.12"]
+    env:
+      # Qt is only ever imported by ui.py, which no test imports — but set the
+      # offscreen backend anyway so a future widget test does not need a display.
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - name: Install test tooling (no app dependencies needed)
+        run: pip install -r requirements-dev.txt
+      - name: Run the suite
+        run: python -m pytest -q
+      - name: Show what the suite covers
+        if: always()
+        run: python -m pytest --collect-only -q | tail -5
+
+  # ── 3. The real dependency set still installs and still loads ──────────────
+  # requirements.txt carries sys_platform markers, so this job is also the
+  # regression test for "a macOS user never pulls Windows-only libraries".
+  install:
+    name: Install real deps + load every action (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install requirements.txt (as setup.py would, without the browsers)
+        run: pip install -r requirements.txt
+      - name: Load every action the way main.py does
+        # actions/*.py self-describe through a TOOL dict and are discovered at
+        # startup. A rejection does not stop the app — the loader is built to
+        # survive one — which is exactly why nothing noticed when four of them
+        # stopped loading on a fresh install. Here one rejection fails the build.
+        #
+        # `shell: python` runs this body as a script on every runner, so there
+        # is no bash/PowerShell quoting difference between Linux, macOS and
+        # Windows.
+        shell: python
+        run: |
+          from pathlib import Path
+          from core.action_loader import discover_actions
+
+          lines = []
+          registry = discover_actions(Path("actions"), set(), lines.append)
+          for line in lines:
+              print(line)
+          names = sorted(registry.names())
+          print(f"{len(names)} actions active: {names}")
+          rejected = [line for line in lines if "rejected" in line.lower()]
+          if rejected:
+              raise SystemExit("actions failed to load:\n" + "\n".join(rejected))
+      - name: Load every plugin through the real loader
+        # plugins/ ships one template and nothing else; the point of this step
+        # is that the loader runs against a real folder on this OS without
+        # raising, not that a particular plugin exists.
+        shell: python
+        run: |
+          from pathlib import Path
+          from core.plugin_loader import discover_plugins
+
+          lines = []
+          registry = discover_plugins(Path("plugins"), set(), lines.append, lines.append)
+          for line in lines:
+              print(line)
+          print(f"plugin loader OK: {len(registry.list_for_ui())} visible")
+          rejected = [line for line in lines if "rejected" in line.lower()]
+          if rejected:
+              raise SystemExit("plugins failed to load:\n" + "\n".join(rejected))
+      - name: Providers self-test (owns its own mocks, needs no network)
+        # Exits non-zero on a failed check. The PyQt6-dependent panel check
+        # skips itself when Qt cannot load, which is the case on a bare runner.
+        run: python -m providers._tests

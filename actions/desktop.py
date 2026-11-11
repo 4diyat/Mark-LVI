@@ -429,7 +429,6 @@ def desktop_control(
     """
     params = parameters or {}
     action = params.get("action", "").lower().strip()
-    task   = params.get("task", "").strip()
 
     if player:
         print(f"[Desktop] {action}")             # terminal, not the HUD

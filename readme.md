@@ -566,6 +566,24 @@ python main.py
 
 ---
 
+## 🧪 Tests & Contributing
+
+```bash
+pip install -r requirements-dev.txt
+ruff check .                 # F + E9 only — the rules whose violations are bugs
+python -m pytest -q          # 43 tests, offline, no API key, no display
+python -m providers._tests   # the provider engine's own suite (mocks its own services)
+```
+
+Both run on every push, on **Linux, macOS and Windows**, against Python 3.11
+and 3.12. See [CONTRIBUTING.md](CONTRIBUTING.md) for what is enforced and, more
+usefully, for the four rules that are not obvious from reading the code: the
+config file has exactly one writer, a path that came from a model is untrusted
+input, no Qt outside the Qt thread, and no claimed outcome that was not
+observed.
+
+---
+
 ## 🗂️ Project Structure
 
 ```
@@ -573,6 +591,10 @@ Mark LVI/
 ├── main.py                   # Core loop — Gemini Live session, audio I/O, viseme extraction, tool dispatch
 ├── ui.py                     # PyQt6 HUD — avatar canvas, waveform, log panel, settings drawer, camera feed
 ├── setup.py                  # OS-aware installer (skips wrong-OS dependencies, checks your Python)
+├── pyproject.toml            # Lint + test configuration (ruff: bugs only, see CONTRIBUTING.md)
+├── CONTRIBUTING.md           # How to work on it — the checks, and the rules that are not obvious
+├── tests/                    # Offline test suite — no API key, no display, no network
+├── .github/workflows/ci.yml  # Lint + tests on Linux/macOS/Windows, py3.11 and 3.12
 ├── .gitignore                # Keeps your API key, TLS key and memories out of the repository
 ├── providers/                # OPTIONAL — delete it and the assistant runs on Gemini,
 │                             #   exactly as it did before this folder existed.

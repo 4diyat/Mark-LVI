@@ -57,10 +57,17 @@ def _load_config() -> dict:
 
 
 def _save_config_key(key: str, value) -> None:
+    """Store one setting through the ONE config writer.
+
+    This used to read the whole file, change one key and write it back. It runs
+    on the vision worker thread, at the same time the Qt thread may be saving a
+    voice and the session thread may be saving a device — three read-modify-
+    write cycles on one file, so whichever finished last silently discarded the
+    other two. memory.config_manager.update_config() serialises them.
+    """
     try:
-        cfg = _load_config()
-        cfg[key] = value
-        _CONFIG_PATH.write_text(json.dumps(cfg, indent=4), encoding="utf-8")
+        from memory.config_manager import set_config_values
+        set_config_values(**{key: value})
     except Exception as e:
         print(f"[Vision] ⚠️  Could not save config key '{key}': {e}")
 

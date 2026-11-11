@@ -1,0 +1,19 @@
+# ── MARK LVI — what CI and contributors install, and the app does not ────────
+# Kept separate from requirements.txt on purpose: the app's install stays as
+# small as it can be for the person who only wants to run JARVIS, and nobody
+# downloads a test runner or a linter to have a conversation with it.
+#
+# Usage:
+#     pip install -r requirements.txt -r requirements-dev.txt
+#     python -m pytest
+#     ruff check .
+
+ruff>=0.6,<1          # lint — see pyproject.toml for which rules are enforced
+pytest>=8,<10
+pytest-asyncio>=0.23,<2   # nothing async yet; required once the dashboard tests land
+
+# ── For the CI job that imports everything ──────────────────────────────────
+# The suite itself needs NO third-party package: it exercises memory/config,
+# the path guard and parsed source. The import job needs the real dependencies
+# present or 4 actions refuse to load by design (playwright, numpy, psutil).
+# Those come from requirements.txt in CI; nothing extra is listed here.

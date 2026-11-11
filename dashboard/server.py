@@ -389,8 +389,12 @@ def _ensure_network_access(*ports: int) -> None:
 
         # ── Try running directly (succeeds when already admin) ────────────────
         try:
+            # cmd /c, not shell=True: a .bat is batch, not a shell command
+            # line. `shell=True` over a list is also the one form whose meaning
+            # differs between platforms, and it is the shape antivirus and
+            # SmartScreen heuristics flag.
             r = subprocess.run(
-                [bat_path], capture_output=True, timeout=8, shell=True
+                ["cmd", "/c", bat_path], capture_output=True, timeout=8
             )
             if r.returncode == 0:
                 print(f"[Dashboard] Firewall configured for {', '.join(str(pt) for pt in ports)}.")
@@ -500,41 +504,80 @@ def _ensure_network_access(*ports: int) -> None:
                 pass
         return False
 
+    # WHY THIS LOOPS OVER `ports` AND NOT OVER A VARIABLE CALLED `port`
+    #     This block used to read `f"{port}/tcp"`, `str(port)` and so on. There
+    #     was no `port` — the parameter is `*ports`, plural — so every one of
+    #     those lines raised NameError. Each branch below is wrapped in
+    #     try/except, but the catches list FileNotFoundError, so the NameError
+    #     escaped each one in turn and landed in the caller's bare `except
+    #     Exception`: the whole Linux path did nothing at all. No port was
+    #     opened and — worse for an app whose rule is to never claim an outcome
+    #     nobody observed — no manual `sudo ufw allow …` line was printed
+    #     either. The dashboard never worked from a phone on Linux and said
+    #     nothing about it. Windows was unaffected: it already looped.
+    #
+    #     pyflakes reports this as F821 undefined-name, which is why CI now runs
+    #     a lint step: 9 lines of this file were dead code that looked alive.
+    #
+    # And the failures SPEAK now. "Your phone cannot reach the dashboard" with
+    # no reason attached is the failure this whole file keeps trying to avoid,
+    # so each tool reports which ports it opened and which it could not.
+    wanted = [int(pt) for pt in ports]
+
     try:  # ufw
         r = subprocess.run(["ufw", "status"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5)
         if "active" in r.stdout.lower():
-            if _privileged(["ufw", "allow", f"{port}/tcp"]):
-                print(f"[Dashboard] ufw: port {port} allowed.")
-            else:
+            failed = []
+            for port in wanted:
+                if _privileged(["ufw", "allow", f"{port}/tcp"]):
+                    print(f"[Dashboard] ufw: port {port} allowed.")
+                else:
+                    failed.append(port)
+            for port in failed:
                 print(f"[Dashboard] Run manually:  sudo ufw allow {port}/tcp")
             return
     except FileNotFoundError:
         pass
+    except Exception as e:
+        print(f"[Dashboard] ufw check failed: {e}")
 
     try:  # firewalld
         r = subprocess.run(
             ["firewall-cmd", "--state"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5,
         )
         if "running" in r.stdout.lower():
-            ok = (_privileged(["firewall-cmd", "--add-port", f"{port}/tcp", "--permanent"])
-                  and _privileged(["firewall-cmd", "--reload"]))
+            ok = all(_privileged(["firewall-cmd", "--add-port", f"{port}/tcp", "--permanent"])
+                     for port in wanted)
             if ok:
-                print(f"[Dashboard] firewalld: port {port} allowed.")
+                _privileged(["firewall-cmd", "--reload"])
+                for port in wanted:
+                    print(f"[Dashboard] firewalld: port {port} allowed.")
             else:
-                print(f"[Dashboard] Run manually:  sudo firewall-cmd --add-port={port}/tcp --permanent && sudo firewall-cmd --reload")
+                for port in wanted:
+                    print(f"[Dashboard] Run manually:  sudo firewall-cmd --add-port={port}/tcp --permanent"
+                          " && sudo firewall-cmd --reload")
             return
     except FileNotFoundError:
         pass
+    except Exception as e:
+        print(f"[Dashboard] firewalld check failed: {e}")
 
     try:  # iptables (not persistent but works until reboot)
         r = subprocess.run(["iptables", "-L", "INPUT", "-n"], capture_output=True, timeout=5)
         if r.returncode == 0:
-            if _privileged(["iptables", "-A", "INPUT", "-p", "tcp", "--dport", str(port), "-j", "ACCEPT"]):
-                print(f"[Dashboard] iptables: port {port} opened.")
-            else:
-                print(f"[Dashboard] Run manually:  sudo iptables -A INPUT -p tcp --dport {port} -j ACCEPT")
+            failed = []
+            for port in wanted:
+                if _privileged(["iptables", "-A", "INPUT", "-p", "tcp", "--dport", str(port), "-j", "ACCEPT"]):
+                    print(f"[Dashboard] iptables: port {port} opened.")
+                else:
+                    failed.append(port)
+            for port in failed:
+                print(f"[Dashboard] Run manually:  sudo iptables -A INPUT -p tcp "
+                      f"--dport {port} -j ACCEPT")
     except FileNotFoundError:
         pass  # no iptables means firewall is probably off — nothing to do
+    except Exception as e:
+        print(f"[Dashboard] iptables check failed: {e}")
 
 
 

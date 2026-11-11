@@ -744,8 +744,8 @@ class PipelineEngine:
             kept = [p["text"] for p in content if p.get("type") == "text"]
             dropped = len(content) - len(kept)
             if dropped:
-                kept.append(f"[an image was attached; this model cannot see "
-                            f"images, so it was not included]")
+                kept.append("[an image was attached; this model cannot see "
+                            "images, so it was not included]")
             return "\n".join(kept)
         return content
 

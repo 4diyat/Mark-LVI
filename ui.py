@@ -26,15 +26,18 @@ else:
 # An explicit setting from the user is left alone.
 os.environ.setdefault("QT_LOGGING_RULES", "qt.multimedia.*=false")
 
+# Only what this file uses. The list used to carry QEasingCurve, QMimeData,
+# QObject, QParallelAnimationGroup, QPropertyAnimation, QRect, QSize,
+# QFontDatabase, QLinearGradient and QPainterPath, none of which appear
+# anywhere below — the leftovers of replaced animation code. They cost nothing
+# at runtime (PyQt6 loads them for the classes that ARE used) and they cost a
+# reader: an import that suggests a feature that is not there.
 from PyQt6.QtCore import (
-    QEasingCurve, QLineF, QMimeData, QObject, QParallelAnimationGroup, QPointF,
-    QPoint, QPropertyAnimation, QRect, QRectF, QSize, QSizeF, Qt, QTimer,
-    QUrl, pyqtSignal,
+    QLineF, QPointF, QPoint, QRectF, QSizeF, Qt, QTimer, QUrl, pyqtSignal,
 )
 from PyQt6.QtGui import (
     QBrush, QColor, QConicalGradient, QCursor, QDragEnterEvent, QDropEvent, QFont,
-    QFontDatabase, QKeySequence, QLinearGradient, QPainter, QPainterPath,
-    QPen, QPixmap, QRadialGradient, QShortcut,
+    QKeySequence, QPainter, QPen, QPixmap, QRadialGradient, QShortcut,
 )
 # Video playback for the HUD. Part of PyQt6, so it costs no new dependency —
 # but the multimedia plugins are a separate piece of the Qt install and can be
@@ -1314,7 +1317,7 @@ class _DropCanvas(QWidget):
                    "Images · Video · Audio · PDF · Docs · Code · Project folders")
 
     def _paint_drag_over(self, p, W, H):
-        cx, cy = W / 2, H / 2
+        cy = H / 2
         p.setFont(QFont("Courier New", 20))
         p.setPen(QPen(qcol(C.PRI), 1))
         p.drawText(QRectF(0, cy - 24, W, 32), Qt.AlignmentFlag.AlignCenter, "⬇")
@@ -4709,6 +4712,7 @@ class MainWindow(QMainWindow):
         QApplication.clipboard().dataChanged.connect(self._on_clipboard_changed)
 
         self._overlay: SetupOverlay | None = None
+        self._setup_saved = False   # set by _on_setup_done; read by _on_setup_closed
         self._ready = self._check_config()
         if not self._ready:
             self._show_setup()
@@ -6114,7 +6118,7 @@ class MainWindow(QMainWindow):
         for f in (findings or []):
             key, mark = self._REVIEW_MARKS.get(f.get("severity"), ("PRI_DIM", "·"))
             colour = getattr(C, key)
-            parts.append(f'<div style="margin-bottom:11px;">')
+            parts.append('<div style="margin-bottom:11px;">')
             parts.append(
                 f'<span style="color:{colour}; font-weight:bold;">{mark}</span> '
                 f'<span style="color:{C.WHITE}; font-weight:bold;">'
@@ -7167,8 +7171,34 @@ class MainWindow(QMainWindow):
             return False
 
     def _show_setup(self):
-        ov = SetupOverlay(self.centralWidget())
+        """Show the setup screen — at launch, and again when a key is rejected.
+
+        THE SECOND TIME IS WHY THIS IS WRITTEN THE WAY IT IS
+            Both callers used to be the same five lines, and the branch that
+            matters is the second one: when the session loop decides the API
+            key is invalid it emits _reconfig_sig and then waits, in a
+            `while not self._win._ready` loop, for this screen to bring it back.
+            That only works if the overlay it creates is the one whose `done`
+            is connected to _on_setup_done. It was not — the overlay was built,
+            shown, and thrown away — so the key could be retyped, saved and
+            accepted and the session loop still sat there forever, asleep.
+            Unlike the launch case, a dismissal here MUST also settle `_ready`:
+            otherwise closing the box leaves the app in the same permanent wait.
+
+            Verified change: `_overlay` is now assigned, `done` is connected on
+            both paths, and a close that is not a save sets `_ready` too — see
+            _on_setup_closed.
+        """
         cw = self.centralWidget()
+        # Never leak the previous one: a second _show_setup while a box is open
+        # would otherwise leave a live overlay with nowhere to report back to.
+        old = getattr(self, "_overlay", None)
+        if old is not None:
+            try:
+                old.close()
+            except Exception:
+                pass
+        ov = SetupOverlay(cw)
         ow, oh = 460, 390
         ov.setGeometry(
             (cw.width()  - ow) // 2,
@@ -7176,22 +7206,48 @@ class MainWindow(QMainWindow):
             ow, oh,
         )
         ov.done.connect(self._on_setup_done)
+        # The "not a save" path: Qt sends destroyed on close() and hide(); the
+        # setup box has no cancel button, so anything other than a save is the
+        # user closing it to get their window back.
+        ov.destroyed.connect(self._on_setup_closed)
         ov.show()
+        ov.raise_()
         self._overlay = ov
 
+    def _on_setup_closed(self, *_):
+        """The box went away without a key. Let the session loop try again."""
+        if getattr(self, "_setup_saved", False):
+            return                      # _on_setup_done already settled it
+        self._overlay = None
+        if not self._ready:
+            self._ready = True          # unblocks main.py's wait loop
+        self._log.append_log(
+            "SYS: Setup closed without an API key — retrying the connection.")
+
     def _on_setup_done(self, key: str, os_name: str):
-        os.makedirs(CONFIG_DIR, exist_ok=True)
-        API_FILE.write_text(
-            json.dumps({"gemini_api_key": key, "os_system": os_name}, indent=4),
-            encoding="utf-8",
-        )
+        """Save from the setup screen. MERGES into the config; never replaces.
+
+        This used to write {"gemini_api_key", "os_system"} with write_text(),
+        which is correct on a first run and destructive on every other: the
+        same screen appears when a key is rejected, and saving from it deleted
+        the assistant's name, its voice, the device choices and every plugin
+        credential — OAuth tokens included. It now goes through the one config
+        writer, which holds a lock and swaps the file in atomically.
+        """
+        self._setup_saved = True
+        try:
+            from memory.config_manager import save_setup
+            save_setup(key, os_name)
+        except Exception as e:                  # pragma: no cover — disk full etc.
+            print(f"[UI] ⚠️  Could not save the setup: {e}")
         self._ready = True
-        if self._overlay:
-            self._overlay.hide()
-            self._overlay = None
+        ov, self._overlay = getattr(self, "_overlay", None), None
+        if ov is not None:
+            ov.hide()
         self._apply_state("LISTENING")
         self._assistant_name = _read_full_config().get("assistant_name", "JARVIS") or "JARVIS"
         self._log.append_log(f"SYS: Initialised. OS={os_name.upper()}. {self._assistant_name} online.")
+        self._setup_saved = False
 
 
 class _RootShim:

@@ -1,0 +1,43 @@
+# ── MARK LVI — the checks that run before a commit leaves your machine ───────
+#
+#     pip install pre-commit
+#     pre-commit install          # once per clone
+#     pre-commit run --all-files  # to try it now
+#
+# WHAT IS HERE AND WHY IT IS SHORT
+#     CI already runs everything below on every push; this only moves the
+#     answer earlier, to the moment someone is still looking at the change.
+#     Nothing here reformats 39,000 lines of existing code: a formatter that
+#     rewrites every file on its first run makes the history useless and gets
+#     disabled within a week. Formatting is a decision for the restructure, not
+#     a drive-by commit.
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.4
+    hooks:
+      # The same rules CI enforces (F + E9, from pyproject.toml). These are the
+      # ones whose violations are bugs: an undefined name is a dead branch.
+      - id: ruff
+        name: ruff (F+E9 — bugs only)
+        args: [--fix]
+      # Cheap hygiene that costs nobody an opinion.
+      - id: ruff-format
+        name: ruff format (only files you touched)
+        # NOT applied to the legacy tree wholesale: see the note above.
+        files: ^(tests/|\.github/)
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: \.(obj|min\.js)$
+      - id: end-of-file-fixer
+        exclude: \.(obj|min\.js)$
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=2048]     # face_model.obj and crypto-js are shipped; not 100 MB blobs
+      - id: mixed-line-ending
+        args: [--fix=lf]
+        exclude: \.(bat|cmd)$

@@ -250,7 +250,12 @@ Code for {file_path}:"""
         response = model.generate_content(prompt)
         code = _strip_fences(response.text)
 
-        full_path = project_dir / file_path
+        full_path = _safe_target(project_dir, file_path)
+        if full_path is None:
+            message = (f"Refused to write {file_path!r}: that path is outside "
+                       f"the project folder.")
+            print(f"[DevAgent] ⛔ {message}")
+            raise ValueError(message)
         full_path.parent.mkdir(parents=True, exist_ok=True)
         full_path.write_text(code, encoding="utf-8")
 
@@ -448,7 +453,10 @@ Fixed code for {fix_path}:"""
             response = model.generate_content(prompt)
             fixed = _strip_fences(response.text)
 
-            full_path = project_dir / fix_path
+            full_path = _safe_target(project_dir, fix_path)
+            if full_path is None:
+                print(f"[DevAgent] ⛔ Refused to fix {fix_path!r}: outside the project")
+                continue
             full_path.parent.mkdir(parents=True, exist_ok=True)
             full_path.write_text(fixed, encoding="utf-8")
 
@@ -924,6 +932,40 @@ def _safe_rel(folder: Path, rel: str) -> str | None:
     except (ValueError, OSError):
         return None
     return Path(rel).as_posix()
+
+
+def _safe_target(root: Path, rel: str) -> Path | None:
+    """`rel` resolved under `root`, or None when it points somewhere else.
+
+    WHY THIS IS NOT JUST `root / rel`
+        Every write in this file used to be `project_dir / file_path`, where
+        `file_path` came straight out of a model's JSON plan. A path is not a
+        name: "../" climbs, an absolute path ignores the left side entirely, and
+        on Windows "C:\\Users\\…\\Startup\\x.py" is a perfectly valid
+        string. The code then called .parent.mkdir(parents=True) and wrote the
+        file — OUTSIDE the project — and _run_project executed it, because a
+        generated "project" whose entry point imports a sibling that was written
+        into the startup folder is still a project that runs.
+
+        This folder already had the rule for EDITS: _safe_rel() screens every
+        path before a single byte is written, and improvement mode checks
+        Protection on top of it. Project CREATION, the one path that runs
+        unattended straight after a plan, had neither. This is that check,
+        returning the resolved path the writers actually need.
+
+    Returns None for anything that is not inside `root`, and prints nothing —
+    the caller decides what the user is told.
+    """
+    clean = _safe_rel(root, rel)
+    if clean is None:
+        return None
+    target = root / clean
+    try:
+        if root.resolve() not in target.resolve().parents:
+            return None
+    except (OSError, ValueError):
+        return None
+    return target
 
 
 def _plan_changes(folder: Path, instruction: str, context: str) -> dict:

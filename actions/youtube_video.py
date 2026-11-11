@@ -2,24 +2,16 @@
 import json
 import re
 import sys
-import time
 import subprocess
-import shutil
 from pathlib import Path
 from datetime import datetime
 from urllib.parse import quote_plus
 
-try:
-    import pyautogui
-    _PYAUTOGUI = True
-except ImportError:
-    _PYAUTOGUI = False
-
-try:
-    import numpy as np
-    _NUMPY = True
-except ImportError:
-    _NUMPY = False
+# pyautogui and numpy used to be imported here — import-time side effects for a
+# feature that was removed and flags nothing reads. pyautogui in particular
+# loads an entire input backend (and on Linux probes X11) before a single line
+# of this action runs, which is paid by every user whether or not they ever ask
+# for a video.
 
 try:
     import requests
@@ -33,7 +25,7 @@ try:
 except ImportError:
     _TRANSCRIPT_OK = False
 
-from config import get_os, is_windows, is_mac, is_linux
+from config import is_windows, is_mac, is_linux
 
 
 def _get_base_dir() -> Path:
@@ -298,7 +290,7 @@ def _handle_play(parameters: dict, player) -> str:
         _open_url(video_url)
         return f"Playing: {query}"
 
-    print(f"[YouTube] ⚠️ Scrape failed, opening filtered search page")
+    print("[YouTube] ⚠️ Scrape failed, opening filtered search page")
     fallback_url = (
         f"https://www.youtube.com/results"
         f"?search_query={quote_plus(query)}"
