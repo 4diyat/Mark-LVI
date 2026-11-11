@@ -174,8 +174,15 @@ jobs:
 
           # PYTHONIOENCODING for the CHILD as well: capture_output collects
           # bytes, so the parent's decoding is only half of this fix.
-          env = dict(os.environ, PYTHONIOENCODING="utf-8:replace")
-          proc = subprocess.run([sys.executable, "-m", "providers._tests"],
+          # -u IS NOT COSMETIC. Piped stdout is block-buffered, so when the
+          # child aborts (Qt fail-fast, no exception, no unwinding) everything
+          # it had printed is still sitting in its buffer and is lost. The
+          # transcript then looks like it contains only the child's stderr,
+          # and the one line that says WHICH check was running is gone.
+          # Unbuffered, stdout reaches the file as it happens.
+          env = dict(os.environ, PYTHONIOENCODING="utf-8:replace",
+                     PYTHONUNBUFFERED="1")
+          proc = subprocess.run([sys.executable, "-u", "-m", "providers._tests"],
                                 capture_output=True, text=True,
                                 encoding="utf-8", errors="replace", env=env)
           out = (proc.stdout or "") + (proc.stderr or "")
