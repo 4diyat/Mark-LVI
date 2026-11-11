@@ -1083,7 +1083,18 @@ def test_panel_settings_survive():
         print("  SKIP  the panel checks need a Qt that can construct a widget")
         return
 
-    from PyQt6.QtWidgets import QComboBox
+    # The probe's QApplication died with the probe. This process needs its own
+    # before it builds anything: Qt does not raise for a QWidget made without
+    # one, it prints "Must construct a QApplication before a QWidget" and calls
+    # abort() — the same uncatchable death the probe exists to keep outside.
+    try:
+        from PyQt6.QtWidgets import QApplication, QComboBox
+        _app = QApplication.instance() or QApplication([])
+    except Exception as e:
+        print(f"  SKIP  Qt cannot open a display ({e.__class__.__name__}: {e})")
+        print("  SKIP  the panel checks need a Qt that can construct a widget")
+        return
+
     import ui as UI
     from memory.config_manager import (get_pipeline, get_provider_config,
                                        get_provider_mode, save_pipeline,

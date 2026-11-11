@@ -182,10 +182,17 @@ jobs:
           # Unbuffered, stdout reaches the file as it happens.
           env = dict(os.environ, PYTHONIOENCODING="utf-8:replace",
                      PYTHONUNBUFFERED="1")
+          # stderr goes into the same pipe as stdout. They used to be captured
+          # separately and concatenated, which silently reorders the
+          # transcript: every Qt warning (stderr, unbuffered) landed at the END,
+          # so the tail showed messages from the start of the run and hid the
+          # line where it actually stopped.
           proc = subprocess.run([sys.executable, "-u", "-m", "providers._tests"],
-                                capture_output=True, text=True,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT,
+                                text=True,
                                 encoding="utf-8", errors="replace", env=env)
-          out = (proc.stdout or "") + (proc.stderr or "")
+          out = proc.stdout or ""
           print(out, flush=True)
           pathlib.Path("providers-test.txt").write_text(out, encoding="utf-8")
           pathlib.Path("providers-test.status").write_text(str(proc.returncode))
