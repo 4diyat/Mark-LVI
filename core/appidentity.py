@@ -58,6 +58,11 @@ from typing import Optional
 
 from core.lazyimport import LazyModule, installed
 
+# One logger for the module. `logbook.get` is a thin alias for logging.getLogger,
+# so this costs nothing when logging was never set up — the record is simply
+# dropped, same as the `pass` it replaces.
+from core.logbook import get as _log
+
 _PSUTIL = installed("psutil")
 psutil = LazyModule("psutil")
 
@@ -869,9 +874,12 @@ def focus(match: "Match") -> bool:
         if r.returncode == 0:
             return True
     except FileNotFoundError:
-        pass
-    except Exception:
-        pass
+        pass                # not installed — wmctrl below is the fallback
+    except Exception as e:
+        # A timeout or a permission error is not the same as "not installed":
+        # it means the desktop is there and did not answer, which is worth a
+        # line in the log when somebody reports that focusing does nothing.
+        _log("appidentity").debug("xdotool could not raise the window: %s", e)
 
     for title in (match.titles or [match.label]):
         if not title:

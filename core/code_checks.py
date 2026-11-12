@@ -48,6 +48,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from core.logbook import get as _log
+
 _GUIDE_FILES = ("AGENTS.md", "CLAUDE.md", "CONTRIBUTING.md", ".github/CONTRIBUTING.md",
                 ".cursorrules", ".github/copilot-instructions.md")
 _GUIDE_CHARS = 40_000
@@ -339,8 +341,11 @@ def project_guide(folder: Path, stack: dict | None = None) -> str:
         try:
             parts.append(f"## The project's own rules ({rf.name})\n\n"
                          + rf.read_text(encoding="utf-8")[:_GUIDE_CHARS])
-        except OSError:
-            pass
+        except (OSError, UnicodeDecodeError) as e:
+            # The file was found and could not be read — a permission bit, or a
+            # markdown file saved in an encoding nobody expects. The brief then
+            # carries less, and this is why.
+            _log("code_checks").debug("rules file %s unreadable: %s", rf.name, e)
     parts.append(_facts(stack))
     for prof in _PROFILES:
         if prof.name in stack["profiles"]:
@@ -358,6 +363,9 @@ def fingerprint(folder: Path) -> str:
         try:
             h.update(f"{p.relative_to(folder).as_posix()}:{p.stat().st_size}\n".encode())
         except OSError:
+            # A file that vanished between the walk and the stat. The
+            # fingerprint is a cache key, so skipping it is right — the next
+            # walk sees the new state anyway.
             pass
     return h.hexdigest()
 

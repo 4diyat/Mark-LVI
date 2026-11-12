@@ -73,6 +73,8 @@ import threading
 from pathlib import Path
 from typing import Optional
 
+from core import logbook
+
 if getattr(sys, "frozen", False):
     _BASE = Path(sys.executable).parent
 else:
@@ -487,8 +489,12 @@ async def _live_turn(parts: list, system: str, key: str, timeout_s: float) -> st
     finally:
         try:
             await cm.__aexit__(None, None, None)
-        except Exception:
-            pass
+        except Exception as e:
+            # Closing a context manager that is already broken: the text has
+            # been collected and is about to be returned, so nothing is lost by
+            # continuing — but a session that will not close is how sockets leak
+            # one per spoken turn, so it is worth a line.
+            logbook.get("gemini").debug("chat_takeover could not close: %s", e)
 
 
 def _live_call(contents, config, timeout_ms: int, key: str):
@@ -571,7 +577,11 @@ def _provider_settings() -> tuple[str, bool]:
     try:
         from memory.config_manager import get_sidecar_first, get_sidecar_provider
         pid, first = get_sidecar_provider(), get_sidecar_first()
-    except Exception:
+    except Exception as e:
+        # A missing or unreadable config means "no local provider", which is a
+        # normal state for a fresh install — logged at debug because it is also
+        # what happens for the first ten seconds of every install.
+        logbook.get("gemini").debug("no sidecar provider: %s", e)
         pid, first = "", False
 
     with _prov_lock:

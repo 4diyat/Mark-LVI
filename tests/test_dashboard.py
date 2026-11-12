@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import time
 import uuid
+from unittest import mock
 
 import pytest
 
@@ -245,3 +246,26 @@ def test_revoke_ends_live_sessions_but_keeps_the_caller(server):
     assert client.get("/api/devices", headers=_h(token)).status_code == 200
     assert client.post("/api/command", json={"text": "hi"},
                        headers=_h("other")).status_code == 401
+
+
+def test_local_address_logs_when_it_can_only_offer_localhost(caplog):
+    """The QR code saying 127.0.0.1 is the only symptom of a problem here.
+
+    `_local_ip()` tries three methods and used to swallow all three failures
+    with `except: pass`; the caller then shows a link no phone can open, with
+    nothing anywhere saying why. The log line is the difference between "the
+    dashboard is broken" and "this machine is not on a network".
+    """
+    import logging
+
+    from dashboard import server
+
+    with caplog.at_level(logging.DEBUG, logger="dashboard"):
+        with mock.patch.object(server.socket, "socket", side_effect=OSError("no route")), \
+             mock.patch.object(server.socket, "gethostbyname", side_effect=OSError("no dns")), \
+             mock.patch.object(server.socket, "getaddrinfo", side_effect=OSError("no ifaces")):
+            assert server._local_ip() == "127.0.0.1"
+
+    text = caplog.text
+    assert "no LAN address" in text
+    assert "no route" in text or "no dns" in text or "no ifaces" in text

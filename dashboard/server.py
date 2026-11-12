@@ -408,11 +408,15 @@ def _ensure_network_access(*ports: int) -> None:
                 print(f"[Dashboard] Firewall configured for {', '.join(str(pt) for pt in ports)}.")
                 try:
                     os.unlink(bat_path)
-                except Exception:
-                    pass
+                except OSError as e:
+                    _dlog.debug("firewall script left behind (%s): %s", bat_path, e)
                 return
-        except Exception:
-            pass
+        except Exception as e:
+            # Not admin yet — the UAC path below is the normal route, so this
+            # is expected rather than an error. Recorded because the case that
+            # IS a bug looks identical from the outside: a rule that never gets
+            # added.
+            _dlog.debug("firewall: direct run failed, trying UAC: %s", e)
 
         # ── ShellExecuteW: native UAC elevation (most reliable on Windows) ────
         # ShellExecuteW with verb "runas" always shows the UAC dialog regardless
@@ -610,16 +614,18 @@ def _local_ip() -> str:
             s.close()
             if not ip.startswith("127."):
                 return ip
-        except Exception:
-            pass
+        except OSError as e:
+            # Two more methods follow; this one fails on a machine with no
+            # route out (which is a normal way to run a LAN dashboard).
+            _dlog.debug("local IP, UDP probe failed: %s", e)
 
     # Method 2: hostname resolution (works offline on most systems)
     try:
         ip = socket.gethostbyname(socket.gethostname())
         if not ip.startswith("127."):
             return ip
-    except Exception:
-        pass
+    except OSError as e:
+        _dlog.debug("local IP, hostname lookup failed: %s", e)
 
     # Method 3: enumerate all interfaces (fully offline, no external deps)
     try:
@@ -627,9 +633,12 @@ def _local_ip() -> str:
             ip = info[4][0]
             if not ip.startswith("127.") and not ip.startswith("169.254."):
                 return ip
-    except Exception:
-        pass
+    except OSError as e:
+        _dlog.debug("local IP, interface enumeration failed: %s", e)
 
+    # The QR code then shows localhost, which no phone can reach — the one
+    # symptom of this that a person sees, so the reason belongs in the log.
+    _dlog.debug("no LAN address found; the dashboard link will say 127.0.0.1")
     return "127.0.0.1"
 
 
@@ -1467,8 +1476,11 @@ class DashboardServer:
                     reverse=True,
                 ):
                     files.append({"name": f.name, "size": f.stat().st_size})
-            except Exception:
-                pass
+            except OSError as e:
+                # Listing a folder that was deleted, or a file that vanished
+                # between iterdir() and stat(). The list is a convenience; an
+                # empty one with a reason in the log beats a 500.
+                _dlog.debug("listing uploads: %s", e)
             return JSONResponse({"files": files})
 
         @app.get("/api/devices")
@@ -1605,8 +1617,11 @@ class DashboardServer:
                       encoding="utf-8") as f:
                 if _json.load(f).get("dashboard_https"):
                     _ensure_certs()
-        except Exception:
-            pass
+        except Exception as e:
+            # A missing or corrupt config means HTTPS was not asked for. When
+            # it WAS asked for and this failed, the server below starts on
+            # plain HTTP — worth knowing before blaming the phone.
+            _dlog.debug("could not read dashboard_https: %s", e)
 
         use_ssl  = self._ssl_enabled()
         ssl_key  = BASE_DIR / "config" / "certs" / "jarvis.key"

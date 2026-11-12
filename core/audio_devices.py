@@ -29,6 +29,8 @@ import threading
 import time
 from typing import Optional
 
+from core.logbook import get as _log
+
 # The label shown for "let the OS decide", and the value stored in config for
 # it. Empty string, so an untouched install and a deliberately-default install
 # are the same thing — nothing changes for anyone who never opens the picker.
@@ -235,8 +237,10 @@ def _usable(idx: int, kind: str) -> bool:
         if st is not None:
             try:
                 st.stop(); st.close()
-            except Exception:
-                pass
+            except Exception as e:
+                # Closing a stream that never opened, or that the driver already
+                # tore down. The probe's answer is already decided by then.
+                _log("audio").debug("closing the probe stream: %s", e)
 
 # Aliases for "the default device" and internal routing endpoints. Matched
 # case-insensitively as substrings against the device name.
@@ -483,8 +487,11 @@ def measure_input(name: str, seconds: float = 3.0, on_level=None) -> dict:
             if on_level is not None:
                 try:
                     on_level(min(1.0, block / 12000.0))
-                except Exception:
-                    pass
+                except Exception as e:
+                    # `on_level` is the HUD's meter, called from the audio
+                    # callback. A widget that has been deleted mid-session
+                    # raises here; the recording itself must not care.
+                    _log("audio").debug("level callback: %s", e)
 
         stream = sd.RawInputStream(samplerate=rate, channels=1, dtype="int16",
                                    blocksize=int(rate / 20), device=idx,
