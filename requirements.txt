@@ -19,6 +19,15 @@ google-genai>=2.8.0,<3
 # somebody else's transitive dependency works right up until they drop it.
 httpx>=0.27,<1
 
+# ── The OS keychain ───────────────────────────────────────────────────────────
+# Optional at RUNTIME, installed by default. `core/secrets.py` puts the Gemini
+# key in Keychain (macOS), Credential Manager (Windows) or Secret Service
+# (GNOME Keyring / KWallet) and falls back to config/api_keys.json 0600 when
+# none of them answers — which is what a container, a WSL box or a locked
+# desktop does. Having the package is what makes the keychain reachable; not
+# having it changes nothing but the sentence in the settings panel.
+keyring>=24,<26
+
 # ── Web search & browser control ──────────────────────────────────────────────
 requests>=2.31,<3
 beautifulsoup4>=4.12,<5

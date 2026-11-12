@@ -177,8 +177,34 @@ def load_api_keys() -> dict:
 # ── Setup screen ─────────────────────────────────────────────────────────────
 
 def save_api_keys(gemini_api_key: str) -> None:
-    """Store the API key, keeping every other setting that is already there."""
-    set_config_values(gemini_api_key=(gemini_api_key or "").strip())
+    """Store the API key, keeping every other setting that is already there.
+
+    THE KEY GOES TO THE KEYCHAIN FIRST, AND THE FILE KEEPS A COPY.
+        `core/secrets.py` explains the argument in full. The short version: this
+        is the one secret in the file that is actually a key, every desktop OS
+        has held one for a decade, and `keyring` is optional — so the keychain
+        is tried and the file copy is written either way. That ordering is what
+        makes the feature safe to add to an app that must also run headless: a
+        machine without a keyring behaves exactly as it did before.
+
+        When the keychain accepts it, the file copy is written with a marker key
+        (`gemini_api_key_source`) purely so the settings panel can say where the
+        authoritative copy is instead of guessing.
+    """
+    key = (gemini_api_key or "").strip()
+    stored = False
+    try:
+        from core import secrets
+        stored = secrets.set_secret(key) if key else False
+    except Exception as e:      # noqa: BLE001 — the file copy is the fallback
+        # Reported rather than swallowed: a keyring that fails on every save is
+        # a fact the user should be able to see, and this is the only place that
+        # knows it happened.
+        print(f"⚠ Keychain unavailable, keeping the key in the config file: {e}")
+    fields = {"gemini_api_key": key}
+    if stored:
+        fields["gemini_api_key_source"] = "keychain"
+    set_config_values(**fields)
 
 
 def save_setup(gemini_api_key: str, os_name: str = "") -> bool:
@@ -200,6 +226,20 @@ def save_setup(gemini_api_key: str, os_name: str = "") -> bool:
 
 
 def get_gemini_key() -> str | None:
+    """The Gemini key: the keychain if it has one, else the file.
+
+    Keychain FIRST and not "whichever is non-empty": a key that was rotated in
+    the panel is written to both, but a key the user pasted into the file by
+    hand and then saved once has a keychain copy that is now the newer of the
+    two. Reading the file first would silently keep using the old one.
+    """
+    try:
+        from core import secrets
+        key = secrets.get_secret()
+        if key:
+            return key
+    except Exception as e:      # noqa: BLE001 — fall through to the file
+        print(f"⚠ Keychain read failed, using the config file: {e}")
     return load_api_keys().get("gemini_api_key")
 
 def is_configured() -> bool:

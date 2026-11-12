@@ -325,16 +325,37 @@ def _cooling(model: str) -> bool:
 
 
 def api_key(refresh: bool = False) -> str:
-    """The Gemini key from config/api_keys.json. Cached; never raises."""
+    """The Gemini key, from the OS keychain when there is one. Cached.
+
+    THE ORDER MATTERS AND IT IS NOT THIS FUNCTION'S DECISION TO MAKE
+        Every credential read in this app goes through memory/config_manager,
+        which is the module that knows what a stored value means (AGENTS.md).
+        This one reads the file itself -- thirty lines of json around a path --
+        because `core/` must not import the config manager at module scope
+        (main.py starts by importing both). Rather than grow a second opinion
+        about where a key lives, it asks the module whose job that is, and keeps
+        the file as the answer when the keychain is absent — which is the
+        normal case on a headless machine.
+
+    NEVER RAISES. This is called during startup, from worker threads, and once
+    per reconnect; an exception here is a blank window and no useful message.
+    """
     global _cached_key
     with _key_lock:
         if _cached_key is not None and not refresh:
             return _cached_key
         try:
-            data = json.loads(_KEY_FILE.read_text(encoding="utf-8"))
-            _cached_key = str(data.get("gemini_api_key") or "")
+            from memory.config_manager import get_gemini_key
+            _cached_key = str(get_gemini_key() or "")
         except Exception:
-            _cached_key = ""
+            # The import or the keychain failed; the file is still the source of
+            # last resort, and it is what this function read before keyring
+            # existed.
+            try:
+                data = json.loads(_KEY_FILE.read_text(encoding="utf-8"))
+                _cached_key = str(data.get("gemini_api_key") or "")
+            except Exception:
+                _cached_key = ""
         return _cached_key
 
 

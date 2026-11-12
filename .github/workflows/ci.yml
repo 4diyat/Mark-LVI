@@ -144,7 +144,7 @@ jobs:
           python -m coverage report || true
           echo "::endgroup::"
           python -m coverage report \
-            --include="core/action_loader.py,core/plugin_loader.py,core/outcome.py,core/undo.py,core/confirm.py,core/echo.py,core/platform_support.py,core/lazyimport.py,core/i18n.py,memory/memory_manager.py,core/logbook.py,memory/config_manager.py" \
+            --include="core/action_loader.py,core/plugin_loader.py,core/outcome.py,core/undo.py,core/confirm.py,core/echo.py,core/platform_support.py,core/lazyimport.py,core/i18n.py,core/secrets.py,memory/memory_manager.py,core/logbook.py,memory/config_manager.py" \
             --fail-under=60
 
   # ── 3. The real dependency set still installs and still loads ──────────────
