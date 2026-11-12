@@ -48,3 +48,7 @@ desktop.ini
 logs/
 downloads/
 screenshots/
+# Piper voices: 63 MB per voice, downloaded on first use. They live inside
+# providers/ so that deleting providers/ takes them with it — which is also why
+# they have to be named here or `git add providers/` swallows them.
+providers/voices/
