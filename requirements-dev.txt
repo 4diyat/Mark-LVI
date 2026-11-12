@@ -33,3 +33,8 @@ numpy>=1.24,<3
 # the path guard and parsed source. The import job needs the real dependencies
 # present or 4 actions refuse to load by design (playwright, numpy, psutil).
 # Those come from requirements.txt in CI; nothing extra is listed here.
+# The workflow itself is a thing this project runs, and it has broken three
+# times in ways no test could see: a heredoc in a step that Windows runs with
+# PowerShell, a `$?` in the same, a shell built-in that only bash has. Reading
+# it as YAML is enough to assert which shell each step needs.
+pyyaml>=6,<7
