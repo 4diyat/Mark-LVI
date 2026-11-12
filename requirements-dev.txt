@@ -12,12 +12,21 @@ ruff>=0.6,<1          # lint — see pyproject.toml for which rules are enforced
 pytest>=8,<10
 pytest-asyncio>=0.23,<2   # nothing async yet; required once the dashboard tests land
 
-# psutil  — because the suite tests ONE app module that is pure logic and has no
-# Qt in it: ui/metrics.py (the CPU/memory sampler). tests/test_ui_split.py loads
-# it by path and checks the singleton exists. That check is worth a dependency,
-# because the alternative is what happened: the singleton was cut during a move
-# and the first thing to notice was CI, on three runners, after a push.
+# ── Two app modules the suite covers directly ───────────────────────────────
+# Neither needs Qt, a display, a microphone or the network, and both are pure
+# logic that is worth a dependency rather than a mock:
+#
+#   psutil → ui/metrics.py   the CPU/memory sampler; test_ui_split.py loads it
+#                            by path. Worth it because the alternative is what
+#                            happened: the singleton was cut during the ui/
+#                            split and the first thing to notice was CI, on
+#                            three runners, after a push.
+#   numpy  → core/echo.py    the echo guard. Its whole argument is that a LEVEL
+#                            test cannot tell our own voice from a person's, so
+#                            the tests build waveforms and check the decision.
+#                            Mocking it would test the mock.
 psutil>=5.9,<8
+numpy>=1.24,<3
 
 # ── For the CI job that imports everything ──────────────────────────────────
 # The suite itself needs NO third-party package: it exercises memory/config,
