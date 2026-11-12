@@ -69,7 +69,49 @@ jobs:
       - name: Install test tooling (no app dependencies needed)
         run: pip install -r requirements-dev.txt
       - name: Run the suite
-        run: python -m pytest -q
+        run: python -m pytest -q --junitxml="$RUNNER_TEMP/junit.xml"
+      # ── WHY A REPORT STEP AND NOT JUST "pytest -q" ────────────────────────
+      # Three operating systems and two Pythons means six chances for a test
+      # that only passes here. When one fails, the console log is a 60,000-line
+      # download that this repository's token cannot always fetch (it returns
+      # EOF), and the only thing left in the UI is "Process completed with exit
+      # code 1". Which test, on which OS, saying what — the first three things
+      # anyone needs — are not in it.
+      #
+      # So the junit XML pytest already wrote is turned into annotations: they
+      # appear against the failing line in the PR and they are readable from
+      # the API, which is how the failure actually gets diagnosed.
+      - name: Report failures as annotations
+        if: always()
+        run: |
+          python - <<'REPORT'
+          import os, sys
+          import xml.etree.ElementTree as ET
+          path = os.path.join(os.environ.get("RUNNER_TEMP", "."), "junit.xml")
+          if not os.path.exists(path):
+              print("::warning::no junit.xml — the suite did not get far enough to write one")
+              sys.exit(0)
+          root = ET.parse(path).getroot()
+          suites = root.iter("testsuite") if root.tag != "testsuite" else [root]
+          bad = 0
+          for suite in suites:
+              for case in suite.iter("testcase"):
+                  for kind in ("failure", "error"):
+                      node = case.find(kind)
+                      if node is None:
+                          continue
+                      bad += 1
+                      # First line of the message, escaped for the workflow
+                      # command syntax. The full text stays in the log.
+                      detail = (node.get("message") or node.text or "").strip()
+                      detail = detail.splitlines()[0][:250].replace("%", "%25")
+                      detail = detail.replace("\r", " ").replace("\n", " ")
+                      print(f"::error file={case.get('file')},"
+                            f"line={case.get('line') or 1},"
+                            f"title={case.get('classname')}.{case.get('name')}"
+                            f"::{detail}")
+          print(f"{bad} failing test(s) annotated")
+          REPORT
       - name: Show what the suite covers
         if: always()
         run: python -m pytest --collect-only -q | tail -5
@@ -102,10 +144,19 @@ jobs:
       - name: Coverage — the tested modules, and the map for the rest
         if: always()
         run: |
+          # `set +e` around the run on purpose. GitHub runs this with `bash -e`,
+          # so a suite that fails HERE — under the tracer, on this OS, with this
+          # interpreter — used to kill the step before a single number was
+          # printed. The only thing left was "exit code 1" and no way to tell a
+          # missing coverage from a failing test. Report first, decide after.
           python -m pip install --quiet coverage
+          set +e
           python -m coverage run --source=core,memory,dashboard -m pytest -q
+          status=$?
+          set -e
+          echo "suite under coverage exited $status"
           echo "::group::whole package (printed, not enforced — see the comment)"
-          python -m coverage report
+          python -m coverage report || true
           echo "::endgroup::"
           python -m coverage report \
             --include="core/action_loader.py,core/plugin_loader.py,core/outcome.py,core/undo.py,core/confirm.py,core/echo.py,core/platform_support.py,core/lazyimport.py,core/i18n.py,memory/memory_manager.py,core/logbook.py,memory/config_manager.py" \
