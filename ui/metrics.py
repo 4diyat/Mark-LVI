@@ -239,3 +239,15 @@ class _SysMetrics:
                 "gpu": self.gpu,
                 "tmp": self.tmp,
             }
+
+# THE ONE SAMPLER. It belongs beside the class that defines it, and there must be
+# exactly one: two instances mean two threads polling psutil and two answers to
+# "what is the CPU at", with no way to tell which one a widget read.
+#
+# This line went missing when the class moved out of ui.py, and the only thing
+# that noticed was CI — because importing the `ui` package needs Qt, and no test
+# on a headless machine can. ui/metrics.py deliberately imports no Qt, so a test
+# CAN import this module and check the sampler exists; and ui/__init__.py imports
+# this module before the window, so a missing name here fails at the first line
+# of the package rather than halfway through it.
+_metrics = _SysMetrics()

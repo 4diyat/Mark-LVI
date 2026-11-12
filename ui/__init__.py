@@ -33,4 +33,14 @@ from ui.theme import (          # noqa: F401 — the public face of the package
     qcol,
     retheme_all_widgets,
 )
+# THE FOUNDATIONS FIRST, AND BY NAME. `ui/metrics.py` imports no Qt, so if this
+# module is broken the package says so AT THIS LINE — "cannot import name
+# _metrics from ui.metrics" — instead of failing later inside the window with a
+# message about something else. (It did: the sampler singleton was cut when the
+# class moved, and the only thing that noticed was CI, on three runners.)
+from ui.metrics import (        # noqa: F401 — the sampler the window reads
+    _SysMetrics,
+    _metrics,
+    _nvml_gpu_windows,
+)
 from ui.window import *          # noqa: F401,F403 — the whole window, unchanged

@@ -124,3 +124,29 @@ def test_no_ui_module_outside_the_theme_writes_to_the_palette():
                     and isinstance(node.args[0], ast.Name) and node.args[0].id == "C"):
                 offenders.append(f"{path.name}:{node.lineno}")
     assert offenders == []
+
+
+def test_the_sampler_exists_without_a_display():
+    """Load ui/metrics.py by PATH: it imports no Qt, and that is the point.
+
+    Two things are asserted at once, and both matter here.
+
+    The singleton was cut when the class moved out of ui.py: `from ui.metrics
+    import _metrics` then raised ImportError and every widget that reads the CPU
+    would have gone with it. The local suite could not see that (it cannot
+    import the package, which needs Qt) and the CI self-test did — after a push,
+    on three runners.
+
+    So the module is loaded from its file, past the package's Qt import. A
+    module that can only be loaded with a display cannot be covered by any test
+    on a headless machine, and this one has no reason to be that module.
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("ui_metrics_under_test",
+                                                  UI_PKG / "metrics.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    assert isinstance(module._metrics, module._SysMetrics)
+    assert set(module._metrics.snapshot()) == {"cpu", "mem", "net", "gpu", "tmp"}
