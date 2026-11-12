@@ -127,9 +127,22 @@ is how a "new project" could place a `.py` outside the project and then run it.
 
 - Never send a child process's output to `DEVNULL` without logging it, and
   never report success without checking that the thing actually happened.
-- Settings and keys live in `config/api_keys.json` through
+- Settings live in `config/api_keys.json` through
   `memory/config_manager.py`; never write that file directly. Use
   `set_config_values()` / `update_config()` — they hold a lock and write
   atomically, because four threads write this file at the same time.
   `tests/test_config.py` fails if a module bypasses them.
+- **The Gemini key is stored in the OS keychain**, with a copy in that file for
+  machines without one (`core/keychain.py`). Read it with
+  `config_manager.get_gemini_key()` and write it with `save_api_keys()`; both
+  do the keychain-then-file dance. `core.gemini.api_key()` is the only other
+  reader and it asks the config manager rather than reading the file.
+  If you add a credential that is a *key* rather than a token for a service
+  the user can revoke in a browser, give it the same treatment; plugin tokens
+  stay in the file deliberately (see the docstring).
+- **Text a user reads goes through `core/i18n.py`**, never a literal in a Qt
+  call. `label("key")` with `assets/i18n/{en,id}.json`; `tests/test_i18n.py`
+  fails on a hardcoded `setText("...")` and on a key the catalogue lacks.
+  The assistant's name, combo-box values and paste-ready commands are the only
+  things exempt, and each exemption is listed in that test with a reason.
 - Keep to the libraries already in `requirements.txt`.

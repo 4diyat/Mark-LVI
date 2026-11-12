@@ -522,13 +522,54 @@ sudah menyentuh plafon ukuran dengan baris bahasa belum ditulis. Plafon
 `ui/window.py` turun dari 7.400 → 7.000 baris (sekarang 6.969), dan sebuah test
 memastikan ketiga kelas itu tidak "kembali" ke file lama.
 
+### ✅ Sprint 5 — keychain, `shell=True`, dan CI yang bisa didiagnosis
+
+| Item | Sebelum | Sesudah |
+|---|---|---|
+| Kunci Gemini | `config/api_keys.json` (0600) | **OS keychain** (`core/keychain.py`), file tetap sebagai salinan untuk mesin tanpa desktop session |
+| Panel pengaturan | tidak pernah menyebut di mana kuncinya | `describe()`: satu kalimat yang menyebut store-nya, atau alasan fallback-nya |
+| `shell=True` | **3** (brightness Linux, VS Code, dan satu di `open_app` yang sudah diperbaiki lebih dulu) | **0**, dan `tests/test_shell_true.py` menolak yang baru |
+| Diagnosa CI | "Process completed with exit code 1" ×4 | satu `::error` per test yang gagal: file, baris, pesan |
+| Regresi lintas-OS | ditemukan setelah push | `LANG`, `sys.path`, dan nama modul dibaca sebagai aturan, bukan dihafal |
+
+**Brightness, sebagai contoh kenapa audit ini berharga.** Perintah Linux-nya
+adalah satu string `shell=True` berisi `$(xrandr | grep ... | cut ...)` dan
+`python3 -c` bersarang. Tiga masalah: shell terakhir di file yang selebihnya
+memakai argument vector; level yang dibaca adalah **fraksi** dari maksimum
+driver sementara fungsi sebelah melaporkan **persen**, jadi "naikkan" dari 40 %
+tidak menambah sepuluh poin; dan nama monitor yang mengandung spasi/kutip/`;`
+adalah kata shell. Dua primitif empat baris di atasnya sudah menjawab keduanya —
+sekarang `_brightness_step()` hanya aritmetika.
+
+**Kenapa keychain tetap punya fallback file.** `keyring` butuh desktop session;
+container, WSL, server headless, dan desktop Linux yang keyring-nya belum
+dibuka sejak boot akan melempar exception pada panggilan pertama. Menolak start
+di sana menukar risiko kecil dengan instalasi yang rusak. Jadi: coba keychain,
+jatuh ke file, dan **katakan yang mana yang dipakai** — aplikasi yang membuat
+pengguna percaya kuncinya di Keychain padahal di file telah berbohong.
+
+> Tiga bug proses tertangkap justru saat mengerjakan sprint ini:
+> **(1)** `core/secrets.py` menutupi modul stdlib `secrets` karena `core/` ada di
+> `sys.path` — `keyring`, `uuid`, `random` semuanya mengimpornya, dan keenam
+> runner mati dengan `ImportError: cannot import name randbits`. Sekarang
+> `core/keychain.py`, plus test yang menolak **nama apa pun** yang menutupi
+> stdlib.
+> **(2)** Steps CI ditulis seolah bash satu-satunya shell: heredoc dan `$?`
+> gagal di PowerShell, jadi step yang dibuat untuk *menjelaskan* kegagalan justru
+> menambah satu. Sekarang `tools/annotate_junit.py` (file, ada test-nya) dan
+> `tests/test_workflow_sh.py` yang membaca `ci.yml` sebagai YAML.
+> **(3)** Test locale membaca mesin tempat ia jalan: `LANG`/`LC_ALL` runner macOS
+> berbeda dari laptop Linux, jadi resolver yang benar terlihat salah. Sekarang
+> fixture `clean_env`, dan file itu dijalankan ulang dalam subprocess dengan
+> locale Indonesia.
+
 ### ⏭️ Sprint berikutnya
 
 | Sprint | Fokus | Ukuran "selesai" |
 |---|---|---|
 | 3 | Pecah `ui.py` → `ui/`, `main.py` → `app/` | tidak ada file > 1.500 baris; `AGENTS.md` & kontrak plugin tidak berubah |
 | 4 | Coverage `core/` ≥ 40 %, i18n 47 label UI | ✅ 37 % (29 % runner) + peta coverage, `assets/i18n/{en,id}.json` |
-| 5 | Secret ke OS keychain, `shell=True` audit, marketplace plugin | `keyring` dipakai; 0 `shell=True` yang tak perlu |
+| 5 | Secret ke OS keychain, `shell=True` audit, marketplace plugin | ✅ keychain + file fallback; **0** `shell=True`; marketplace belum |
 
 ---
 
