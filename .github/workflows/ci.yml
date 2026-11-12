@@ -80,17 +80,30 @@ jobs:
       # what the assistant DOES to the machine (the two loaders, the undo stack,
       # the confirmation gate, the echo guard, the platform report).
       #
-      # The number is deliberately below the current 36 %: a floor that has to
-      # be adjusted on every commit is a floor people delete. What it prevents
-      # is the thing that actually happened here — a new 400-line module landing
-      # with no test at all and nobody noticing, because the total moved by one
-      # percent inside a number nobody read.
-      - name: Coverage floor for core/, memory/, dashboard/
+      # WHERE THE NUMBERS COME FROM, AND WHY THERE ARE TWO
+      #
+      #     50 % on the measured set, 30 % on everything. The gap is not
+      #     slack, it is the modules a bare runner cannot execute at all: Qt
+      #     (ui/, avatar), a GPU, an audio device, torch. Locally, with the
+      #     real requirements installed, the same suite reads 36 % of all of
+      #     core/; here it reads 29 % — this job installs requirements-dev only,
+      #     by design. A single floor picked from one of those numbers would be
+      #     wrong on the other machine, which is how a gate gets deleted.
+      #
+      #     The ratchet is the 50 %: those modules carried NO test a week ago
+      #     and the ones below still decide what the assistant does to the
+      #     machine. The whole-package floor is there for the case that actually
+      #     happened — a new 400-line module landing with no test, inside a
+      #     total that moved by one percent nobody read.
+      - name: Coverage floor — the tested modules, then all of core/
         if: always()
         run: |
           python -m pip install --quiet coverage
           python -m coverage run --source=core,memory,dashboard -m pytest -q
-          python -m coverage report --fail-under=33
+          python -m coverage report --fail-under=30
+          python -m coverage report \
+            --include="core/action_loader.py,core/plugin_loader.py,core/outcome.py,core/undo.py,core/confirm.py,core/echo.py,core/platform_support.py,core/lazyimport.py,memory/memory_manager.py,core/logbook.py,memory/config_manager.py" \
+            --fail-under=50
 
   # ── 3. The real dependency set still installs and still loads ──────────────
   # requirements.txt carries sys_platform markers, so this job is also the
