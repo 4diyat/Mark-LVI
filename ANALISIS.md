@@ -399,6 +399,27 @@ dijadikan `except ... : log.debug(...)` tanpa kehilangan informasi. 5 test.
 > memblokir `<script>` halaman sendiri. Sudah diperbaiki dengan `setdefault`,
 > dan sekarang dikunci oleh `test_inline_script_nonce_matches_the_policy`.
 
+### ✅ CI 3 OS — hijau
+
+`Lint` + 6 job `Tests` (3 OS × 2 versi Python) + 3 job `Install real deps`
+(ubuntu/macOS/Windows). Run terakhir: `43087727191`, **10/10 pass**.
+
+Yang harus dibongkar agar sampai ke sini semuanya ada di *harness*, bukan di kode
+aplikasi — dicatat karena polanya bisa terpakai lagi:
+
+| Gejala | Sebab sebenarnya |
+|---|---|
+| Windows `exit 3221226505` di tengah transkrip | Qt `abort()` (fail-fast, bukan exception) saat `import ui` di mesin tanpa audio; `try/except` tidak bisa menangkapnya → panel dijalankan di **proses anak** |
+| macOS `status=-6` + transkrip berhenti | sama, lewat `QApplication` tanpa window server |
+| `FAIL APPLY writes the config once 0` di semua OS | config ditulis atomik (tmp + `os.replace`); penghitung hanya memantau `Path.write_text` → ikut hitung `os.replace` |
+| transkrip terpotong / urutannya kacau | stdout anak di-buffer blok dan stderr ditangkap terpisah → `-u` + `stderr=STDOUT` |
+| `exit 250`, `-1`, `127`, `9` | `::error::` tidak dibaca dari step `shell: python`; Git Bash Windows tanpa `python`; membaca file yang tidak ada |
+
+Anak proses sekarang mencetak **satu vonis**: `ok:` (jalankan pemeriksaan),
+`ENV:` (mesin ini tidak punya Qt yang bisa dipakai → SKIP), `CODE:` (ui.py
+sendiri rusak → FAIL). Jadi mesin tanpa GUI tidak lagi memerahkan CI, tanpa
+membuat kegagalan sungguhan ikut lolos.
+
 ### ⏭️ Sprint berikutnya
 
 | Sprint | Fokus | Ukuran "selesai" |
@@ -431,7 +452,8 @@ dijadikan `except ... : log.debug(...)` tanpa kehilangan informasi. 5 test.
 | 5 | `.gitattributes` + normalisasi EOL | ✅ Sprint 1 |
 | 6 | `pyproject.toml` + `requirements-dev.txt` | ✅ Sprint 1 |
 | 7 | 33 unused import + 9 f-string | ✅ Sprint 1 |
-| 8 | `core/llm_client.py` kode mati | ⏳ Sprint 3 (menyentuh `providers/`; lebih aman bersamaan restructure) |
+| 8 | `core/llm_client.py` kode mati | ⏳ Sprint 3: 586 baris, 0 pemakai — dihapus bersama pecahnya `providers/` |
+| 9 | `config/__init__.py` salah path saat dibundel (`_MEIPASS`) | ✅ `1d9b17f` — memakai `CONFIG_FILE` dari `memory/config_manager`; 2 test |
 
 ---
 
