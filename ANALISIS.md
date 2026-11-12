@@ -531,6 +531,7 @@ memastikan ketiga kelas itu tidak "kembali" ke file lama.
 | `shell=True` | **3** (brightness Linux, VS Code, dan satu di `open_app` yang sudah diperbaiki lebih dulu) | **0**, dan `tests/test_shell_true.py` menolak yang baru |
 | Diagnosa CI | "Process completed with exit code 1" ×4 | satu `::error` per test yang gagal: file, baris, pesan |
 | Regresi lintas-OS | ditemukan setelah push | `LANG`, `sys.path`, dan nama modul dibaca sebagai aturan, bukan dihafal |
+| Plugin contoh | tidak ada | `plugins/currency_rates.py` + manifest: rantai penuh manifest → loader → izin → dialog, dan 21 test tanpa jaringan |
 | Marketplace plugin | "aman" hanya di judul | `core/plugin_manifest.py` (95 %): manifest + sha256 + izin deklaratif yang **diperiksa terhadap sumbernya**, dan dialog persetujuan sebelum toggle |
 | Kunci di keychain | tidak ada test | `core/keychain.py` **92 %**: tanpa paket, backend yang melempar saat read/write, keychain dan file yang berbeda isi |
 

@@ -13,8 +13,10 @@ IF YOUR PLUGIN DID NOT COME FROM THIS REPOSITORY
         {"name": "my_plugin", "version": "1.0.0", "author": "you",
          "permissions": ["network"], "sha256": "<of the .py>"}
 
-    `core/plugin_manifest.py` holds the permission list and the rules, and
-    `assets/i18n/plugin-manifest.example.json` is a copyable starting point.
+    `core/plugin_manifest.py` holds the permission list and the rules,
+    `assets/i18n/plugin-manifest.example.json` is a copyable starting point, and
+    `plugins/currency_rates.py` is a complete worked example — a real API, a
+    declared permission, and the refusals that make a tool trustworthy.
     A plugin with no manifest loads exactly as it does today — this repository's
     twenty plugins have none — so the manifest is only a gate when it exists.
     It is a declaration, not a sandbox: there is no boundary inside one
