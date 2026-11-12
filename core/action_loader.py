@@ -236,7 +236,26 @@ def discover_actions(actions_dir: Path, reserved_names: set[str] | None = None,
             module_name = f"actions.{path.stem}"
             # Reuse the already-imported module when present so handlers are the
             # same objects the rest of the app holds.
+            #
+            # ONLY IF IT IS THE SAME FILE. The cache key is the stem
+            # (`actions.open_app`), and two folders can hold the same name —
+            # a test scanning a tmp_path, dev_agent smoke-testing a project it
+            # just wrote, a user comparing two versions of an action. Keyed by
+            # name alone, the second scan returns the FIRST file's module and
+            # never executes the second at all: silently, with the old TOOL and
+            # the old handler. Found by the suite that scans two folders
+            # containing `candidate.py`.
             module = sys.modules.get(module_name)
+            if module is not None:
+                cached = getattr(module, "__file__", "") or ""
+                # compare RESOLVED paths: one folder, two spellings (a symlink,
+                # a relative tmp_path) must still count as the same file, or the
+                # eager reuse above turns into a re-execute on every scan.
+                same_file = (cached
+                             and Path(cached).resolve() == Path(path).resolve())
+                if not same_file:
+                    sys.modules.pop(module_name, None)
+                    module = None
             if module is None:
                 spec = importlib.util.spec_from_file_location(module_name, path)
                 if spec is None or spec.loader is None:
