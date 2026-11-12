@@ -1,0 +1,11 @@
+{
+  "_comment": "Chart MT5 + ORB sesi pasar. Tanpa izin network: tidak ada satu pun permintaan keluar — yang dibaca adalah terminal MetaTrader 5 yang sudah login di mesin ini. sha256 di bawah adalah dari berkas .py ini; kalau berkasnya berubah, loader menolaknya.",
+  "name": "mt5_orb",
+  "version": "1.0.0",
+  "author": "MARK-LVI",
+  "description": "Gambar chart MetaTrader 5 dan baca opening range breakout (ORB) sesi pasar di M30, dari bar yang sudah tutup.",
+  "permissions": [
+    "files"
+  ],
+  "sha256": "e0865cad7c519dd7f04fc71e0d63695c41385969b9c2975a32fcf49159086919"
+}

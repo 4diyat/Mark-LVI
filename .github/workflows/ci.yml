@@ -232,6 +232,24 @@ jobs:
                   "a plugin that declared a permission started ENABLED — the "
                   "consent question is asked after it can already run")
           print("example plugin: manifest verified, declared network, starts off")
+
+          # The MT5 plugin is the second one with a manifest, and it declares
+          # `files` rather than `network` — so this pair of checks proves the
+          # permission actually comes from the manifest, not from a hardcoded
+          # default. It must load on Linux and macOS too: it is offered
+          # everywhere and refuses with a reason off Windows, which only works
+          # if the module imports without the Windows-only package present.
+          mt5 = rows.get("mt5_orb")
+          if mt5 is None:
+              raise SystemExit("mt5_orb did not load — it must import on every OS")
+          if not mt5["valid"]:
+              raise SystemExit(f"mt5_orb was rejected: {mt5['error']}")
+          if mt5["permissions"] != ["files"]:
+              raise SystemExit(
+                  f"mt5_orb permissions came through as {mt5['permissions']!r}")
+          if mt5["enabled"]:
+              raise SystemExit("mt5_orb declared a permission but started ENABLED")
+          print("mt5_orb: loaded without MetaTrader5, declared files, starts off")
           # The summary line itself says "0 active, 0 rejected, 0 total" — so a
           # naive substring match flags a clean run. Only real rejections start
           # a line about a file.

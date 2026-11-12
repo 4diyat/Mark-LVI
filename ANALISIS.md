@@ -532,6 +532,7 @@ memastikan ketiga kelas itu tidak "kembali" ke file lama.
 | Diagnosa CI | "Process completed with exit code 1" ×4 | satu `::error` per test yang gagal: file, baris, pesan |
 | Regresi lintas-OS | ditemukan setelah push | `LANG`, `sys.path`, dan nama modul dibaca sebagai aturan, bukan dihafal |
 | Plugin contoh | tidak ada | `plugins/currency_rates.py` + manifest: rantai penuh manifest → loader → izin → dialog, dan 21 test tanpa jaringan |
+| Chart MetaTrader 5 | tidak ada | `plugins/mt5_orb.py` (+ `_mt5.py`, `_orb.py`): gambar PNG chart dan baca ORB sesi pasar di M30, dari bar yang **sudah tutup**; 42 test tanpa menyentuh terminal |
 | Marketplace plugin | "aman" hanya di judul | `core/plugin_manifest.py` (95 %): manifest + sha256 + izin deklaratif yang **diperiksa terhadap sumbernya**, dan dialog persetujuan sebelum toggle |
 | Kunci di keychain | tidak ada test | `core/keychain.py` **92 %**: tanpa paket, backend yang melempar saat read/write, keychain dan file yang berbeda isi |
 
@@ -543,6 +544,34 @@ driver sementara fungsi sebelah melaporkan **persen**, jadi "naikkan" dari 40 %
 tidak menambah sepuluh poin; dan nama monitor yang mengandung spasi/kutip/`;`
 adalah kata shell. Dua primitif empat baris di atasnya sudah menjawab keduanya —
 sekarang `_brightness_step()` hanya aritmetika.
+
+**Chart MetaTrader 5, dan empat hal yang membuatnya jujur.**
+`plugins/mt5_orb.py` menarik bar M30 dari terminal MT5 yang sedang berjalan,
+menggambar candle + kotak sesi + garis high/low range ke PNG di Desktop, lalu
+menjawab dengan kalimat. Yang membuatnya berbeda dari "bikin chart":
+
+1. **Timeframe bar adalah waktu broker, bukan UTC.** Kebanyakan broker FX
+   memakai GMT+2/GMT+3. Membandingkan cap waktu itu dengan jendela sesi UTC
+   menghasilkan range dua jam dari sesi yang salah — tanpa error. Jadi offset
+   adalah **parameter** (`broker_utc_offset`, default +2), dan setiap jawaban
+   **menyebutkan** asumsi itu.
+2. **Hanya bar yang sudah tutup.** `copy_rates_from_pos` posisi 0 adalah bar yang
+   masih berjalan; `closed_only=True` melewatinya. Wick yang menembus range
+   bukan breakout — yang dihitung adalah **close** di luar range.
+3. **Tidak ada paket di mesin ini.** Wheel PyPI `MetaTrader5` hanya Windows
+   x86-64, jadi logikanya dipisah ke `_orb.py` (strategi + renderer) dan
+   `_mt5.py` (jembatan terminal), keduanya bisa diuji dengan bar sintetis. Di
+   Linux/macOS plugin tetap **dimuat** dan menjawab alasannya, bukan hilang.
+4. **Tidak pernah mengirim order.** Tidak ada `order_send` di `_mt5.py`, dan
+   sebuah test AST menolak kalau nanti ditambahkan: gate konfirmasi aplikasi ini
+   dibangun untuk aksi yang bisa dibatalkan, dan market order bukan salah satunya.
+
+Detail desain lain: `symbol_select` gagal dilaporkan sebagai "simbol broker
+mungkin bersufiks" (`EURUSD.a`); kedalaman histori dibatasi "Max. bars in chart"
+terminal; pip dari `symbol_info` (`point×10` hanya untuk 3/5 digit); dan kalau
+Pillow tidak ada, chart jatuh ke ASCII, bukan gagal. Izin yang dideklarasikan
+`files` (menulis PNG), bukan `network` — dan pemindaian impor di
+`core/plugin_manifest.py` membuktikannya.
 
 **Kenapa keychain tetap punya fallback file.** `keyring` butuh desktop session;
 container, WSL, server headless, dan desktop Linux yang keyring-nya belum
