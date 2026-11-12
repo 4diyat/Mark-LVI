@@ -210,63 +210,53 @@ def volume_set(value: int):
             capture_output=True)
         return
 
+def _brightness_step(delta: int) -> bool:
+    """Move brightness by `delta` percentage points, without a shell.
+
+    WHY THIS REPLACED TWO FOUR-BRANCH FUNCTIONS
+        The Linux branch used to be one string handed to `shell=True`:
+
+            xrandr --output $(xrandr | grep " connected" | head -1 | cut -d " " -f1)
+                   --brightness $(python3 -c "...")
+
+        It worked, in the sense that it moved the screen. Three things were
+        wrong with it that only matter on an off day:
+
+          * it was the last `shell=True` in a file otherwise built from argument
+            vectors, so every reader had to stop and prove it safe — twice, once
+            per direction;
+          * the level it read was a FRACTION of whatever the driver calls
+            maximum, while `brightness_get()` reports a PERCENTAGE, so "up" from
+            40 % added ten percent-of-the-scale, not ten points;
+          * a monitor whose name contains a space, a quote or a `;` is a shell
+            word, and the string was built by grepping one out of a listing.
+
+        The two primitives above already answer both questions without a shell.
+        So the pair is arithmetic now, and Windows uses the same two calls
+        instead of its own WMI string — which is also why a failed brightness
+        change used to print a message nobody sees instead of returning failure.
+    """
+    current = brightness_get()
+    if current is None:
+        print("[Settings] Brightness cannot be read on this machine; "
+              "not moving it rather than guessing a level.")
+        return False
+    target = max(1, min(100, current + delta))
+    try:
+        brightness_set(target)
+        return True
+    except Exception as e:
+        print(f"[Settings] Brightness change failed: {e}")
+        return False
+
+
 def brightness_up():
-    if _OS == "Darwin":
-        subprocess.run(["osascript", "-e",
-            'tell application "System Events" to key code 144'],
-            capture_output=True)
-    elif _OS == "Linux":
-        if subprocess.run(["which", "brightnessctl"],
-                capture_output=True).returncode == 0:
-            subprocess.run(["brightnessctl", "set", "+10%"], capture_output=True)
-        else:
-            subprocess.run(
-                'xrandr --output $(xrandr | grep " connected" | head -1 | cut -d " " -f1)'
-                ' --brightness $(python3 -c "import subprocess; '
-                'b=float(subprocess.check_output([\"xrandr\",\"--verbose\"]).decode()'
-                '.split(\"Brightness:\")[1].split()[0]); print(min(1.0,b+0.1))")',
-                shell=True, capture_output=True
-            )
-    else:
-        try:
-            subprocess.run(
-                ["powershell", "-Command",
-                 "(Get-WmiObject -Namespace root/wmi -Class WmiMonitorBrightnessMethods)"
-                 ".WmiSetBrightness(1, [math]::Min(100, "
-                 "(Get-WmiObject -Namespace root/wmi -Class WmiMonitorBrightness).CurrentBrightness + 10))"],
-                capture_output=True, timeout=5, **_WIN_HIDE
-            )
-        except Exception as e:
-            print(f"[Settings] Brightness up failed on Windows: {e}")
+    return _brightness_step(+10)
+
 
 def brightness_down():
-    if _OS == "Darwin":
-        subprocess.run(["osascript", "-e",
-            'tell application "System Events" to key code 145'],
-            capture_output=True)
-    elif _OS == "Linux":
-        if subprocess.run(["which", "brightnessctl"],
-                capture_output=True).returncode == 0:
-            subprocess.run(["brightnessctl", "set", "10%-"], capture_output=True)
-        else:
-            subprocess.run(
-                'xrandr --output $(xrandr | grep " connected" | head -1 | cut -d " " -f1)'
-                ' --brightness $(python3 -c "import subprocess; '
-                'b=float(subprocess.check_output([\"xrandr\",\"--verbose\"]).decode()'
-                '.split(\"Brightness:\")[1].split()[0]); print(max(0.1,b-0.1))")',
-                shell=True, capture_output=True
-            )
-    else:
-        try:
-            subprocess.run(
-                ["powershell", "-Command",
-                 "(Get-WmiObject -Namespace root/wmi -Class WmiMonitorBrightnessMethods)"
-                 ".WmiSetBrightness(1, [math]::Max(0, "
-                 "(Get-WmiObject -Namespace root/wmi -Class WmiMonitorBrightness).CurrentBrightness - 10))"],
-                capture_output=True, timeout=5, **_WIN_HIDE
-            )
-        except Exception as e:
-            print(f"[Settings] Brightness down failed on Windows: {e}")
+    return _brightness_step(-10)
+
 
 def close_app():
     """Removed. Closing an application now lives in computer_control.

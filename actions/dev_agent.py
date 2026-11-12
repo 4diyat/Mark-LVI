@@ -310,12 +310,25 @@ def _open_vscode(project_dir: Path) -> bool:
     ]
     for cmd in vscode_candidates:
         try:
-            subprocess.Popen(
-                [cmd, str(project_dir)],
-                shell=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
-            )
+            # NO `shell=True`, AND NO FALLBACK ONTO `code.cmd`.
+            #
+            # Two reasons, and the first is the one that matters: with a shell,
+            # a project directory containing `&`, `|` or a quote is a command,
+            # not an argument, and the directory name here comes from a folder
+            # the user picked. `[cmd, path]` hands it to the program verbatim.
+            #
+            # The second is that `shell=True` was doing a job — it is what makes
+            # a `.cmd` runnable on Windows, because the batch file is not an
+            # executable. Without it the Windows candidates fail with
+            # NotADirectoryError, and starting `code` (or `code.cmd`) through
+            # `cmd /c` is the honest way to run a batch file. A bare `code` on
+            # PATH is a real executable and needs none of this.
+            if cmd.lower().endswith((".cmd", ".bat")):
+                argv = ["cmd", "/c", cmd, str(project_dir)]
+            else:
+                argv = [cmd, str(project_dir)]
+            subprocess.Popen(argv, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
             time.sleep(1.5)
             print(f"[DevAgent] 💻 VSCode opened: {project_dir}")
             return True
