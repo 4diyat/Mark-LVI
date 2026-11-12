@@ -452,8 +452,8 @@ tanpa Qt. Urutan yang aman: pecah per widget DULU di mesin ber-Qt, baru `main.py
 
 ### ✅ Sprint 4 — test coverage, dan i18n
 
-Awal Sprint 4: **17 %** dari `core/` + `memory/` + `dashboard/`. Sesudah: **37 %**,
-**289 test** (dari 87), dan tidak ada satu pun modul inti yang masih 0 % kecuali
+Awal Sprint 4: **17 %** dari `core/` + `memory/` + `dashboard/`. Sesudah: **39 %**,
+**363 test** (dari 87), dan tidak ada satu pun modul inti yang masih 0 % kecuali
 yang memang butuh Qt/GPU/audio — dan yang terakhir itu sekarang **terdaftar
 dengan alasannya**, bukan sekadar tidak diuji.
 
@@ -472,7 +472,7 @@ dengan alasannya**, bukan sekadar tidak diuji.
 | `core/hotkey.py` | 0 % | **70 %** | `scope` jujur + debounce 60 ms |
 
 **Kenapa lantai coverage bukan angka paket.** Angka paket mengukur *runner*, bukan
-kode: 289 test yang sama membaca 37 % di mesin dengan `requirements.txt`, 29 % di
+kode: 363 test yang sama membaca 39 % di mesin dengan `requirements.txt`, 31 % di
 runner yang hanya memasang tooling test, dan berbeda satu-dua poin lagi di
 Windows — di sana Qt, torch, GPU dan perangkat audio tidak bisa di-import. Lantai
 yang bergerak mengikuti OS akan "diperbaiki" orang dengan menambah `skip` sampai
@@ -531,7 +531,8 @@ memastikan ketiga kelas itu tidak "kembali" ke file lama.
 | `shell=True` | **3** (brightness Linux, VS Code, dan satu di `open_app` yang sudah diperbaiki lebih dulu) | **0**, dan `tests/test_shell_true.py` menolak yang baru |
 | Diagnosa CI | "Process completed with exit code 1" ×4 | satu `::error` per test yang gagal: file, baris, pesan |
 | Regresi lintas-OS | ditemukan setelah push | `LANG`, `sys.path`, dan nama modul dibaca sebagai aturan, bukan dihafal |
-| Marketplace plugin | "aman" hanya di judul | `core/plugin_manifest.py`: manifest + sha256 + izin deklaratif yang **diperiksa terhadap sumbernya** |
+| Marketplace plugin | "aman" hanya di judul | `core/plugin_manifest.py` (95 %): manifest + sha256 + izin deklaratif yang **diperiksa terhadap sumbernya**, dan dialog persetujuan sebelum toggle |
+| Kunci di keychain | tidak ada test | `core/keychain.py` **92 %**: tanpa paket, backend yang melempar saat read/write, keychain dan file yang berbeda isi |
 
 **Brightness, sebagai contoh kenapa audit ini berharga.** Perintah Linux-nya
 adalah satu string `shell=True` berisi `$(xrandr | grep ... | cut ...)` dan
