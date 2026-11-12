@@ -127,5 +127,9 @@
   "ui.close_x": "✕  TUTUP",
   "ui.controls": "◈ KONTROL",
   "setup.language": "BAHASA ANTARMUKA",
-  "setup.language.auto": "Otomatis ({locale})"
+  "setup.language.auto": "Otomatis ({locale})",
+  "ui.plugins.permissions": "butuh {list}",
+  "ui.plugins.consent": "Plugin ini bukan dari repositori ini. Ia menyatakan butuh: {list}. Plugin berjalan di dalam aplikasi dan bisa melakukan apa yang bisa dilakukan aplikasi.",
+  "ui.plugins.ask": "AKTIFKAN",
+  "ui.plugins.no_manifest": "tanpa manifest — izin tidak diketahui"
 }

@@ -159,8 +159,17 @@ class PluginRegistry:
 
     # -- called by ui.py's Plugin Manager overlay --
     def list_for_ui(self) -> list[dict]:
+        """Everything the plugin manager shows, including what was refused.
+
+        `permissions` and `manifest_note` are here so the panel can show what a
+        third-party plugin asked for BEFORE it is switched on — the manifest is
+        only consent if the person clicking the toggle can see it. Both are
+        empty strings for this repository's own plugins, which never declared
+        anything, so the existing rows are unchanged.
+        """
         out = []
         for rec in self._all_records:
+            manifest = rec.manifest
             out.append({
                 "name": rec.name,
                 "description": rec.description,
@@ -168,6 +177,8 @@ class PluginRegistry:
                 "valid": rec.valid,
                 "error": rec.error,
                 "enabled": get_plugin_enabled(rec.name) if rec.valid else False,
+                "permissions": list(getattr(manifest, "permissions", ()) or ()),
+                "manifest_note": " · ".join(getattr(manifest, "warnings", None) or []),
             })
         return out
 

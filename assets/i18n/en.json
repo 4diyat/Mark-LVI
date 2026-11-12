@@ -127,5 +127,9 @@
   "ui.close_x": "✕  CLOSE",
   "ui.controls": "◈ CONTROLS",
   "setup.language": "INTERFACE LANGUAGE",
-  "setup.language.auto": "Auto ({locale})"
+  "setup.language.auto": "Auto ({locale})",
+  "ui.plugins.permissions": "needs {list}",
+  "ui.plugins.consent": "This plugin is not from this repository. It is declared to need: {list}. A plugin runs inside the app and can do what the app can do.",
+  "ui.plugins.ask": "TURN ON",
+  "ui.plugins.no_manifest": "no manifest — permissions unknown"
 }

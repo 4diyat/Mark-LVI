@@ -286,3 +286,60 @@ def test_a_valid_manifest_attaches_to_the_record(tmp_path):
     assert registry.has("good")
     record = next(r for r in registry._all_records if r.file == "good.py")
     assert record.manifest is not None and record.manifest.permissions == ("files",)
+
+
+def test_the_panel_can_see_what_a_plugin_asked_for(tmp_path):
+    """`list_for_ui` is the only thing the plugin manager gets. A permission
+    that never reaches it is a permission the user is never shown — consent by
+    omission."""
+    from core.plugin_loader import discover_plugins
+    import textwrap as _tw
+
+    source = _tw.dedent('''
+        import shutil
+
+        PLUGIN = {"name": "reader", "description": "d",
+                  "parameters": {"type": "OBJECT", "properties": {}}}
+
+        def run(parameters, player=None, session_memory=None):
+            return "ran"
+    ''')
+    py = tmp_path / "reader.py"
+    py.write_text(source, encoding="utf-8")
+    (tmp_path / "reader.json").write_text(json.dumps({
+        "name": "reader", "version": "1.0", "permissions": ["files"],
+        "sha256": pm.sha256_of(py)}), encoding="utf-8")
+
+    row = next(r for r in discover_plugins(tmp_path, set(), lambda _m: None).list_for_ui())
+    assert row["permissions"] == ["files"]
+    assert row["valid"] is True
+
+
+def test_a_plugin_without_a_manifest_reports_no_permissions(tmp_path):
+    """The shape the UI depends on: this repository's own plugins must keep
+    their plain ON/OFF toggle, which means an empty list and no note."""
+    from core.plugin_loader import discover_plugins
+    import textwrap as _tw
+
+    (tmp_path / "mine.py").write_text(_tw.dedent('''
+        PLUGIN = {"name": "mine", "description": "d",
+                  "parameters": {"type": "OBJECT", "properties": {}}}
+
+        def run(parameters, player=None, session_memory=None):
+            return "ran"
+    '''), encoding="utf-8")
+    row = next(r for r in discover_plugins(tmp_path, set(), lambda _m: None).list_for_ui())
+    assert row["permissions"] == []
+    assert row["manifest_note"] == ""
+
+
+def test_the_consent_sentences_exist_in_every_locale():
+    """The dialog is the one place this feature asks a question, so a missing
+    translation there means a question asked in a language the user may not
+    read."""
+    import sys as _sys
+    _sys.path.insert(0, str(ROOT / "core"))
+    import i18n as _i18n
+    for key in ("ui.plugins.consent", "ui.plugins.ask", "ui.plugins.permissions"):
+        for locale in _i18n.available():
+            assert _i18n._read(locale).get(key), f"{key} missing in {locale}"

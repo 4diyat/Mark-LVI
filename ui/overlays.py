@@ -498,7 +498,17 @@ class PluginManagerOverlay(QWidget):
         lbl = QLabel(label_text)
         lbl.setFont(QFont("Courier New", 8))
         lbl.setStyleSheet(f"color: {C.TEXT if p['valid'] else C.TEXT_DIM}; background: transparent;")
-        lbl.setToolTip(p["description"] if p["valid"] else p["error"])
+        # The tooltip is where a third-party plugin's declaration is read
+        # BEFORE the toggle is pressed. `permissions` is empty for every plugin
+        # in this repository, so their tooltips are unchanged.
+        perms = p.get("permissions") or []
+        tip = p["description"] if p["valid"] else p["error"]
+        if p["valid"] and perms:
+            tip = (tip + "\n\n"
+                   + _t("ui.plugins.permissions", list=", ".join(perms)))
+        elif p["valid"] and p.get("manifest_note"):
+            tip = tip + "\n\n" + p["manifest_note"]
+        lbl.setToolTip(tip)
         lbl.setWordWrap(False)
         row.addWidget(lbl, stretch=1)
 
@@ -514,6 +524,18 @@ class PluginManagerOverlay(QWidget):
                     border: 1px solid {C.BORDER}; border-radius: 3px;
                 }}
             """)
+        elif perms and not p["enabled"]:
+            # CONSENT, ONCE, BEFORE THE PLUGIN RUNS. The button says what it is
+            # asking for rather than "OFF", and pressing it opens a question.
+            # Only for a plugin that DECLARED a permission: this repository's
+            # own twenty plugins have no manifest and keep their plain toggle,
+            # so the dialog cannot train people to click through it.
+            btn.setText(_t("ui.plugins.ask"))
+            btn.setToolTip(_t("ui.plugins.consent", list=", ".join(perms)))
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            self._style_toggle(btn, False)
+            btn.clicked.connect(lambda _, name=p["name"], b=btn,
+                                list_=tuple(perms): self._ask_and_toggle(name, b, list_))
         else:
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             self._style_toggle(btn, p["enabled"])
@@ -540,6 +562,28 @@ class PluginManagerOverlay(QWidget):
                 }}
                 QPushButton:hover {{ color: {C.TEXT}; border-color: {C.BORDER_B}; }}
             """)
+
+    def _ask_and_toggle(self, name: str, btn: QPushButton, perms: tuple) -> None:
+        """Say what the plugin needs, and only run it if the user agrees.
+
+        Deliberately a Qt question box and not a custom panel: it is the one
+        dialog every desktop user already knows how to read, it blocks until
+        answered, and it cannot be dismissed by accident in a way that leaves
+        the plugin switched on. The default button is NO.
+        """
+        from PyQt6.QtWidgets import QMessageBox
+        box = QMessageBox(self)
+        box.setWindowTitle(name)
+        box.setText(_t("ui.plugins.consent", list=", ".join(perms)))
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setStandardButtons(QMessageBox.StandardButton.Yes
+                               | QMessageBox.StandardButton.No)
+        box.setDefaultButton(QMessageBox.StandardButton.No)
+        if box.exec() == QMessageBox.StandardButton.Yes:
+            self._toggle(name, btn)
+        else:
+            # The button never said ON, so there is nothing to put back.
+            btn.setText(_t("ui.plugins.ask"))
 
     def _toggle(self, name: str, btn: QPushButton):
         from memory.config_manager import get_plugin_enabled, save_plugin_enabled
