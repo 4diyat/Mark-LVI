@@ -531,6 +531,7 @@ memastikan ketiga kelas itu tidak "kembali" ke file lama.
 | `shell=True` | **3** (brightness Linux, VS Code, dan satu di `open_app` yang sudah diperbaiki lebih dulu) | **0**, dan `tests/test_shell_true.py` menolak yang baru |
 | Diagnosa CI | "Process completed with exit code 1" ×4 | satu `::error` per test yang gagal: file, baris, pesan |
 | Regresi lintas-OS | ditemukan setelah push | `LANG`, `sys.path`, dan nama modul dibaca sebagai aturan, bukan dihafal |
+| Marketplace plugin | "aman" hanya di judul | `core/plugin_manifest.py`: manifest + sha256 + izin deklaratif yang **diperiksa terhadap sumbernya** |
 
 **Brightness, sebagai contoh kenapa audit ini berharga.** Perintah Linux-nya
 adalah satu string `shell=True` berisi `$(xrandr | grep ... | cut ...)` dan
@@ -569,7 +570,7 @@ pengguna percaya kuncinya di Keychain padahal di file telah berbohong.
 |---|---|---|
 | 3 | Pecah `ui.py` → `ui/`, `main.py` → `app/` | tidak ada file > 1.500 baris; `AGENTS.md` & kontrak plugin tidak berubah |
 | 4 | Coverage `core/` ≥ 40 %, i18n 47 label UI | ✅ 37 % (29 % runner) + peta coverage, `assets/i18n/{en,id}.json` |
-| 5 | Secret ke OS keychain, `shell=True` audit, marketplace plugin | ✅ keychain + file fallback; **0** `shell=True`; marketplace belum |
+| 5 | Secret ke OS keychain, `shell=True` audit, marketplace plugin | ✅ keychain + fallback; **0** `shell=True`; ✅ manifest + izin (bukan sandbox) |
 
 ---
 

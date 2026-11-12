@@ -4,6 +4,22 @@ Drop-in JARVIS plugin template.
 Copy this file, rename it (no leading underscore), fill in PLUGIN and run().
 No other file needs to change — JARVIS discovers this automatically at startup.
 
+IF YOUR PLUGIN DID NOT COME FROM THIS REPOSITORY
+    Ship a manifest beside it — `my_plugin.json`, same stem — because a plugin
+    is imported into this process and can do everything the app can. The
+    manifest is what the user is asked to consent to, and what the loader
+    checks the file against:
+
+        {"name": "my_plugin", "version": "1.0.0", "author": "you",
+         "permissions": ["network"], "sha256": "<of the .py>"}
+
+    `core/plugin_manifest.py` holds the permission list and the rules, and
+    `assets/i18n/plugin-manifest.example.json` is a copyable starting point.
+    A plugin with no manifest loads exactly as it does today — this repository's
+    twenty plugins have none — so the manifest is only a gate when it exists.
+    It is a declaration, not a sandbox: there is no boundary inside one
+    interpreter, and the docstring there says so rather than pretending.
+
 ONE RULE IF YOUR PLUGIN NEEDS TO ASK A MODEL SOMETHING
     Go through `core.gemini`. Never build your own `genai.Client`.
 

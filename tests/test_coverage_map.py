@@ -58,6 +58,7 @@ TESTED = {
     "core/hotkey.py":         "tests/test_hotkey.py",
     "core/i18n.py":           "tests/test_i18n.py",
     "core/keychain.py":       "tests/test_keychain.py",
+    "core/plugin_manifest.py": "tests/test_plugin_manifest.py",
     "core/lazyimport.py":     "tests/test_lazyimport.py",
     "core/logbook.py":        "tests/test_logbook.py",
     "core/platform_support.py": "tests/test_platform_support.py",

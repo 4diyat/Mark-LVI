@@ -58,6 +58,9 @@ class PluginRecord:
     valid: bool = False
     error: str = ""
     settings: Optional[dict] = None   # optional PLUGIN_SETTINGS schema (config fields)
+    # What a third-party plugin declared (core/plugin_manifest.py), or None for
+    # a plugin from this repository that never had to declare anything.
+    manifest: object = None
     behavior: Optional[str] = None    # None = the API's default (blocking)
     scheduling: Optional[str] = None  # None = the API's default (WHEN_IDLE)
     # Read by providers/schema.py when a small model gets a tool budget; never
@@ -317,6 +320,36 @@ def discover_plugins(plugins_dir: Path, core_tool_names: set[str],
                 raise
 
             rec = _validate(module, path.name)
+
+            # ── A manifest, when there is one, is a gate ────────────────────
+            # Checked AFTER the module is imported, because PLUGIN["name"] is
+            # inside it and the manifest has to agree with that name. That
+            # ordering is a compromise and worth naming: a plugin with a bad
+            # manifest has already run its module-level code by the time it is
+            # refused. Module-level code is not where a tool lives (run() is),
+            # and checking before import would mean parsing the file twice for
+            # a name that is only a dict key — but it means a manifest is a
+            # gate against RUNNING the plugin, not against IMPORTING it.
+            #
+            # No manifest is fine and stays fine: every plugin in this folder
+            # predates the idea. A manifest that exists and does not verify is
+            # refused loudly, with the reason, because silence is what makes a
+            # "checked" plugin indistinguishable from an unchecked one.
+            if rec.valid:
+                try:
+                    from core.plugin_manifest import verify as _verify_manifest
+                    manifest = _verify_manifest(path, rec.name)
+                except Exception as e:      # noqa: BLE001 — explained below
+                    manifest = None
+                    logger(f"⚠ {path.name}: manifest could not be checked ({e})")
+                if manifest is not None:
+                    rec.manifest = manifest
+                    if not manifest.ok:
+                        rec = PluginRecord(
+                            name=rec.name, file=path.name, manifest=manifest,
+                            error="Manifest check failed — " + "; ".join(manifest.problems))
+                    for warning in manifest.warnings:
+                        logger(f"⚠ {path.name}: {warning}")
 
             if rec.valid and rec.name in core_tool_names:
                 rec = PluginRecord(name=rec.name, file=path.name,
