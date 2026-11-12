@@ -482,9 +482,24 @@ def save_output_device(name: str) -> None:
     _patch_config(output_device=(name or "").strip())
 
 
-def get_plugin_enabled(plugin_name: str) -> bool:
-    """Plugins are enabled by default the moment they're discovered (opt-out model)."""
-    return load_api_keys().get("plugins_enabled", {}).get(plugin_name, True)
+def get_plugin_enabled(plugin_name: str, default: bool = True) -> bool:
+    """Whether a plugin may run. `default` is the answer when nobody has said.
+
+    THE DEFAULT IS NOT ALWAYS "ON" ANY MORE
+        The opt-out model — a plugin works the moment its file exists — is right
+        for a plugin the user put in plugins/ themselves. It is wrong for one
+        that arrived with a manifest and a list of permissions it needs: those
+        are the plugins whose author nobody has met, and the consent question is
+        only consent if the answer is "no" until it is asked.
+
+        So the loader passes `default=False` for a plugin that declared
+        permissions, and everything else keeps the old behaviour exactly. A
+        stored `plugins_enabled[name]` always wins, in both directions.
+    """
+    stored = load_api_keys().get("plugins_enabled", {})
+    if isinstance(stored, dict) and plugin_name in stored:
+        return bool(stored[plugin_name])
+    return bool(default)
 
 
 # ── Per-plugin settings ("tokens" / connection details) ───────────────────────
