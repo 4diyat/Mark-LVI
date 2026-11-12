@@ -2708,7 +2708,7 @@ class ProvidersOverlay(_HudOverlay):
         self._hidden[pid] = set(carried) | {f.key for f, _w in advanced}
 
         # Buttons and status.
-        status = self.__t("", 7, C.TEXT_DIM)
+        status = self._label("", 7, C.TEXT_DIM)
         self._status[pid] = status
 
         brow = QHBoxLayout(); brow.setSpacing(6)
@@ -2733,7 +2733,7 @@ class ProvidersOverlay(_HudOverlay):
         lay.addWidget(status)
 
         if self._more.get(pid):
-            lay.addWidget(self.__t("─" * 46, 7, C.BORDER))
+            lay.addWidget(self._label("─" * 46, 7, C.BORDER))
             for f, w in advanced:
                 lay.addWidget(self._label(f"{f.label}   (optional)", 7, C.TEXT_DIM))
                 lay.addWidget(w)
@@ -2786,7 +2786,7 @@ class ProvidersOverlay(_HudOverlay):
         QTimer.singleShot(0, self._rebuild_body)
 
     def _sidecar_box_widget(self) -> QWidget:
-        head = self.__t(_t("providers.background"), 9, C.PRI, bold=True)
+        head = self._label(_t("providers.background"), 9, C.PRI, bold=True)
         w, lay = self._box([head])
         lay.addWidget(self._label(_t("providers.background.desc"), 7, C.TEXT_DIM))
 
@@ -2833,7 +2833,7 @@ class ProvidersOverlay(_HudOverlay):
         whole source file at a time. Whatever is picked is tried FIRST for code,
         with Gemini behind it, so a service having a bad day still produces a
         project instead of nothing."""
-        head = self.__t(_t("providers.coding"), 9, C.PRI, bold=True)
+        head = self._label(_t("providers.coding"), 9, C.PRI, bold=True)
         w, lay = self._box([head])
         lay.addWidget(self._label(_t("providers.coding.desc"), 7, C.TEXT_DIM))
 

@@ -134,6 +134,41 @@ def test_the_setting_panels_live_in_their_own_module():
     assert back == [], f"ui/overlays.py must not import back into the window: {back}"
 
 
+def test_no_widget_calls_a_mangled_method_that_does_not_exist():
+    """`self.__t(...)` in a class that never defines `__t` is not an error until
+    the widget is built — and the widget is built by people, not by this suite.
+
+    That is exactly how the settings panel reached CI: a mechanical edit turned
+    `self._label(` into `self.__t(` in four places, Python compiled it happily
+    (name mangling is a suffix, resolved at call time), the local suite could not
+    import Qt, and the only witness was the providers self-test on macOS:
+    "'ProvidersOverlay' object has no attribute '_ProvidersOverlay__t'".
+
+    So the mangled names are resolved here, statically: every `self.__x` used
+    inside a class must correspond to a `__x` defined in that same class.
+    """
+    missing = []
+    for path in sorted(UI_PKG.glob("*.py")):
+        for cls in (n for n in _tree(path).body if isinstance(n, ast.ClassDef)):
+            defined = {n.name for n in cls.body
+                       if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+            for node in ast.walk(cls):
+                if not (isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Attribute)
+                        and isinstance(node.func.value, ast.Name)
+                        and node.func.value.id == "self"):
+                    continue
+                attr = node.func.attr
+                if not attr.startswith("__") or attr.endswith("__"):
+                    continue                      # dunders are looked up as-is
+                if attr not in defined:
+                    missing.append(f"{path.name}:{node.lineno} {cls.name}.{attr}")
+    assert missing == [], (
+        "these calls resolve to a name-mangled attribute the class never "
+        "defines, so they fail only when the widget is built:\n  "
+        + "\n  ".join(missing))
+
+
 def test_no_ui_module_outside_the_theme_writes_to_the_palette():
     """Assigning `C.X = ...` outside ui/theme.py is a theme that half-applies."""
     offenders = []
