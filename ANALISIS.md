@@ -428,6 +428,11 @@ membuat kegagalan sungguhan ikut lolos.
 | Kompatibilitas | `ui.C`, `ui.qcol`, `ui.JarvisUI`, `ui.MainWindow`, `ui._metrics` tetap ada (re-export) | `ui/__init__.py` |
 | Profil JARVIS | `core/code_checks.py` mengenali **kedua** bentuk (`ui/window.py` dan `ui.py` lama) | `tests/test_profile_window_source.py` (4 test) |
 | `except: pass` yang bodoh | core/: 8 → tersisa 3 yang memang sengaja | dashboard, gemini, audio_devices, wake_word, code_checks, confirm, appidentity, piper |
+| `core/llm_client.py` | dihapus (586 baris, 8 fungsi publik, 0 pemakai) | `grep` atas kedelapan nama → 0 hit di luar file itu |
+
+**Status CI:** 10/10 hijau (Lint + 6 `Tests` + 3 `Install`), test suite 87,
+self-test provider 87 pass. Lihat bagian *CI 3 OS* di bawah untuk apa yang
+harus dibongkar sebelum sampai ke sini.
 
 > Dua pelajaran yang masuk ke test, bukan ke catatan:
 > **(1)** `ui.py` dan `ui/` tidak boleh hidup bersama — Python memilih folder,
@@ -436,6 +441,13 @@ membuat kegagalan sungguhan ikut lolos.
 > **(2)** Saat `ui.py` berubah bentuk, dua tempat di `core/code_checks.py` masih
 > menunjuk nama lama — tanpa error, dev_agent hanya diam-diam berhenti diajari
 > soal `player`.
+
+### Yang belum: `main.py` (2.717 baris) dan pecah per-widget
+
+`ui/window.py` masih 7.304 baris — paket `ui/` sudah ada tempatnya, tapi 36 kelas
+belum dipindah ke `ui/widgets/` dan `ui/overlays/` (satu overlay satu file).
+Itu pekerjaan mekanis tapi besar, dan tidak ada test yang bisa memverifikasinya
+tanpa Qt. Urutan yang aman: pecah per widget DULU di mesin ber-Qt, baru `main.py`.
 
 ### ⏭️ Sprint berikutnya
 
