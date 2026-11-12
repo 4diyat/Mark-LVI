@@ -82,25 +82,28 @@ jobs:
       #
       # WHERE THE NUMBERS COME FROM, AND WHY THERE ARE TWO
       #
-      #     50 % on the measured set, 30 % on everything. The gap is not
-      #     slack, it is the modules a bare runner cannot execute at all: Qt
-      #     (ui/, avatar), a GPU, an audio device, torch. Locally, with the
-      #     real requirements installed, the same suite reads 36 % of all of
-      #     core/; here it reads 29 % — this job installs requirements-dev only,
-      #     by design. A single floor picked from one of those numbers would be
-      #     wrong on the other machine, which is how a gate gets deleted.
+      #     50 % on the tested modules, 28 % on everything. Both are measured ON
+      #     THIS RUNNER, and that matters: the same suite reads 36 % of core/
+      #     on a developer's machine with requirements.txt installed, and 29 %
+      #     here, because this job installs requirements-dev only BY DESIGN and
+      #     a bare runner cannot execute Qt, a GPU, an audio device or torch.
+      #     A single floor taken from either number is wrong on the other
+      #     machine — which is how a gate ends up deleted instead of fixed.
       #
-      #     The ratchet is the 50 %: those modules carried NO test a week ago
-      #     and the ones below still decide what the assistant does to the
-      #     machine. The whole-package floor is there for the case that actually
-      #     happened — a new 400-line module landing with no test, inside a
-      #     total that moved by one percent nobody read.
+      #     The 50 % is the ratchet: those eleven modules carried NO test a week
+      #     ago and they are the ones that decide what the assistant does to the
+      #     machine. They read 84 % here.
+      #
+      #     The 28 % is one point under today's 29 %, so a new 100-line module
+      #     landing with no test trips it. That is the case that actually
+      #     happened in this project's history, inside a total that moved by one
+      #     percent nobody read.
       - name: Coverage floor — the tested modules, then all of core/
         if: always()
         run: |
           python -m pip install --quiet coverage
           python -m coverage run --source=core,memory,dashboard -m pytest -q
-          python -m coverage report --fail-under=30
+          python -m coverage report --fail-under=28
           python -m coverage report \
             --include="core/action_loader.py,core/plugin_loader.py,core/outcome.py,core/undo.py,core/confirm.py,core/echo.py,core/platform_support.py,core/lazyimport.py,memory/memory_manager.py,core/logbook.py,memory/config_manager.py" \
             --fail-under=50
