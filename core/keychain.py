@@ -1,4 +1,4 @@
-"""core/secrets.py — where the API key lives when the OS will hold it.
+"""core/keychain.py — where the API key lives when the OS will hold it.
 
 WHY THIS EXISTS
     Every credential this app owns is a line in config/api_keys.json: the Gemini
@@ -40,6 +40,14 @@ THE TWO-WAY WRITE
     git-ignored, so the copy is exactly as safe as it was before this module.
 """
 from __future__ import annotations
+
+# WHY THIS IS NOT CALLED secrets.py
+#     It was, for one push. `core/` is on sys.path in several places (the
+#     suite adds it, and a frozen build flattens it), so `import secrets`
+#     resolved to this file instead of the standard library's, and
+#     `from secrets import randbits` inside `uuid`/`random`/`keyring` raised
+#     ImportError on every runner. The name of a module is part of its
+#     interface; this one now says what it is.
 
 # The service name is what the user sees in Keychain Access / seahorse. Keeping
 # it stable matters: changing it orphans every key already stored.

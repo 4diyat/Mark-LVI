@@ -180,7 +180,7 @@ def save_api_keys(gemini_api_key: str) -> None:
     """Store the API key, keeping every other setting that is already there.
 
     THE KEY GOES TO THE KEYCHAIN FIRST, AND THE FILE KEEPS A COPY.
-        `core/secrets.py` explains the argument in full. The short version: this
+        `core/keychain.py` explains the argument in full. The short version: this
         is the one secret in the file that is actually a key, every desktop OS
         has held one for a decade, and `keyring` is optional — so the keychain
         is tried and the file copy is written either way. That ordering is what
@@ -194,8 +194,8 @@ def save_api_keys(gemini_api_key: str) -> None:
     key = (gemini_api_key or "").strip()
     stored = False
     try:
-        from core import secrets
-        stored = secrets.set_secret(key) if key else False
+        from core import keychain
+        stored = keychain.set_secret(key) if key else False
     except Exception as e:      # noqa: BLE001 — the file copy is the fallback
         # Reported rather than swallowed: a keyring that fails on every save is
         # a fact the user should be able to see, and this is the only place that
@@ -234,8 +234,8 @@ def get_gemini_key() -> str | None:
     two. Reading the file first would silently keep using the old one.
     """
     try:
-        from core import secrets
-        key = secrets.get_secret()
+        from core import keychain
+        key = keychain.get_secret()
         if key:
             return key
     except Exception as e:      # noqa: BLE001 — fall through to the file
