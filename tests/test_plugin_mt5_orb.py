@@ -306,6 +306,27 @@ def test_the_png_is_a_real_png_when_pillow_is_installed(orb, tmp_path):
     assert out.stat().st_size > 5_000
 
 
+def test_the_png_labels_survive_a_symbol_quoted_in_thousands(orb, tmp_path):
+    """The right-hand level labels are drawn inside `pad_r`; a gold price
+    ("2345.67") is longer than a currency one ("1.08246"), which is how the
+    labels were being clipped. A chart whose numbers are cut off is a chart that
+    cannot be read, so the layout has to hold for the widest normal case."""
+    pytest.importorskip("PIL")
+    rows = [bar(orb, 3, 7 + i // 2, (i % 2) * 30, 2345.0 + i, 2350.0 + i,
+                2340.0 - i, 2348.0 + i) for i in range(8)]
+    rows += [bar(orb, 3, 11 + i // 2, (i % 2) * 30, 2350.0, 2365.0, 2348.0, 2360.0)
+             for i in range(4)]
+    a = orb.analyse(rows, "XAUUSD", "london", offset_hours=BROKER_OFFSET)
+    out = tmp_path / "gold.png"
+    orb.render_png(rows, a, out)
+    from PIL import Image
+    with Image.open(out) as img:
+        assert img.size[0] >= 900
+        # The right margin must be wide enough to hold "23500.00"-shaped text in
+        # the default bitmap font (6 px per character).
+        assert img.size[0] - 74 > 0
+
+
 def test_without_pillow_the_plugin_answers_in_text(plugin, monkeypatch, tmp_path):
     """The import inside render_png is the seam: making it fail is exactly what a
     user without Pillow experiences, and the plugin must not lose the analysis

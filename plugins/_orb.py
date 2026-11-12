@@ -384,7 +384,10 @@ def render_png(bars, analysis: Analysis, path) -> str:
     if not rows:
         raise ValueError("no bars to draw")
 
-    pad_l, pad_r, pad_t, pad_b = 78, 22, 54, 46
+    # pad_r has to fit a seven-character price ("1.08246") in the default font,
+    # or the level labels are clipped at the right edge — which is exactly the
+    # number the chart exists to show.
+    pad_l, pad_r, pad_t, pad_b = 78, 74, 54, 46
     w, h = 1000, 560
     plot_w, plot_h = w - pad_l - pad_r, h - pad_t - pad_b
     lo = min(b.low for b in rows)
@@ -416,8 +419,10 @@ def render_png(bars, analysis: Analysis, path) -> str:
             draw.rectangle([x(inside[0]) - plot_w / len(rows) / 2, pad_t,
                             x(inside[-1]) + plot_w / len(rows) / 2, pad_t + plot_h],
                            fill="#1b2735")
-            draw.text((x(inside[0]), pad_t - 16), f"{analysis.range.session} window",
-                      fill="#5d7fa8")
+            # Caption inside the shading: above it, it would collide with the
+            # sub-header, and the sub-header carries the offset assumption.
+            draw.text((x(inside[0]) + 4, pad_t + 4),
+                      f"{analysis.range.session} window", fill="#5d7fa8")
         for price, colour in ((analysis.range.high, "#3fb950"),
                               (analysis.range.low, "#f85149"),
                               (analysis.range.mid, "#6e7681")):
@@ -442,10 +447,12 @@ def render_png(bars, analysis: Analysis, path) -> str:
             if analysis.breakout.direction == "down":
                 arrow = [(px, py + 14), (px - 7, py + 24), (px + 7, py + 24)]
             draw.polygon(arrow, fill="#d29922")
-            draw.text((pad_l + 6, pad_t + 6),
-                      f"breakout {analysis.breakout.direction} "
-                      f"@ {analysis.breakout.close:.5f} "
-                      f"({analysis.breakout.bar_time:%Y-%m-%d %H:%M} UTC)",
+            # Top RIGHT, opposite the session caption: both were drawn at the
+            # top left and printed on top of each other.
+            label = (f"breakout {analysis.breakout.direction} "
+                     f"@ {analysis.breakout.close:.5f} "
+                     f"({analysis.breakout.bar_time:%Y-%m-%d %H:%M} UTC)")
+            draw.text((w - pad_r - draw.textlength(label), 32), label,
                       fill="#d29922")
 
     title = f"{analysis.symbol} {analysis.timeframe} — market-session ORB"
@@ -459,8 +466,8 @@ def render_png(bars, analysis: Analysis, path) -> str:
     first, last = rows[0], rows[-1]
     draw.text((pad_l, h - pad_b + 10),
               f"{_utc(first.time, analysis.offset_hours):%Y-%m-%d %H:%M} → "
-              f"{_utc(last.time, analysis.offset_hours):%H:%M} UTC "
-              f"({len(rows)} × {analysis.timeframe} bars)",
+              f"{_utc(last.time, analysis.offset_hours):%Y-%m-%d %H:%M} UTC  ·  "
+              f"{len(rows)} × {analysis.timeframe} bars",
               fill="#8b98a8")
     img.save(str(path), format="PNG")
     return str(path)
