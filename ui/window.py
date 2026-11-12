@@ -95,34 +95,6 @@ _RIGHT_W = 340
 
 _OS = platform.system()  # "Windows" | "Darwin" | "Linux"
 
-# ── WHAT THE PACKAGE RE-EXPORTS ─────────────────────────────────────────────
-#
-#     `ui/__init__.py` does `from ui.window import *`, and a module without
-#     `__all__` exports only what does not start with an underscore. That is
-#     right for most of this file and wrong for a handful of names that other
-#     code — plugins, the provider self-test, main.py — reaches for by their
-#     leading-underscore name. Listing them is the difference between a split
-#     and four separate breakages:
-#
-#         ui._ScrollSafeCombo    the provider self-test inspects every combo box
-#         ui._metrics            the CPU sampler singleton (see ui/metrics.py)
-#         ui._RootShim, ui._OS   used by main.py's startup path
-#
-#     Add a name here when you find yourself writing `ui._something` elsewhere.
-__all__ = [
-    n for n in dir() if not n.startswith("_")
-]
-__all__ += [
-    "_OS",
-    "_RootShim",
-    "_ScrollSafeCombo",
-    "_SysMetrics",
-    "_WIN_HIDE",
-    "_metrics",
-    "_nvml_gpu_windows",
-    "_auto_ui_scale",
-]
-
 
 # ── the colours and the samplers live in ui/ ────────────────────────────────
 #
@@ -7302,3 +7274,31 @@ class JarvisUI:
     def stop_speaking(self):
         if not self.muted:
             self.set_state("LISTENING")
+
+
+# ── WHAT THE PACKAGE RE-EXPORTS — AT THE BOTTOM, ON PURPOSE ─────────────────
+#
+#     `ui/__init__.py` does `from ui.window import *`, and a module without
+#     `__all__` exports only the names that do not start with an underscore.
+#
+#     The list is built from `dir()`, so it can only be complete once every
+#     class in this file exists. Written at the top it exported the imports and
+#     the first two classes and no widgets at all: `ui.ProvidersOverlay` stopped
+#     existing while `ui.MainWindow` still worked — a split that breaks half its
+#     callers and leaves the other half green.
+#
+#     The underscored names are the ones other code reaches for BY NAME
+#     (`ui._ScrollSafeCombo` in the provider self-test, `ui._metrics` in this
+#     file, `ui._OS` in main.py). A star-import never carries those, so they are
+#     listed. Add one when you write `ui._something` somewhere else.
+__all__ = [n for n in dir() if not n.startswith("_")]
+__all__ += [
+    "_OS",
+    "_RootShim",
+    "_ScrollSafeCombo",
+    "_SysMetrics",
+    "_WIN_HIDE",
+    "_metrics",
+    "_nvml_gpu_windows",
+    "_auto_ui_scale",
+]

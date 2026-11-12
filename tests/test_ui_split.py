@@ -179,3 +179,97 @@ def test_the_sampler_exists_without_a_display():
 
     assert isinstance(module._metrics, module._SysMetrics)
     assert set(module._metrics.snapshot()) == {"cpu", "mem", "net", "gpu", "tmp"}
+
+
+# ── the package, imported for real without a display ────────────────────────
+
+def test_the_package_exports_every_name_the_rest_of_the_project_uses():
+    """`import ui` under a stubbed PyQt6 — 0.3s, no display, no wheel.
+
+    WHY THIS IS WORTH A FAKE QT
+        Every breakage in this split so far was a NAME that stopped resolving
+        through the package: `ui._metrics` (singleton cut), `ui._ScrollSafeCombo`
+        (`__all__` absent), `ui.ProvidersOverlay` (`__all__` built before the
+        widgets existed). Each one passed lint, passed the suite, and failed on
+        three CI runners minutes later — because the local suite could not
+        import a Qt package at all.
+
+        A stub answers the question the failures were actually about: does the
+        package still expose what main.py, the plugins and the self-test spell?
+        It does NOT prove the widgets work — that needs real Qt, and the
+        provider self-test's panel section is the thing that does it (it SKIPs
+        where Qt cannot load). Two different questions, two different tools.
+    """
+    import importlib
+    import importlib.abc
+    import importlib.machinery
+    import sys
+    import types
+
+    class Anything:
+        """Answers to every attribute and can be called, subscripted, iterated."""
+
+        def __init__(self, name: str = "qt"):
+            self._name = name
+
+        def __getattr__(self, name):
+            return Anything(f"{self._name}.{name}")
+
+        def __call__(self, *a, **k):
+            return Anything(f"{self._name}()")
+
+        def __iter__(self):
+            return iter(())
+
+        def __mro_entries__(self, bases):
+            return (object,)
+
+    class StubModule(types.ModuleType):
+        def __getattr__(self, name):
+            if name.startswith("__"):
+                raise AttributeError(name)
+            value = Anything(name)
+            setattr(self, name, value)
+            return value
+
+    class Finder(importlib.abc.MetaPathFinder, importlib.abc.Loader):
+        def find_spec(self, fullname, path=None, target=None):
+            if fullname.split(".")[0] == "PyQt6":
+                return importlib.machinery.ModuleSpec(fullname, self, is_package=True)
+            return None
+
+        def create_module(self, spec):
+            module = StubModule(spec.name)
+            module.__path__ = []
+            return module
+
+        def exec_module(self, module):
+            pass
+
+    saved = {k: v for k, v in sys.modules.items()
+             if k == "ui" or k.startswith("ui.")}
+    for key in saved:
+        del sys.modules[key]
+    sys.meta_path.insert(0, Finder())
+    try:
+        package = importlib.import_module("ui")
+    finally:
+        sys.meta_path.remove(sys.meta_path[0])
+        for key in [k for k in sys.modules if k == "ui" or k.startswith("ui.")]:
+            del sys.modules[key]
+        sys.modules.update(saved)
+
+    # What main.py, the plugins and providers/_tests.py actually say.
+    expected = {
+        "C", "qcol", "apply_ui_accent", "current_palette",   # colours
+        "JarvisUI", "MainWindow", "HudCanvas",               # the window
+        "SetupOverlay", "ProvidersOverlay", "CustomizeOverlay",
+        "PluginManagerOverlay", "PluginSettingsOverlay",
+        "_ScrollSafeCombo", "_metrics", "_OS", "_RootShim",  # by private name
+    }
+    missing = sorted(expected - set(dir(package)))
+    assert missing == [], f"ui no longer exposes: {missing}"
+
+    # ui.C must be the very class the accent code rebinds, or a theme change
+    # applies to whoever imported the other one.
+    assert package.C is package.theme.C
