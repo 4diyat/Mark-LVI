@@ -469,7 +469,7 @@ membuat kegagalan sungguhan ikut lolos.
 | 5 | `.gitattributes` + normalisasi EOL | ✅ Sprint 1 |
 | 6 | `pyproject.toml` + `requirements-dev.txt` | ✅ Sprint 1 |
 | 7 | 33 unused import + 9 f-string | ✅ Sprint 1 |
-| 8 | `core/llm_client.py` kode mati | ⏳ Sprint 3: 586 baris, 0 pemakai — dihapus bersama pecahnya `providers/` |
+| 8 | `core/llm_client.py` kode mati | ✅ dihapus — 586 baris, 0 pemakai (diverifikasi `grep` atas 8 nama publiknya) |
 | 9 | `config/__init__.py` salah path saat dibundel (`_MEIPASS`) | ✅ `1d9b17f` — memakai `CONFIG_FILE` dari `memory/config_manager`; 2 test |
 
 ---
