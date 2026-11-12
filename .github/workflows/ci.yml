@@ -74,6 +74,24 @@ jobs:
         if: always()
         run: python -m pytest --collect-only -q | tail -5
 
+      # ── The coverage floor ────────────────────────────────────────────────
+      # Not a target, a ratchet. Sprint 4 raised the suite from 17 % to 36 % of
+      # core/ + memory/ + dashboard/, almost all of it in modules that decide
+      # what the assistant DOES to the machine (the two loaders, the undo stack,
+      # the confirmation gate, the echo guard, the platform report).
+      #
+      # The number is deliberately below the current 36 %: a floor that has to
+      # be adjusted on every commit is a floor people delete. What it prevents
+      # is the thing that actually happened here — a new 400-line module landing
+      # with no test at all and nobody noticing, because the total moved by one
+      # percent inside a number nobody read.
+      - name: Coverage floor for core/, memory/, dashboard/
+        if: always()
+        run: |
+          python -m pip install --quiet coverage
+          python -m coverage run --source=core,memory,dashboard -m pytest -q
+          python -m coverage report --fail-under=33
+
   # ── 3. The real dependency set still installs and still loads ──────────────
   # requirements.txt carries sys_platform markers, so this job is also the
   # regression test for "a macOS user never pulls Windows-only libraries".

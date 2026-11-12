@@ -449,6 +449,37 @@ belum dipindah ke `ui/widgets/` dan `ui/overlays/` (satu overlay satu file).
 Itu pekerjaan mekanis tapi besar, dan tidak ada test yang bisa memverifikasinya
 tanpa Qt. Urutan yang aman: pecah per widget DULU di mesin ber-Qt, baru `main.py`.
 
+### ✅ Sprint 4 (sebagian) — test coverage
+
+Awal Sprint 4: **17 %** dari `core/` + `memory/` + `dashboard/`. Sesudah: **36 %**,
+254 test (dari 87), dan tidak ada satu pun modul inti yang masih 0 % kecuali
+yang memang butuh Qt/GPU/audio.
+
+| Modul | Sebelum | Sesudah | Yang dijaga |
+|---|---|---|---|
+| `core/action_loader.py` | 0 % | **97 %** | folder berisi file rusak tidak boleh menghentikan tool lain |
+| `core/plugin_loader.py` | 0 % | **87 %** | pesan untuk plugin yang butuh file helper / versi app lebih baru |
+| `core/outcome.py` | 0 % | **100 %** | `done`/`unverified`/`failed`/`ask` + wrapper anti prompt-injection |
+| `core/undo.py` | 0 % | **100 %** | batas 10 entri, undo gagal tidak boleh diulang selamanya |
+| `core/confirm.py` | 0 % | **97 %** | gate HARUS gagal-tertutup (tanpa UI → tidak dikerjakan) |
+| `core/echo.py` | 0 % | **95 %** | gema sendiri ≠ suara orang, pada kenyaringan yang sama |
+| `core/platform_support.py` | 0 % | **100 %** | kalimat "kamu tidak bisa melakukan ini" untuk model |
+| `core/lazyimport.py` | 0 % | **100 %** | proxy tetap resolve saat dipakai dari DALAM modul |
+| `memory/memory_manager.py` | 0 % | **76 %** | index nama (bisa di-recall), trim yang diumumkan |
+| `core/hotkey.py` | 0 % | **70 %** | `scope` jujur + debounce 60 ms |
+
+CI sekarang punya **lantai coverage 33 %** (`--fail-under`), di bawah angka
+sekarang dengan sengaja: lantai yang harus diubah tiap commit adalah lantai yang
+akhirnya dihapus orang.
+
+> Dua bug nyata tertangkap saat menulis test ini:
+> **(1)** `discover_actions` menyimpan modul di `sys.modules` berdasarkan *nama
+> file*, jadi folder kedua dengan nama file yang sama tidak pernah dijalankan —
+> diam-diam memakai TOOL dan handler dari folder pertama.
+> **(2)** `core/outcome.py` membuang fact yang namanya `reason`/`question` dan
+> menulis `action=` dua kali; detail yang dilaporkan tool hilang dari baris yang
+> melaporkannya. Sekarang menjadi `fact_reason=` / `fact_action=`.
+
 ### ⏭️ Sprint berikutnya
 
 | Sprint | Fokus | Ukuran "selesai" |
