@@ -197,9 +197,15 @@ jobs:
           if rejected:
               raise SystemExit("actions failed to load:\n" + "\n".join(rejected))
       - name: Load every plugin through the real loader
-        # plugins/ ships one template and nothing else; the point of this step
-        # is that the loader runs against a real folder on this OS without
-        # raising, not that a particular plugin exists.
+        # plugins/ ships the template, the worked example and nothing else; the
+        # point of this step is that the loader runs against a real folder on
+        # this OS without raising.
+        #
+        # It now also asserts the two properties the example exists to prove,
+        # because "0 rejected" is true of a folder where nothing loaded: the
+        # manifest must verify, and a plugin that declared a permission must
+        # arrive OFF. A manifest check that quietly stopped running would leave
+        # this step green in exactly the same way as a healthy one.
         shell: python
         run: |
           from pathlib import Path
@@ -210,6 +216,22 @@ jobs:
           for line in lines:
               print(line)
           print(f"plugin loader OK: {len(registry.list_for_ui())} visible")
+
+          rows = {r["name"]: r for r in registry.list_for_ui()}
+          example = rows.get("currency_rates")
+          if example is None:
+              raise SystemExit("the example plugin did not load at all")
+          if not example["valid"]:
+              raise SystemExit(f"the example plugin was rejected: {example['error']}")
+          if example["permissions"] != ["network"]:
+              raise SystemExit(
+                  "the manifest was not read: permissions came through as "
+                  f"{example['permissions']!r}")
+          if example["enabled"]:
+              raise SystemExit(
+                  "a plugin that declared a permission started ENABLED — the "
+                  "consent question is asked after it can already run")
+          print("example plugin: manifest verified, declared network, starts off")
           # The summary line itself says "0 active, 0 rejected, 0 total" — so a
           # naive substring match flags a clean run. Only real rejections start
           # a line about a file.
