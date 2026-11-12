@@ -95,6 +95,34 @@ _RIGHT_W = 340
 
 _OS = platform.system()  # "Windows" | "Darwin" | "Linux"
 
+# ── WHAT THE PACKAGE RE-EXPORTS ─────────────────────────────────────────────
+#
+#     `ui/__init__.py` does `from ui.window import *`, and a module without
+#     `__all__` exports only what does not start with an underscore. That is
+#     right for most of this file and wrong for a handful of names that other
+#     code — plugins, the provider self-test, main.py — reaches for by their
+#     leading-underscore name. Listing them is the difference between a split
+#     and four separate breakages:
+#
+#         ui._ScrollSafeCombo    the provider self-test inspects every combo box
+#         ui._metrics            the CPU sampler singleton (see ui/metrics.py)
+#         ui._RootShim, ui._OS   used by main.py's startup path
+#
+#     Add a name here when you find yourself writing `ui._something` elsewhere.
+__all__ = [
+    n for n in dir() if not n.startswith("_")
+]
+__all__ += [
+    "_OS",
+    "_RootShim",
+    "_ScrollSafeCombo",
+    "_SysMetrics",
+    "_WIN_HIDE",
+    "_metrics",
+    "_nvml_gpu_windows",
+    "_auto_ui_scale",
+]
+
 
 # ── the colours and the samplers live in ui/ ────────────────────────────────
 #

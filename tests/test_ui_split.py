@@ -23,7 +23,7 @@ WINDOW = UI_PKG / "window.py"
 # Two ceilings, not targets. They exist so "just add it here" costs a
 # conversation: both files may shrink freely and grow a little, but not back to
 # the sizes that made them unreadable.
-WINDOW_CEILING = 7_300
+WINDOW_CEILING = 7_400
 MODULES = [UI_PKG / "__init__.py", UI_PKG / "theme.py", UI_PKG / "metrics.py"]
 
 
@@ -124,6 +124,35 @@ def test_no_ui_module_outside_the_theme_writes_to_the_palette():
                     and isinstance(node.args[0], ast.Name) and node.args[0].id == "C"):
                 offenders.append(f"{path.name}:{node.lineno}")
     assert offenders == []
+
+
+def test_the_window_re_exports_the_private_names_other_code_uses():
+    """`from ui.window import *` and a leading underscore: no name, no attribute.
+
+    A module without `__all__` exports only its public names, so `from
+    ui.window import *` silently dropped every underscored one. The window kept
+    working; `ui._ScrollSafeCombo` stopped existing, which is the one the
+    provider self-test reads to prove every combo box ignores the mouse wheel
+    unless it has focus. Three CI runners said so before the local suite did,
+    because the local suite cannot import a Qt package.
+
+    So this reads the list instead of the module, and asks for the names the
+    rest of the project actually spells.
+    """
+    tree = _tree(WINDOW)
+    exported, built = set(), False
+    for node in tree.body:
+        # `__all__ = [...]` and then `__all__ += [...]` — both forms are used.
+        targets = getattr(node, "targets", None) or (
+            [node.target] if isinstance(node, ast.AugAssign) else [])
+        if not any(isinstance(t, ast.Name) and t.id == "__all__" for t in targets):
+            continue
+        built = True
+        for part in ast.walk(node.value):
+            if isinstance(part, ast.Constant) and isinstance(part.value, str):
+                exported.add(part.value)
+    assert built, "ui/window.py lost its __all__ — see the comment beside it"
+    assert {"_ScrollSafeCombo", "_metrics", "_OS", "_RootShim"} <= exported
 
 
 def test_the_sampler_exists_without_a_display():
