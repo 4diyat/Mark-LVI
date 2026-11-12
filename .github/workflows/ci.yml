@@ -80,30 +80,32 @@ jobs:
       # what the assistant DOES to the machine (the two loaders, the undo stack,
       # the confirmation gate, the echo guard, the platform report).
       #
-      # WHERE THE NUMBERS COME FROM, AND WHY THERE ARE TWO
+      # ── What is covered, and what a percentage cannot say ─────────────────
+      # The 50 % on the tested modules is a RATCHET: those eleven carried no
+      # test at all a week ago, and they are the ones that decide what the
+      # assistant does to the machine. They read 84 % here.
       #
-      #     50 % on the tested modules, 28 % on everything. Both are measured ON
-      #     THIS RUNNER, and that matters: the same suite reads 36 % of core/
-      #     on a developer's machine with requirements.txt installed, and 29 %
-      #     here, because this job installs requirements-dev only BY DESIGN and
-      #     a bare runner cannot execute Qt, a GPU, an audio device or torch.
-      #     A single floor taken from either number is wrong on the other
-      #     machine — which is how a gate ends up deleted instead of fixed.
+      # The whole-package number is printed and NOT enforced, on purpose. It
+      # measures the runner rather than the code: the same 254 tests read 36 %
+      # of core/ on a developer's machine with requirements.txt installed, 29 %
+      # here (requirements-dev only, by design) and a point or two differently
+      # on Windows than on Linux — Qt, torch, a GPU and an audio device are
+      # unimportable there. A gate whose number moves with the operating system
+      # teaches people to add skips until it is green.
       #
-      #     The 50 % is the ratchet: those eleven modules carried NO test a week
-      #     ago and they are the ones that decide what the assistant does to the
-      #     machine. They read 84 % here.
-      #
-      #     The 28 % is one point under today's 29 %, so a new 100-line module
-      #     landing with no test trips it. That is the case that actually
-      #     happened in this project's history, inside a total that moved by one
-      #     percent nobody read.
-      - name: Coverage floor — the tested modules, then all of core/
+      # The rule that percentage was standing in for is checked instead, and it
+      # is portable: tests/test_coverage_map.py requires every module over 120
+      # statements to be named by a test file OR listed with a reason it cannot
+      # run on this hardware. Both directions are checked, so neither an
+      # untested module nor a stale exemption survives by being forgotten.
+      - name: Coverage — the tested modules, and the map for the rest
         if: always()
         run: |
           python -m pip install --quiet coverage
           python -m coverage run --source=core,memory,dashboard -m pytest -q
-          python -m coverage report --fail-under=28
+          echo "::group::whole package (printed, not enforced — see the comment)"
+          python -m coverage report
+          echo "::endgroup::"
           python -m coverage report \
             --include="core/action_loader.py,core/plugin_loader.py,core/outcome.py,core/undo.py,core/confirm.py,core/echo.py,core/platform_support.py,core/lazyimport.py,memory/memory_manager.py,core/logbook.py,memory/config_manager.py" \
             --fail-under=50
