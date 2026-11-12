@@ -155,18 +155,43 @@ def test_a_missing_key_falls_back_to_english_before_the_marker(monkeypatch):
     assert i18n.label("ui.broken_key") == "Only English has this"
 
 
-def test_resolve_accepts_the_shapes_a_real_environment_uses():
+@pytest.fixture()
+def clean_env(monkeypatch):
+    """No locale variables, so a test about resolution is about the resolver.
+
+    Every assertion below used to depend on the machine: the same test passed
+    on Linux and failed on the macOS runner, whose LANG is en_US.UTF-8 and whose
+    LC_ALL is set as well. `resolve()` consults both, which is the behaviour we
+    want and the reason the test must own them.
+    """
+    for name in ("LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"):
+        monkeypatch.delenv(name, raising=False)
+
+
+def test_resolve_accepts_the_shapes_a_real_environment_uses(clean_env):
     assert i18n.resolve("id") == "id"
     assert i18n.resolve("id_ID.UTF-8") == "id"
     assert i18n.resolve("id-ID") == "id"
-    assert i18n.resolve("de_DE.UTF-8") == "en"      # not shipped → English
-    assert i18n.resolve(None) == "en" if not i18n.resolve(None) else True
 
 
 def test_resolve_prefers_the_caller_over_the_environment(monkeypatch):
+    # The environment is CLEARED first. It was not, and this passed on Linux and
+    # failed on the macOS runner, whose LANG is already en_US.UTF-8 while LC_ALL
+    # is set too — so `resolve(None)` answered 'en' and the test read as a bug in
+    # the resolver. A test about the environment has to own the environment.
+    for name in ("LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"):
+        monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("LANG", "id_ID.UTF-8")
     assert i18n.resolve("en") == "en"        # an explicit choice wins
     assert i18n.resolve(None) == "id"        # otherwise the environment speaks
+
+
+def test_with_no_environment_at_all_it_is_english(monkeypatch):
+    """The floor: a container with no locale variables must not resolve to a
+    marker or to an arbitrary locale."""
+    for name in ("LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"):
+        monkeypatch.delenv(name, raising=False)
+    assert i18n.resolve(None) == "en"
 
 
 def test_a_broken_catalogue_file_does_not_stop_the_window(monkeypatch, tmp_path):
@@ -252,3 +277,29 @@ def test_every_key_the_window_asks_for_exists():
     assert asked, "window.py never calls label() — is the wiring missing?"
     missing = sorted(asked - set(catalogue(i18n.DEFAULT_LOCALE)))
     assert missing == [], f"window.py asks for keys nobody wrote: {missing}"
+
+
+def test_the_suite_passes_in_any_locale():
+    """A guard against the class, not the instance.
+
+    Two tests here were written on a machine with no locale variables and read
+    as bugs in the resolver on a runner that sets both LANG and LC_ALL. The
+    cheap way to keep that from recurring is to make the question explicit:
+    this file is run once more with a non-English environment, in a subprocess,
+    and it has to pass.
+    """
+    import os
+    import subprocess
+    import sys
+    here = Path(__file__).resolve()
+    env = dict(os.environ, LANG="id_ID.UTF-8", LANGUAGE="id:en",
+               PYTHONPATH=os.pathsep.join(sys.path))
+    env.pop("LC_ALL", None)
+    # `-k not ...` is not decoration: without it this test spawns itself, which
+    # spawns itself, and the first run of it did exactly that for 300 s.
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+         "-k", "not test_the_suite_passes_in_any_locale", str(here)],
+        capture_output=True, text=True, env=env, cwd=str(here.parent.parent),
+        timeout=300)
+    assert result.returncode == 0, result.stdout[-2000:] + result.stderr[-2000:]
