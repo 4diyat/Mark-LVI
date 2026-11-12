@@ -250,6 +250,25 @@ jobs:
           if mt5["enabled"]:
               raise SystemExit("mt5_orb declared a permission but started ENABLED")
           print("mt5_orb: loaded without MetaTrader5, declared files, starts off")
+
+          # The third manifest, and the opposite case to the two above: an empty
+          # permission list. A plugin that writes only its own files has nothing
+          # to consent to, so it must keep the opt-out default and stay ON —
+          # otherwise "ships a manifest" silently means "is off until noticed".
+          notes = rows.get("quick_notes")
+          if notes is None:
+              raise SystemExit("quick_notes did not load")
+          if not notes["valid"]:
+              raise SystemExit(f"quick_notes was rejected: {notes['error']}")
+          if notes["permissions"] != []:
+              raise SystemExit(
+                  f"quick_notes permissions came through as {notes['permissions']!r}")
+          if not notes["enabled"]:
+              raise SystemExit(
+                  "a manifest with NO permissions turned the plugin off — the "
+                  "consent rule is about declared access, not about shipping a "
+                  "manifest")
+          print("quick_notes: empty permission list, keeps the opt-out default (on)")
           # The summary line itself says "0 active, 0 rejected, 0 total" — so a
           # naive substring match flags a clean run. Only real rejections start
           # a line about a file.

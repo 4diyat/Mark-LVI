@@ -533,6 +533,7 @@ memastikan ketiga kelas itu tidak "kembali" ke file lama.
 | Regresi lintas-OS | ditemukan setelah push | `LANG`, `sys.path`, dan nama modul dibaca sebagai aturan, bukan dihafal |
 | Plugin contoh | tidak ada | `plugins/currency_rates.py` + manifest: rantai penuh manifest → loader → izin → dialog, dan 21 test tanpa jaringan |
 | Chart MetaTrader 5 | tidak ada | `plugins/mt5_orb.py` (+ `_mt5.py`, `_orb.py`): gambar PNG chart dan baca ORB sesi pasar di M30, dari bar yang **sudah tutup**; 42 test tanpa menyentuh terminal |
+| Catatan & tugas | tidak ada (hanya `memory/long_term.json` milik asisten) | `plugins/quick_notes.py` (+ `_notes.py`): `config/notes/{inbox,todo,archive}.md` teks polos; 22 test di folder config sementara |
 | Marketplace plugin | "aman" hanya di judul | `core/plugin_manifest.py` (95 %): manifest + sha256 + izin deklaratif yang **diperiksa terhadap sumbernya**, dan dialog persetujuan sebelum toggle |
 | Kunci di keychain | tidak ada test | `core/keychain.py` **92 %**: tanpa paket, backend yang melempar saat read/write, keychain dan file yang berbeda isi |
 
@@ -572,6 +573,47 @@ terminal; pip dari `symbol_info` (`point×10` hanya untuk 3/5 digit); dan kalau
 Pillow tidak ada, chart jatuh ke ASCII, bukan gagal. Izin yang dideklarasikan
 `files` (menulis PNG), bukan `network` — dan pemindaian impor di
 `core/plugin_manifest.py` membuktikannya.
+
+**Plugin keempat, dan temuan yang lebih berharga daripada pluginnya.** Saat
+diminta "plugin seperti youtube player, code editor, dan lainnya", jawabannya
+bukan menulis dua plugin itu: **`youtube_video` dan `code_helper` sudah ada
+sebagai action bawaan** (`actions/`), dan loader menolak plugin yang namanya
+bentrok dengan tool inti (`core/plugin_loader.py`: *Name 'X' collides with a
+core tool*). Jadi peta yang berguna adalah **apa yang belum ada**, bukan apa
+yang bisa diubah bentuknya.
+
+`plugins/quick_notes.py` mengisi celah yang paling sering dipakai orang:
+*"catat: bayar kos tanggal 5"* dan *"apa saja tugas saya?"*. Sebelumnya aplikasi
+ini hanya punya `memory/long_term.json` — ingatan **asisten**, yang diringkas
+ulang oleh summariser. Catatan yang diputuskan pengguna untuk disimpan bukan hal
+yang sama, dan tidak boleh ikut diringkas.
+
+Yang membuatnya berbeda dari "tulis ke file":
+
+1. **Tiga buku, berkas Markdown.** `config/notes/inbox.md`, `todo.md`,
+   `archive.md` — bisa dibuka Notepad, ikut ter-backup bersama `config/`, dan
+   tidak bisa merusak apa pun yang dibutuhkan aplikasi untuk boot. Format JSON
+   adalah format program; Markdown adalah format pengguna.
+2. **Satu baris, selalu.** Newline di dalam catatan akan menjadi catatan kedua
+   saat dibaca ulang (dan bisa memalsukan stempel waktu), jadi spasi
+   dirapatkan dan `#`/`-` di depan dibuang. Yang diubah hanya bentuknya, bukan
+   katanya.
+3. **"Selesai" memindahkan, bukan menghapus.** Tugas yang cocok pindah ke
+   `archive.md` dengan tanggal selesai. Kalau frasa cocok ke **lebih dari satu**
+   tugas, jawabannya pertanyaan balik — mengarsipkan tugas yang salah adalah
+   kegagalan yang baru ketahuan berminggu-minggu kemudian.
+4. **Jam pengguna, bukan jam container.** `now` adalah parameter; test memberi
+   waktu tetap. Catatan pukul 23:45 di Jakarta tidak boleh masuk ke tanggal
+   kemarin karena mesinnya UTC.
+5. **Izin kosong, dan itu keputusan.** `quick_notes.json` mendeklarasikan
+   `"permissions": []`: yang disentuh hanya `config/notes/` miliknya sendiri,
+   jadi tidak ada yang perlu disetujui. `_enabled()` memakai **izin yang
+   dideklarasikan** sebagai alasan mulai-mati, bukan keberadaan manifest —
+   sehingga plugin ini tetap menyala seperti plugin bawaan repo, sementara
+   `currency_rates` (`network`) dan `mt5_orb` (`files`) tetap mulai mati. Ada
+   test untuk ketiga keadaan itu sekaligus, karena kalau aturannya berubah,
+   plugin ini akan hilang diam-diam bagi setiap pengguna yang tidak pernah
+   membuka plugin manager.
 
 **Kenapa keychain tetap punya fallback file.** `keyring` butuh desktop session;
 container, WSL, server headless, dan desktop Linux yang keyring-nya belum

@@ -17,8 +17,11 @@ IF YOUR PLUGIN DID NOT COME FROM THIS REPOSITORY
     `assets/i18n/plugin-manifest.example.json` is a copyable starting point, and
     `plugins/currency_rates.py` is a complete worked example — a real API, a
     declared permission, and the refusals that make a tool trustworthy.
-    A plugin with no manifest loads exactly as it does today — this repository's
-    twenty plugins have none — so the manifest is only a gate when it exists.
+    A plugin with no manifest loads exactly as it does today — most of this
+    repository's plugins have none — so the manifest is only a gate when it
+    exists. A manifest with an EMPTY permissions list means "nothing to
+    consent to", so a plugin that only touches its own folder can ship with one
+    and still start switched on (see `plugins/quick_notes.json`).
     It is a declaration, not a sandbox: there is no boundary inside one
     interpreter, and the docstring there says so rather than pretending.
 

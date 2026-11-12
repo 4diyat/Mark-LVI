@@ -528,7 +528,7 @@ class PluginManagerOverlay(QWidget):
             # CONSENT, ONCE, BEFORE THE PLUGIN RUNS. The button says what it is
             # asking for rather than "OFF", and pressing it opens a question.
             # Only for a plugin that DECLARED a permission: this repository's
-            # own twenty plugins have no manifest and keep their plain toggle,
+            # own plugins mostly have no manifest and keep their plain toggle,
             # so the dialog cannot train people to click through it.
             btn.setText(_t("ui.plugins.ask"))
             btn.setToolTip(_t("ui.plugins.consent", list=", ".join(perms)))

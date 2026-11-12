@@ -1,0 +1,9 @@
+{
+  "_comment": "Catatan & tugas dalam teks polos di config/notes/. Izin sengaja KOSONG: berkasnya hanya config/notes/*.md milik plugin ini, jadi tidak ada yang perlu disetujui — dan plugin tanpa izin tetap menyala seperti plugin bawaan repo ini. sha256 di bawah adalah dari berkas .py ini; kalau berkasnya berubah, loader menolaknya.",
+  "name": "quick_notes",
+  "version": "1.0.0",
+  "author": "MARK-LVI",
+  "description": "Simpan catatan dan tugas sebagai teks polos yang bisa dibuka pengguna sendiri, lalu bacakan kembali apa adanya.",
+  "permissions": [],
+  "sha256": "2e3917a02a9c424d4916d6d8d23b05f4ebd13347ea766d5bee28f78ed205cc80"
+}
