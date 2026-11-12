@@ -56,6 +56,7 @@ TESTED = {
     "core/confirm.py":        "tests/test_confirm.py",
     "core/echo.py":           "tests/test_echo.py",
     "core/hotkey.py":         "tests/test_hotkey.py",
+    "core/i18n.py":           "tests/test_i18n.py",
     "core/lazyimport.py":     "tests/test_lazyimport.py",
     "core/logbook.py":        "tests/test_logbook.py",
     "core/platform_support.py": "tests/test_platform_support.py",

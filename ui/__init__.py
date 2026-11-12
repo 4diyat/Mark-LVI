@@ -15,6 +15,7 @@ WHY THE PACKAGE REPLACES ui.py
 WHAT IS WHERE, AND WHAT THAT MEANS FOR YOU
     ui/theme.py    the palette (`C`) and the accent code — the only writer
     ui/metrics.py  the sampler thread: CPU, memory, network, GPU, temperature
+    ui/overlays.py the setting panels, and the labels they translate
     ui/window.py   the widgets and the window (still large; that is the next job)
 
     `ui.C`, `ui.qcol`, `ui.MainWindow`, `ui.JarvisUI`, `ui._metrics` all keep

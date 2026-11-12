@@ -81,9 +81,10 @@ jobs:
       # the confirmation gate, the echo guard, the platform report).
       #
       # ── What is covered, and what a percentage cannot say ─────────────────
-      # The 50 % on the tested modules is a RATCHET: those eleven carried no
+      # The 60 % on the tested modules is a RATCHET: those twelve carried no
       # test at all a week ago, and they are the ones that decide what the
-      # assistant does to the machine. They read 84 % here.
+      # assistant does to the machine, in what language it says so, and what it
+      # remembers. They read 85 % here, so the floor only catches a real loss.
       #
       # The whole-package number is printed and NOT enforced, on purpose. It
       # measures the runner rather than the code: the same 254 tests read 36 %
@@ -107,8 +108,8 @@ jobs:
           python -m coverage report
           echo "::endgroup::"
           python -m coverage report \
-            --include="core/action_loader.py,core/plugin_loader.py,core/outcome.py,core/undo.py,core/confirm.py,core/echo.py,core/platform_support.py,core/lazyimport.py,memory/memory_manager.py,core/logbook.py,memory/config_manager.py" \
-            --fail-under=50
+            --include="core/action_loader.py,core/plugin_loader.py,core/outcome.py,core/undo.py,core/confirm.py,core/echo.py,core/platform_support.py,core/lazyimport.py,core/i18n.py,memory/memory_manager.py,core/logbook.py,memory/config_manager.py" \
+            --fail-under=60
 
   # ── 3. The real dependency set still installs and still loads ──────────────
   # requirements.txt carries sys_platform markers, so this job is also the

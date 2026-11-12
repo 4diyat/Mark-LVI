@@ -719,3 +719,32 @@ def save_providers(mode: str = None, pipeline: dict = None, creds: dict = None,
 
         data["providers"] = block
     update_config(_apply)
+
+
+# ── Language ─────────────────────────────────────────────────────────────────
+# A setting with three states and one rule: "auto" means "ask the operating
+# system", which is what a user who has already set their language in one place
+# expects. It is stored as a string rather than a bool so a third locale needs
+# no migration, and it is validated HERE rather than at the point of use —
+# config_manager is the only module allowed to decide what a stored value means
+# (see AGENTS.md), and a config file edited by hand must not be able to put an
+# unknown locale into the window.
+
+def get_ui_language() -> str:
+    """The configured UI language: 'auto', or a locale we ship."""
+    from core.i18n import LOCALES
+    value = str(load_api_keys().get("ui_language", "auto") or "auto").lower()
+    return value if value == "auto" or value in LOCALES else "auto"
+
+
+def save_ui_language(language: str) -> None:
+    """Persist the UI language, collapsing anything unknown to 'auto'.
+
+    Unknown values become 'auto' rather than being rejected: a config written by
+    a newer version, or edited by hand, must degrade to the OS language instead
+    of leaving the window in a locale that has no catalogue.
+    """
+    from core.i18n import LOCALES
+    value = (language or "auto").strip().lower()
+    set_config_values(ui_language=value if value == "auto" or value in LOCALES
+                      else "auto")

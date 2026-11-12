@@ -22,9 +22,12 @@ WINDOW = UI_PKG / "window.py"
 
 # Two ceilings, not targets. They exist so "just add it here" costs a
 # conversation: both files may shrink freely and grow a little, but not back to
-# the sizes that made them unreadable.
-WINDOW_CEILING = 7_400
-MODULES = [UI_PKG / "__init__.py", UI_PKG / "theme.py", UI_PKG / "metrics.py"]
+# the sizes that made them unreadable. The ceiling came down from 7,400 to
+# 7,000 when the three setting panels moved to ui/overlays.py — a ratchet that
+# is only ever loosened is not a ratchet.
+WINDOW_CEILING = 7_000
+MODULES = [UI_PKG / "__init__.py", UI_PKG / "theme.py", UI_PKG / "metrics.py",
+           UI_PKG / "overlays.py"]
 
 
 def _tree(path: Path) -> ast.Module:
@@ -104,6 +107,31 @@ def test_the_moved_pieces_are_gone_from_ui_py():
     assert "_SysMetrics" not in names
     assert "apply_ui_accent" not in names
     assert "retheme_all_widgets" not in names
+
+
+def test_the_setting_panels_live_in_their_own_module():
+    """Moved, not copied — and moved in one direction.
+
+    `CustomizeOverlay`, `PluginManagerOverlay` and `HueWheel` were extracted so
+    the i18n work could finish: a panel that must re-render itself in a new
+    language has to own its labels. The two ways that can go wrong later are a
+    copy left behind in window.py (two classes with one name, and the window
+    silently builds the stale one) and an import back into it (the panels start
+    dragging the session, the metrics sampler and the log along with them).
+    """
+    window_names = {n.name for n in _tree(WINDOW).body
+                    if isinstance(n, ast.ClassDef)}
+    for name in ("CustomizeOverlay", "PluginManagerOverlay", "HueWheel"):
+        assert name not in window_names, f"{name} is defined twice; it belongs in ui/overlays.py"
+    moved = {n.name for n in _tree(UI_PKG / "overlays.py").body
+             if isinstance(n, ast.ClassDef)}
+    assert {"CustomizeOverlay", "PluginManagerOverlay", "HueWheel"} <= moved
+
+    imports = [node for node in ast.walk(_tree(UI_PKG / "overlays.py"))
+               if isinstance(node, ast.ImportFrom)]
+    back = [node.module for node in imports
+            if (node.module or "").startswith("ui.window")]
+    assert back == [], f"ui/overlays.py must not import back into the window: {back}"
 
 
 def test_no_ui_module_outside_the_theme_writes_to_the_palette():
