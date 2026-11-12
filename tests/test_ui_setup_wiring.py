@@ -18,8 +18,8 @@ WHY THIS IS A SOURCE CHECK AND NOT A WIDGET TEST
                            the thing that was missing, and which no amount of
                            careful reading caught the first time.
 
-    When ui.py is split into ui/overlays/, SetupOverlay becomes constructible on
-    its own and this becomes a normal widget test.
+    When ui/window.py is split further into ui/overlays/, SetupOverlay becomes
+    constructible on its own and this becomes a normal widget test.
 """
 from __future__ import annotations
 
@@ -29,17 +29,17 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-UI = ROOT / "ui.py"
+UI = ROOT / "ui" / "window.py"
 
 
 @pytest.fixture(scope="module")
 def main_window():
-    """The MainWindow class node from ui.py."""
+    """The MainWindow class node from ui/window.py."""
     tree = ast.parse(UI.read_text(encoding="utf-8"))
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef) and node.name == "MainWindow":
             return node
-    pytest.fail("MainWindow not found in ui.py")
+    pytest.fail("MainWindow not found in ui/window.py")
 
 
 def _method(cls, name: str) -> ast.FunctionDef:

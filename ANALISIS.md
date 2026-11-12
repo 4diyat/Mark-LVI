@@ -61,7 +61,7 @@ tertinggal jauh**. Prioritas peningkatan bukan menambah fitur, melainkan:
 
 | Area | Baris | % total |
 |---|---:|---:|
-| `ui.py` | 7.504 | 19,2 % |
+| `ui/window.py` | 7.280 | 18,6 % (dari `ui.py` 7.504; palet & sampler sudah pindah) |
 | `main.py` | 2.706 | 6,9 % |
 | `actions/` (20 file) | 12.390 | 31,7 % |
 | `core/` (25 file) | 8.109 | 20,8 % |
@@ -419,6 +419,23 @@ Anak proses sekarang mencetak **satu vonis**: `ok:` (jalankan pemeriksaan),
 `ENV:` (mesin ini tidak punya Qt yang bisa dipakai → SKIP), `CODE:` (ui.py
 sendiri rusak → FAIL). Jadi mesin tanpa GUI tidak lagi memerahkan CI, tanpa
 membuat kegagalan sungguhan ikut lolos.
+
+### 🔄 Sprint 3 — berjalan (struktur)
+
+| Langkah | Hasil | Bukti |
+|---|---|---|
+| `ui.py` → paket `ui/` | `ui/theme.py` (palet, satu-satunya penulis `C`), `ui/metrics.py` (thread sampler + NVML/WMI), `ui/window.py` (widget, sisa 7.280 baris) | `tests/test_ui_split.py` (7 test, AST — jalan tanpa Qt) |
+| Kompatibilitas | `ui.C`, `ui.qcol`, `ui.JarvisUI`, `ui.MainWindow`, `ui._metrics` tetap ada (re-export) | `ui/__init__.py` |
+| Profil JARVIS | `core/code_checks.py` mengenali **kedua** bentuk (`ui/window.py` dan `ui.py` lama) | `tests/test_profile_window_source.py` (4 test) |
+| `except: pass` yang bodoh | core/: 8 → tersisa 3 yang memang sengaja | dashboard, gemini, audio_devices, wake_word, code_checks, confirm, appidentity, piper |
+
+> Dua pelajaran yang masuk ke test, bukan ke catatan:
+> **(1)** `ui.py` dan `ui/` tidak boleh hidup bersama — Python memilih folder,
+> file diabaikan, dan isinya gagal dengan *"'ui' is not a package"*. Itu persis
+> yang dilaporkan CI pada percobaan pertama.
+> **(2)** Saat `ui.py` berubah bentuk, dua tempat di `core/code_checks.py` masih
+> menunjuk nama lama — tanpa error, dev_agent hanya diam-diam berhenti diajari
+> soal `player`.
 
 ### ⏭️ Sprint berikutnya
 

@@ -96,19 +96,14 @@ _RIGHT_W = 340
 _OS = platform.system()  # "Windows" | "Darwin" | "Linux"
 
 
-# ── the colours and the samplers now live in ui/ ────────────────────────────
+# ── the colours and the samplers live in ui/ ────────────────────────────────
 #
-#     This file was 7,504 lines and every part of it was reachable from every
-#     other part, so nothing could be tested without a display and nothing could
-#     be changed without reading all of it. The split is by ownership, not by
-#     size: `ui/theme.py` owns the palette (and is the only module that may
-#     assign to `C`), `ui/metrics.py` owns the sampler thread.
-#
-#     Both are re-exported here, under the same names and as the same objects,
-#     because plugins and main.py already say `ui.C` / `ui.qcol` /
-#     `ui._metrics`, and a split that breaks its callers is a rename, not a
-#     refactor.
-from ui.theme import (          # noqa: F401 — re-exported on purpose
+#     `ui/theme.py` owns the palette (and is the only module that may assign to
+#     `C`); `ui/metrics.py` owns the sampler thread. Both are re-exported by the
+#     package, and imported here because this file reads them on nearly every
+#     line. The long comment that used to sit here — about why the split was
+#     worth doing — is in `ui/__init__.py`, where a reader of the package starts.
+from ui.theme import (          # noqa: F401 — re-exported through the package
     C,
     DEFAULT_UI_COLOR,
     _HUE_LINKED,

@@ -596,7 +596,8 @@ observed.
 ```
 Mark LVI/
 ├── main.py                   # Core loop — Gemini Live session, audio I/O, viseme extraction, tool dispatch
-├── ui.py                     # PyQt6 HUD — avatar canvas, waveform, log panel, settings drawer, camera feed
+├── ui/                       # PyQt6 HUD — window.py (widgets), theme.py (palette), metrics.py (sampler)
+│   └── window.py             #   avatar canvas, waveform, log panel, settings drawer, camera feed
 ├── setup.py                  # OS-aware installer (skips wrong-OS dependencies, checks your Python)
 ├── pyproject.toml            # Lint + test configuration (ruff: bugs only, see CONTRIBUTING.md)
 ├── CONTRIBUTING.md           # How to work on it — the checks, and the rules that are not obvious

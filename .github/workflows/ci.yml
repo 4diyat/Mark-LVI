@@ -57,7 +57,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python: ["3.11", "3.12"]
     env:
-      # Qt is only ever imported by ui.py, which no test imports — but set the
+      # Qt is only ever imported by the ui/ package, which no test imports — but set the
       # offscreen backend anyway so a future widget test does not need a display.
       QT_QPA_PLATFORM: offscreen
     steps:

@@ -71,7 +71,7 @@ field. It goes through `_safe_rel()` / `_safe_target()` in
 write files are expected to follow it.
 
 ### Threads
-- `ui.py` runs on the Qt main thread. `main.py` runs the session on an asyncio
+- The `ui/` package runs on the Qt main thread. `main.py` runs the session on an asyncio
   loop in a second thread. `actions/` and `plugins/` run on worker threads.
 - A widget is **only** created or touched from the Qt thread. To change the
   window from anywhere else, add a `pyqtSignal` to `MainWindow` and a thin
@@ -144,7 +144,7 @@ def run(parameters: dict, player=None) -> str:
 
 ```
 main.py          the live session (asyncio, in its own thread)
-ui.py            the window (Qt main thread) — being split into ui/
+ui/              the window (Qt main thread): window.py, theme.py, metrics.py
 actions/         tools that self-describe with a TOOL dict
 plugins/         drop-in tools, one file each
 core/            gemini ladder, confirm, undo, outcome, echo, audio, avatar
@@ -156,8 +156,9 @@ tests/           pytest; offline, no Qt, no key
 
 ## 8. Known rough edges (fine to fix, not fine to add to)
 
-- `ui.py` is 7,500 lines and `main.py` 2,700. Splitting them is planned; new
-  widgets belong in a new file (`ui/`), not appended to `ui.py`.
+- `ui/window.py` is still 7,300 lines and `main.py` 2,700. New widgets belong
+  in a module of their own under `ui/`, not appended to `window.py`;
+  `tests/test_ui_split.py` enforces the ceiling and which file owns `C`.
 - 140 `except Exception: pass` blocks. Many are legitimate (optional UI,
   optional hardware). If you touch one, make it say something —
   `except Exception as e: print(f"[Thing] {e}")` — because a silent `except` is

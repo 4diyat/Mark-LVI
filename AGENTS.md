@@ -8,10 +8,10 @@ passed a syntax check and did nothing when used.
 ## How the app runs
 
 - `main.py` holds the voice session on an asyncio event loop in a background
-  thread. `ui.py` holds the window on the **Qt main thread**.
+  thread. The `ui/` package holds the window on the **Qt main thread**.
 - Tools — `actions/*.py` and `plugins/*.py` — run on **worker threads**, never
   on the Qt main thread.
-- There is exactly **one** `QApplication`, created by `ui.py`.
+- There is exactly **one** `QApplication`, created in the `ui/` package (`ui/window.py`).
 
 ## Threading: the rule that breaks most generated code
 
@@ -81,7 +81,14 @@ data = gemini.as_json(prompt, tier=gemini.SMART)    # structured, may return Non
 Every call can fail or return `None`. Code must handle that — for example with
 a small built-in fallback — instead of crashing.
 
-## Changing the window (`ui.py`)
+## Changing the window (`ui/`)
+
+- The package is split by ownership: `ui/theme.py` owns the palette (`C`) and is
+  the only module that may assign to it; `ui/metrics.py` owns the sampler
+  thread; `ui/window.py` owns the widgets. `ui/__init__.py` re-exports all of
+  it, so `ui.C`, `ui.qcol` and `ui.JarvisUI` are still the names to use.
+- Do not recreate `ui.py`: it would shadow the package (Python resolves the
+  directory first) and every import inside it would fail.
 
 - Widgets are created and changed only on the Qt thread.
 - To let other threads trigger a change: add a `pyqtSignal` to `MainWindow`,
