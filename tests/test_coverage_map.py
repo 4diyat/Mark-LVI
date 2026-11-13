@@ -60,6 +60,7 @@ TESTED = {
     "core/keychain.py":       "tests/test_keychain.py",
     "core/plugin_manifest.py": "tests/test_plugin_manifest.py",
     "core/avatar_face.py":    "tests/test_avatar_face.py",
+    "core/playback.py":       "tests/test_playback.py",
     "core/lazyimport.py":     "tests/test_lazyimport.py",
     "core/logbook.py":        "tests/test_logbook.py",
     "core/platform_support.py": "tests/test_platform_support.py",
