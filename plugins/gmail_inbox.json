@@ -1,0 +1,13 @@
+{
+  "_comment": "Cek dan baca pesan email masuk dari Gmail secara read-only lewat IMAP SSL (App Password, stdlib Python tanpa library tambahan) atau Gmail OAuth (gmail.readonly). sha256 di bawah adalah dari berkas .py ini; kalau berkasnya berubah, loader menolaknya.",
+  "name": "gmail_inbox",
+  "version": "1.0.0",
+  "author": "MARK-LVI",
+  "description": "Cek inbox Gmail, hitung email yang belum dibaca, cari berdasarkan pengirim/subjek/kata kunci, dan baca isi pesan email masuk secara lengkap.",
+  "permissions": [
+    "network",
+    "files"
+  ],
+  "sha256": "6e36951e271489b0c7f647c22621889bb96166f170dc1e02212e7f9cb568c1d1",
+  "homepage": "https://mail.google.com"
+}

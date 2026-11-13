@@ -450,13 +450,19 @@ def test_the_repository_own_plugins_all_reach_the_panel(isolated_config):
 
     sections = {s["plugin"]: s for s in reg.settings_schemas()}
     managed = {row["name"] for row in reg.list_for_ui()}
-    assert managed == {"currency_rates", "market_price", "mt5_orb",
-                       "prayer_times", "quick_notes"}
+    assert managed == {"currency_rates", "gmail_inbox", "market_price",
+                       "mt5_orb", "prayer_times", "quick_notes"}
     assert set(sections) == managed                # the panel lists them all
 
     prayer = sections["prayer_times"]
     assert prayer["schema"] is True and prayer["enabled"] is False
     assert {f["key"] for f in prayer["fields"]} == {"city", "country", "method", "school"}
+
+    gmail = sections["gmail_inbox"]
+    assert gmail["schema"] is True and gmail["enabled"] is False
+    assert {f["key"] for f in gmail["fields"]} == {
+        "auth_mode", "email", "app_password", "credentials_path", "default_limit"
+    }
 
 
 def test_a_refused_plugin_never_reaches_the_settings_panel(tmp_path, isolated_config):
