@@ -324,11 +324,112 @@ def _query() -> dict[str, list[str]]:
     return out
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Is there a microphone at all?
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# WHY THIS IS A SEPARATE QUESTION FROM "CAN IT BE OPENED"
+#     Everything above answers "which device". This answers "any device" — and
+#     on a machine with no microphone the answer used to be an exception inside
+#     the session's TaskGroup, which took the whole conversation down. A desktop
+#     with a line-out but no mic, a laptop whose internal mic is disabled in
+#     Device Manager, a Windows profile with microphone access switched off, a
+#     container or a CI runner: in every one of those the app could still TALK,
+#     but it crashed instead of saying so.
+#
+# WHY IT IS A HINT AND NOT A GATE
+#     A device list is not a promise. A microphone can appear between the query
+#     and the open (a USB headset plugged in), a Bluetooth headset connects the
+#     moment you speak into it, and the host API sometimes reports nothing while
+#     an open succeeds anyway. So "no microphone" here means "do not try first,
+#     and tell the user" — never "refuse to open". The one authority on whether
+#     a stream can be opened is opening it.
+#
+# WHY IT IS CACHED AND RE-ASKED
+#     `input_available()` answers without touching the audio API once the
+#     background prefetch has landed, so the connect path never blocks on
+#     enumeration. `open_input_stream()` re-asks the OS each time it is handed
+#     `retry_after_hint=True`, which is how the speech stream comes back by
+#     itself after a headset is plugged in.
+#
+# THE COST OF GETTING IT WRONG IS ASYMMETRIC, SO BOTH ERRORS FALL THE SAME WAY
+#     A false "yes" costs one failed open (the old behaviour, minus the crash).
+#     A false "no" would cost the user their microphone. So the hint is only
+#     trusted to SKIP work, and a device list that fails to enumerate at all
+#     reports "unknown" — which is treated as "try it".
+
+_MIC_KNOWN = False          # has anything ever enumerated?
+_MIC_PRESENT = True         # the hint, meaningful only when _MIC_KNOWN
+# The connect loop re-asks every two seconds while there is no device, and on a
+# machine where the query itself fails (no PortAudio) that is a console line
+# every two seconds — which buries everything else. One line per distinct
+# failure, repeated only after a query has succeeded in between.
+_MIC_WARNED = ""
+
+
+def _refresh_mic_hint() -> bool:
+    """Ask the OS, set the hint, return it. Never raises: sounddevice missing is
+    "unknown", not "no microphone", because PortAudio not being installed is a
+    different problem with a different fix."""
+    global _MIC_KNOWN, _MIC_PRESENT, _MIC_WARNED
+    try:
+        import sounddevice as sd
+        devices = list(sd.query_devices())
+    except Exception as e:
+        # Cannot enumerate (no PortAudio, no audio session, a broken driver):
+        # nothing is known, so the caller tries to open and reports what happens.
+        _MIC_PRESENT = True
+        reason = str(e)
+        if reason != _MIC_WARNED:
+            _MIC_WARNED = reason
+            print(f"[Audio] Input device query failed ({reason}) — will try anyway")
+        return _MIC_PRESENT
+    _MIC_WARNED = ""
+    present = any(int(dev.get("max_input_channels", 0) or 0) > 0 for dev in devices)
+    _MIC_KNOWN = True
+    _MIC_PRESENT = present
+    return present
+
+
+def count_inputs() -> int:
+    """How many real input channels the OS reports, or -1 when it cannot say.
+
+    -1 rather than 0 for "unknown", because 0 is a real answer and the two must
+    not be confused by anything reading this.
+    """
+    try:
+        import sounddevice as sd
+        devices = list(sd.query_devices())
+    except Exception:
+        return -1
+    return sum(1 for dev in devices if int(dev.get("max_input_channels", 0) or 0) > 0)
+
+
+def input_available(refresh: bool = False) -> bool:
+    """Is there any microphone? A HINT — true means "worth trying", and false
+    means "do not try first, and say so". Never a refusal."""
+    if refresh or not _MIC_KNOWN:
+        return _refresh_mic_hint()
+    return _MIC_PRESENT
+
+
+def forget_input_hint() -> None:
+    """After a successful open, the hint is irrelevant — something is listening.
+    Kept as a function so the reason is written down where the cache lives."""
+    global _MIC_KNOWN, _MIC_PRESENT
+    _MIC_KNOWN = True
+    _MIC_PRESENT = True
+
+
 def prefetch() -> None:
     """Warm the cache on a background thread. Called once at startup so the
     settings drawer never pays for enumeration on the Qt thread."""
     def _work():
         global _cache
+        # The microphone question first: it is one query_devices() call and the
+        # connect path checks the answer before anything else, so it must not
+        # wait behind the slower per-device open-and-close probing in _query().
+        _refresh_mic_hint()
         result = _query()
         with _cache_lock:
             _cache = result
@@ -695,3 +796,64 @@ def set_output_volume(percent: int, name: str = "") -> bool:
     except Exception as e:
         print(f"[Audio] could not set the output volume: {e}")
         return False
+# ─────────────────────────────────────────────────────────────────────────────
+#  Opening the microphone so that "no microphone" is an outcome, not a crash
+# ─────────────────────────────────────────────────────────────────────────────
+def open_input_stream(open_stream, device, *, say=None) -> tuple[object | None, str]:
+    """Open the microphone, trying the chosen device and then the default.
+
+    -> (stream | None, sentence). None WITH A SENTENCE IS A RESULT, not an
+    error: the caller carries on without a microphone — this assistant can still
+    speak, run tools and type — instead of raising out of a TaskGroup and
+    taking the whole session down with it. That is what used to happen on a
+    machine with no microphone at all.
+
+    `open_stream(device)` is the caller's own opener, so this file needs to know
+    nothing about block sizes or sample formats. `device=None` means "whatever
+    the OS calls default".
+
+    THE ORDER, AND WHY THE LAST ATTEMPT IS NOT SKIPPED
+        1. The device the picker chose (`device`; already None when the saved
+           name is gone or the user chose "system default").
+        2. The system default, when the chosen one refused. Chosen hardware
+           failing must never cost the user their microphone.
+        3. Only then give up — and the error reported is the FIRST one, because
+           that is the device the user chose and the one whose fix they control.
+           A default endpoint that refuses for an unrelated reason (no capture
+           device at all) says less about what to do.
+    """
+    def _attempt(index):
+        try:
+            return open_stream(index), None
+        except Exception as e:      # noqa: BLE001 — every host API raises its own
+            return None, e
+
+    if not input_available():
+        sentence = ("No microphone is available on this machine, so JARVIS "
+                    "cannot hear you. Everything else works: type in the box, "
+                    "or plug a microphone in and restart listening.")
+        if say:
+            say("SYS: " + sentence)
+        return None, sentence
+
+    stream, chosen_error = _attempt(device)
+    if stream is not None:
+        forget_input_hint()
+        return stream, ""
+
+    if device is not None:
+        stream, default_error = _attempt(None)
+        if stream is not None:
+            forget_input_hint()
+            if say:
+                say("SYS: The chosen microphone would not open — using the "
+                    "system default.")
+            return stream, ""
+
+    reason = chosen_error if chosen_error is not None else None
+    sentence = (f"No microphone could be opened ({reason}). JARVIS still works: "
+                "type in the box, and everything that does not need a "
+                "microphone is unaffected.")
+    if say:
+        say("SYS: " + sentence)
+    return None, sentence

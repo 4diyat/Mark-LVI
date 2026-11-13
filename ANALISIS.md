@@ -705,6 +705,44 @@ persetujuan terlihat persis seperti skema yang rusak — dan itulah kegagalan
 pertama step ini. Sekarang step tersebut mengaktifkan plugin seperti dialog
 persetujuan, lalu memeriksa empat field-nya.
 
+**Tanpa mikrofon, aplikasi tetap hidup.** `_listen_audio` dulu satu
+`try/except` yang me-*re-raise*, dan ia berjalan di dalam `asyncio.TaskGroup`
+sesi. Di mesin tanpa mikrofon — desktop yang hanya punya line-out, laptop yang
+mic internalnya dimatikan di Device Manager, profil Windows yang akses
+mikrofonnya dicabut — pembukaan stream melempar, TaskGroup membatalkan saudara-
+saudaranya, dan **seluruh percakapan mati**. Padahal tanpa mikrofon asisten
+tetap bisa berbicara, menjalankan semua tool, dan menerima ketikan. Kegagalan
+itu juga tidak menghasilkan satu pesan pun yang bisa ditindaklanjuti pengguna.
+
+Perbaikannya empat lapis:
+
+1. **"Tidak ada mikrofon" adalah hasil, bukan exception.**
+   `core/audio_devices.open_input_stream()` mengembalikan `(stream | None,
+   kalimat)` dan tidak pernah melempar. Urutannya: perangkat pilihan → default
+   sistem → menyerah dengan kalimat. Error yang dilaporkan adalah yang
+   **pertama** (perangkat yang dipilih pengguna), karena penolakan endpoint
+   default menjelaskan lebih sedikit.
+2. **Petunjuk, bukan gerbang.** `input_available()` hanya dipakai untuk
+   melewati pekerjaan, tidak pernah untuk menolak — daftar perangkat bukan janji
+   (headset USB bisa muncul di antara query dan open). Query yang gagal
+   (PortAudio tidak ada) berarti **"tidak tahu"**, bukan "tidak ada", dan
+   diperlakukan sebagai "coba saja".
+3. **Loop tetap hidup.** `_listen_audio` sekarang `while True`: coba buka,
+   kalau gagal tunggu 2 detik sambil bertanya ulang ke OS, lalu coba lagi.
+   Headset yang dicolok belakangan langsung terpakai tanpa restart aplikasi.
+   Stream yang mati di tengah jalan (USB dicabut, baterai Bluetooth habis) juga
+   kembali ke loop itu, bukan melempar keluar.
+4. **Layar dan model ikut jujur.** `has_mic=True` adalah **konstanta** di
+   prompt — build yang tuli tetap diperintahkan mendengarkan lalu diam saat
+   pengguna bicara ke udara. Sekarang `has_mic=not self._deaf`, ada cabang
+   `[WHAT YOU CANNOT DO]` untuk "tidak ada mikrofon", status HUD menjadi
+   `NO MIC`, dan tombol mikrofon menampilkan **⊘ TANPA MIKROFON** dalam keadaan
+   nonaktif alih-alih menawarkan unmute untuk perangkat yang tidak ada.
+
+Kegagalan query hanya dicetak **sekali per alasan**, bukan tiap dua detik —
+kalau tidak, konsol yang sedang dibaca pengguna justru terkubur oleh pesan
+tentang dirinya sendiri.
+
 **Kenapa keychain tetap punya fallback file.** `keyring` butuh desktop session;
 container, WSL, server headless, dan desktop Linux yang keyring-nya belum
 dibuka sejak boot akan melempar exception pada panggilan pertama. Menolak start

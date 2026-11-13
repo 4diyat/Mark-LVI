@@ -31,6 +31,7 @@
   "ui.brief.off": "☀  MORNING BRIEF: OFF",
   "ui.mic.muted": "🔇  MICROPHONE MUTED",
   "ui.mic.active": "🎙  MICROPHONE ACTIVE",
+  "ui.mic.absent": "⊘  NO MICROPHONE",
   "ui.push_to_talk": "🎚  PUSH-TO-TALK: {state}",
   "ui.sleep_now": "😴  SLEEP NOW",
   "ui.wake_now": "👂  WAKE NOW",

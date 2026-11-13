@@ -31,6 +31,7 @@
   "ui.brief.off": "☀  RINGKASAN PAGI: MATI",
   "ui.mic.muted": "🔇  MIKROFON BISU",
   "ui.mic.active": "🎙  MIKROFON AKTIF",
+  "ui.mic.absent": "⊘  TANPA MIKROFON",
   "ui.push_to_talk": "🎚  TEKAN-UNTUK-BICARA: {state}",
   "ui.sleep_now": "😴  TIDUR SEKARANG",
   "ui.wake_now": "👂  BANGUN SEKARANG",

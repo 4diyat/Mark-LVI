@@ -6512,6 +6512,17 @@ class MainWindow(QMainWindow):
             self._log.append_log("SYS: Microphone active." + (f" {note}" if note else ""))
 
     def _style_mute_btn(self):
+        if getattr(self, "_deaf", False):
+            self._mute_btn.setText(_t("ui.mic.absent"))
+            self._mute_btn.setEnabled(False)
+            self._mute_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background: #0b0b12; color: {C.MUTED_C};
+                    border: 1px solid {C.BORDER}; border-radius: 3px;
+                }}
+            """)
+            return
+        self._mute_btn.setEnabled(True)
         if self._muted:
             self._mute_btn.setText(_t("ui.mic.muted"))
             self._mute_btn.setStyleSheet(f"""
@@ -6541,6 +6552,17 @@ class MainWindow(QMainWindow):
     def _apply_state(self, state: str):
         self.hud.state    = state
         self.hud.speaking = (state == "SPEAKING")
+        # The microphone button is the only control on this window that claims
+        # something about the hardware, so it has to admit when there is none.
+        # `NO MIC` comes from main.py when the stream could not be opened; the
+        # button then says so and is disabled, instead of offering to unmute a
+        # device that does not exist.
+        self._deaf = (state == "NO MIC")
+        try:
+            self._style_mute_btn()
+        except AttributeError:
+            # _apply_state runs during construction, before the button exists.
+            pass
 
     def _check_config(self) -> bool:
         if not API_FILE.exists(): return False
