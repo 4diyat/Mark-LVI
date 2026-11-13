@@ -106,13 +106,38 @@ def test_a_prayer_the_service_omits_does_not_appear_in_the_sentence(prayer):
 
 # --- the zone, which is where the hours go wrong ---------------------------
 
-def test_the_offset_comes_from_the_iana_name_not_the_first_timing(prayer):
+def test_the_offset_is_read_from_the_payload_not_the_first_timing(prayer):
     """The bug this pins: `(+07)` lives in Sunrise only, so a parser that reads
     the first timing value gets "04:22" — no offset — and prints UTC+0."""
-    timings = prayer.parse(payload(sunrise="05:34"), "Bandung", "Indonesia")
+    timings = prayer.parse(payload(sunrise="05:34 (+07)"), "Bandung", "Indonesia")
     assert timings.utc_offset == timedelta(hours=7)
     assert "UTC+7" in prayer.describe(timings)
     assert "UTC+0" not in prayer.describe(timings)
+
+
+def test_the_suffix_wins_even_when_the_zone_name_resolves(prayer, monkeypatch):
+    """Order matters, and CI is why. Python on Windows has no system tz
+    database and this project does not depend on `tzdata`, so resolving
+    `Asia/Jakarta` there returns nothing — the first version of this module did
+    that first, and both Windows runners reported Jakarta as UTC+0 while Linux
+    was green."""
+    timings = prayer.parse(payload(sunrise="05:34 (+07)"), "Bandung", "Indonesia")
+    assert timings.utc_offset == timedelta(hours=7)
+
+    def no_database(name):
+        raise RuntimeError("no tzdata on this machine")
+
+    monkeypatch.setattr(prayer, "zone_is_known", no_database)
+    timings = prayer.parse(payload(sunrise="05:34 (+07)"), "Bandung", "Indonesia")
+    assert timings.utc_offset == timedelta(hours=7), "a missing tz database changed the answer"
+
+
+def test_the_iana_name_is_the_fallback_when_no_suffix_is_present(prayer):
+    timings = prayer.parse(payload(sunrise="05:34"), "Bandung", "Indonesia")
+    if prayer.zone_is_known("Asia/Jakarta"):
+        assert timings.utc_offset == timedelta(hours=7)
+    else:
+        assert timings.offset_known is False
 
 
 def test_the_offset_falls_back_to_the_suffix_when_the_zone_is_unknown(prayer):

@@ -677,12 +677,16 @@ Empat cara jawabannya bisa salah, semuanya ditemukan saat mengerjakan:
    bertanya soal Makassar (WITA, +08) mendapat jam **kota itu** — "berikutnya"
    dihitung di jam Makassar, bukan di jam si penanya. Tanpa itu, Isha yang sudah
    lewat satu jam akan dilaporkan sebagai yang berikutnya.
-2. **Offset tidak ada di nilai pertama.** Aladhan menaruh `(+07)` di dalam
-   `Sunrise` saja; `Fajr` hanya `"04:22"`. Versi pertama modul ini membaca satu
-   nilai pertama, mendapat `None`, dan **mencetak "UTC+0" di bawah kota
-   Indonesia**. Sekarang: nama IANA lewat `zoneinfo` dulu, suffix `(+07)` sebagai
-   cadangan, dan kalau keduanya tidak ada jawabannya bilang *offset tidak bisa
-   ditentukan* — bukan menebak +0.
+2. **Offset tidak ada di nilai pertama — dan database zona tidak selalu ada.**
+   Aladhan menaruh `(+07)` di dalam `Sunrise` saja; `Fajr` hanya `"04:22"`.
+   Versi pertama modul ini membaca satu nilai lalu meresolusi nama IANA lewat
+   `zoneinfo` **lebih dulu** — dan itu hijau di Linux, **merah di kedua runner
+   Windows**, karena Python di Windows tidak punya database zona bawaan dan
+   `tzdata` bukan dependensi proyek ini. Jakarta tercetak sebagai UTC+0.
+   Sekarang urutannya: suffix `(+07)` **dari payload** dulu (tidak butuh
+   database), nama IANA sebagai cadangan, dan `None` — *"offset tidak bisa
+   ditentukan"* — kalau keduanya tidak ada. Dua test mengunci jalur itu,
+   termasuk satu yang mensimulasikan mesin tanpa tzdata.
 3. **Tanggal yang gagal dibaca tidak boleh diganti "hari ini".** *"kapan subuh
    tanggal 20"* yang jatuh ke hari ini adalah jawaban untuk pertanyaan lain yang
    tampak benar. Tanggal yang tidak terbaca = pertanyaan balik.

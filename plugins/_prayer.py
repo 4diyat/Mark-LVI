@@ -116,30 +116,24 @@ class Timings:
 
 
 def _zone_offset(zone_name: str, *values: str) -> timedelta | None:
-    """How far the city's clock is from UTC, in this order of trust:
+    """How far the city's clock is from UTC, from the payload alone.
 
-        1. `meta.timezone` — an IANA name like `Asia/Jakarta`, resolved with
-           zoneinfo. This is the real answer and it follows DST.
-        2. A `(+07)` suffix inside a timing value. Aladhan usually puts the
-           offset in `Sunrise` and NOT in the others, so reading only the first
-           timing value yields zero — which printed "UTC+0" for Jakarta the
-           first time this was run.
-        3. Nothing: UTC, and the caller says so.
+    THE ORDER HERE IS NOT THE OBVIOUS ONE, AND THE OBVIOUS ONE WAS WRONG
+        The first version resolved `meta.timezone` through `zoneinfo`, which is
+        the better answer — an hour is not a zone, because a zone follows DST
+        and an offset does not. It also made the tests pass on a Linux machine
+        and FAIL ON BOTH WINDOWS RUNNERS in CI: Python on Windows has no system
+        tz database, and `tzdata` is not a dependency of this project. Every
+        zone name resolved to nothing there, the offset fell through to the
+        `(+07)` suffix that Aladhan only puts in `Sunrise`, and Jakarta came
+        out as UTC+0.
 
-    Facts are better than offsets: an hour is not a zone, because a zone changes
-    in summer and an offset does not.
+        So: the `(+07)` suffix first, because it is IN THE REPLY and needs no
+        database; the IANA name second, for the cases where the suffix is
+        absent; and None — "cannot tell" — when neither is there. Tests pin both
+        paths, and one of them pins that a missing tz database cannot change the
+        answer.
     """
-    name = str(zone_name or "").strip()
-    if name:
-        try:
-            from zoneinfo import ZoneInfo
-            reference = datetime(2026, 1, 1, tzinfo=timezone.utc)
-            return reference.astimezone(ZoneInfo(name)).utcoffset() or timedelta(0)
-        except Exception:
-            # No tzdata on this machine, or a zone name this build does not
-            # know. Falling through to the offset in the payload is the whole
-            # point of having a second source.
-            pass
     for value in values:
         text = str(value or "")
         if "(" not in text or ")" not in text:
@@ -149,6 +143,17 @@ def _zone_offset(zone_name: str, *values: str) -> timedelta | None:
             continue     # "(WIB)" — a zone NAME, not an offset
         sign = 1 if inside[0] == "+" else -1
         return timedelta(hours=sign * int(inside[1:]))
+    name = str(zone_name or "").strip()
+    if name:
+        try:
+            from zoneinfo import ZoneInfo
+            reference = datetime(2026, 1, 1, tzinfo=timezone.utc)
+            return reference.astimezone(ZoneInfo(name)).utcoffset() or timedelta(0)
+        except Exception:
+            # No tzdata on this machine (the normal case on Windows), or a zone
+            # name this build does not know. Returning None lets the caller say
+            # it cannot tell instead of pretending UTC.
+            pass
     return None
 
 
@@ -175,8 +180,8 @@ def parse(payload: dict, city: str, country: str, school: int = 0) -> Timings:
 
     # Every timing value, because the offset is not in the one you look at
     # first: `Fajr` is "04:22" and `Sunrise` is "05:34 (+07)".
-    offset = _zone_offset(str(meta.get("timezone") or ""),
-                          *[v for v in timings.values() if isinstance(v, str)])
+    raw_values = [str(v) for v in timings.values() if isinstance(v, str)]
+    offset = _zone_offset(str(meta.get("timezone") or ""), *raw_values)
     # timezone() rejects None, and a reply with neither an IANA name nor a
     # "(+07)" suffix is a real case — a bare Windows Python with no tzdata
     # asking about a city the service only labels by name.
@@ -279,8 +284,12 @@ def fetch(city: str, country: str = "Indonesia", method: int = DEFAULT_METHOD,
 
 def zone_is_known(name: str) -> bool:
     """Can this machine resolve the zone name? False on a bare Windows Python
-    with no `tzdata` installed — the one case where the offset is unavailable
-    and the answer must say so instead of saying UTC."""
+    with no `tzdata` installed.
+
+    Not used to decide the offset — the payload's own `(+07)` wins, because it
+    does not need a database that Windows may not have. This exists so a caller
+    (and a test) can ask the question directly, and so the reason the fallback
+    order is what it is stays visible in the code."""
     try:
         from zoneinfo import ZoneInfo
         ZoneInfo(name)
