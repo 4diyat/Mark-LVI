@@ -535,6 +535,7 @@ memastikan ketiga kelas itu tidak "kembali" ke file lama.
 | Chart MetaTrader 5 | tidak ada | `plugins/mt5_orb.py` (+ `_mt5.py`, `_orb.py`): gambar PNG chart dan baca ORB sesi pasar di M30, dari bar yang **sudah tutup**; 42 test tanpa menyentuh terminal |
 | Catatan & tugas | tidak ada (hanya `memory/long_term.json` milik asisten) | `plugins/quick_notes.py` (+ `_notes.py`): `config/notes/{inbox,todo,archive}.md` teks polos; 22 test di folder config sementara |
 | Harga pasar | tidak ada | `plugins/market_price.py` (+ `_market.py`): saham `.JK`/US, kripto, forex, indeks, komoditas dari endpoint chart Yahoo tanpa kunci; 49 test tanpa jaringan |
+| Jadwal sholat | tidak ada | `plugins/prayer_times.py` (+ `_prayer.py`): Aladhan, metode default Kemenag (20), zona kota dari nama IANA; 33 test tanpa jaringan |
 | Marketplace plugin | "aman" hanya di judul | `core/plugin_manifest.py` (95 %): manifest + sha256 + izin deklaratif yang **diperiksa terhadap sumbernya**, dan dialog persetujuan sebelum toggle |
 | Kunci di keychain | tidak ada test | `core/keychain.py` **92 %**: tanpa paket, backend yang melempar saat read/write, keychain dan file yang berbeda isi |
 
@@ -659,6 +660,46 @@ memeriksa keduanya sekaligus (manifest tetap sah, dan warning-nya memang muncul)
 
 Tidak ada prediksi, tidak ada target harga, dan tidak ada pengganti "harga dari
 ingatan" ketika jaringan gagal — kalimatnya bilang gagal dan berhenti di situ.
+
+**Jadwal sholat: satu jam salah, dan terlihat benar.** `plugins/prayer_times.py`
+menjawab *"jam berapa maghrib di Bandung"* dari Aladhan (tanpa kunci), dengan
+metode default **20 = Kemenag** — metode resmi Indonesia. Pilihannya bukan
+kosmetik: Fajr dan Isha ditentukan sudut matahari di bawah horizon, dan otoritas
+berbeda memakai sudut berbeda, sehingga satu kota di satu hari bisa berbeda
+sampai dua puluh menit tergantung siapa yang menghitung. Karena itu nama metode
+selalu ikut disebut, begitu juga aturan Asr (Shafi vs Hanafi — beda sampai satu
+jam).
+
+Empat cara jawabannya bisa salah, semuanya ditemukan saat mengerjakan:
+
+1. **Zona kota, bukan zona pengguna.** Balasan membawa `meta.timezone`
+   (`Asia/Jakarta`, `Asia/Makassar`). Pengguna di Bandung (WIB, +07) yang
+   bertanya soal Makassar (WITA, +08) mendapat jam **kota itu** — "berikutnya"
+   dihitung di jam Makassar, bukan di jam si penanya. Tanpa itu, Isha yang sudah
+   lewat satu jam akan dilaporkan sebagai yang berikutnya.
+2. **Offset tidak ada di nilai pertama.** Aladhan menaruh `(+07)` di dalam
+   `Sunrise` saja; `Fajr` hanya `"04:22"`. Versi pertama modul ini membaca satu
+   nilai pertama, mendapat `None`, dan **mencetak "UTC+0" di bawah kota
+   Indonesia**. Sekarang: nama IANA lewat `zoneinfo` dulu, suffix `(+07)` sebagai
+   cadangan, dan kalau keduanya tidak ada jawabannya bilang *offset tidak bisa
+   ditentukan* — bukan menebak +0.
+3. **Tanggal yang gagal dibaca tidak boleh diganti "hari ini".** *"kapan subuh
+   tanggal 20"* yang jatuh ke hari ini adalah jawaban untuk pertanyaan lain yang
+   tampak benar. Tanggal yang tidak terbaca = pertanyaan balik.
+4. **Tanggal Hijriah bukan keputusan pemerintah.** Aladhan memberi tanggalnya
+   sendiri; kalimatnya menyebut itu bisa berbeda sehari dari ketetapan resmi.
+
+Dua konvensi yang sengaja **tidak** diterapkan: ihtiyati (margin aman 2 menit
+versi masjid setempat) dan pemilihan metode selain Kemenag — keduanya parameter
+dan tersimpan di pengaturan plugin (`PLUGIN_SETTINGS`: kota, negara, metode,
+madzhab), karena "kota saya Bandung" adalah fakta tentang pengguna, bukan
+tentang pertanyaan hari ini.
+
+**Temuan CI:** `settings_schemas()` sengaja mengembalikan **kosong** untuk plugin
+yang belum diaktifkan. Jadi step CI yang memeriksa formulir pengaturan sebelum
+persetujuan terlihat persis seperti skema yang rusak — dan itulah kegagalan
+pertama step ini. Sekarang step tersebut mengaktifkan plugin seperti dialog
+persetujuan, lalu memeriksa empat field-nya.
 
 **Kenapa keychain tetap punya fallback file.** `keyring` butuh desktop session;
 container, WSL, server headless, dan desktop Linux yang keyring-nya belum

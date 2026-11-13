@@ -1,0 +1,12 @@
+{
+  "_comment": "Jadwal sholat dari Aladhan (tanpa kunci API), metode default Kemenag (20). Izin network karena plugin ini membuat permintaan keluar. sha256 di bawah adalah dari berkas .py ini; kalau berkasnya berubah, loader menolaknya.",
+  "name": "prayer_times",
+  "version": "1.0.0",
+  "author": "MARK-LVI",
+  "description": "Jadwal sholat lima waktu untuk sebuah kota, lengkap dengan waktu berikutnya dan metode perhitungan yang dipakai.",
+  "permissions": [
+    "network"
+  ],
+  "sha256": "340f5920b81a4fc563e6aa745ddc35159b373ffd8d56629a050f22e37aedf4f3",
+  "homepage": "https://aladhan.com"
+}

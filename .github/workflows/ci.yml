@@ -299,6 +299,40 @@ jobs:
                   "the scan did not flag the network access hidden in the helper "
                   f"module; note was {market['manifest_note']!r}")
           print("market_price: network declared from the helper, warned not refused")
+
+          # The fifth is prayer_times, and it carries the other thing worth
+          # pinning about a plugin that has DEFAULTS: a PLUGIN_SETTINGS schema
+          # is silently ignored by the loader when it is malformed, so a plugin
+          # can ship a settings form that never appears. This checks the schema
+          # reaches the registry, and that the plugin still starts off.
+          prayer = rows.get("prayer_times")
+          if prayer is None:
+              raise SystemExit("prayer_times did not load")
+          if not prayer["valid"]:
+              raise SystemExit(f"prayer_times was rejected: {prayer['error']}")
+          if prayer["permissions"] != ["network"]:
+              raise SystemExit(
+                  f"prayer_times permissions came through as {prayer['permissions']!r}")
+          if prayer["enabled"]:
+              raise SystemExit("prayer_times declared network but started ENABLED")
+          # NOTE the order: a plugin that declared a permission starts OFF, and
+          # settings_schemas() deliberately returns nothing for a plugin that is
+          # not enabled — so asking about the form BEFORE consent looks exactly
+          # like a malformed schema. Switch it on the way the dialog would, then
+          # ask. (This is the bug the first draft of this step had.)
+          from memory.config_manager import save_plugin_enabled
+          save_plugin_enabled("prayer_times", True)
+          registry = discover_plugins(Path("plugins"), set(), lambda _m: None, lambda _m: None)
+          settings = [sec for sec in registry.settings_schemas()
+                      if sec["namespace"] == "prayer_times"]
+          if len(settings) != 1:
+              raise SystemExit(
+                  "prayer_times declares PLUGIN_SETTINGS but no settings section "
+                  "reached the panel; a malformed schema is dropped silently")
+          fields = {f["key"] for f in settings[0]["fields"]}
+          if fields != {"city", "country", "method", "school"}:
+              raise SystemExit(f"prayer_times settings fields are {sorted(fields)}")
+          print("prayer_times: manifest + settings schema reach the panel, starts off")
           # The summary line itself says "0 active, 0 rejected, 0 total" — so a
           # naive substring match flags a clean run. Only real rejections start
           # a line about a file.
