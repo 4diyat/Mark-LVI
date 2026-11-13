@@ -43,8 +43,13 @@ WHY THE FIRST PARAMETERS ARE POSITIONAL-ONLY (the `/` in every signature)
     traceback about the message.
 
     Found exactly that way. The `/` makes these three positional-only, so the
-    same call now puts `action="wallpaper"` in the facts where it was meant to
-    go, and no fact key can ever collide with a parameter name again.
+    same call now lands in the facts where it was meant to go, and no fact key
+    can ever collide with a parameter name again.
+
+    A fact whose name collides with a key the line ALREADY uses is prefixed
+    instead (`fact_action=...`) — see `_RESERVED`. Writing it twice for one key
+    is ambiguous to read and, before that, the reason/question fact was simply
+    overwritten: the tool reported a detail and the detail was not there.
 
 WHY FACTS AND NOT SENTENCES
     The return value is read by a model that must then speak to a person in
@@ -88,9 +93,36 @@ def _render(value: Any) -> str:
     return f'"{text}"' if (" " in text or not text) else text
 
 
-def _line(status: str, action: str, facts: dict[str, Any]) -> str:
+# The keys the line already uses for itself. A FACT with one of these names
+# cannot be written beside them under the same name: `action=desktop_control
+# action=wallpaper` has two values for one key and the model has no way to tell
+# which is which, and `{**facts, "reason": reason}` made the fact disappear
+# entirely — the detail the tool was trying to report, gone, with the line still
+# looking complete.
+#
+# So a colliding fact is prefixed instead. `fact_action="wallpaper"` says what
+# it is: the tool was asked for an action called wallpaper, and the tool that
+# was asked is `desktop_control`.
+_RESERVED = ("status", "action", "reason", "question")
+
+
+def _line(status: str, action: str, facts: dict[str, Any],
+          own: dict[str, Any] | None = None) -> str:
+    """One line: the status, the action, this function's own keys, then facts.
+
+    `own` is for `reason` / `question`, which the caller cannot override and
+    which must keep their plain names — the trailing instruction refers to them
+    by name, so a prefixed one would be a key nothing reads.
+    """
     parts = [f"status={status}", f"action={action}"]
-    parts += [f"{k}={_render(v)}" for k, v in facts.items() if v is not None]
+    for key, value in (own or {}).items():
+        if value is not None:
+            parts.append(f"{key}={_render(value)}")
+    for key, value in facts.items():
+        if value is None:
+            continue
+        name = f"fact_{key}" if key in _RESERVED else key
+        parts.append(f"{name}={_render(value)}")
     return " ".join(parts)
 
 
@@ -113,7 +145,7 @@ def unverified(action: str, reason: str, /, **facts: Any) -> str:
     "status=unverified" reliably rounds it off to "Done!" — this was watched
     happening, which is why the sentence spells out what may not be said.
     """
-    return _line(UNVERIFIED, action, {**facts, "reason": reason}) + (
+    return _line(UNVERIFIED, action, facts, {"reason": reason}) + (
         " -- NOT confirmed. Tell the user plainly that you asked and cannot "
         "confirm it worked, and say what they can check. Do NOT say it is done."
     )
@@ -126,7 +158,7 @@ def failed(action: str, reason: str, /, **facts: Any) -> str:
     person can act on — "no running application matches that name" rather than
     "returncode 1".
     """
-    return _line(FAILED, action, {**facts, "reason": reason}) + (
+    return _line(FAILED, action, facts, {"reason": reason}) + (
         " -- This did NOT happen. Tell the user so in their own language, with "
         "the reason. Do not claim any part of it succeeded."
     )
@@ -172,7 +204,7 @@ def ask(action: str, question: str, /, **facts: Any) -> str:
     and calls that refusal the whole point — a wrong tap rings a real person.
     Closing the wrong window loses somebody's unsaved work in the same way.
     """
-    return _line(ASK, action, {**facts, "question": question}) + (
+    return _line(ASK, action, facts, {"question": question}) + (
         " -- NOTHING was done yet. Put this question to the user in their own "
         "language and wait for their answer before calling again."
     )

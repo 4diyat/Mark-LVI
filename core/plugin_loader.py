@@ -58,6 +58,9 @@ class PluginRecord:
     valid: bool = False
     error: str = ""
     settings: Optional[dict] = None   # optional PLUGIN_SETTINGS schema (config fields)
+    # What a third-party plugin declared (core/plugin_manifest.py), or None for
+    # a plugin from this repository that never had to declare anything.
+    manifest: object = None
     behavior: Optional[str] = None    # None = the API's default (blocking)
     scheduling: Optional[str] = None  # None = the API's default (WHEN_IDLE)
     # Read by providers/schema.py when a small model gets a tool budget; never
@@ -87,7 +90,7 @@ class PluginRegistry:
     def get_tool_declarations(self) -> list[dict]:
         decls = []
         for name, rec in self._plugins.items():
-            if get_plugin_enabled(name):
+            if _enabled(rec):
                 decl = {
                     "name": rec.name,
                     "description": rec.description,
@@ -118,7 +121,7 @@ class PluginRegistry:
         rec = self._plugins.get(name)
         if rec is None or not rec.valid:
             return f"Plugin '{name}' is not available."
-        if not get_plugin_enabled(name):
+        if not _enabled(rec):
             return f"The '{name}' plugin is currently disabled."
         try:
             return _call_run(rec.run, parameters, player, session_memory) or "Done."
@@ -138,7 +141,7 @@ class PluginRegistry:
         seen: set[str] = set()
         out: list[dict] = []
         for name, rec in self._plugins.items():
-            if not rec.settings or not get_plugin_enabled(name):
+            if not rec.settings or not _enabled(rec):
                 continue
             ns = rec.settings.get("namespace") or rec.name
             if ns in seen:
@@ -156,17 +159,41 @@ class PluginRegistry:
 
     # -- called by ui.py's Plugin Manager overlay --
     def list_for_ui(self) -> list[dict]:
+        """Everything the plugin manager shows, including what was refused.
+
+        `permissions` and `manifest_note` are here so the panel can show what a
+        third-party plugin asked for BEFORE it is switched on — the manifest is
+        only consent if the person clicking the toggle can see it. Both are
+        empty strings for this repository's own plugins, which never declared
+        anything, so the existing rows are unchanged.
+        """
         out = []
         for rec in self._all_records:
+            manifest = rec.manifest
             out.append({
                 "name": rec.name,
                 "description": rec.description,
                 "file": rec.file,
                 "valid": rec.valid,
                 "error": rec.error,
-                "enabled": get_plugin_enabled(rec.name) if rec.valid else False,
+                "enabled": _enabled(rec) if rec.valid else False,
+                "permissions": list(getattr(manifest, "permissions", ()) or ()),
+                "manifest_note": " · ".join(getattr(manifest, "warnings", None) or []),
             })
         return out
+
+
+def _enabled(rec: PluginRecord) -> bool:
+    """Is this plugin allowed to run, now?
+
+    One function, because the rule has three callers (the tool declarations, the
+    dispatch, the settings schemas) and a plugin that is offered to the model
+    while being refused at dispatch is the worst of both. A plugin that declared
+    permissions starts OFF until the consent question is answered; every other
+    plugin keeps the opt-out default it has always had.
+    """
+    declared = bool(getattr(rec.manifest, "permissions", ()) or ())
+    return get_plugin_enabled(rec.name, default=not declared)
 
 
 def _call_run(run_fn, parameters, player, session_memory):
@@ -317,6 +344,36 @@ def discover_plugins(plugins_dir: Path, core_tool_names: set[str],
                 raise
 
             rec = _validate(module, path.name)
+
+            # ── A manifest, when there is one, is a gate ────────────────────
+            # Checked AFTER the module is imported, because PLUGIN["name"] is
+            # inside it and the manifest has to agree with that name. That
+            # ordering is a compromise and worth naming: a plugin with a bad
+            # manifest has already run its module-level code by the time it is
+            # refused. Module-level code is not where a tool lives (run() is),
+            # and checking before import would mean parsing the file twice for
+            # a name that is only a dict key — but it means a manifest is a
+            # gate against RUNNING the plugin, not against IMPORTING it.
+            #
+            # No manifest is fine and stays fine: every plugin in this folder
+            # predates the idea. A manifest that exists and does not verify is
+            # refused loudly, with the reason, because silence is what makes a
+            # "checked" plugin indistinguishable from an unchecked one.
+            if rec.valid:
+                try:
+                    from core.plugin_manifest import verify as _verify_manifest
+                    manifest = _verify_manifest(path, rec.name)
+                except Exception as e:      # noqa: BLE001 — explained below
+                    manifest = None
+                    logger(f"⚠ {path.name}: manifest could not be checked ({e})")
+                if manifest is not None:
+                    rec.manifest = manifest
+                    if not manifest.ok:
+                        rec = PluginRecord(
+                            name=rec.name, file=path.name, manifest=manifest,
+                            error="Manifest check failed — " + "; ".join(manifest.problems))
+                    for warning in manifest.warnings:
+                        logger(f"⚠ {path.name}: {warning}")
 
             if rec.valid and rec.name in core_tool_names:
                 rec = PluginRecord(name=rec.name, file=path.name,

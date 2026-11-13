@@ -1,6 +1,54 @@
+"""memory/config_manager.py — the ONE module that reads and writes api_keys.json.
+
+WHY THE READ-MODIFY-WRITE HERE IS NOW A LOCKED PRIMITIVE
+    Every setter in this file used to open-code the same four steps:
+
+        data = read the whole file
+        data[some_key] = value
+        write the whole file back
+
+    That is correct when one thread does it. This app writes api_keys.json from
+    at least four places at once — the Qt thread (the settings overlays), the
+    session thread (a reconnect saving a voice), tool worker threads
+    (screen_processor saving the camera index) and the dashboard (a phone
+    changing a setting). Two of those interleaving lose whichever value was
+    written first; that is exactly how "set MY OWN SETUP, save, reopen, and it
+    says Gemini again" happened, and the old save_providers() docstring
+    describes the same race from a different angle.
+
+    So the four steps live in `update_config()` and nowhere else. It holds a
+    lock across the whole cycle, writes to a temp file in the same directory and
+    swaps it in with os.replace(), and only falls back to the old behaviour if
+    the directory refuses the rename. A process killed mid-write now leaves the
+    previous file intact instead of a half-written one that reads as {} — which
+    is the state that made is_configured() False and asked the user for their
+    API key again.
+
+THE RULE THIS FILE EXISTS TO ENFORCE
+    AGENTS.md says settings and keys live here and must never be written
+    directly. This module was one of nine writers, which made the rule untrue
+    rather than merely unenforced. `save_setup()` is the door the setup screen
+    now uses: it MERGES the API key and the OS into the file instead of
+    replacing it, because the old code wrote {"gemini_api_key", "os_system"}
+    over everything and took the assistant's name, its voice, the audio device
+    choices and every plugin credential with it.
+"""
 import json
+import os
 import sys
+import tempfile
+import threading
 from pathlib import Path
+
+# Re-entrant because update_config() may be called from a helper that already
+# holds it (save_plugin_config → update_config, and future nesting like it).
+_WRITE_LOCK = threading.RLock()
+
+# Last known good contents. When a read fails — a truncated file, a half-written
+# one, a JSON syntax error from an editor — returning this beats returning {}
+# and making the caller think nothing was ever configured.
+_LAST_GOOD: dict = {}
+
 
 def get_base_dir() -> Path:
     if getattr(sys, "frozen", False):
@@ -14,36 +62,184 @@ CONFIG_FILE = CONFIG_DIR / "api_keys.json"
 def ensure_config_dir() -> None:
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
-def config_exists() -> bool:
-    return CONFIG_FILE.exists()
 
-def save_api_keys(gemini_api_key: str) -> None:
+# ── The primitive every writer below goes through ────────────────────────────
+
+def _read_unlocked() -> dict:
+    """The file as a dict. Never raises; never returns None."""
+    global _LAST_GOOD
+    if not CONFIG_FILE.exists():
+        return dict(_LAST_GOOD) if _LAST_GOOD else {}
+    try:
+        data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+    except Exception as e:
+        # One line, not a traceback: a corrupt config is a thing the user can
+        # fix by deleting the file, and the app keeps running on the last copy.
+        print(f"❌ Failed to load api_keys.json ({e}) — using the last good copy")
+        return dict(_LAST_GOOD) if _LAST_GOOD else {}
+    if not isinstance(data, dict):
+        print("❌ api_keys.json is not a JSON object — using the last good copy")
+        return dict(_LAST_GOOD) if _LAST_GOOD else {}
+    _LAST_GOOD = dict(data)
+    return data
+
+
+def _atomic_write_unlocked(data: dict) -> bool:
+    """Write `data` to the config file so a crash cannot truncate it.
+
+    WHY A TEMP FILE IN THE SAME DIRECTORY
+        os.replace() is atomic only within one filesystem, and %TEMP% on Windows
+        is frequently a different drive from the project folder. Writing beside
+        the target keeps the swap atomic and keeps the file's permission bits
+        (a temp file in /tmp would arrive with 0600 and break a shared install).
+
+    WHY THE FALLBACK STILL EXISTS
+        A read-only folder, a network share that refuses renames, a filesystem
+        without atomic replace: all of them would otherwise lose the setting
+        the user just changed. The plain write is what the app did before this
+        function existed, so it is a return to the old behaviour, not a new way
+        to fail.
+    """
     ensure_config_dir()
-
-    data: dict = {}
-    if CONFIG_FILE.exists():
+    text = json.dumps(data, indent=4, ensure_ascii=False)
+    tmp_name = None
+    try:
+        fd, tmp_name = tempfile.mkstemp(
+            prefix=".api_keys.", suffix=".tmp", dir=str(CONFIG_DIR))
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(text)
+            fh.flush()
+            os.fsync(fh.fileno())      # the bytes are on disk before the swap
         try:
-            data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+            os.chmod(tmp_name, 0o600)  # the file holds API keys and OAuth tokens
         except Exception:
-            data = {}
+            pass                       # Windows: chmod is mostly a no-op
+        os.replace(tmp_name, CONFIG_FILE)
+        tmp_name = None
+        return True
+    except Exception as e:
+        print(f"⚠️  Atomic config write failed ({e}) — writing directly")
+        try:
+            CONFIG_FILE.write_text(text, encoding="utf-8")
+            return True
+        except Exception as e2:
+            print(f"❌ Could not save api_keys.json: {e2}")
+            return False
+    finally:
+        if tmp_name:
+            try:
+                os.unlink(tmp_name)
+            except Exception:
+                pass
 
-    data["gemini_api_key"] = gemini_api_key.strip()
 
-    CONFIG_FILE.write_text(
-        json.dumps(data, indent=2),
-        encoding="utf-8"
-    )
+def update_config(mutate) -> bool:
+    """Read → let `mutate(data)` change it → write, under one lock.
+
+    `mutate` may edit the dict in place or return a replacement; returning None
+    means "I edited it in place". Returns True when the file was written.
+
+    This is the only function in the codebase that should write api_keys.json.
+    """
+    with _WRITE_LOCK:
+        data = _read_unlocked()
+        try:
+            out = mutate(data)
+        except Exception as e:
+            print(f"❌ Config update aborted: {e}")
+            return False
+        if isinstance(out, dict):
+            data = out
+        ok = _atomic_write_unlocked(data)
+        if ok:
+            global _LAST_GOOD
+            _LAST_GOOD = dict(data)
+        return ok
+
+
+def set_config_values(**fields) -> bool:
+    """Set one or more top-level keys, leaving everything else alone.
+
+    The drop-in replacement for the dozen `data[x] = y; write(data)` blocks this
+    file used to contain.
+    """
+    def _apply(data: dict) -> None:
+        data.update(fields)
+    return update_config(_apply)
+
 
 def load_api_keys() -> dict:
-    if not CONFIG_FILE.exists():
-        return {}
+    """The whole config. Never raises; returns {} only when nothing is stored."""
+    with _WRITE_LOCK:
+        return _read_unlocked()
+
+
+# ── Setup screen ─────────────────────────────────────────────────────────────
+
+def save_api_keys(gemini_api_key: str) -> None:
+    """Store the API key, keeping every other setting that is already there.
+
+    THE KEY GOES TO THE KEYCHAIN FIRST, AND THE FILE KEEPS A COPY.
+        `core/keychain.py` explains the argument in full. The short version: this
+        is the one secret in the file that is actually a key, every desktop OS
+        has held one for a decade, and `keyring` is optional — so the keychain
+        is tried and the file copy is written either way. That ordering is what
+        makes the feature safe to add to an app that must also run headless: a
+        machine without a keyring behaves exactly as it did before.
+
+        When the keychain accepts it, the file copy is written with a marker key
+        (`gemini_api_key_source`) purely so the settings panel can say where the
+        authoritative copy is instead of guessing.
+    """
+    key = (gemini_api_key or "").strip()
+    stored = False
     try:
-        return json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-    except Exception as e:
-        print(f"❌ Failed to load api_keys.json: {e}")
-        return {}
+        from core import keychain
+        stored = keychain.set_secret(key) if key else False
+    except Exception as e:      # noqa: BLE001 — the file copy is the fallback
+        # Reported rather than swallowed: a keyring that fails on every save is
+        # a fact the user should be able to see, and this is the only place that
+        # knows it happened.
+        print(f"⚠ Keychain unavailable, keeping the key in the config file: {e}")
+    fields = {"gemini_api_key": key}
+    if stored:
+        fields["gemini_api_key_source"] = "keychain"
+    set_config_values(**fields)
+
+
+def save_setup(gemini_api_key: str, os_name: str = "") -> bool:
+    """What the setup / re-configure screen writes. MERGES — never replaces.
+
+    WHY THIS EXISTS SEPARATELY FROM save_api_keys()
+        The screen used to write the JSON itself:
+            API_FILE.write_text({"gemini_api_key": key, "os_system": os_name})
+        which is correct exactly once, on a machine that has no config yet. The
+        same overlay is what appears when an API key is rejected, so the second
+        time it ran it deleted the assistant's name, the chosen voice, the
+        microphone and speaker choices, the wake-word setting and every plugin
+        credential — including OAuth tokens, which then had to be re-authorised.
+    """
+    return set_config_values(
+        gemini_api_key=(gemini_api_key or "").strip(),
+        os_system=(os_name or "").strip(),
+    )
+
 
 def get_gemini_key() -> str | None:
+    """The Gemini key: the keychain if it has one, else the file.
+
+    Keychain FIRST and not "whichever is non-empty": a key that was rotated in
+    the panel is written to both, but a key the user pasted into the file by
+    hand and then saved once has a keychain copy that is now the newer of the
+    two. Reading the file first would silently keep using the old one.
+    """
+    try:
+        from core import keychain
+        key = keychain.get_secret()
+        if key:
+            return key
+    except Exception as e:      # noqa: BLE001 — fall through to the file
+        print(f"⚠ Keychain read failed, using the config file: {e}")
     return load_api_keys().get("gemini_api_key")
 
 def is_configured() -> bool:
@@ -63,16 +259,10 @@ def get_user_name() -> str:
 
 def save_assistant_config(assistant_name: str, user_name: str) -> None:
     """Persist assistant name and user name to config."""
-    ensure_config_dir()
-    data: dict = {}
-    if CONFIG_FILE.exists():
-        try:
-            data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            data = {}
-    data["assistant_name"] = assistant_name.strip() or "JARVIS"
-    data["user_name"] = user_name.strip()
-    CONFIG_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
+    set_config_values(
+        assistant_name=(assistant_name or "").strip() or "JARVIS",
+        user_name=(user_name or "").strip(),
+    )
 
 
 # ── Assistant voice ──────────────────────────────────────────────────────────
@@ -92,16 +282,8 @@ def get_voice() -> str:
 def save_voice(voice_name: str) -> None:
     """Persist the chosen Live voice. Unknown names collapse to the default so a
     bad value can never reach the API and break the session."""
-    ensure_config_dir()
-    data: dict = {}
-    if CONFIG_FILE.exists():
-        try:
-            data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            data = {}
     v = (voice_name or "").strip()
-    data["voice_name"] = v if v in AVAILABLE_VOICES else DEFAULT_VOICE
-    CONFIG_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
+    set_config_values(voice_name=v if v in AVAILABLE_VOICES else DEFAULT_VOICE)
 
 
 def get_wake_word_enabled() -> bool:
@@ -110,15 +292,7 @@ def get_wake_word_enabled() -> bool:
 
 
 def save_wake_word_enabled(enabled: bool) -> None:
-    ensure_config_dir()
-    data: dict = {}
-    if CONFIG_FILE.exists():
-        try:
-            data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            data = {}
-    data["wake_word_enabled"] = bool(enabled)
-    CONFIG_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
+    set_config_values(wake_word_enabled=bool(enabled))
 
 
 def get_push_to_talk_enabled() -> bool:
@@ -128,7 +302,6 @@ def get_push_to_talk_enabled() -> bool:
 
 def save_push_to_talk_enabled(enabled: bool) -> None:
     _save_flag("push_to_talk_enabled", enabled)
-
 
 HUD_STYLES = ("face", "core")
 
@@ -170,14 +343,13 @@ def save_ui_scale(scale: float) -> None:
 # ── Live-session tuning ──────────────────────────────────────────────────────
 # Everything here is optional and has a working default, so an untouched
 # config behaves exactly like a configured one. Each value is also a way out:
-# if a future model dislikes one of these, set it back and nothing else changes.
+# the setting exists because a real microphone, network or quota needed it.
 
 def get_thinking_enabled() -> bool:
-    """Whether the Live model may spend tokens thinking before it answers.
+    """Whether background requests may use a thinking model.
 
-    Off by default. A voice assistant is judged on how fast it starts talking,
-    and the reasoning that actually needs deliberation in this app is delegated
-    to the planning tools, which run on a separate non-Live model.
+    Off by default: it is slower and costs more tokens, and the workloads that
+    benefit are the planning tools, which run on a separate non-Live model.
     """
     return bool(load_api_keys().get("thinking_enabled", False))
 
@@ -221,18 +393,12 @@ def get_turn_tuning() -> dict:
 
 
 def save_turn_tuning(values: dict) -> None:
-    ensure_config_dir()
-    data: dict = {}
-    if CONFIG_FILE.exists():
-        try:
-            data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            data = {}
-    cur = data.get("turn_tuning")
-    cur = dict(cur) if isinstance(cur, dict) else {}
-    cur.update(values or {})
-    data["turn_tuning"] = cur
-    CONFIG_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
+    def _apply(data: dict) -> None:
+        cur = data.get("turn_tuning")
+        cur = dict(cur) if isinstance(cur, dict) else {}
+        cur.update(values or {})
+        data["turn_tuning"] = cur
+    update_config(_apply)
 
 
 def get_proactive_audio_enabled() -> bool:
@@ -258,8 +424,7 @@ MEDIA_RESOLUTIONS = ("default", "low", "medium", "high")
 def get_media_resolution() -> str:
     """How finely the model tokenises the screenshots and camera frames it is
     sent. 'medium' keeps on-screen text readable at a fraction of the tokens a
-    full-resolution frame costs; 'low' is cheaper still but starts losing small
-    text, which is most of what screen captures are for."""
+    full-resolution image costs."""
     v = str(load_api_keys().get("media_resolution", "medium")).strip().lower()
     return v if v in MEDIA_RESOLUTIONS else "medium"
 
@@ -271,15 +436,7 @@ def save_media_resolution(value: str) -> None:
 
 def _save_flag(key: str, value) -> None:
     """Read-modify-write one key without disturbing the rest of the config."""
-    ensure_config_dir()
-    data: dict = {}
-    if CONFIG_FILE.exists():
-        try:
-            data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            data = {}
-    data[key] = bool(value) if isinstance(value, bool) else value
-    CONFIG_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
+    set_config_values(**{key: value})
 
 
 def get_brief_enabled() -> bool:
@@ -287,15 +444,7 @@ def get_brief_enabled() -> bool:
 
 
 def save_brief_enabled(enabled: bool) -> None:
-    ensure_config_dir()
-    data: dict = {}
-    if CONFIG_FILE.exists():
-        try:
-            data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            data = {}
-    data["morning_brief_enabled"] = enabled
-    CONFIG_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
+    set_config_values(morning_brief_enabled=bool(enabled))
 
 
 # ── Audio devices ────────────────────────────────────────────────────────────
@@ -306,20 +455,13 @@ def save_brief_enabled(enabled: bool) -> None:
 # so unplugging a headset degrades to the built-in speakers instead of crashing.
 
 def _patch_config(**fields) -> None:
-    """Read-modify-write one or more keys in api_keys.json.
+    """Set one or more keys in one locked write.
 
     Every setter in this file open-coded this. Collapsing it here means a new
-    setting is one line, and there is one place where a corrupt config file is
-    handled instead of nine."""
-    ensure_config_dir()
-    data: dict = {}
-    if CONFIG_FILE.exists():
-        try:
-            data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            data = {}
-    data.update(fields)
-    CONFIG_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
+    setting is one line, and there is one place where a concurrent write is
+    handled instead of nine. Kept as a name because other modules call it.
+    """
+    set_config_values(**fields)
 
 
 def get_input_device() -> str:
@@ -340,9 +482,24 @@ def save_output_device(name: str) -> None:
     _patch_config(output_device=(name or "").strip())
 
 
-def get_plugin_enabled(plugin_name: str) -> bool:
-    """Plugins are enabled by default the moment they're discovered (opt-out model)."""
-    return load_api_keys().get("plugins_enabled", {}).get(plugin_name, True)
+def get_plugin_enabled(plugin_name: str, default: bool = True) -> bool:
+    """Whether a plugin may run. `default` is the answer when nobody has said.
+
+    THE DEFAULT IS NOT ALWAYS "ON" ANY MORE
+        The opt-out model — a plugin works the moment its file exists — is right
+        for a plugin the user put in plugins/ themselves. It is wrong for one
+        that arrived with a manifest and a list of permissions it needs: those
+        are the plugins whose author nobody has met, and the consent question is
+        only consent if the answer is "no" until it is asked.
+
+        So the loader passes `default=False` for a plugin that declared
+        permissions, and everything else keeps the old behaviour exactly. A
+        stored `plugins_enabled[name]` always wins, in both directions.
+    """
+    stored = load_api_keys().get("plugins_enabled", {})
+    if isinstance(stored, dict) and plugin_name in stored:
+        return bool(stored[plugin_name])
+    return bool(default)
 
 
 # ── Per-plugin settings ("tokens" / connection details) ───────────────────────
@@ -366,39 +523,27 @@ def get_plugin_setting(namespace: str, key: str, default=None):
 def save_plugin_config(namespace: str, values: dict) -> None:
     """Merge `values` into a namespace's stored config (read-modify-write, like
     every other helper here). Only the provided keys are touched."""
-    ensure_config_dir()
-    data: dict = {}
-    if CONFIG_FILE.exists():
-        try:
-            data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            data = {}
-    pc = data.get("plugin_config")
-    if not isinstance(pc, dict):
-        pc = {}
-    cur = pc.get(namespace)
-    if not isinstance(cur, dict):
-        cur = {}
-    cur.update(values)
-    pc[namespace] = cur
-    data["plugin_config"] = pc
-    CONFIG_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
+    def _apply(data: dict) -> None:
+        pc = data.get("plugin_config")
+        if not isinstance(pc, dict):
+            pc = {}
+        cur = pc.get(namespace)
+        if not isinstance(cur, dict):
+            cur = {}
+        cur.update(values)
+        pc[namespace] = cur
+        data["plugin_config"] = pc
+    update_config(_apply)
 
 
 def save_plugin_enabled(plugin_name: str, enabled: bool) -> None:
-    ensure_config_dir()
-    data: dict = {}
-    if CONFIG_FILE.exists():
-        try:
-            data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            data = {}
-    plugins_cfg = data.get("plugins_enabled")
-    if not isinstance(plugins_cfg, dict):
-        plugins_cfg = {}
-    plugins_cfg[plugin_name] = enabled
-    data["plugins_enabled"] = plugins_cfg
-    CONFIG_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
+    def _apply(data: dict) -> None:
+        cfg = data.get("plugins_enabled")
+        if not isinstance(cfg, dict):
+            cfg = {}
+        cfg[plugin_name] = bool(enabled)
+        data["plugins_enabled"] = cfg
+    update_config(_apply)
 
 # ── Providers: local STT/LLM/TTS and non-Gemini APIs ─────────────────────────
 # Stored here rather than in a file of their own, for the same reason plugin
@@ -499,9 +644,12 @@ def get_sidecar_provider() -> str:
 
 
 def _patch_providers(**fields) -> None:
-    p = get_providers()
-    p.update(fields)
-    _patch_config(providers=p)
+    def _apply(data: dict) -> None:
+        p = data.get("providers")
+        p = _upgrade_ids(dict(p)) if isinstance(p, dict) else {}
+        p.update(fields)
+        data["providers"] = p
+    update_config(_apply)
 
 
 def save_provider_mode(mode: str) -> None:
@@ -514,28 +662,34 @@ def save_provider_mode(mode: str) -> None:
 def save_provider_config(provider_id: str, values: dict) -> None:
     """Merge settings for one provider. Only the given keys are touched, so the
     panel can save one field without reading and rewriting the rest."""
-    p = get_providers()
-    creds = p.get("creds")
-    if not isinstance(creds, dict):
-        creds = {}
-    cur = creds.get(provider_id)
-    cur = dict(cur) if isinstance(cur, dict) else {}
-    cur.update(values or {})
-    creds[provider_id] = cur
-    p["creds"] = creds
-    _patch_config(providers=p)
+    def _apply(data: dict) -> None:
+        p = data.get("providers")
+        p = _upgrade_ids(dict(p)) if isinstance(p, dict) else {}
+        creds = p.get("creds")
+        if not isinstance(creds, dict):
+            creds = {}
+        cur = creds.get(provider_id)
+        cur = dict(cur) if isinstance(cur, dict) else {}
+        cur.update(values or {})
+        creds[provider_id] = cur
+        p["creds"] = creds
+        data["providers"] = p
+    update_config(_apply)
 
 
 def save_pipeline(stt: str = None, llm: str = None, tts: str = None) -> None:
     """Set one or more pipeline slots. `None` leaves a slot alone; '' clears it."""
-    p = get_providers()
-    pipe = p.get("pipeline")
-    pipe = dict(pipe) if isinstance(pipe, dict) else {}
-    for slot, value in (("stt", stt), ("llm", llm), ("tts", tts)):
-        if value is not None:
-            pipe[slot] = str(value).strip()
-    p["pipeline"] = pipe
-    _patch_config(providers=p)
+    def _apply(data: dict) -> None:
+        p = data.get("providers")
+        p = _upgrade_ids(dict(p)) if isinstance(p, dict) else {}
+        pipe = p.get("pipeline")
+        pipe = dict(pipe) if isinstance(pipe, dict) else {}
+        for slot, value in (("stt", stt), ("llm", llm), ("tts", tts)):
+            if value is not None:
+                pipe[slot] = str(value).strip()
+        p["pipeline"] = pipe
+        data["providers"] = p
+    update_config(_apply)
 
 
 def save_sidecar_provider(provider_id: str) -> None:
@@ -589,41 +743,63 @@ def save_providers(mode: str = None, pipeline: dict = None, creds: dict = None,
     `None` leaves a section alone; `creds` is merged per provider so a panel
     that only edited one does not have to send the others.
     """
-    ensure_config_dir()
-    data: dict = {}
-    if CONFIG_FILE.exists():
-        try:
-            data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            data = {}
+    def _apply(data: dict) -> None:
+        block = data.get("providers")
+        block = _upgrade_ids(dict(block)) if isinstance(block, dict) else {}
 
-    block = data.get("providers")
-    block = _upgrade_ids(dict(block)) if isinstance(block, dict) else {}
+        if mode is not None:
+            m = str(mode).strip().lower()
+            block["mode"] = m if m in (PROVIDER_MODE_GEMINI,
+                                       PROVIDER_MODE_PIPELINE) else PROVIDER_MODE_GEMINI
+        if pipeline is not None:
+            current = block.get("pipeline")
+            current = dict(current) if isinstance(current, dict) else {}
+            current.update({k: str(v or "").strip() for k, v in pipeline.items()})
+            block["pipeline"] = current
+        if creds is not None:
+            store = block.get("creds")
+            store = dict(store) if isinstance(store, dict) else {}
+            for pid, values in (creds or {}).items():
+                one = store.get(pid)
+                one = dict(one) if isinstance(one, dict) else {}
+                one.update(values or {})
+                store[pid] = one
+            block["creds"] = store
+        if sidecar is not None:
+            block["sidecar"] = str(sidecar or "").strip()
+        if sidecar_first is not None:
+            block["sidecar_first"] = bool(sidecar_first)
+        if coding is not None:
+            block["coding"] = str(coding or "").strip()
 
-    if mode is not None:
-        m = str(mode).strip().lower()
-        block["mode"] = m if m in (PROVIDER_MODE_GEMINI,
-                                   PROVIDER_MODE_PIPELINE) else PROVIDER_MODE_GEMINI
-    if pipeline is not None:
-        current = block.get("pipeline")
-        current = dict(current) if isinstance(current, dict) else {}
-        current.update({k: str(v or "").strip() for k, v in pipeline.items()})
-        block["pipeline"] = current
-    if creds is not None:
-        store = block.get("creds")
-        store = dict(store) if isinstance(store, dict) else {}
-        for pid, values in (creds or {}).items():
-            one = store.get(pid)
-            one = dict(one) if isinstance(one, dict) else {}
-            one.update(values or {})
-            store[pid] = one
-        block["creds"] = store
-    if sidecar is not None:
-        block["sidecar"] = str(sidecar or "").strip()
-    if sidecar_first is not None:
-        block["sidecar_first"] = bool(sidecar_first)
-    if coding is not None:
-        block["coding"] = str(coding or "").strip()
+        data["providers"] = block
+    update_config(_apply)
 
-    data["providers"] = block
-    CONFIG_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
+
+# ── Language ─────────────────────────────────────────────────────────────────
+# A setting with three states and one rule: "auto" means "ask the operating
+# system", which is what a user who has already set their language in one place
+# expects. It is stored as a string rather than a bool so a third locale needs
+# no migration, and it is validated HERE rather than at the point of use —
+# config_manager is the only module allowed to decide what a stored value means
+# (see AGENTS.md), and a config file edited by hand must not be able to put an
+# unknown locale into the window.
+
+def get_ui_language() -> str:
+    """The configured UI language: 'auto', or a locale we ship."""
+    from core.i18n import LOCALES
+    value = str(load_api_keys().get("ui_language", "auto") or "auto").lower()
+    return value if value == "auto" or value in LOCALES else "auto"
+
+
+def save_ui_language(language: str) -> None:
+    """Persist the UI language, collapsing anything unknown to 'auto'.
+
+    Unknown values become 'auto' rather than being rejected: a config written by
+    a newer version, or edited by hand, must degrade to the OS language instead
+    of leaving the window in a locale that has no catalogue.
+    """
+    from core.i18n import LOCALES
+    value = (language or "auto").strip().lower()
+    set_config_values(ui_language=value if value == "auto" or value in LOCALES
+                      else "auto")

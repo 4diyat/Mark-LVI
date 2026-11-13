@@ -1,0 +1,40 @@
+# ── MARK LVI — what CI and contributors install, and the app does not ────────
+# Kept separate from requirements.txt on purpose: the app's install stays as
+# small as it can be for the person who only wants to run JARVIS, and nobody
+# downloads a test runner or a linter to have a conversation with it.
+#
+# Usage:
+#     pip install -r requirements.txt -r requirements-dev.txt
+#     python -m pytest
+#     ruff check .
+
+ruff>=0.6,<1          # lint — see pyproject.toml for which rules are enforced
+pytest>=8,<10
+pytest-asyncio>=0.23,<2   # nothing async yet; required once the dashboard tests land
+
+# ── Two app modules the suite covers directly ───────────────────────────────
+# Neither needs Qt, a display, a microphone or the network, and both are pure
+# logic that is worth a dependency rather than a mock:
+#
+#   psutil → ui/metrics.py   the CPU/memory sampler; test_ui_split.py loads it
+#                            by path. Worth it because the alternative is what
+#                            happened: the singleton was cut during the ui/
+#                            split and the first thing to notice was CI, on
+#                            three runners, after a push.
+#   numpy  → core/echo.py    the echo guard. Its whole argument is that a LEVEL
+#                            test cannot tell our own voice from a person's, so
+#                            the tests build waveforms and check the decision.
+#                            Mocking it would test the mock.
+psutil>=5.9,<8
+numpy>=1.24,<3
+
+# ── For the CI job that imports everything ──────────────────────────────────
+# The suite itself needs NO third-party package: it exercises memory/config,
+# the path guard and parsed source. The import job needs the real dependencies
+# present or 4 actions refuse to load by design (playwright, numpy, psutil).
+# Those come from requirements.txt in CI; nothing extra is listed here.
+# The workflow itself is a thing this project runs, and it has broken three
+# times in ways no test could see: a heredoc in a step that Windows runs with
+# PowerShell, a `$?` in the same, a shell built-in that only bash has. Reading
+# it as YAML is enough to assert which shell each step needs.
+pyyaml>=6,<7

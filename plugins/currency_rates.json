@@ -1,0 +1,12 @@
+{
+  "_comment": "Kurs referensi ECB lewat frankfurter.dev — tanpa kunci API. sha256 di bawah adalah dari berkas .py ini; kalau berkasnya berubah, loader menolaknya.",
+  "name": "currency_rates",
+  "version": "1.0.0",
+  "author": "MARK-LVI",
+  "description": "Konversi mata uang dengan kurs referensi ECB, lengkap dengan tanggal kursnya.",
+  "permissions": [
+    "network"
+  ],
+  "sha256": "e3b4609c1a09f6a26826d3d2583600bd8d1c4c5dfbd4aab99e2d58fcc7c22265",
+  "homepage": "https://frankfurter.dev"
+}

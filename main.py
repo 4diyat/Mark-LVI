@@ -92,6 +92,15 @@ from core.wake_word            import (
 # again (wake-word mode only).
 WAKE_SLEEP_TIMEOUT = 120.0   # seconds (2 minutes)
 
+# ── Keep what the console forgets ────────────────────────────────────────────
+# Started before anything else imports and can fail, so the first failure is in
+# the file too. `pythonw main.py` (what the desktop shortcut runs) has no
+# console at all, which is why a bug report could describe a message nobody
+# could ever produce. See core/logbook.py.
+from core import logbook as _logbook
+_LOG_PATH = _logbook.setup()
+LOGBOOK = _logbook.get("main")
+
 def get_base_dir():
     if getattr(sys, "frozen", False):
         return Path(sys.executable).parent
@@ -309,6 +318,17 @@ def _describe_limits(has_vision: bool, has_mic: bool) -> str:
         out.append(
             "- You hear nothing while the microphone is muted, and you cannot "
             "unmute it yourself.")
+    else:
+        # The branch that did not exist. Without it, a machine with no
+        # microphone produced a prompt that said NOTHING about it, and the model
+        # behaved as if it could hear — answering "I did not catch that" forever
+        # while the user spoke into a device that was not there.
+        out.append(
+            "- THERE IS NO MICROPHONE on this machine right now, so you cannot "
+            "hear the user at all. Do not ask them to repeat themselves and do "
+            "not pretend to have heard something. You can still be typed to, and "
+            "your voice still works: say once, briefly, that you cannot hear and "
+            "that the text box works, then carry on.")
     return "\n".join(out)
 
 
@@ -632,6 +652,15 @@ class JarvisLive:
         self.ui.on_interrupt      = self.interrupt
         self.ui.on_voice_change   = self._on_voice_change     # voice picker → rebuild session
         self.ui.on_audio_device_change = self._on_audio_device_change
+        # True while there is no working microphone. Read by _build_config so
+        # the model is TOLD it cannot hear (see _describe_limits) instead of
+        # waiting for speech that will never arrive. Reset by
+        # _apply_listening_state when a device comes back.
+        self._deaf: bool = False
+        # Did the microphone ever open on this connection? A loop that never
+        # opened it cannot "recover", it starts over.
+        self._mic_recovered: bool = False
+
         self._reconnect_event: asyncio.Event | None = None
         self._reconnect_keep = True   # False → next rebuild drops the resumption handle
 
@@ -740,8 +769,11 @@ class JarvisLive:
             return
         self._awake = True
         self._last_user_speech = time.monotonic()   # start the auto-sleep clock now
+        # A machine with no microphone cannot be woken by a voice — but it can
+        # still be woken, by the wake button, and it must not then paint itself
+        # LISTENING while deaf. The state says which of the two it is.
         if not self.ui.muted:
-            self.ui.set_state("LISTENING")
+            self.ui.set_state("NO MIC" if self._deaf else "LISTENING")
         self.ui.write_log(f"SYS: Awake — {reason}.")
 
     def sleep(self, reason: str = "timeout") -> None:
@@ -1202,7 +1234,12 @@ class JarvisLive:
             "capabilities": _describe_tools(_all_decls),
             "limits": _describe_limits(
                 has_vision="screen_process" in _names,
-                has_mic=True,
+                # A machine with no microphone must be told it cannot hear.
+                # This was the constant `True`, so a deaf build was instructed
+                # to listen and then sat silent while the user spoke into
+                # nothing — and the user had no way to know which side of the
+                # app was broken.
+                has_mic=not self._deaf,
             ),
         })
 
@@ -1599,47 +1636,119 @@ class JarvisLive:
                 except Exception:
                     pass
 
-        try:
-            def _open_mic(dev):
-                return sd.InputStream(
-                    samplerate=SEND_SAMPLE_RATE,
-                    channels=CHANNELS,
-                    dtype="int16",
-                    blocksize=CHUNK_SIZE,
-                    device=dev,
-                    callback=callback,
-                )
+        def _open_mic(dev):
+            return sd.InputStream(
+                samplerate=SEND_SAMPLE_RATE,
+                channels=CHANNELS,
+                dtype="int16",
+                blocksize=CHUNK_SIZE,
+                device=dev,
+                callback=callback,
+            )
 
-            # Which microphone. resolve() returns None for "system default" and
-            # for a saved device that is no longer present — so a headset
-            # unplugged since the last run falls back to the built-in mic
-            # instead of raising on startup and taking the session with it.
-            _mic_name = get_input_device()
-            _mic_dev  = audio_devices.resolve(_mic_name, "input")
-            if _mic_dev is not None:
-                print(f"[JARVIS] 🎤 Input device: {_mic_name}")
+        # Kept on the instance so the recovery loop can rebuild a stream with
+        # the same callback after the device comes back.
+        self._mic_open = _open_mic
+
+        # Which microphone. resolve() returns None for "system default" and for
+        # a saved device that is no longer present — so a headset unplugged
+        # since the last run falls back to the built-in mic.
+        _mic_name = get_input_device()
+        _mic_dev  = audio_devices.resolve(_mic_name, "input")
+        if _mic_dev is not None:
+            print(f"[JARVIS] 🎤 Input device: {_mic_name}")
+
+        # ── No microphone must not end the session ───────────────────────────
+        # This function used to be one try/except that re-raised, and it runs
+        # inside the session TaskGroup: on a machine with no microphone (a
+        # desktop with no mic, a disabled built-in one, a Windows profile with
+        # microphone access off) that raised, the TaskGroup cancelled the
+        # conversation, and the app could not be used AT ALL — even though
+        # speaking, typing and every tool work without a microphone.
+        #
+        # So: no microphone is an outcome. Say it once, in the log, and stay
+        # alive. The loop below then retries the device every few seconds, so a
+        # headset plugged in later starts working without restarting the app.
+        while True:
+            _mic_stream, _mic_problem = audio_devices.open_input_stream(
+                _open_mic, _mic_dev, say=None if self._mic_recovered else self.ui.write_log)
+            if _mic_stream is None:
+                # Only worth saying once: the recovery loop below repeats this
+                # check every two seconds, and a log line every two seconds is
+                # how a transcript becomes unreadable.
+                if not self._deaf:
+                    print(f"[JARVIS] 🎤 {_mic_problem}")
+                    self.ui.set_state("NO MIC")
+                self._deaf = True
+                await self._wait_for_microphone()
+                continue
+
+            self._apply_listening_state()
             try:
-                _mic_stream = _open_mic(_mic_dev)
-            except Exception as _e:
-                # A device the picker listed but the driver will not open right
-                # now — exclusive mode, a webcam already in use, a virtual mic
-                # whose source went away. Chosen hardware failing must never
-                # mean the assistant cannot hear at all.
-                if _mic_dev is None:
-                    raise
-                print(f"[JARVIS] ⚠️  Mic '{_mic_name}' failed: {_e} — using default")
+                with _mic_stream:
+                    print("[JARVIS] 🎤 Mic stream open")
+                    while True:
+                        await asyncio.sleep(0.1)
+            except Exception as e:
+                # The stream opened and then died — a USB microphone pulled
+                # out mid-sentence, a Bluetooth headset whose battery went. The
+                # old code re-raised here too, which killed the session at the
+                # exact moment the user would most want it still to be there.
+                print(f"[JARVIS] ❌ Mic stream ended: {e}")
                 self.ui.write_log(
-                    f"SYS: Microphone '{_mic_name}' unavailable — using system default."
-                )
-                _mic_stream = _open_mic(None)
+                    "SYS: The microphone stopped (it was unplugged or taken by "
+                    "another app). I will keep retrying; typing still works.")
+                self._deaf = True
+                self.ui.set_state("NO MIC")
+                continue
+            # The `with` block ended without an exception: the stream was closed
+            # from outside (a reconnect tearing the session down). Nothing to do
+            # but let the cancellation that closes it take this task too.
 
-            with _mic_stream:
-                print("[JARVIS] 🎤 Mic stream open")
-                while True:
-                    await asyncio.sleep(0.1)
-        except Exception as e:
-            print(f"[JARVIS] ❌ Mic: {e}")
-            raise
+    def _apply_listening_state(self) -> None:
+        """Paint the state that "the microphone is open" means right now.
+
+        NOT always LISTENING: with the wake word on the assistant comes up
+        asleep and the mic is gated, so a recovered microphone must return it to
+        SLEEPING, not claim it is listening to someone it is still ignoring.
+        """
+        self._deaf = False
+        try:
+            self.ui.set_state("LISTENING" if self._awake else "SLEEPING")
+        except Exception:
+            pass
+
+    async def _wait_for_microphone(self) -> None:
+        """Stay alive while there is no microphone, and keep looking for one.
+
+        WHY WAITING RATHER THAN RETURNING
+            The alternative — return, and let the TaskGroup finish — tears the
+            session down the moment there is no microphone, which is exactly the
+            bug this was fixed for. Something has to keep the conversation open
+            while the user types or plugs a device in.
+
+        WHY IT POLLS RATHER THAN WAITING FOR A BUTTON
+            A Bluetooth headset appears when it is switched on, a USB one when
+            it is plugged in, and neither sends this app a message. A two-second
+            poll is cheap — `input_available(refresh=True)` is one
+            `query_devices()` call — and the alternative is telling the user to
+            restart the assistant for something that fixed itself.
+
+        The stream is NOT opened here: `_listen_audio` owns that loop, and
+        duplicating it here is how two streams end up fighting over one device.
+        """
+        tries = 0
+        was_deaf = self._deaf
+        while True:
+            await asyncio.sleep(2.0)
+            tries += 1
+            if not audio_devices.input_available(refresh=True):
+                continue
+            print(f"[JARVIS] 🎤 Input device appeared after {tries * 2}s")
+            if was_deaf:
+                self.ui.write_log("SYS: Microphone found — listening again.")
+            self._mic_recovered = True
+            return
 
     async def _flush_pending_vision(self) -> bool:
         """Send a captured frame immediately after its tool response.
@@ -2690,6 +2799,8 @@ class JarvisLive:
             await asyncio.sleep(delay)
 
 def main():
+    if _LOG_PATH:
+        print(f"[JARVIS] Log: {_LOG_PATH}")
     ui = JarvisUI("face.png")
 
     def runner():

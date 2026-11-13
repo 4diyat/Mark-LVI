@@ -42,7 +42,6 @@ IT FOLLOWS THE LANGUAGE BEING SPOKEN, WITHOUT GUESSING AT IT
 from __future__ import annotations
 
 import asyncio
-import json
 import threading
 import time
 from importlib.util import find_spec
@@ -51,6 +50,21 @@ from typing import AsyncIterator, Optional
 
 from . import audio
 from .base import DEFAULT_CAPS, Field
+
+
+def _log():
+    """`core.logbook`'s logger, or a silent stand-in.
+
+    `providers/` is meant to be deletable, so it must not require the rest of
+    the project to be importable; a voice folder that cannot be written is
+    worth one line in the log when there is a log, and nothing when there is not.
+    """
+    try:
+        from core.logbook import get
+        return get("tts.piper")
+    except Exception:
+        import logging
+        return logging.getLogger("tts.piper")
 
 def _voice_dir() -> Path:
     """Where downloaded voices live.
@@ -67,14 +81,17 @@ def _voice_dir() -> Path:
     definition because it belongs to the person running the program.
     """
     here = Path(__file__).resolve().parent / "voices"
+    why = ""
     try:
         here.mkdir(parents=True, exist_ok=True)
         probe = here / ".writable"
         probe.write_text("", encoding="utf-8")
         probe.unlink()
         return here
-    except Exception:
-        pass
+    except OSError as e:
+        # Recorded, not swallowed: "the voice will not download" is the report
+        # this produces, and the reason it could not is the only useful part.
+        why = f"{type(e).__name__}: {e}"
 
     import os
     import platform
@@ -91,8 +108,13 @@ def _voice_dir() -> Path:
     fallback = root / "MarkAssistant" / "piper-voices"
     try:
         fallback.mkdir(parents=True, exist_ok=True)
-    except Exception:
-        pass
+    except OSError as e:
+        # Neither folder is writable. Returning it anyway is deliberate — the
+        # download then fails with a permission error naming the path, which is
+        # more informative than raising here — but the log says both reasons,
+        # so nobody has to guess which one applied.
+        _log().warning("no writable voice folder: %s (project folder: %s)",
+                       e, why or "writable")
     return fallback
 
 

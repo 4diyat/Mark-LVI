@@ -154,7 +154,10 @@ class WakeWordDetector:
         # unblock the thread if it's waiting on the queue
         try:
             self._queue.put_nowait(None)
-        except Exception:
+        except queue.Full:
+            # The queue is full, so the loop is still holding frames and will
+            # see `_running == False` on its next turn anyway. Nothing to do;
+            # the alternative was blocking a UI thread on a shutdown.
             pass
         self._model = None
         self._ready = False
@@ -173,9 +176,12 @@ class WakeWordDetector:
             data = frame_int16[:, 0].copy() if getattr(frame_int16, "ndim", 1) > 1 else frame_int16.copy()
             self._queue.put_nowait(data)
         except queue.Full:
-            pass
-        except Exception:
-            pass
+            pass                # the loop is behind on purpose; drop the frame
+        except Exception as e:
+            # Not `pass`: this runs on the microphone's real-time callback, and
+            # a frame that cannot even be queued means something is wrong with
+            # what the device handed us — worth one line, not a traceback.
+            self._logger(f"Wake word: frame dropped — {e}")
 
     def _loop(self) -> None:
         import numpy as np
@@ -204,8 +210,9 @@ class WakeWordDetector:
                 self._logger(f"Wake word: inference error — {e}")
 
     def _drain(self) -> None:
+        """Throw away everything queued, so one utterance cannot fire twice."""
         try:
             while True:
                 self._queue.get_nowait()
-        except Exception:
-            pass
+        except queue.Empty:
+            return

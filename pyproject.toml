@@ -1,0 +1,55 @@
+# ── MARK LVI — tooling configuration ─────────────────────────────────────────
+#
+# WHY THIS FILE HAS NO [project] TABLE
+#     A [project] table declares an installable package. This app is not one:
+#     it is a tree of scripts run in place (python main.py), with actions and
+#     plugins loaded by path at runtime and config written beside the source.
+#     Turning it into a wheel is part of the planned restructure — when the
+#     folders become a `marklvi/` package, the [project] table is written then,
+#     against the real layout, instead of guessed at now and wrong later.
+#
+#     Until then this file exists for the two tools that read it: ruff and
+#     pytest.
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+# `main.py`, `ui.py` and the dashboard are written with long lines and dense
+# one-per-line comment blocks; reformatting them is not a prerequisite for
+# finding bugs, so line length is a formatting question here, not a lint one.
+
+[tool.ruff.lint]
+# THE ENFORCED SET, AND WHY IT STARTS THIS SMALL
+#     Stage 1 is `F` (pyflakes) + `E9` (syntax and runtime errors). Those are
+#     the rules whose violations are BUGS rather than taste:
+#
+#       F821 undefined-name  — found 9 of these in dashboard/server.py; every
+#                              one was a Linux firewall branch that could never
+#                              run, hidden by a surrounding except.
+#       F401 unused-import   — the junk that makes a reader trust a module less
+#       F841 unused-variable — usually a value someone meant to use
+#
+#     Style families (E,W,I,UP,B,SIM) are not enabled here yet. Turning them on
+#     over 39,000 lines would produce a wall of findings nobody acts on, and a
+#     lint step that is ignored is worse than no lint step. CI runs them as an
+#     INFORMATIONAL job so the list stays visible and shrinks by choice.
+select = ["F", "E9"]
+
+[tool.ruff.lint.per-file-ignores]
+# The smoke harness and the provider self-test are diagnostics: they import
+# modules on purpose to prove they load, and print for a human reading output.
+"core/_smoke_harness.py" = ["F401", "F841"]
+"providers/_tests.py" = ["F401", "F841"]
+"setup.py" = ["F401"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+# pytest-asyncio is installed because the dashboard and the session are async,
+# but nothing in this suite is async YET. Set explicitly so the plugin stops
+# warning on every run and so adding the first async test is not a surprise.
+asyncio_default_fixture_loop_scope = "function"
+# Tests must not write into the real config/ directory or touch the network.
+# Every test that needs config points memory.config_manager at tmp_path.
+filterwarnings = ["error::DeprecationWarning:memory.*"]

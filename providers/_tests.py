@@ -957,6 +957,55 @@ def test_voices_follow_the_language():
           not _accepts_language(SystemTTS({})))
 
 
+# Runs in a child process; see test_panel_settings_survive. It reports exactly
+# one verdict on its last line, so the parent never has to guess what an exit
+# code meant:
+#
+#     ok: <n> boxes   the panel builds — run the real checks
+#     ENV: ...        this machine has no usable Qt — skip, do not fail
+#     CODE: ...       the panel itself is broken — fail
+#
+# A child that dies without printing anything is an ENV verdict too: that is
+# Qt aborting the process, which is a property of the machine, not of the code.
+_PANEL_PROBE = """
+import os
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+
+def env(reason):
+    print("ENV: " + reason)
+    raise SystemExit(0)
+
+
+def code(reason):
+    print("CODE: " + reason)
+    raise SystemExit(0)
+
+
+try:
+    from PyQt6.QtWidgets import QApplication, QComboBox
+    app = QApplication.instance() or QApplication([])
+except BaseException as e:
+    env("Qt cannot construct a widget: %s: %s" % (type(e).__name__, e))
+
+try:
+    import ui
+except BaseException as e:
+    if isinstance(e, ImportError) and "PyQt6" in str(e):
+        env("ui needs a Qt this machine does not have: %s" % e)
+    code("ui does not import: %s: %s" % (type(e).__name__, e))
+
+try:
+    panel = ui.ProvidersOverlay()
+    combos = panel.findChildren(QComboBox)
+except BaseException as e:
+    code("the panel does not build: %s: %s" % (type(e).__name__, e))
+
+print("ok: %d boxes" % len(combos))
+"""
+
+
 def test_panel_settings_survive():
     """The settings panel: does what you choose come back?
 
@@ -969,12 +1018,82 @@ def test_panel_settings_survive():
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
     section("[10] The settings panel remembers")
+
+    # TWO WAYS TO NOT HAVE A PANEL, AND ONLY ONE OF THEM IS A FAILURE.
+    #
+    #   * PyQt6 is not installed — the dependency is missing, the app cannot
+    #     start at all, and this is a real failure.
+    #   * PyQt6 is installed but Qt will not load — no display, no
+    #     libxkbcommon, a stripped-down container or an SSH session. The app is
+    #     fine and the panel is fine on a real desktop; this process simply
+    #     cannot construct a widget.
+    #
+    # Both used to be "FAIL PyQt6 available", which made this suite red on any
+    # headless machine — including every CI runner. A test that fails for an
+    # environment reason is a test people learn to ignore.
+    try:
+        from PyQt6.QtCore import QT_VERSION_STR  # noqa: F401 — import check only
+    except Exception as e:
+        check("PyQt6 installed", False, str(e))
+        return
+
+    # AND A THIRD WAY: QT CAN KILL THE PROCESS INSTEAD OF RAISING.
+    #
+    #     On macOS with no window server a QApplication does not raise — it
+    #     calls abort() and the interpreter dies with SIGABRT, taking the rest
+    #     of this suite with it (in one run sections 11-19 never ran, and every
+    #     later check was reported as missing rather than as failed). On
+    #     Windows, `import ui` pulls in QtMultimedia at module level and, with
+    #     no audio device, aborts with 0xC0000409 — a fail-fast, not an
+    #     exception. No try/except catches either of those.
+    #
+    #     So the panel is BUILT IN A CHILD PROCESS FIRST. If the child dies,
+    #     this process only learns that it died, and the section is skipped
+    #     with a note; if the child reports a fault in our own code, that is a
+    #     failure here — a child is only worth the trouble if it still tells
+    #     the two apart.
+    import subprocess
+    import sys as _sys
+    # The probe runs the whole setup, not just the Qt part. An earlier version
+    # built a bare QApplication and the real section then died inside
+    # `import ui` on Windows — a probe that does not do what the thing it is
+    # probing does is not a probe.
+    probe = subprocess.run(
+        [_sys.executable, "-c", _PANEL_PROBE],
+        capture_output=True, text=True, timeout=180,
+        encoding="utf-8", errors="replace",
+        cwd=str(Path(__file__).resolve().parent.parent),
+        env={**os.environ,
+             # The child writes the console's code page on Windows; decoding it
+             # as UTF-8 with the default handler kills THIS step.
+             "PYTHONIOENCODING": "utf-8:replace",
+             # The multimedia backend has opinions about a machine with no
+             # sound card, and none of them are worth printing.
+             "QT_LOGGING_RULES": "qt.multimedia.*=false"})
+    verdicts = [line for line in (probe.stdout or "").splitlines() if line.strip()]
+    verdict = verdicts[-1] if verdicts else ""
+    if verdict.startswith("ok"):
+        pass
+    elif verdict.startswith("CODE:"):
+        check("the settings panel can be built", False, verdict[len("CODE:"):].strip())
+        return
+    else:
+        print(f"  SKIP  Qt cannot run the panel on this machine "
+              f"({verdict or f'process died with exit {probe.returncode}'})")
+        print("  SKIP  the panel checks need a Qt that can construct a widget")
+        return
+
+    # The probe's QApplication died with the probe. This process needs its own
+    # before it builds anything: Qt does not raise for a QWidget made without
+    # one, it prints "Must construct a QApplication before a QWidget" and calls
+    # abort() — the same uncatchable death the probe exists to keep outside.
     try:
         from PyQt6.QtWidgets import QApplication, QComboBox
+        _app = QApplication.instance() or QApplication([])
     except Exception as e:
-        check("PyQt6 available", False, str(e))
+        print(f"  SKIP  Qt cannot open a display ({e.__class__.__name__}: {e})")
+        print("  SKIP  the panel checks need a Qt that can construct a widget")
         return
-    app = QApplication.instance() or QApplication([])
 
     import ui as UI
     from memory.config_manager import (get_pipeline, get_provider_config,
@@ -1030,20 +1149,32 @@ def test_panel_settings_survive():
                          "tts": "elevenlabs@elevenlabs"})
         ov._rebuild_body()
 
-        import pathlib
+        # COUNT THE WRITES TO api_keys.json, WHEREVER THEY HAPPEN.
+        #
+        #     The config is written atomically: a temp file, then os.replace.
+        #     So Path.write_text is often not the call that lands the change at
+        #     all — counting only that reported zero in CI, on every OS, while
+        #     the setting was in fact saved. The count belongs around both
+        #     write_text and replace.
+        import os as _os
         writes = [0]
-        real = pathlib.Path.write_text
+        real_write, real_replace = Path.write_text, _os.replace
 
-        def counted(self, *a, **k):
+        def counted_write(self, *a, **k):
             if self.name == "api_keys.json":
                 writes[0] += 1
-            return real(self, *a, **k)
+            return real_write(self, *a, **k)
 
-        pathlib.Path.write_text = counted
+        def counted_replace(src, dst, *a, **k):
+            if Path(dst).name == "api_keys.json":
+                writes[0] += 1
+            return real_replace(src, dst, *a, **k)
+
+        Path.write_text, _os.replace = counted_write, counted_replace
         try:
             ov._apply()
         finally:
-            pathlib.Path.write_text = real
+            Path.write_text, _os.replace = real_write, real_replace
 
         check("APPLY writes the config once", writes[0] == 1, str(writes[0]))
         check("the mode was stored", get_provider_mode() == "pipeline",

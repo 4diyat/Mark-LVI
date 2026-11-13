@@ -1,0 +1,36 @@
+# ── MARK LVI — line endings, enforced in the repository ──────────────────────
+#
+# WHY THIS EXISTS
+#     Before it, 40 of the 67 Python files were CRLF and the rest LF, and
+#     core/outcome.py was BOTH — 229 CRLF lines and 45 LF ones in a single
+#     file. Nothing breaks at runtime (Python accepts either), which is exactly
+#     why it lasted: the cost appears in review. An editor saving the file with
+#     the other convention turns a three-line change into a diff of the whole
+#     file, and a reviewer cannot see what actually changed.
+#
+#     `eol=lf` normalises on checkout and commit, so every clone is identical
+#     regardless of the editor or the OS that wrote the last change.
+#
+# Python is the one that matters; the shell hooks for remind/systemd are also
+# normalised because a CRLF shell script fails with a confusing "bad
+# interpreter" error rather than a line-ending one.
+
+* text=auto
+
+*.py      text eol=lf
+*.md      text eol=lf
+*.toml    text eol=lf
+*.txt     text eol=lf
+*.json    text eol=lf
+*.html    text eol=lf
+*.js      text eol=lf
+*.css     text eol=lf
+*.yml     text eol=lf
+*.yaml    text eol=lf
+*.sh      text eol=lf
+*.bat     text eol=crlf
+*.cmd     text eol=crlf
+*.ico     binary
+*.obj     text eol=lf
+*.png     binary
+*.jpg     binary

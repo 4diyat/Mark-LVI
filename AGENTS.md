@@ -8,10 +8,10 @@ passed a syntax check and did nothing when used.
 ## How the app runs
 
 - `main.py` holds the voice session on an asyncio event loop in a background
-  thread. `ui.py` holds the window on the **Qt main thread**.
+  thread. The `ui/` package holds the window on the **Qt main thread**.
 - Tools — `actions/*.py` and `plugins/*.py` — run on **worker threads**, never
   on the Qt main thread.
-- There is exactly **one** `QApplication`, created by `ui.py`.
+- There is exactly **one** `QApplication`, created in the `ui/` package (`ui/window.py`).
 
 ## Threading: the rule that breaks most generated code
 
@@ -81,7 +81,14 @@ data = gemini.as_json(prompt, tier=gemini.SMART)    # structured, may return Non
 Every call can fail or return `None`. Code must handle that — for example with
 a small built-in fallback — instead of crashing.
 
-## Changing the window (`ui.py`)
+## Changing the window (`ui/`)
+
+- The package is split by ownership: `ui/theme.py` owns the palette (`C`) and is
+  the only module that may assign to it; `ui/metrics.py` owns the sampler
+  thread; `ui/window.py` owns the widgets. `ui/__init__.py` re-exports all of
+  it, so `ui.C`, `ui.qcol` and `ui.JarvisUI` are still the names to use.
+- Do not recreate `ui.py`: it would shadow the package (Python resolves the
+  directory first) and every import inside it would fail.
 
 - Widgets are created and changed only on the Qt thread.
 - To let other threads trigger a change: add a `pyqtSignal` to `MainWindow`,
@@ -90,10 +97,52 @@ a small built-in fallback — instead of crashing.
   `_show_content` is the pattern to copy.
 - Colours come from the `C` palette class; fonts are `QFont("Courier New", size)`.
 
+## Writing a path that came from a model
+
+A path inside a model's JSON is **untrusted input**, not a name. It can climb
+(`../`), ignore the left side entirely (an absolute path), or name another drive
+(`C:\\...`). `dev_agent` used to do `project_dir / file_path` and write it, which
+is how a "new project" could place a `.py` outside the project and then run it.
+
+- Take every model-supplied path through `_safe_rel()` / `_safe_target()` in
+  `actions/dev_agent.py` before reading or writing anything.
+- `tests/test_paths.py` is the list of shapes that must be refused. Add to it
+  when you find a new one.
+
+## Testing and lint before you hand work back
+
+- `ruff check .` must print "All checks passed!" — the enabled rules are `F` and
+  `E9` only (undefined names, unused imports and variables, syntax). An
+  undefined name is not a style issue here: it is a branch that can never run,
+  and the Linux firewall path in `dashboard/server.py` was nine of them.
+- `python -m pytest -q` must be green. No test may need an API key, a
+  microphone, a display or the network.
+- If you fix a bug, add the test that fails without the fix. Check it against
+  the previous commit — a test that passes before and after proves nothing.
+- Rejected actions are easy to miss because the loader survives them. If you
+  touched an action, run the loader and read the rejections:
+  `python -c "from pathlib import Path; from core.action_loader import discover_actions; discover_actions(Path('actions'), set(), print)"`
+
 ## General
 
 - Never send a child process's output to `DEVNULL` without logging it, and
   never report success without checking that the thing actually happened.
-- Settings and keys live in `config/api_keys.json` through
-  `memory/config_manager.py`; never write that file directly.
+- Settings live in `config/api_keys.json` through
+  `memory/config_manager.py`; never write that file directly. Use
+  `set_config_values()` / `update_config()` — they hold a lock and write
+  atomically, because four threads write this file at the same time.
+  `tests/test_config.py` fails if a module bypasses them.
+- **The Gemini key is stored in the OS keychain**, with a copy in that file for
+  machines without one (`core/keychain.py`). Read it with
+  `config_manager.get_gemini_key()` and write it with `save_api_keys()`; both
+  do the keychain-then-file dance. `core.gemini.api_key()` is the only other
+  reader and it asks the config manager rather than reading the file.
+  If you add a credential that is a *key* rather than a token for a service
+  the user can revoke in a browser, give it the same treatment; plugin tokens
+  stay in the file deliberately (see the docstring).
+- **Text a user reads goes through `core/i18n.py`**, never a literal in a Qt
+  call. `label("key")` with `assets/i18n/{en,id}.json`; `tests/test_i18n.py`
+  fails on a hardcoded `setText("...")` and on a key the catalogue lacks.
+  The assistant's name, combo-box values and paste-ready commands are the only
+  things exempt, and each exemption is listed in that test with a reason.
 - Keep to the libraries already in `requirements.txt`.

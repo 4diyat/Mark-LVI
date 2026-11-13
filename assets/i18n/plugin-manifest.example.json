@@ -1,0 +1,10 @@
+{
+  "_comment": "Copy beside a plugin as <name>.json (or <name>.plugin.json) and fill in. `sha256` is of the .py file: python -c \"import hashlib,pathlib;print(hashlib.sha256(pathlib.Path('plugins/my_plugin.py').read_bytes()).hexdigest())\". The permission list is what the user is asked to consent to, and core/plugin_manifest.py refuses the plugin if the source uses something it did not declare.",
+  "name": "my_plugin",
+  "version": "1.0.0",
+  "author": "your name",
+  "description": "One sentence a person reads before installing.",
+  "permissions": ["network"],
+  "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "homepage": "https://example.com/my_plugin"
+}

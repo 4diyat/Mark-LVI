@@ -48,6 +48,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from core.logbook import get as _log
+
 _GUIDE_FILES = ("AGENTS.md", "CLAUDE.md", "CONTRIBUTING.md", ".github/CONTRIBUTING.md",
                 ".cursorrules", ".github/copilot-instructions.md")
 _GUIDE_CHARS = 40_000
@@ -339,8 +341,11 @@ def project_guide(folder: Path, stack: dict | None = None) -> str:
         try:
             parts.append(f"## The project's own rules ({rf.name})\n\n"
                          + rf.read_text(encoding="utf-8")[:_GUIDE_CHARS])
-        except OSError:
-            pass
+        except (OSError, UnicodeDecodeError) as e:
+            # The file was found and could not be read — a permission bit, or a
+            # markdown file saved in an encoding nobody expects. The brief then
+            # carries less, and this is why.
+            _log("code_checks").debug("rules file %s unreadable: %s", rf.name, e)
     parts.append(_facts(stack))
     for prof in _PROFILES:
         if prof.name in stack["profiles"]:
@@ -358,6 +363,9 @@ def fingerprint(folder: Path) -> str:
         try:
             h.update(f"{p.relative_to(folder).as_posix()}:{p.stat().st_size}\n".encode())
         except OSError:
+            # A file that vanished between the walk and the stat. The
+            # fingerprint is a cache key, so skipping it is right — the next
+            # walk sees the new state anyway.
             pass
     return h.hexdigest()
 
@@ -590,6 +598,16 @@ def test_regressions(before: dict | None, after: dict | None) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 #  Profiles
 # ─────────────────────────────────────────────────────────────────────────────
+def _is_the_window(rel: str) -> bool:
+    """Is this path the window itself — the one place a QApplication belongs?
+
+    Both the old single file and the current package: the rule is about the
+    window, not about a filename that has already changed once.
+    """
+    rel = rel.replace("\\", "/")
+    return rel == "ui.py" or rel == "ui/__init__.py" or rel.startswith("ui/")
+
+
 class _JarvisProfile:
     """This assistant, improved by itself. Its rules cannot be read from the
     files alone: tools run on worker threads, Qt widgets may only be made on
@@ -607,12 +625,31 @@ class _JarvisProfile:
         r"httpx\.(post|put|delete)|webbrowser|pyautogui|keyboard\.|mouse\.|win32api|"
         r"ctypes\.windll|\.write_text\(|open\([^)]*['\"][wa]")
 
+    @staticmethod
+    def ui_source(folder: Path) -> Path | None:
+        """Where the window's code is in THIS project.
+
+        It used to be one file, `ui.py`. It is now a package, `ui/window.py`,
+        and both shapes have to be recognised: a project written by an older
+        version of JARVIS still has the file, and a profile that only knows one
+        of them silently stops recognising the project it was written for —
+        which is exactly what happened when the split landed (dev_agent stopped
+        being told about the thread-safe `player` methods, with no message).
+        """
+        for candidate in (folder / "ui" / "window.py", folder / "ui.py"):
+            if candidate.is_file():
+                return candidate
+        return None
+
     def detect(self, folder: Path) -> bool:
-        return (folder / "core" / "plugin_loader.py").is_file() and (folder / "ui.py").is_file()
+        return ((folder / "core" / "plugin_loader.py").is_file()
+                and self.ui_source(folder) is not None)
 
     def guide(self, folder: Path) -> str:
-        api = self._player_api(folder / "ui.py")
-        return ("## Thread-safe `player` methods (generated from ui.py)\n\n```\n"
+        src = self.ui_source(folder)
+        api = self._player_api(src) if src else ""
+        return ("## Thread-safe `player` methods (generated from %s)\n\n```\n"
+                % (src.name if src else "the window")
                 + api + "\n```") if api else ""
 
     @staticmethod
@@ -665,9 +702,10 @@ class _JarvisProfile:
                                  "See AGENTS.md.")
                         break
                 if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-                        and node.func.id == "QApplication" and rel != "ui.py"):
+                        and node.func.id == "QApplication"
+                        and not _is_the_window(rel)):
                     add(rel, "It creates a QApplication; the app already has exactly one "
-                             "(in ui.py) and a second breaks the window. Remove it.")
+                             "(in ui/) and a second breaks the window. Remove it.")
             if rel.startswith("plugins/") and not Path(rel).name.startswith("_"):
                 if not re.search(r"^PLUGIN\s*=", text, re.M) or \
                         not re.search(r"^def run\(", text, re.M):

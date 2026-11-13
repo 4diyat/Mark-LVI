@@ -37,6 +37,14 @@ try:
 except Exception:
     pass
 
+# The dashboard runs in the app's process and its failures were previously
+# invisible: the routes are wrapped in try/except for good reason (a phone
+# disconnecting must not stop the server), and `pass` turned "the phone cannot
+# reach us" into "no reason given". `_dlog` writes to logs/jarvis.log and to the
+# console, so the answer survives the terminal being closed.
+from core.logbook import get as _get_logger
+_dlog = _get_logger("dashboard")
+
 BASE_DIR    = Path(__file__).resolve().parent.parent
 STATIC_DIR  = Path(__file__).parent / "static"
 # The port people TYPE, and the port the app actually runs on.
@@ -389,18 +397,26 @@ def _ensure_network_access(*ports: int) -> None:
 
         # ── Try running directly (succeeds when already admin) ────────────────
         try:
+            # cmd /c, not shell=True: a .bat is batch, not a shell command
+            # line. `shell=True` over a list is also the one form whose meaning
+            # differs between platforms, and it is the shape antivirus and
+            # SmartScreen heuristics flag.
             r = subprocess.run(
-                [bat_path], capture_output=True, timeout=8, shell=True
+                ["cmd", "/c", bat_path], capture_output=True, timeout=8
             )
             if r.returncode == 0:
                 print(f"[Dashboard] Firewall configured for {', '.join(str(pt) for pt in ports)}.")
                 try:
                     os.unlink(bat_path)
-                except Exception:
-                    pass
+                except OSError as e:
+                    _dlog.debug("firewall script left behind (%s): %s", bat_path, e)
                 return
-        except Exception:
-            pass
+        except Exception as e:
+            # Not admin yet — the UAC path below is the normal route, so this
+            # is expected rather than an error. Recorded because the case that
+            # IS a bug looks identical from the outside: a rule that never gets
+            # added.
+            _dlog.debug("firewall: direct run failed, trying UAC: %s", e)
 
         # ── ShellExecuteW: native UAC elevation (most reliable on Windows) ────
         # ShellExecuteW with verb "runas" always shows the UAC dialog regardless
@@ -485,8 +501,14 @@ def _ensure_network_access(*ports: int) -> None:
                  f' with administrator privileges'],
                 timeout=60,
             )
-        except Exception:
-            pass  # macOS firewall is off by default — silent failure is fine
+        except FileNotFoundError:
+            pass  # macOS firewall is off by default — nothing to do
+        except Exception as e:
+            # Not silent any more. This is the branch shape that hid the Linux
+            # `port` NameError for a release: a broad except, a comment saying
+            # the failure does not matter, and a swallow. macOS with the
+            # firewall ON is exactly where this one DOES matter.
+            _dlog.warning("macOS firewall setup failed: %s", e)
         return
 
     # ── Linux ─────────────────────────────────────────────────────────────────
@@ -500,41 +522,80 @@ def _ensure_network_access(*ports: int) -> None:
                 pass
         return False
 
+    # WHY THIS LOOPS OVER `ports` AND NOT OVER A VARIABLE CALLED `port`
+    #     This block used to read `f"{port}/tcp"`, `str(port)` and so on. There
+    #     was no `port` — the parameter is `*ports`, plural — so every one of
+    #     those lines raised NameError. Each branch below is wrapped in
+    #     try/except, but the catches list FileNotFoundError, so the NameError
+    #     escaped each one in turn and landed in the caller's bare `except
+    #     Exception`: the whole Linux path did nothing at all. No port was
+    #     opened and — worse for an app whose rule is to never claim an outcome
+    #     nobody observed — no manual `sudo ufw allow …` line was printed
+    #     either. The dashboard never worked from a phone on Linux and said
+    #     nothing about it. Windows was unaffected: it already looped.
+    #
+    #     pyflakes reports this as F821 undefined-name, which is why CI now runs
+    #     a lint step: 9 lines of this file were dead code that looked alive.
+    #
+    # And the failures SPEAK now. "Your phone cannot reach the dashboard" with
+    # no reason attached is the failure this whole file keeps trying to avoid,
+    # so each tool reports which ports it opened and which it could not.
+    wanted = [int(pt) for pt in ports]
+
     try:  # ufw
         r = subprocess.run(["ufw", "status"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5)
         if "active" in r.stdout.lower():
-            if _privileged(["ufw", "allow", f"{port}/tcp"]):
-                print(f"[Dashboard] ufw: port {port} allowed.")
-            else:
+            failed = []
+            for port in wanted:
+                if _privileged(["ufw", "allow", f"{port}/tcp"]):
+                    print(f"[Dashboard] ufw: port {port} allowed.")
+                else:
+                    failed.append(port)
+            for port in failed:
                 print(f"[Dashboard] Run manually:  sudo ufw allow {port}/tcp")
             return
     except FileNotFoundError:
         pass
+    except Exception as e:
+        print(f"[Dashboard] ufw check failed: {e}")
 
     try:  # firewalld
         r = subprocess.run(
             ["firewall-cmd", "--state"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=5,
         )
         if "running" in r.stdout.lower():
-            ok = (_privileged(["firewall-cmd", "--add-port", f"{port}/tcp", "--permanent"])
-                  and _privileged(["firewall-cmd", "--reload"]))
+            ok = all(_privileged(["firewall-cmd", "--add-port", f"{port}/tcp", "--permanent"])
+                     for port in wanted)
             if ok:
-                print(f"[Dashboard] firewalld: port {port} allowed.")
+                _privileged(["firewall-cmd", "--reload"])
+                for port in wanted:
+                    print(f"[Dashboard] firewalld: port {port} allowed.")
             else:
-                print(f"[Dashboard] Run manually:  sudo firewall-cmd --add-port={port}/tcp --permanent && sudo firewall-cmd --reload")
+                for port in wanted:
+                    print(f"[Dashboard] Run manually:  sudo firewall-cmd --add-port={port}/tcp --permanent"
+                          " && sudo firewall-cmd --reload")
             return
     except FileNotFoundError:
         pass
+    except Exception as e:
+        print(f"[Dashboard] firewalld check failed: {e}")
 
     try:  # iptables (not persistent but works until reboot)
         r = subprocess.run(["iptables", "-L", "INPUT", "-n"], capture_output=True, timeout=5)
         if r.returncode == 0:
-            if _privileged(["iptables", "-A", "INPUT", "-p", "tcp", "--dport", str(port), "-j", "ACCEPT"]):
-                print(f"[Dashboard] iptables: port {port} opened.")
-            else:
-                print(f"[Dashboard] Run manually:  sudo iptables -A INPUT -p tcp --dport {port} -j ACCEPT")
+            failed = []
+            for port in wanted:
+                if _privileged(["iptables", "-A", "INPUT", "-p", "tcp", "--dport", str(port), "-j", "ACCEPT"]):
+                    print(f"[Dashboard] iptables: port {port} opened.")
+                else:
+                    failed.append(port)
+            for port in failed:
+                print(f"[Dashboard] Run manually:  sudo iptables -A INPUT -p tcp "
+                      f"--dport {port} -j ACCEPT")
     except FileNotFoundError:
         pass  # no iptables means firewall is probably off — nothing to do
+    except Exception as e:
+        print(f"[Dashboard] iptables check failed: {e}")
 
 
 
@@ -553,16 +614,18 @@ def _local_ip() -> str:
             s.close()
             if not ip.startswith("127."):
                 return ip
-        except Exception:
-            pass
+        except OSError as e:
+            # Two more methods follow; this one fails on a machine with no
+            # route out (which is a normal way to run a LAN dashboard).
+            _dlog.debug("local IP, UDP probe failed: %s", e)
 
     # Method 2: hostname resolution (works offline on most systems)
     try:
         ip = socket.gethostbyname(socket.gethostname())
         if not ip.startswith("127."):
             return ip
-    except Exception:
-        pass
+    except OSError as e:
+        _dlog.debug("local IP, hostname lookup failed: %s", e)
 
     # Method 3: enumerate all interfaces (fully offline, no external deps)
     try:
@@ -570,9 +633,12 @@ def _local_ip() -> str:
             ip = info[4][0]
             if not ip.startswith("127.") and not ip.startswith("169.254."):
                 return ip
-    except Exception:
-        pass
+    except OSError as e:
+        _dlog.debug("local IP, interface enumeration failed: %s", e)
 
+    # The QR code then shows localhost, which no phone can reach — the one
+    # symptom of this that a person sees, so the reason belongs in the log.
+    _dlog.debug("no LAN address found; the dashboard link will say 127.0.0.1")
     return "127.0.0.1"
 
 
@@ -624,8 +690,11 @@ def _ensure_certs() -> bool:
             lan = _local_ip()
             if not lan.startswith("127."):
                 alt.append(x509.IPAddress(ipaddress.IPv4Address(lan)))
-        except Exception:
-            pass          # no LAN address resolvable — localhost entries still work
+        except Exception as e:
+            # A certificate without the LAN address is still a working
+            # certificate for localhost, but it is why a phone with TLS on will
+            # reject it — worth a line in the log.
+            _dlog.info("no LAN address for the certificate: %s", e)
 
         # Timezone-aware UTC: datetime.utcnow() is deprecated from Python 3.12 on,
         # and the builder normalises aware values to UTC itself.
@@ -653,8 +722,8 @@ def _ensure_certs() -> bool:
         try:
             import os as _os
             _os.chmod(key_p, 0o600)   # best effort — largely a no-op on Windows
-        except Exception:
-            pass
+        except Exception as e:
+            _dlog.warning("could not restrict the TLS key's permissions: %s", e)
 
         print(f"[Dashboard] Generated a self-signed certificate for this machine: {certs}")
         return True
@@ -665,6 +734,53 @@ def _ensure_certs() -> bool:
 
 def _read(name: str) -> str:
     return (STATIC_DIR / name).read_text(encoding="utf-8")
+
+
+def _dir_size_mb(path: Path) -> float:
+    """Total size of the uploads folder, in MB. Never raises.
+
+    A phone upload is capped at MAX_UPLOAD_MB per file, which bounds one request
+    and says nothing about the folder: fifty files fill a disk on the machine
+    the assistant is meant to be running on, and the failure it causes is not
+    "upload failed" but "everything else stopped working, including the app".
+    """
+    total = 0
+    try:
+        for entry in path.iterdir():
+            try:
+                if entry.is_file():
+                    total += entry.stat().st_size
+            except OSError:
+                continue
+    except OSError:
+        return 0.0
+    return total / (1024 * 1024)
+
+
+def _sweep_uploads(path: Path, max_age_days: int | None = None) -> int:
+    """Delete uploads older than `max_age_days`. Returns how many went.
+
+    Called once at startup, in the server's own thread. A file somebody sent
+    from their phone two weeks ago and never opened again is not a record of
+    anything — it is clutter that quietly fills the quota above.
+    """
+    if max_age_days is None:
+        max_age_days = _UPLOAD_MAX_AGE_DAYS
+    cutoff = time.time() - max_age_days * 86400
+    removed = 0
+    try:
+        for entry in path.iterdir():
+            try:
+                if entry.is_file() and entry.stat().st_mtime < cutoff:
+                    entry.unlink()
+                    removed += 1
+            except OSError:
+                continue
+    except OSError:
+        return 0
+    if removed:
+        print(f"[Dashboard] Removed {removed} upload(s) older than {max_age_days} days.")
+    return removed
 
 
 # ── DashboardServer ───────────────────────────────────────────────────────────
@@ -679,9 +795,48 @@ def _read(name: str) -> str:
 # limit is that an attacker's cost grows while a person who mistypes their key
 # twice never notices it exists.
 _TOKEN_TTL_SECONDS = 12 * 3600
+# A token nobody has used for this long is dropped even if the 12 hours are not
+# up. A phone left in a drawer should not still be able to send commands.
+_TOKEN_IDLE_SECONDS = 2 * 3600
 _LOGIN_MAX_TRIES   = 6
 _LOGIN_WINDOW      = 300.0      # seconds the counter looks back over
 _LOGIN_LOCKOUT     = 300.0      # seconds an address waits after using them up
+
+# ── What a token is allowed to do ────────────────────────────────────────────
+# Not every paired device should be able to type into the assistant. A QR code
+# is a cheap thing to show somebody, and "look at what JARVIS is doing" is a
+# different permission from "tell JARVIS what to do". A paired token carries
+# "command" because that is what the dashboard is FOR; a device token can be
+# given "read" only, and the difference is enforced here rather than trusted to
+# the page.
+_SCOPE_COMMAND = "command"      # send commands, upload files, wake it
+_SCOPE_READ    = "read"         # watch the feed and the status only
+
+# ── Security headers ─────────────────────────────────────────────────────────
+# WHAT THESE ARE FOR, GIVEN THE DASHBOARD ALREADY HAS AUTH
+#     They are not about the person holding the phone. They are about what the
+#     PAGE can be made to do in a browser that is also logged in somewhere else:
+#
+#     * `default-src 'self'` with no `unsafe-inline` for scripts. Both pages
+#       ship one inline <script> block, so the policy uses a per-response nonce
+#       (see _security_headers) — an injected <script> from a message body, a
+#       file name or a chat reply has no nonce and does not run.
+#     * `frame-ancestors 'none'` / X-Frame-Options: the dashboard cannot be
+#       framed, so a page on another origin cannot overlay invisible controls
+#       over it and collect taps.
+#     * `Referrer-Policy: no-referrer` — the download URL carries the auth token
+#       in its query string (a browser <a download> cannot send a header), and a
+#       Referer header would hand that token to whoever the page linked to.
+#     * `X-Content-Type-Options: nosniff` — a file uploaded from the phone is
+#       served back under its own name; without this a browser may sniff an
+#       uploaded .html or .js and run it on this origin.
+#     * A Permissions-Policy that switches off everything the page does not use.
+_DEVICE_TOKEN_IDLE_SECONDS = 30 * 86400   # a remembered phone, unused for a month
+_MAX_LOGIN_BODY = 4096          # /login carries a key and nothing else
+_MAX_COMMAND_BODY = 64 * 1024   # a command is one sentence; 64 KB is generous
+_MAX_KEY_BYTES = 1024           # an encrypted command is small
+_UPLOAD_QUOTA_MB = 2000         # total, across the uploads folder
+_UPLOAD_MAX_AGE_DAYS = 14       # older files are swept at startup
 
 
 class _Throttle:
@@ -722,7 +877,10 @@ class DashboardServer:
         self._ip                          = _local_ip()
         # token -> issued-at. A set had no way to expire anything; this does,
         # and `_auth` sweeps as it reads so nothing has to run a timer.
-        self._tokens: dict[str, float]    = {}
+        # auth_token → [issued_at, last_seen, scope]. A bare issued-at could
+        # only answer "is this 12 hours old"; a phone left in a drawer stayed
+        # valid until the clock ran out, whoever was holding it.
+        self._tokens: dict[str, list]     = {}
         self._token_keys: dict[str, str]  = {}   # auth_token → session_key
         self._aes_cache:  dict[str, bytes]= {}   # session_key → AES bytes
         self._clients: set[WebSocket]     = set()
@@ -732,7 +890,15 @@ class DashboardServer:
         self._connect_callback            = None
         self._pending_keys: dict[str, float] = {}
         self._throttle                    = _Throttle()
-        self._device_sessions: dict[str, dict] = {}  # device_token → {session_key}
+        # device_token → {"session_key": str, "scope": str, "last_seen": float}
+        self._device_sessions: dict[str, dict] = {}
+        # Serialises the token dictionaries. FastAPI may run two requests on
+        # different threads (a sync route pool) and the WebSocket handler lives
+        # on the loop, so a `dict.pop` on one while another iterates is not a
+        # theoretical race — it is a RuntimeError waiting for a slow phone.
+        self._token_lock = threading.Lock()
+        self._audit: list[dict] = []          # last N dashboard actions
+        self._audit_lock = threading.Lock()
         self._phone_audio_queue: asyncio.Queue    = asyncio.Queue(maxsize=200)
         self._uploads_dir                 = UPLOADS_DIR
         # Set by serve() when the port could not be taken, so the UI can say
@@ -740,6 +906,15 @@ class DashboardServer:
         self._bind_error: str = ""
         self._login_html                  = _read("login.html")
         self._app_html                    = _read("app.html")
+        self._sweep_tokens()
+        # Refuse to serve a page whose inline script the CSP would block. The
+        # two must agree, and a page with no nonce placeholder is the one way
+        # they silently stop agreeing — the result is a blank dashboard.
+        for _name, _html in (("login.html", self._login_html),
+                             ("app.html", self._app_html)):
+            if "<script" in _html and "__NONCE__" not in _html:
+                print(f"[Dashboard] ⚠️  {_name} has an inline <script> with no "
+                      f"nonce placeholder; CSP will block it.")
         self.app                          = self._build_app()
 
     # ── one-time key management ───────────────────────────────────────────
@@ -806,8 +981,42 @@ class DashboardServer:
         """
         return f"{self._ip}:{PORT}"
 
+    def _sweep_tokens(self) -> None:
+        """Drop expired sessions and forgotten devices. Called at startup.
+
+        Lives in one function because the rule is easy to state and easy to
+        scatter: a token stops working when it ages out, and a device pairing
+        stops working when the phone has not come back for a month. The second
+        half did not exist — a paired phone token worked forever.
+        """
+        now = time.time()
+        with self._token_lock:
+            dead = [t for t, rec in self._tokens.items()
+                    if now - rec[0] > _TOKEN_TTL_SECONDS
+                    or now - rec[1] > _TOKEN_IDLE_SECONDS]
+            for t in dead:
+                self._tokens.pop(t, None)
+                self._token_keys.pop(t, None)
+            stale = [d for d, e in self._device_sessions.items()
+                     if now - e.get("last_seen", now) > _DEVICE_TOKEN_IDLE_SECONDS]
+            for d in stale:
+                self._device_sessions.pop(d, None)
+        if dead or stale:
+            print(f"[Dashboard] Cleared {len(dead)} expired session(s), "
+                  f"{len(stale)} forgotten device(s).")
+
     def _aes_key(self, session_key: str) -> bytes:
+        """Derive (once) and cache the AES key for a pairing key.
+
+        80 ms of PBKDF2 per session is the point; keeping every one of them
+        forever is not. Each dashboard open from the UI mints a new pairing key,
+        so this dict grew for the life of the process. Capped here rather than
+        swept on a timer: 32 entries is far more than the handful a phone can
+        hold open, and evicting the oldest costs one re-derivation nobody feels.
+        """
         if session_key not in self._aes_cache:
+            if len(self._aes_cache) >= 32:
+                self._aes_cache.pop(next(iter(self._aes_cache)), None)
             self._aes_cache[session_key] = _derive_key(session_key)
         return self._aes_cache[session_key]
 
@@ -838,7 +1047,11 @@ class DashboardServer:
         for ws in list(self._clients):
             try:
                 await ws.send_json(msg)
-            except Exception:
+            except Exception as e:
+                # Expected when a phone sleeps or walks out of Wi-Fi range; the
+                # point of logging it is that a client that fails EVERY send is
+                # a different problem from one that closed.
+                _dlog.debug("dropped a client: %s", e)
                 dead.add(ws)
         self._clients -= dead
 
@@ -847,31 +1060,121 @@ class DashboardServer:
     def _build_app(self) -> "FastAPI":
         app = FastAPI(docs_url=None, redoc_url=None)
 
-        def _valid(tok: str) -> bool:
-            """Is this token live? Expired ones are dropped as they are found,
-            which keeps the sweep free and needs no background timer."""
+        def _valid(tok: str, need: str = _SCOPE_READ) -> bool:
+            """Is this token live, and may it do `need`?
+
+            Two clocks, not one. The absolute TTL stops a token lasting forever;
+            the idle window stops one nobody is using from still working
+            because it happens to be inside the 12 hours. Every check refreshes
+            last_seen, so a page that is open keeps working and a page that was
+            abandoned stops.
+
+            Expired tokens are dropped as they are found, which keeps the sweep
+            free and needs no background timer.
+            """
             if not tok:
                 return False
-            issued = self._tokens.get(tok)
-            if issued is None:
-                return False
-            if time.time() - issued > _TOKEN_TTL_SECONDS:
-                self._tokens.pop(tok, None)
-                self._token_keys.pop(tok, None)
-                return False
+            now = time.time()
+            with self._token_lock:
+                rec = self._tokens.get(tok)
+                if rec is None:
+                    return False
+                issued, last_seen, scope = rec
+                if (now - issued > _TOKEN_TTL_SECONDS
+                        or now - last_seen > _TOKEN_IDLE_SECONDS):
+                    self._tokens.pop(tok, None)
+                    self._token_keys.pop(tok, None)
+                    return False
+                if need == _SCOPE_COMMAND and scope != _SCOPE_COMMAND:
+                    return False
+                rec[1] = now
             return True
 
-        def _auth(req: Request) -> bool:
+        def _auth(req: Request, need: str = _SCOPE_COMMAND) -> bool:
             return _valid(req.headers.get("authorization", "")
-                          .removeprefix("Bearer ").strip())
+                          .removeprefix("Bearer ").strip(), need)
+
+        def _issue_token(session_key: str, scope: str = _SCOPE_COMMAND) -> str:
+            tok = secrets.token_urlsafe(32)
+            now = time.time()
+            with self._token_lock:
+                self._tokens[tok] = [now, now, scope]
+                self._token_keys[tok] = session_key
+            return tok
+
+        def _audit_event(kind: str, who: str, detail: str = "") -> None:
+            """Record one dashboard action, in memory, capped.
+
+            The dashboard is a remote control for a program that can delete
+            files and drive the keyboard. When somebody asks "did my phone send
+            that?", the answer used to be a shrug and whatever was still in the
+            console scrollback. This keeps the last 200 actions on the machine
+            that received them.
+            """
+            entry = {"at": time.time(), "kind": kind, "who": who, "detail": detail[:200]}
+            with self._audit_lock:
+                self._audit.append(entry)
+                if len(self._audit) > 200:
+                    del self._audit[:len(self._audit) - 200]
+            print(f"[Dashboard] {kind} from {who}{(': ' + detail[:60]) if detail else ''}")
 
         def _who(req: Request) -> str:
             """The client address a throttle counts against."""
             return (getattr(getattr(req, "client", None), "host", "") or "unknown")
 
+        # ── Security headers, applied to every response ──────────────────────
+        # Implemented as middleware rather than per-route so a route added later
+        # cannot forget them, and so the WebSocket handshake carries them too.
+        @app.middleware("http")
+        async def _security_headers(request: Request, call_next):
+            response = await call_next(request)
+            # setdefault, NOT assignment. _page() below has already set a CSP
+            # carrying the exact nonce that its <script> tag uses; overwriting
+            # it here would hand the browser a policy naming a different nonce
+            # and block the page's own script — a hardening layer that breaks
+            # the page is the same failure as no layer at all.
+            response.headers.setdefault(
+                "Content-Security-Policy",
+                "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+                "img-src 'self' data: blob:; media-src 'self' blob:; "
+                "connect-src 'self' ws: wss:; worker-src 'self' blob:; "
+                "frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+            response.headers.setdefault("X-Content-Type-Options", "nosniff")
+            response.headers.setdefault("X-Frame-Options", "DENY")
+            response.headers.setdefault("Referrer-Policy", "no-referrer")
+            response.headers.setdefault(
+                "Permissions-Policy",
+                "camera=(), geolocation=(), payment=(), usb=(), "
+                "microphone=(self)")       # the phone mic is a deliberate feature
+            response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
+            # The download route puts the auth token in the URL; no cache keeps it.
+            response.headers.setdefault("Cache-Control", "no-store")
+            return response
+
+        def _page(html: str) -> HTMLResponse:
+            """HTML with the per-response nonce substituted into <script>."""
+            nonce = secrets.token_urlsafe(16)
+            html = html.replace("{{NONCE}}", nonce).replace("__NONCE__", nonce)
+            resp = HTMLResponse(html)
+            resp.headers["Content-Security-Policy"] = (
+                "default-src 'self'; "
+                f"script-src 'self' 'nonce-{nonce}'; "
+                "style-src 'self' 'unsafe-inline'; "
+                "img-src 'self' data: blob:; "
+                "media-src 'self' blob:; "
+                "connect-src 'self' ws: wss:; "
+                "worker-src 'self' blob:; "
+                "frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+            )
+            resp.headers["X-Content-Type-Options"] = "nosniff"
+            resp.headers["X-Frame-Options"] = "DENY"
+            resp.headers["Referrer-Policy"] = "no-referrer"
+            resp.headers["Cache-Control"] = "no-store"
+            return resp
+
         @app.get("/login", response_class=HTMLResponse)
         async def login_page():
-            return HTMLResponse(self._login_html)
+            return _page(self._login_html)
 
         @app.get("/", response_class=HTMLResponse)
         async def index():
@@ -881,7 +1184,7 @@ class DashboardServer:
             html = (self._app_html
                     .replace("__IP__", self._ip)
                     .replace("__PORT__", str(PORT)))
-            return HTMLResponse(html)
+            return _page(html)
 
         @app.post("/login")
         async def login(req: Request):
@@ -897,15 +1200,20 @@ class DashboardServer:
                               f"{int(wait) + 1} seconds."},
                     status_code=429,
                 )
-            body    = await req.json()
-            entered = str(body.get("pin", "")).strip().upper()
+            if int(req.headers.get("content-length") or 0) > _MAX_LOGIN_BODY:
+                return JSONResponse({"ok": False, "error": "Bad request"}, status_code=400)
+            try:
+                body = await req.json()
+            except Exception:
+                return JSONResponse({"ok": False, "error": "Bad request"}, status_code=400)
+            if not isinstance(body, dict):
+                return JSONResponse({"ok": False, "error": "Bad request"}, status_code=400)
+            entered = str(body.get("pin", ""))[:64].strip().upper()
             now     = time.time()
             if entered in self._pending_keys and self._pending_keys[entered] > now:
                 self._throttle.clear(who)
                 del self._pending_keys[entered]          # one-time use
-                tok = secrets.token_urlsafe(32)
-                self._tokens[tok] = time.time()
-                self._token_keys[tok] = entered
+                tok = _issue_token(entered, _SCOPE_COMMAND)
                 self._aes_key(entered)                   # pre-derive & cache
                 if self._connect_callback:
                     self._connect_callback()
@@ -935,12 +1243,14 @@ class DashboardServer:
 </div></body></html>""")
 
             del self._pending_keys[key]
-            tok     = secrets.token_urlsafe(32)
+            tok     = _issue_token(key, _SCOPE_COMMAND)
             dev_tok = secrets.token_urlsafe(32)
-            self._tokens[tok] = time.time()
-            self._token_keys[tok] = key
             self._aes_key(key)
-            self._device_sessions[dev_tok] = {"session_key": key}
+            self._device_sessions[dev_tok] = {
+                "session_key": key,
+                "scope": _SCOPE_COMMAND,
+                "last_seen": time.time(),
+            }
 
             if self._connect_callback:
                 self._connect_callback()
@@ -975,10 +1285,10 @@ class DashboardServer:
             dev_tok = (body.get("device_token") or "").strip()
             if not dev_tok or dev_tok not in self._device_sessions:
                 return JSONResponse({"ok": False}, status_code=401)
-            session_key = self._device_sessions[dev_tok]["session_key"]
-            tok = secrets.token_urlsafe(32)
-            self._tokens[tok] = time.time()
-            self._token_keys[tok] = session_key
+            entry = self._device_sessions[dev_tok]
+            session_key = entry["session_key"]
+            entry["last_seen"] = time.time()
+            tok = _issue_token(session_key, entry.get("scope", _SCOPE_COMMAND))
             self._aes_key(session_key)
             if self._connect_callback:
                 self._connect_callback()
@@ -1001,31 +1311,47 @@ class DashboardServer:
             #
             # The caller's own token is kept, or pressing the button would log
             # out the person who pressed it.
-            mine  = req.headers.get("authorization", "").removeprefix("Bearer ").strip()
-            count = len(self._device_sessions)
-            live  = len(self._tokens) - (1 if mine in self._tokens else 0)
-            self._device_sessions.clear()
-            keep = self._tokens.get(mine)
-            self._tokens.clear()
-            self._token_keys = {k: v for k, v in self._token_keys.items() if k == mine}
-            if keep is not None:
-                self._tokens[mine] = keep
+            mine = req.headers.get("authorization", "").removeprefix("Bearer ").strip()
+            with self._token_lock:
+                count = len(self._device_sessions)
+                live  = len(self._tokens) - (1 if mine in self._tokens else 0)
+                self._device_sessions.clear()
+                keep      = self._tokens.get(mine)
+                keep_key  = self._token_keys.get(mine)
+                self._tokens.clear()
+                self._token_keys.clear()
+                if keep is not None:
+                    self._tokens[mine] = keep
+                    self._token_keys[mine] = keep_key
+            _audit_event("revoked-devices", _who(req), f"{count} devices, {live} sessions")
             return JSONResponse({"ok": True, "revoked": count, "sessions_ended": live})
 
         @app.post("/api/command")
         async def command(req: Request):
-            if not _auth(req):
+            # A command is one sentence. Without a cap, "send a 200 MB body to
+            # /api/command" is a way to make the assistant's own machine spend
+            # its memory before any auth check runs inside req.json().
+            if int(req.headers.get("content-length") or 0) > _MAX_COMMAND_BODY:
+                return JSONResponse({"error": "Command too large"}, status_code=413)
+            if not _auth(req, _SCOPE_COMMAND):
                 return JSONResponse({"error": "Unauthorized"}, status_code=401)
-            body  = await req.json()
+            try:
+                body = await req.json()
+            except Exception:
+                return JSONResponse({"error": "Bad request"}, status_code=400)
+            if not isinstance(body, dict):
+                return JSONResponse({"error": "Bad request"}, status_code=400)
             token = req.headers.get("authorization", "").removeprefix("Bearer ").strip()
-            enc   = body.get("enc", "")
+            enc   = str(body.get("enc") or "")[: _MAX_KEY_BYTES * 4]
             if enc:
                 text = self._decrypt(token, enc)
                 if text is None:
                     return JSONResponse({"error": "Decryption failed"}, status_code=400)
             else:
-                text = (body.get("text") or "").strip()
+                text = str(body.get("text") or "").strip()
+            text = text[:2000]
             if text:
+                _audit_event("command", _who(req), text)
                 await self._command_queue.put(text)
                 if self._wake_callback:
                     self._wake_callback()
@@ -1033,8 +1359,9 @@ class DashboardServer:
 
         @app.post("/api/wake")
         async def wake_ep(req: Request):
-            if not _auth(req):
+            if not _auth(req, _SCOPE_COMMAND):
                 return JSONResponse({"error": "Unauthorized"}, status_code=401)
+            _audit_event("wake", _who(req))
             if self._wake_callback:
                 self._wake_callback()
             return JSONResponse({"ok": True})
@@ -1044,7 +1371,7 @@ class DashboardServer:
         @app.websocket("/ws/phone-audio")
         async def phone_audio_ws(websocket: WebSocket, token: str = ""):
             tok = token.strip()
-            if not _valid(tok):
+            if not _valid(tok, _SCOPE_COMMAND):
                 await websocket.close(code=4001)
                 return
             await websocket.accept()
@@ -1090,6 +1417,15 @@ class DashboardServer:
 
                 size = 0
                 max_bytes = MAX_UPLOAD_MB * 1024 * 1024
+                # One 500 MB file is a decision; fifty of them is a full disk on
+                # the machine the assistant is supposed to be running.
+                used_mb = _dir_size_mb(self._uploads_dir)
+                if used_mb + (int(req.headers.get("content-length") or 0) >> 20) > _UPLOAD_QUOTA_MB:
+                    return JSONResponse(
+                        {"error": f"Uploads folder is full ({used_mb:.0f} MB of "
+                                  f"{_UPLOAD_QUOTA_MB} MB). Delete some files and retry."},
+                        status_code=507,
+                    )
                 try:
                     with open(dest, "wb") as fout:
                         while True:
@@ -1112,6 +1448,7 @@ class DashboardServer:
                         pass
                     return JSONResponse({"error": str(exc)}, status_code=500)
 
+                _audit_event("upload", _who(req), f"{dest.name} ({size // 1024} KB)")
                 asyncio.create_task(self.broadcast({
                     "type": "file_received",
                     "name": dest.name,
@@ -1139,15 +1476,44 @@ class DashboardServer:
                     reverse=True,
                 ):
                     files.append({"name": f.name, "size": f.stat().st_size})
-            except Exception:
-                pass
+            except OSError as e:
+                # Listing a folder that was deleted, or a file that vanished
+                # between iterdir() and stat(). The list is a convenience; an
+                # empty one with a reason in the log beats a 500.
+                _dlog.debug("listing uploads: %s", e)
             return JSONResponse({"files": files})
+
+        @app.get("/api/devices")
+        async def list_devices(req: Request):
+            """What is paired with this machine, so 'revoke all' is not a blind
+            button. Counts and ages only — no tokens leave this route."""
+            if not _auth(req, _SCOPE_READ):
+                return JSONResponse({"error": "Unauthorized"}, status_code=401)
+            now = time.time()
+            with self._token_lock:
+                live = [
+                    {"age_s": int(now - rec[0]), "idle_s": int(now - rec[1]),
+                     "scope": rec[2]}
+                    for rec in self._tokens.values()
+                ]
+                paired = [{"idle_days": int((now - d.get("last_seen", now)) / 86400),
+                           "scope": d.get("scope", _SCOPE_COMMAND)}
+                          for d in self._device_sessions.values()]
+            return JSONResponse({"ok": True, "live_sessions": live, "paired_devices": paired})
+
+        @app.get("/api/audit")
+        async def audit_log(req: Request):
+            """The last 200 dashboard actions, for "did my phone do that?"."""
+            if not _auth(req, _SCOPE_READ):
+                return JSONResponse({"error": "Unauthorized"}, status_code=401)
+            with self._audit_lock:
+                return JSONResponse({"ok": True, "entries": list(self._audit[-200:])})
 
         @app.get("/uploads/{filename}")
         async def download_file(filename: str, token: str = ""):
             # Auth via query param — browser <a download> can't send custom headers
             tok = token.strip()
-            if not _valid(tok):
+            if not _valid(tok, _SCOPE_READ):
                 return JSONResponse({"error": "Unauthorized"}, status_code=401)
             safe = re.sub(r'[/\\]', '', filename)
             path = self._uploads_dir / safe
@@ -1158,7 +1524,10 @@ class DashboardServer:
         @app.websocket("/ws")
         async def ws_ep(websocket: WebSocket, token: str = ""):
             tok = token.strip()
-            if not _valid(tok):
+            # Reading the feed needs read scope; sending a command over this
+            # socket is checked again below, because one connection can be
+            # opened with a read-only token and then try to type into JARVIS.
+            if not _valid(tok, _SCOPE_READ):
                 await websocket.close(code=4001)
                 return
             await websocket.accept()
@@ -1172,8 +1541,13 @@ class DashboardServer:
                 while True:
                     data = await websocket.receive_json()
                     if data.get("type") == "command":
-                        enc = data.get("enc", "")
-                        t   = self._decrypt(tok, enc) if enc else (data.get("text") or "").strip()
+                        if not _valid(tok, _SCOPE_COMMAND):
+                            await websocket.send_json(
+                                {"type": "sys", "text": "This device may watch, not command."})
+                            continue
+                        enc = str(data.get("enc", "") or "")[: _MAX_KEY_BYTES * 4]
+                        t   = self._decrypt(tok, enc) if enc else str(data.get("text") or "").strip()
+                        t   = t[:2000]
                         if t:
                             await self._command_queue.put(t)
                             if self._wake_callback:
@@ -1243,8 +1617,11 @@ class DashboardServer:
                       encoding="utf-8") as f:
                 if _json.load(f).get("dashboard_https"):
                     _ensure_certs()
-        except Exception:
-            pass
+        except Exception as e:
+            # A missing or corrupt config means HTTPS was not asked for. When
+            # it WAS asked for and this failed, the server below starts on
+            # plain HTTP — worth knowing before blaming the phone.
+            _dlog.debug("could not read dashboard_https: %s", e)
 
         use_ssl  = self._ssl_enabled()
         ssl_key  = BASE_DIR / "config" / "certs" / "jarvis.key"
@@ -1306,6 +1683,13 @@ class DashboardServer:
             print(f"[Dashboard] {self._bind_error}")
             return
         _probe.close()
+
+        # Expired uploads go before anybody can reach the quota above. Off the
+        # loop: it walks a folder that may hold thousands of files.
+        try:
+            await asyncio.to_thread(_sweep_uploads, self._uploads_dir)
+        except Exception as e:
+            print(f"[Dashboard] Upload sweep skipped: {e}")
 
         print(f"[Dashboard] {self.get_url()}")
         print("[Dashboard] Press 'Remote Control' in JARVIS UI to get the QR code.")

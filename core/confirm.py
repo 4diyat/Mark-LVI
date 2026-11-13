@@ -40,6 +40,8 @@ import time
 from dataclasses import dataclass
 from typing import Callable, Optional
 
+from core import logbook
+
 # A pending confirmation is abandoned after this long. Chosen to outlast a
 # normal "hang on, let me look at the screen" pause without leaving a live
 # shutdown button sitting on the HUD for the rest of the day.
@@ -75,8 +77,11 @@ def _log(msg: str) -> None:
     if _log_cb:
         try:
             _log_cb(msg)
-        except Exception:
-            pass
+        except Exception as e:
+            # The HUD callback is the thing that failed, and the whole point of
+            # this function is to report failures — so fall back to the file
+            # rather than losing the sentence.
+            logbook.get("confirm").debug("log callback failed: %s", e)
 
 
 def request(key: str, title: str, detail: str, run: Callable[[], str]) -> str:
@@ -126,8 +131,11 @@ def resolve(accepted: bool) -> None:
     if _hide_cb:
         try:
             _hide_cb()
-        except Exception:
-            pass
+        except Exception as e:
+            # The gate stays drawn on screen while the action runs behind it.
+            # Ugly, but strictly better than not running what the user just
+            # confirmed; the log says why the panel is still there.
+            logbook.get("confirm").debug("hiding the confirmation: %s", e)
 
     if p is None:
         return

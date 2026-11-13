@@ -1,0 +1,432 @@
+name: CI
+
+# ── WHY THIS FILE EXISTS AT ALL ──────────────────────────────────────────────
+# Before it, the project had no automated check of any kind. 39,000 lines, 67
+# modules, three operating systems claimed in the README, and the only thing
+# that ever looked at a change was the author's memory.
+#
+#     The Linux firewall code in dashboard/server.py referenced a variable that
+#     does not exist (`port` when the parameter is `*ports`) in NINE places.
+#     Every branch caught only FileNotFoundError, so the NameError escaped into
+#     a bare `except Exception` in the caller. The whole Linux path was dead
+#     code that looked alive, and no test would have executed it.
+#
+# A lint step running `F821 undefined-name` says so in one second. That is the
+# whole argument for this file.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  # A push that supersedes an edit in flight is not worth finishing.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── 1. Static checks: fast, no dependencies, no OS differences ─────────────
+  lint:
+    name: Lint (ruff, pyflakes rules)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install ruff
+        run: pip install "ruff>=0.6,<1"
+      - name: Enforced rules (F + E9) — must be clean
+        run: ruff check .
+      - name: Style families — informational, not yet enforced
+        # Ubuntu-only job, so this would work without it — but the rule that a
+        # shell-only body names its shell is worth more than the two words it
+        # costs. tests/test_workflow_sh.py enforces it.
+        shell: bash
+        run: |
+          echo "Housekeeping, not a gate. pyproject.toml explains why this set"
+          echo "is not enforced yet: 39k lines of legacy would bury the signal."
+          ruff check --select E,W,I,UP,B,SIM --statistics --exit-zero . | tail -30
+      - name: Whole tree parses
+        shell: bash
+        run: python -m compileall -q . -x "__pycache__" && echo "compileall OK"
+
+  # ── 2. Tests, on every OS the README claims support for ────────────────────
+  test:
+    name: Tests (${{ matrix.os }}, py${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.11", "3.12"]
+    env:
+      # Qt is only ever imported by the ui/ package, which no test imports — but set the
+      # offscreen backend anyway so a future widget test does not need a display.
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - name: Install test tooling (no app dependencies needed)
+        run: pip install -r requirements-dev.txt
+      - name: Run the suite
+        run: python -m pytest -q --junitxml="${{ runner.temp }}/junit.xml"
+      # ── WHY A REPORT STEP AND NOT JUST "pytest -q" ────────────────────────
+      # Three operating systems and two Pythons means six chances for a test
+      # that only passes here. When one fails, the console log is a 60,000-line
+      # download that this repository's token cannot always fetch (it returns
+      # EOF), and the only thing left in the UI is "Process completed with exit
+      # code 1". Which test, on which OS, saying what — the first three things
+      # anyone needs — are not in it.
+      #
+      # So the junit XML pytest already wrote is turned into annotations: they
+      # appear against the failing line in the PR and they are readable from
+      # the API, which is how the failure actually gets diagnosed.
+      - name: Report failures as annotations
+        if: always()
+        # A SCRIPT, NOT A HEREDOC. The first version of this step was
+        # `python - <<'REPORT' ...`, which is bash syntax: on Linux and macOS it
+        # annotated the real failures, and on Windows — where `run:` defaults to
+        # PowerShell — it failed on its own syntax and hid them. tools/annotate_
+        # junit.py has no shell in it, and tests/test_ci_report.py runs it.
+        run: python tools/annotate_junit.py "${{ runner.temp }}/junit.xml"
+      - name: Show what the suite covers
+        if: always()
+        # `tail` is bash; the default shell on Windows is PowerShell.
+        shell: bash
+        run: python -m pytest --collect-only -q | tail -5
+
+      # ── The coverage floor ────────────────────────────────────────────────
+      # Not a target, a ratchet. Sprint 4 raised the suite from 17 % to 36 % of
+      # core/ + memory/ + dashboard/, almost all of it in modules that decide
+      # what the assistant DOES to the machine (the two loaders, the undo stack,
+      # the confirmation gate, the echo guard, the platform report).
+      #
+      # ── What is covered, and what a percentage cannot say ─────────────────
+      # The 60 % on the tested modules is a RATCHET: those twelve carried no
+      # test at all a week ago, and they are the ones that decide what the
+      # assistant does to the machine, in what language it says so, and what it
+      # remembers. They read 85 % here, so the floor only catches a real loss.
+      #
+      # The whole-package number is printed and NOT enforced, on purpose. It
+      # measures the runner rather than the code: the same 254 tests read 36 %
+      # of core/ on a developer's machine with requirements.txt installed, 29 %
+      # here (requirements-dev only, by design) and a point or two differently
+      # on Windows than on Linux — Qt, torch, a GPU and an audio device are
+      # unimportable there. A gate whose number moves with the operating system
+      # teaches people to add skips until it is green.
+      #
+      # The rule that percentage was standing in for is checked instead, and it
+      # is portable: tests/test_coverage_map.py requires every module over 120
+      # statements to be named by a test file OR listed with a reason it cannot
+      # run on this hardware. Both directions are checked, so neither an
+      # untested module nor a stale exemption survives by being forgotten.
+      - name: Coverage — the tested modules, and the map for the rest
+        if: always()
+        # `shell: bash` because this body uses `$?`, `|| true` and a line
+        # continuation — bash syntax, and the default shell on Windows is
+        # PowerShell. Without it, the three runners ran two different scripts
+        # and only one of them was the one I wrote.
+        shell: bash
+        run: |
+          # The writes are reported BEFORE anything is allowed to fail. GitHub
+          # runs a step with `bash -e`, so a suite that failed HERE — under the
+          # tracer, on this OS, with this interpreter — used to kill the step
+          # before a single number was printed, leaving "exit code 1" with no
+          # way to tell missing coverage from a failing test.
+          python -m pip install --quiet coverage
+          python -m coverage run --source=core,memory,dashboard -m pytest -q || true
+          echo "::group::whole package (printed, not enforced — see the comment)"
+          python -m coverage report || true
+          echo "::endgroup::"
+          python -m coverage report \
+            --include="core/action_loader.py,core/plugin_loader.py,core/outcome.py,core/undo.py,core/confirm.py,core/echo.py,core/platform_support.py,core/lazyimport.py,core/i18n.py,core/keychain.py,core/plugin_manifest.py,memory/memory_manager.py,core/logbook.py,memory/config_manager.py" \
+            --fail-under=60
+
+  # ── 3. The real dependency set still installs and still loads ──────────────
+  # requirements.txt carries sys_platform markers, so this job is also the
+  # regression test for "a macOS user never pulls Windows-only libraries".
+  install:
+    name: Install real deps + load every action (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    env:
+      # `shell: python` writes the step body to a TEMP file and runs it, so
+      # sys.path[0] is that temp folder and `import core` fails. The repo root
+      # has to be named explicitly. (Found by this job on its first run — which
+      # is the entire argument for having it.)
+      PYTHONPATH: .
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install requirements.txt (as setup.py would, without the browsers)
+        run: pip install -r requirements.txt
+      - name: Load every action the way main.py does
+        # actions/*.py self-describe through a TOOL dict and are discovered at
+        # startup. A rejection does not stop the app — the loader is built to
+        # survive one — which is exactly why nothing noticed when four of them
+        # stopped loading on a fresh install. Here one rejection fails the build.
+        #
+        # `shell: python` runs this body as a script on every runner, so there
+        # is no bash/PowerShell quoting difference between Linux, macOS and
+        # Windows.
+        shell: python
+        run: |
+          from pathlib import Path
+          from core.action_loader import discover_actions
+
+          lines = []
+          registry = discover_actions(Path("actions"), set(), lines.append)
+          for line in lines:
+              print(line)
+          names = sorted(registry.names())
+          print(f"{len(names)} actions active: {names}")
+          # Same trap as the plugin step: the summary line contains the word.
+          rejected = [line for line in lines
+                      if "rejected" in line.lower() and "discovery complete" not in line.lower()]
+          if rejected:
+              raise SystemExit("actions failed to load:\n" + "\n".join(rejected))
+      - name: Load every plugin through the real loader
+        # PYTHONUTF8, because Windows was the only runner that failed here and
+        # the only difference was non-ASCII text: a `shell: python` step writes
+        # stdout in the console code page, which is cp1252 on the Windows
+        # runners, so an em dash in a print() raised UnicodeEncodeError inside
+        # the step while the loader itself was fine. Asking for UTF-8 says what
+        # this step actually needs instead of forbidding a character.
+        env:
+          PYTHONUTF8: "1"
+        # plugins/ ships the template, the worked example and nothing else; the
+        # point of this step is that the loader runs against a real folder on
+        # this OS without raising.
+        #
+        # It now also asserts the two properties the example exists to prove,
+        # because "0 rejected" is true of a folder where nothing loaded: the
+        # manifest must verify, and a plugin that declared a permission must
+        # arrive OFF. A manifest check that quietly stopped running would leave
+        # this step green in exactly the same way as a healthy one.
+        shell: python
+        run: |
+          from pathlib import Path
+          from core.plugin_loader import discover_plugins
+
+          lines = []
+          registry = discover_plugins(Path("plugins"), set(), lines.append, lines.append)
+          for line in lines:
+              print(line)
+          print(f"plugin loader OK: {len(registry.list_for_ui())} visible")
+
+          rows = {r["name"]: r for r in registry.list_for_ui()}
+          example = rows.get("currency_rates")
+          if example is None:
+              raise SystemExit("the example plugin did not load at all")
+          if not example["valid"]:
+              raise SystemExit(f"the example plugin was rejected: {example['error']}")
+          if example["permissions"] != ["network"]:
+              raise SystemExit(
+                  "the manifest was not read: permissions came through as "
+                  f"{example['permissions']!r}")
+          if example["enabled"]:
+              raise SystemExit(
+                  "a plugin that declared a permission started ENABLED — the "
+                  "consent question is asked after it can already run")
+          print("example plugin: manifest verified, declared network, starts off")
+
+          # The MT5 plugin is the second one with a manifest, and it declares
+          # `files` rather than `network` — so this pair of checks proves the
+          # permission actually comes from the manifest, not from a hardcoded
+          # default. It must load on Linux and macOS too: it is offered
+          # everywhere and refuses with a reason off Windows, which only works
+          # if the module imports without the Windows-only package present.
+          mt5 = rows.get("mt5_orb")
+          if mt5 is None:
+              raise SystemExit("mt5_orb did not load — it must import on every OS")
+          if not mt5["valid"]:
+              raise SystemExit(f"mt5_orb was rejected: {mt5['error']}")
+          if mt5["permissions"] != ["files"]:
+              raise SystemExit(
+                  f"mt5_orb permissions came through as {mt5['permissions']!r}")
+          if mt5["enabled"]:
+              raise SystemExit("mt5_orb declared a permission but started ENABLED")
+          print("mt5_orb: loaded without MetaTrader5, declared files, starts off")
+
+          # The third manifest, and the opposite case to the two above: an empty
+          # permission list. A plugin that writes only its own files has nothing
+          # to consent to, so it must keep the opt-out default and stay ON —
+          # otherwise "ships a manifest" silently means "is off until noticed".
+          notes = rows.get("quick_notes")
+          if notes is None:
+              raise SystemExit("quick_notes did not load")
+          if not notes["valid"]:
+              raise SystemExit(f"quick_notes was rejected: {notes['error']}")
+          if notes["permissions"] != []:
+              raise SystemExit(
+                  f"quick_notes permissions came through as {notes['permissions']!r}")
+          if not notes["enabled"]:
+              raise SystemExit(
+                  "a manifest with NO permissions turned the plugin off — the "
+                  "consent rule is about declared access, not about shipping a "
+                  "manifest")
+          print("quick_notes: empty permission list, keeps the opt-out default (on)")
+
+          # And the fourth: a plugin whose network access lives in a HELPER
+          # module. Its own file has no urllib import, so the static scan cannot
+          # see the network — the honest declaration is `network`, which the
+          # checker turns into a warning rather than a refusal. This asserts both
+          # halves of that: the manifest still verifies, and over-declaring does
+          # not become a load failure.
+          market = rows.get("market_price")
+          if market is None:
+              raise SystemExit("market_price did not load")
+          if not market["valid"]:
+              raise SystemExit(f"market_price was rejected: {market['error']}")
+          if market["permissions"] != ["network"]:
+              raise SystemExit(
+                  f"market_price permissions came through as {market['permissions']!r}")
+          if market["enabled"]:
+              raise SystemExit("market_price declared network but started ENABLED")
+          if "network" not in (market["manifest_note"] or ""):
+              raise SystemExit(
+                  "the scan did not flag the network access hidden in the helper "
+                  f"module; note was {market['manifest_note']!r}")
+          print("market_price: network declared from the helper, warned not refused")
+
+          # The fifth is prayer_times, and it carries the other thing worth
+          # pinning about a plugin that has DEFAULTS: a PLUGIN_SETTINGS schema
+          # is silently ignored by the loader when it is malformed, so a plugin
+          # can ship a settings form that never appears. This checks the schema
+          # reaches the registry, and that the plugin still starts off.
+          prayer = rows.get("prayer_times")
+          if prayer is None:
+              raise SystemExit("prayer_times did not load")
+          if not prayer["valid"]:
+              raise SystemExit(f"prayer_times was rejected: {prayer['error']}")
+          if prayer["permissions"] != ["network"]:
+              raise SystemExit(
+                  f"prayer_times permissions came through as {prayer['permissions']!r}")
+          if prayer["enabled"]:
+              raise SystemExit("prayer_times declared network but started ENABLED")
+          # NOTE the order: a plugin that declared a permission starts OFF, and
+          # settings_schemas() deliberately returns nothing for a plugin that is
+          # not enabled — so asking about the form BEFORE consent looks exactly
+          # like a malformed schema. Switch it on the way the dialog would, then
+          # ask. (This is the bug the first draft of this step had.)
+          from memory.config_manager import save_plugin_enabled
+          save_plugin_enabled("prayer_times", True)
+          registry = discover_plugins(Path("plugins"), set(), lambda _m: None, lambda _m: None)
+          settings = [sec for sec in registry.settings_schemas()
+                      if sec["namespace"] == "prayer_times"]
+          if len(settings) != 1:
+              raise SystemExit(
+                  "prayer_times declares PLUGIN_SETTINGS but no settings section "
+                  "reached the panel; a malformed schema is dropped silently")
+          fields = {f["key"] for f in settings[0]["fields"]}
+          if fields != {"city", "country", "method", "school"}:
+              raise SystemExit(f"prayer_times settings fields are {sorted(fields)}")
+          print("prayer_times: manifest + settings schema reach the panel, starts off")
+          # The summary line itself says "0 active, 0 rejected, 0 total" — so a
+          # naive substring match flags a clean run. Only real rejections start
+          # a line about a file.
+          rejected = [line for line in lines
+                      if "rejected" in line.lower() and "discovery complete" not in line.lower()]
+          if rejected:
+              raise SystemExit("plugins failed to load:\n" + "\n".join(rejected))
+      # ── The providers self-test, in two steps, for a reason ────────────────
+      # One step cannot do both jobs it needs to do:
+      #
+      #   * run the suite — needs a real interpreter. `shell: python` has one on
+      #     every runner (the step above proves it); a bash step does not, on
+      #     Windows, whatever form of the path it is given.
+      #   * report the failures as ANNOTATIONS — parsed by the runner only on a
+      #     bash/PowerShell step, not on `shell: python`.
+      #
+      # Four earlier versions of this tried to do it in one step and failed in
+      # the harness each time (127, 250, -1, 127) — never in the code being
+      # tested. So: the Python step runs it and leaves the transcript and the
+      # exit code on disk; the bash step prints the transcript, converts FAIL
+      # lines into annotations, and exits with the recorded code.
+      - name: Providers self-test (runs offline; owns its own mocks)
+        shell: python
+        # encoding= is not optional here. On Windows the child writes its
+        # output in the console's code page, and decoding it as UTF-8 with the
+        # default error handler kills the PARENT step — which then exits with a
+        # code that has nothing to do with the test (observed: 9, reported as
+        # "9 checks failed" by nobody). errors="replace" keeps the transcript
+        # readable and lets the bash step report whatever the child actually said.
+        run: |
+          import os
+          import pathlib
+          import subprocess
+          import sys
+
+          # PYTHONIOENCODING for the CHILD as well: capture_output collects
+          # bytes, so the parent's decoding is only half of this fix.
+          # -u IS NOT COSMETIC. Piped stdout is block-buffered, so when the
+          # child aborts (Qt fail-fast, no exception, no unwinding) everything
+          # it had printed is still sitting in its buffer and is lost. The
+          # transcript then looks like it contains only the child's stderr,
+          # and the one line that says WHICH check was running is gone.
+          # Unbuffered, stdout reaches the file as it happens.
+          env = dict(os.environ, PYTHONIOENCODING="utf-8:replace",
+                     PYTHONUNBUFFERED="1")
+          # stderr goes into the same pipe as stdout. They used to be captured
+          # separately and concatenated, which silently reorders the
+          # transcript: every Qt warning (stderr, unbuffered) landed at the END,
+          # so the tail showed messages from the start of the run and hid the
+          # line where it actually stopped.
+          proc = subprocess.run([sys.executable, "-u", "-m", "providers._tests"],
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT,
+                                text=True,
+                                encoding="utf-8", errors="replace", env=env)
+          out = proc.stdout or ""
+          print(out, flush=True)
+          pathlib.Path("providers-test.txt").write_text(out, encoding="utf-8")
+          pathlib.Path("providers-test.status").write_text(str(proc.returncode))
+          # Deliberately 0: the bash step below is the one that fails the job,
+          # and it can only do that after it has printed the annotations.
+          print(f"self-test exit code: {proc.returncode}")
+
+      - name: Report the self-test (annotations + status)
+        if: always()
+        shell: bash
+        run: |
+          if [ -f providers-test.txt ]; then
+            cat providers-test.txt
+          else
+            echo "::error::the self-test step left no transcript"
+          fi
+          grep -E "^  FAIL" providers-test.txt 2>/dev/null | sed -e 's/^/::error::/' || true
+          pass=$(grep -c "^  PASS" providers-test.txt 2>/dev/null || true)
+          fail=$(grep -c "^  FAIL" providers-test.txt 2>/dev/null || true)
+          # The status is written by the Python step, and on Windows that step
+          # can die before writing it. `ls` first: opening a file that is not
+          # there makes some bash builds report a code of their own, which is
+          # how this step produced "exit code 9" three times with no message.
+          if [ -f providers-test.status ]; then
+            status=$(cat providers-test.status)
+          else
+            status="missing"
+          fi
+          echo "recorded: ${pass:-0} passed, ${fail:-0} failed, status=${status}"
+          if [ "$status" = "0" ]; then
+            exit 0
+          fi
+          echo "::error::providers self-test did not complete (status=${status})"
+          # THE TAIL, AS ANNOTATIONS. Job logs are not always readable from
+          # outside, but annotations are — and a suite that dies mid-run leaves
+          # its last line as the only evidence of where. GitHub renders up to
+          # ten error annotations per step, so this asks for the last eight.
+          if [ -f providers-test.txt ]; then
+            tail -n 8 providers-test.txt | sed -e 's/^/::error::last: /'
+          fi
+          exit 1
