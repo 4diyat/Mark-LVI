@@ -169,6 +169,25 @@ def test_a_header_label_has_no_extension_and_no_query():
     assert pb.audio_title("") == ""
 
 
+def test_a_windows_path_shows_its_file_name_not_the_whole_path():
+    """CI on windows-latest caught this; Linux never could.
+
+    "C:\\Users\\me\\song.mp3" has no "://", so urlparse reports the entire
+    string as its path, there is no "/" to split on, and the audio header showed
+    the user's entire folder tree. Fixed by splitting on both separators first
+    and only then looking for a query string.
+    """
+    assert pb.audio_title(r"C:\Users\me\Music\song.mp3") == "song"
+    assert pb.audio_title(r"C:\Users\me\Music\My_Song.mp3") == "My Song"
+    # A quoted path arrives from Explorer's "Copy as path" and must survive.
+    assert pb.audio_title(r'"C:\Users\me\Music\My Song.mp3"') == "My Song"
+
+
+def test_a_query_string_never_reaches_the_header():
+    assert pb.audio_title("https://cdn.example/a/My%20Song.m4a?token=abc") == "My Song"
+    assert pb.audio_title("https://radio.example/stream#t=90") == "stream"
+
+
 # ── end of media: the bug that made JARVIS deaf ─────────────────────────────
 
 def test_a_finished_video_closes_and_gives_the_microphone_back():

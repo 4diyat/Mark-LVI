@@ -1026,6 +1026,13 @@ Dua hal yang ditemukan tes, bukan mata:
   internet. Jadi tesnya sekarang menyatakan itu secara eksplisit — yang ambigu
   dicoba, dan kegagalannya dilaporkan apa adanya.
 
+**Satu bug lagi, ditemukan CI Windows, bukan saya.** Header audio sempat
+menampilkan seluruh path: `C:\Users\me\Music\song.mp3` tidak punya `://`, jadi
+`urlparse` menganggap seluruh string sebagai path, tidak ada `/` untuk dipotong,
+dan labelnya menjadi folder lengkap pengguna. Tidak mungkin terlihat di Linux —
+input itu tidak pernah masuk cabang tersebut di sini. Perbaikannya: potong pada
+**kedua** pemisah dulu, baru cari query string. Tes tetapnya jalan di Linux.
+
 **Yang tidak diklaim.** Tidak ada codec di sandbox ini, jadi tidak ada video
 atau audio yang benar-benar diputar. Yang diuji adalah keputusan, routing, dan
 eksekusi kelas-kelasnya dengan pemutar palsu. Membuktikan sebuah film benar-benar

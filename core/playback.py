@@ -396,11 +396,20 @@ def audio_title(path_or_url: str) -> str:
     raw = clean_source(path_or_url)
     if not raw:
         return ""
+    # Split on BOTH separators, always. Going through urlparse first was wrong
+    # on Windows: "C:\\Users\\me\\song.mp3" has no "://", so urlparse reports the
+    # whole thing as the path, there is no "/" to split on, and the header read
+    # "C:\\Users\\me\\song.mp3" in full. CI on windows-latest caught it; Linux
+    # never could, because the same input never reaches that branch here.
+    last = raw.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
     try:
-        parsed = urllib.parse.urlparse(raw)
-        last = parsed.path.rsplit("/", 1)[-1]
+        # A query string is not part of a name: "?v=2&t=30" belongs in a log
+        # line, not in a header. Splitting it off after the separator split
+        # keeps this a one-line rule for files and URLs alike.
+        last = urllib.parse.urlparse(last).path
     except Exception:
-        last = raw.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+        pass
+    last = last.split("?", 1)[0].split("#", 1)[0]
     if not last:
         return ""
     last = urllib.parse.unquote(last)
