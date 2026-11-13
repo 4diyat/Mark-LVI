@@ -124,7 +124,7 @@ from ui.metrics import (        # noqa: F401 — same object as ui/metrics._metr
 # labels) and because this file was at its size ceiling with the language row
 # still unwritten. Re-exported through the package, so `ui.CustomizeOverlay`
 # and every plugin that names it keep working.
-from ui.audio import AudioMixin
+from ui.audio import AudioMixin, qurl_for
 from ui.overlays import (      # noqa: F401 — re-exported through the package
     CustomizeOverlay,
     HueWheel,
@@ -3647,7 +3647,6 @@ class MainWindow(AudioMixin, QMainWindow):
         # The audio bar is built by ui/audio.py — see that module for why.
         self._build_audio_bar(_vid_btn)
 
-
         if HAVE_VIDEO:
             # A GRAPHICS ITEM, NOT A QVideoWidget.
             #
@@ -3746,17 +3745,23 @@ class MainWindow(AudioMixin, QMainWindow):
         self._hud_cam_stack.addWidget(_cam_cont)
         self._hud_cam_stack.addWidget(self._video_cont)
 
+        # The audio strip is a SECTION OF THE SPLITTER, and it is here because
+        # the previous home was not a home at all.
+        #
+        # It used to be put in a wrapper widget that was never added to any
+        # layout — and worse, the HUD stack was added to that wrapper and then
+        # added to the splitter, which MOVES a widget rather than copying it, so
+        # the wrapper was left holding only the audio bar while nothing
+        # displayed it. "Play some music" answered "playing", the log agreed,
+        # and no bar appeared anywhere. No test could see it: this file was
+        # never imported by one, and the player itself worked perfectly.
+        #
+        # Not inside the content panel either: that panel is hidden by default
+        # and a widget cannot be visible inside a hidden parent, and its close
+        # button would then hide the song with it. A splitter section owns its
+        # own visibility, hides itself when nothing plays, and gives back the
+        # height it took.
         self._center_split = QSplitter(Qt.Orientation.Vertical)
-        # The audio strip sits directly under the HUD stack and above the
-        # content panel, so a song is visible without being in the way — and it
-        # hides itself when nothing is playing, which keeps the layout identical
-        # to what it was before this feature existed.
-        _center_wrap = QWidget()
-        _cw_v = QVBoxLayout(_center_wrap)
-        _cw_v.setContentsMargins(0, 0, 0, 0)
-        _cw_v.setSpacing(0)
-        _cw_v.addWidget(self._hud_cam_stack, stretch=1)
-        _cw_v.addWidget(self._audio_cont, stretch=0)
         self._center_split.setStyleSheet(f"""
             QSplitter::handle {{
                 background: {C.BORDER};
@@ -3769,6 +3774,8 @@ class MainWindow(AudioMixin, QMainWindow):
         self._center_split.addWidget(self._hud_cam_stack)
         self._center_split.addWidget(self._content_panel)
         self._center_split.addWidget(self._quiz_panel)
+        # Last, so the song is the bottom strip and never pushes the HUD up.
+        self._center_split.addWidget(self._audio_cont)
         self._center_split.setStretchFactor(0, 3)
         self._center_split.setStretchFactor(1, 1)
         self._center_split.setCollapsible(0, False)
@@ -3964,10 +3971,14 @@ class MainWindow(AudioMixin, QMainWindow):
         # player cannot disagree about what they were handed: a quoted path, a
         # `file://` URL, a bare `example.com/clip.mp4` and a `m.youtube.com`
         # link all arrive here as the right kind of thing.
-        url = QUrl(_pb.media_url(source) or source)
-        self._video_player.setSource(url)
+        #
+        # THROUGH `qurl_for`, NOT `QUrl(...)`. This line is why local videos did
+        # not play: `QUrl(r"C:\\clips\\a b.mp4")` reads "C:" as a scheme and the
+        # player is asked to fetch it over a protocol that does not exist. See
+        # ui/audio.py for the measurements.
+        self._video_player.setSource(qurl_for(source))
         if self._video_split:
-            self._video_sound.setSource(QUrl(_pb.media_url(audio_source) or audio_source))
+            self._video_sound.setSource(qurl_for(audio_source))
         self._hud_cam_stack.setCurrentIndex(2)
         self._video_on = True
         # Re-run now that the video counts as playing: _set_video_muted ran

@@ -54,11 +54,17 @@ def _method_names(cls: ast.ClassDef) -> set[str]:
 
 
 def _calls(node: ast.AST) -> set[str]:
-    """Every attribute name used in a call: `x.foo()` contributes 'foo'."""
+    """Every function name used in a call: `x.foo()` gives 'foo', `foo()` gives
+    'foo'. A plain module-level helper (`qurl_for(source)`) is a `Name`, not an
+    `Attribute`, and an earlier version of this helper could not see it — which
+    made a wiring test unable to check the wiring it was written for."""
     out = set()
     for sub in ast.walk(node):
-        if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute):
-            out.add(sub.func.attr)
+        if isinstance(sub, ast.Call):
+            if isinstance(sub.func, ast.Attribute):
+                out.add(sub.func.attr)
+            elif isinstance(sub.func, ast.Name):
+                out.add(sub.func.id)
     return out
 
 
@@ -127,9 +133,28 @@ def test_opening_a_video_tears_the_previous_one_down(main_window):
 def test_the_source_is_classified_once(main_window):
     """A quoted path, a `file://` URL, a bare host and a `m.youtube.com` link
     all have to arrive at the player as the right kind of thing — through the
-    one function that knows how, not through `Path(source).exists()`."""
+    one function that knows how, not through `Path(source).exists()`.
+
+    AND THROUGH `qurl_for`, not `QUrl(...)`. `QUrl` reads a Windows drive letter
+    as a URL scheme: `QUrl(r"C:\\clips\\a b.mp4").scheme()` is "c", so every
+    local file was handed to the player as a request for a protocol that does
+    not exist, and the user was told their own video could not be played.
+    `tests/test_window_smoke.py` proves it against a QUrl that behaves like
+    Qt's; this asserts the wiring cannot quietly go back.
+    """
     opener = _method(main_window, "_on_video_open")
-    assert "media_url" in _calls(opener)
+    classes = _calls(opener)
+    assert "qurl_for" in classes, (
+        "the video source is built with QUrl(...) again — a Windows path will "
+        "be read as scheme \"c\" and never play")
+    # `QUrl()` with no argument is how a player is cleared — that is correct and
+    # must stay. `QUrl(source)` is the bug.
+    built_from_something = [
+        ast.unparse(sub) for sub in ast.walk(opener)
+        if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name)
+        and sub.func.id == "QUrl" and sub.args]
+    assert built_from_something == [], (
+        f"QUrl(...) is still handed a source: {built_from_something}")
 
 
 # ── the audio bar ───────────────────────────────────────────────────────────

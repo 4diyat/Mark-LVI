@@ -183,6 +183,28 @@ def test_a_windows_path_shows_its_file_name_not_the_whole_path():
     assert pb.audio_title(r'"C:\Users\me\Music\My Song.mp3"') == "My Song"
 
 
+def test_a_path_is_not_a_url_and_a_bare_host_is_not_a_path():
+    """"Which builder" is the question the window asks before making a QUrl.
+
+    `QUrl` reads a Windows drive letter as a scheme and a bare URL as a path, so
+    both directions are wrong: a file must go through `fromLocalFile`, and a
+    bare host (`example.com/clip.mp4`) must become https rather than a file that
+    does not exist.
+    """
+    assert pb.qurl_safe(r"C:\clips\a b.mp4") is True
+    assert pb.qurl_safe("C:/clips/a.mp4") is True
+    assert pb.qurl_safe("/home/me/a b.mp3") is True
+    assert pb.qurl_safe("~/Videos/holiday.mkv") is True
+    assert pb.qurl_safe(r"\\server\share\a.mp4") is True       # a UNC share
+
+    assert pb.qurl_safe("https://cdn.example/a.mp4") is False
+    assert pb.qurl_safe("http://cdn.example/a.mp4") is False
+    assert pb.qurl_safe("file:///C:/a.mp4") is False
+    assert pb.qurl_safe("example.com/clip.mp4") is False          # bare host
+    assert pb.qurl_safe("youtube.com/watch?v=1") is False
+    assert pb.qurl_safe("") is False
+
+
 def test_a_query_string_never_reaches_the_header():
     assert pb.audio_title("https://cdn.example/a/My%20Song.m4a?token=abc") == "My Song"
     assert pb.audio_title("https://radio.example/stream#t=90") == "stream"
