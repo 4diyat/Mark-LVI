@@ -850,3 +850,32 @@ def test_a_403_video_swaps_to_next_candidate_and_searches_when_exhausted(window)
     assert window._video_on is False
     assert any("searching" in line.lower() for line in logs)
 
+
+def test_remote_overlay_connect_does_not_crash_without_assistant_name(window):
+    """Connecting a phone while RemoteKeyOverlay is visible previously crashed
+    with AttributeError on `_assistant_name`, causing HTTP 500 on /login and
+    /auto-login."""
+    calls = {"n": 0}
+
+    def fake_remote_clicked():
+        calls["n"] += 1
+        key = f"ABCD123{calls['n']}"
+        return ("http://192.168.1.5:8000", key,
+                f"http://192.168.1.5:8000/auto-login?key={key}",
+                "192.168.1.5:8000", "")
+
+    window.on_remote_clicked = fake_remote_clicked
+    window._open_remote()
+    ov = window._remote_overlay
+    assert ov is not None and ov.isVisible()
+
+    # Emulate both the background signal path (from FastAPI) and direct slot call.
+    window._phone_connected_sig.emit()
+    window.notify_phone_connected()
+    assert "JARVIS" in ov._timer_lbl.text()
+
+    # Generating a new key after connecting also works cleanly.
+    ov._refresh_key()
+    assert ov._key_lbl.text() == "ABCD1232"
+
+

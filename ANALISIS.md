@@ -1173,6 +1173,31 @@ dan melaporkan gagal. Sekarang ada pemulihan berlapis di `actions/video_player.p
    (maksimal 3 kali pencarian ulang agar tidak pernah loop). Label log baru:
    `ui.video.searching_alt` dan `ui.audio.searching_alt`.
 
+### Remote Control 500 Internal Server Error saat ponsel tersambung
+
+Ketika tombol **Remote Control** dibuka di desktop dan ponsel tersambung
+melalui kode kunci (`/login`), pemindaian QR (`/auto-login`), atau rekoneksi
+perangkat (`/api/device-login`), server mengembalikan **500 Internal Server
+Error**:
+
+- **Akar masalah utama (`ui/window.py`):** `RemoteKeyOverlay.mark_connected()`
+  membaca `self._assistant_name` untuk mengisi teks `ui.phone.connected`,
+  padahal atribut tersebut belum pernah diset di `RemoteKeyOverlay.__init__`,
+  sehingga selalu melempar `AttributeError` tepat saat `_connect_callback`
+  dijalankan oleh FastAPI. Selain itu `JarvisUI.notify_phone_connected()`
+  memanggil `mark_connected()` langsung dari thread server FastAPI tanpa
+  `pyqtSignal` (`_phone_connected_sig`).
+- **Perbaikan tambahan di `dashboard/server.py`:**
+  - `/auto-login` kini memakai `_page()` + `<script nonce="__NONCE__">` agar
+    tidak diblokir Content-Security-Policy browser, serta memakai `json.dumps`
+    dan mengunci `self._device_sessions` dengan `_token_lock`.
+  - `/api/device-login` kini memvalidasi payload `dict`/`str` dengan aman dan
+    memakai `_token_lock` sehingga JSON non-object atau `device_token` non-string
+    tidak memicu `AttributeError` (500).
+  - Parsing header `Content-Length`, direktori `uploads/` yang belum ada saat
+    upload, payload WebSocket non-JSON/non-dict, serta exception di
+    `_connect_callback`/`_wake_callback` ditangani aman tanpa menghasilkan 500.
+
 ### ⏭️ Sprint berikutnya
 
 | Sprint | Fokus | Ukuran "selesai" |

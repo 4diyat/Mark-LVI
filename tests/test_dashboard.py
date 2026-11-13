@@ -306,3 +306,57 @@ def test_a_full_length_key_logs_in(server):
     r = client.post("/login", json={"pin": key})
     assert r.status_code == 200
     assert r.json()["ok"] is True
+
+
+def test_auto_login_has_matching_nonce_and_device_reconnect_works(server):
+    """QR scan auto-login must carry a CSP nonce for its redirect script and
+    issue a device token usable by /api/device-login without 500s."""
+    import re
+
+    srv, client, _, _ = server
+    key = srv.new_key()
+    r = client.get(f"/auto-login?key={key.lower()}")
+    assert r.status_code == 200
+    csp = r.headers["content-security-policy"]
+    nonce = csp.split("'nonce-")[1].split("'")[0]
+    assert f'nonce="{nonce}"' in r.text
+    assert "__NONCE__" not in r.text
+
+    dev_tok = re.search(
+        r"localStorage\.setItem\(\s*['\"]jarvis_device_token['\"]\s*,\s*['\"]([^'\"]+)['\"]\s*\)",
+        r.text,
+    )
+    assert dev_tok is not None
+    r2 = client.post("/api/device-login", json={"device_token": dev_tok.group(1)})
+    assert r2.status_code == 200
+    assert r2.json()["ok"] is True and r2.json()["token"]
+
+
+def test_malformed_inputs_and_callback_errors_do_not_return_500(server, tmp_path):
+    """Non-dict JSON on /api/device-login, bad Content-Length headers, missing
+    uploads directory, and connect callback failures must never produce 500."""
+    import shutil
+
+    srv, client, token, _ = server
+    srv.set_connect_callback(lambda: (_ for _ in ()).throw(RuntimeError("ui boom")))
+
+    key = srv.new_key()
+    assert client.post("/login", json={"pin": key}).status_code == 200
+    key2 = srv.new_key()
+    assert client.get(f"/auto-login?key={key2}").status_code == 200
+
+    for bad in ("null", "[]", '"str"', '{"device_token": 123}'):
+        r = client.post("/api/device-login", content=bad,
+                        headers={"Content-Type": "application/json"})
+        assert r.status_code in (400, 401), f"got {r.status_code} for {bad}"
+
+    r_cl = client.post("/api/command", json={"text": "ping"},
+                       headers={**_h(token), "Content-Length": "abc"})
+    assert r_cl.status_code == 400
+
+    shutil.rmtree(tmp_path)
+    r_up = client.post("/api/upload", files={"file": ("hello.txt", b"hi")},
+                       headers=_h(token))
+    assert r_up.status_code == 200
+    assert (tmp_path / "hello.txt").exists()
+

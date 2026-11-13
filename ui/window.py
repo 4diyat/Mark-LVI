@@ -3182,7 +3182,7 @@ class RemoteKeyOverlay(QWidget):
 
     def __init__(self, url: str, key: str, auto_login_url: str = "",
                  manual_url: str = "", expiry_secs: int = 600, parent=None,
-                 bind_error: str = ""):
+                 bind_error: str = "", assistant_name: str = ""):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(f"""
@@ -3196,6 +3196,7 @@ class RemoteKeyOverlay(QWidget):
         self._on_new_key      = None
         self._auto_login_url  = auto_login_url
         self._manual_url      = manual_url or url
+        self._assistant_name  = (assistant_name or "").strip() or _assistant_display()
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(24, 16, 24, 16)
@@ -3357,6 +3358,7 @@ class RemoteKeyOverlay(QWidget):
             img.save(buf, format="PNG")
             px = QPixmap()
             px.loadFromData(buf.getvalue())
+            self._qr_label.setStyleSheet("background: white; border-radius: 10px; padding: 4px;")
             self._qr_label.setPixmap(
                 px.scaled(170, 170,
                           Qt.AspectRatioMode.KeepAspectRatio,
@@ -3438,6 +3440,7 @@ class RemoteKeyOverlay(QWidget):
 
 class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
     _log_sig        = pyqtSignal(str)
+    _phone_connected_sig = pyqtSignal()
     _state_sig      = pyqtSignal(str)
     _content_sig    = pyqtSignal(str, str)   # (title, text) — thread-safe content display
     _codejob_sig    = pyqtSignal(object)     # dev_agent job state — live coding panel
@@ -3792,6 +3795,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         self._update_metrics()
 
         self._log_sig.connect(self._log.append_log)
+        self._phone_connected_sig.connect(self.notify_phone_connected)
         self._state_sig.connect(self._apply_state)
         self._content_sig.connect(self._show_content)
         self._codejob_sig.connect(self._show_code_job)
@@ -5781,8 +5785,8 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         cw  = self.centralWidget()
         ow, oh = RemoteKeyOverlay._OW, RemoteKeyOverlay._OH
         ov  = RemoteKeyOverlay(url, key, auto_login_url=auto, manual_url=manual,
-                               expiry_secs=600, parent=cw,
-                               bind_error=berr)
+                               expiry_secs=600, parent=cw, bind_error=berr,
+                               assistant_name=self._assistant_name)
         ov.set_new_key_callback(self.on_remote_clicked)
         ov.setGeometry(
             (cw.width()  - ow) // 2,
@@ -6822,7 +6826,7 @@ class JarvisUI:
             pass
 
     def notify_phone_connected(self) -> None:
-        self._win.notify_phone_connected()
+        self._win._phone_connected_sig.emit()
 
     def set_state(self, state: str):
         self._win._state_sig.emit(state)
