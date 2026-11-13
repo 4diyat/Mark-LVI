@@ -534,6 +534,7 @@ memastikan ketiga kelas itu tidak "kembali" ke file lama.
 | Plugin contoh | tidak ada | `plugins/currency_rates.py` + manifest: rantai penuh manifest → loader → izin → dialog, dan 21 test tanpa jaringan |
 | Chart MetaTrader 5 | tidak ada | `plugins/mt5_orb.py` (+ `_mt5.py`, `_orb.py`): gambar PNG chart dan baca ORB sesi pasar di M30, dari bar yang **sudah tutup**; 42 test tanpa menyentuh terminal |
 | Catatan & tugas | tidak ada (hanya `memory/long_term.json` milik asisten) | `plugins/quick_notes.py` (+ `_notes.py`): `config/notes/{inbox,todo,archive}.md` teks polos; 22 test di folder config sementara |
+| Harga pasar | tidak ada | `plugins/market_price.py` (+ `_market.py`): saham `.JK`/US, kripto, forex, indeks, komoditas dari endpoint chart Yahoo tanpa kunci; 49 test tanpa jaringan |
 | Marketplace plugin | "aman" hanya di judul | `core/plugin_manifest.py` (95 %): manifest + sha256 + izin deklaratif yang **diperiksa terhadap sumbernya**, dan dialog persetujuan sebelum toggle |
 | Kunci di keychain | tidak ada test | `core/keychain.py` **92 %**: tanpa paket, backend yang melempar saat read/write, keychain dan file yang berbeda isi |
 
@@ -614,6 +615,50 @@ Yang membuatnya berbeda dari "tulis ke file":
    test untuk ketiga keadaan itu sekaligus, karena kalau aturannya berubah,
    plugin ini akan hilang diam-diam bagi setiap pengguna yang tidak pernah
    membuka plugin manager.
+
+**Harga pasar, dan kenapa satu endpoint sudah cukup.** `plugins/market_price.py`
+menjawab *"harga BBCA"*, *"berapa bitcoin"*, *"EURUSD sekarang"*, *"emas?"* —
+saham Jakarta, saham AS, kripto, forex, indeks dan futures semuanya berasal dari
+**satu skema** yang sama: `/v8/finance/chart/<symbol>` di Yahoo, tanpa kunci dan
+tanpa crumb.
+
+Alternatifnya sudah diperiksa dan ditolak: endpoint `/v7/finance/quote` yang
+terlihat paling tepat **mewajibkan crumb+cookie sejak 2024**, jadi plugin yang
+memakainya akan berhenti bekerja tiga bulan setelah ditulis — persis kegagalan
+yang `currency_rates` ada untuk mencegah. Endpoint chart mengembalikan harga
+terakhir di blok `meta`, jadi kutipan dan histori datang dari permintaan yang
+sama.
+
+Empat jebakan, semuanya ditangani **dan** disebut di jawaban:
+
+1. **Datanya tertunda** (umumnya ≤ 15 menit, kripto lebih dekat ke langsung).
+   Harga yang tampak terkini padahal seperempat jam tua adalah angka yang orang
+   akan perdagangkan — jadi setiap jawaban menyebutkan penundaan itu.
+2. **Simbol adalah tebakan.** "BBCA" bukan simbol Yahoo. Resolusinya berurutan
+   dan **dinyatakan**: `BBCA` → `BBCA.JK` → `BBCA`; yang menjawab dicetak di
+   kalimat (*"Yahoo symbol used: BBCA.JK"*), sehingga tebakan yang salah terlihat
+   dalam satu baris, bukan menjadi harga perusahaan lain.
+3. **Perubahan bukan satu angka.** `regularMarketPrice` terhadap
+   `chartPreviousClose` adalah pergerakan sesi; terhadap bar tiga minggu lalu
+   adalah imbal hasil periode. Keduanya dihitung terpisah dan diberi label.
+   Pergerakan sesi > 10 % memicu peringatan *"worth checking the symbol"* —
+   saham yang tenang tidak bergerak 30 % sehari; indeks atau simbol yang salah
+   bisa.
+4. **`null` di dalam array close itu normal** (libur bursa, saham dihentikan).
+   Diubah menjadi 0, ia menjadi crash 99 %; jadi null dibuang. `zip()` antara
+   `timestamp` dan `close` juga berhenti di array terpendek — artinya close
+   terakhir bisa hilang, yaitu satu-satunya angka yang dilihat orang — jadi
+   pasangan itu ditinggalkan secara eksplisit ketika panjangnya tidak sama.
+
+**Izinnya `network`, dan pemindai impor tidak bisa melihatnya** — karena
+permintaan HTTP-nya ada di `_market.py`, bukan di berkas plugin. Itu justru
+contoh yang benar untuk aturan di `core/plugin_manifest.py`: deklarasi jujur
+yang **melebihi** hasil pemindaian adalah *warning*, bukan penolakan; hanya
+penggunaan yang **tidak dideklarasikan** yang ditolak. Step CI plugin keempat
+memeriksa keduanya sekaligus (manifest tetap sah, dan warning-nya memang muncul).
+
+Tidak ada prediksi, tidak ada target harga, dan tidak ada pengganti "harga dari
+ingatan" ketika jaringan gagal — kalimatnya bilang gagal dan berhenti di situ.
 
 **Kenapa keychain tetap punya fallback file.** `keyring` butuh desktop session;
 container, WSL, server headless, dan desktop Linux yang keyring-nya belum

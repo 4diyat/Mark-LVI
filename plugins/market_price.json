@@ -1,0 +1,12 @@
+{
+  "_comment": "Harga saham/kripto/forex dari endpoint chart Yahoo (tanpa kunci API). Izin network karena plugin ini benar-benar membuat permintaan keluar. sha256 di bawah adalah dari berkas .py ini; kalau berkasnya berubah, loader menolaknya.",
+  "name": "market_price",
+  "version": "1.0.0",
+  "author": "MARK-LVI",
+  "description": "Harga saham, kripto, pasangan mata uang, indeks dan komoditas beserta perubahan harian dan rentang periodenya.",
+  "permissions": [
+    "network"
+  ],
+  "sha256": "52f5b788abe883ddd3417bfa4268b8356448dbe552b1d2a6ed40e13c45c70c94",
+  "homepage": "https://finance.yahoo.com"
+}

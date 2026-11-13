@@ -269,6 +269,28 @@ jobs:
                   "consent rule is about declared access, not about shipping a "
                   "manifest")
           print("quick_notes: empty permission list, keeps the opt-out default (on)")
+
+          # And the fourth: a plugin whose network access lives in a HELPER
+          # module. Its own file has no urllib import, so the static scan cannot
+          # see the network — the honest declaration is `network`, which the
+          # checker turns into a warning rather than a refusal. This asserts both
+          # halves of that: the manifest still verifies, and over-declaring does
+          # not become a load failure.
+          market = rows.get("market_price")
+          if market is None:
+              raise SystemExit("market_price did not load")
+          if not market["valid"]:
+              raise SystemExit(f"market_price was rejected: {market['error']}")
+          if market["permissions"] != ["network"]:
+              raise SystemExit(
+                  f"market_price permissions came through as {market['permissions']!r}")
+          if market["enabled"]:
+              raise SystemExit("market_price declared network but started ENABLED")
+          if "network" not in (market["manifest_note"] or ""):
+              raise SystemExit(
+                  "the scan did not flag the network access hidden in the helper "
+                  f"module; note was {market['manifest_note']!r}")
+          print("market_price: network declared from the helper, warned not refused")
           # The summary line itself says "0 active, 0 rejected, 0 total" — so a
           # naive substring match flags a clean run. Only real rejections start
           # a line about a file.
