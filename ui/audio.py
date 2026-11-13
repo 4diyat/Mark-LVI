@@ -180,7 +180,7 @@ class AudioMixin:
     # ── slots ──────────────────────────────────────────────────────────────
 
     def _on_audio_open(self, source: str, title: str, volume: float,
-                       loop: bool) -> None:
+                       loop: bool, fallbacks=None, on_exhausted=None) -> None:
         if not getattr(self, "_audio_player", None):
             self.write_log(_t("ui.audio.unavailable"))
             return
@@ -188,6 +188,11 @@ class AudioMixin:
         self._audio_loop = bool(loop)
         self._audio_paused = False
         self._audio_on = True
+        self._audio_fallbacks = _pb.normalize_audio_candidates(fallbacks or [])
+        self._audio_exhausted_cb = (
+            on_exhausted if callable(on_exhausted) else None
+        )
+        self._audio_seq = getattr(self, "_audio_seq", 0) + 1
         self._audio_lbl.setText(_t("ui.audio.playing",
                                   title=(title or "AUDIO")[:40]))
         self._audio_pause_btn.setText(_t("ui.audio.pause"))
@@ -203,7 +208,11 @@ class AudioMixin:
         self._audio_out.setVolume(vol)
         # A local file MUST go through qurl_for: `QUrl(r"C:\\music\\a.mp3")`
         # is a request for scheme "c", which no machine can fetch.
-        self._audio_player.setSource(qurl_for(source))
+        self._audio_swapping = True
+        try:
+            self._audio_player.setSource(qurl_for(source))
+        finally:
+            self._audio_swapping = False
         # The bar lives inside the content panel, which is hidden by default.
         # Showing the bar alone is not enough — a widget cannot be visible
         # inside a hidden parent, and that was the state of the first version:
@@ -257,13 +266,18 @@ class AudioMixin:
     def _on_audio_stop(self) -> None:
         if not getattr(self, "_audio_player", None):
             return
+        self._audio_swapping = True
         try:
             self._audio_player.stop()
             self._audio_player.setSource(QUrl())
         except Exception:
             pass
+        finally:
+            self._audio_swapping = False
         self._audio_on = False
         self._audio_paused = False
+        self._audio_fallbacks = []
+        self._audio_exhausted_cb = None
         self._audio_cont.hide()
         self._collapse_audio_bar()
 
@@ -301,6 +315,8 @@ class AudioMixin:
                                      else _t("ui.audio.loop"))
 
     def _on_audio_status(self, status) -> None:
+        if getattr(self, "_audio_swapping", False):
+            return
         word = self._status_word(status)
         if word == "ended":
             if self._audio_loop:
@@ -315,15 +331,44 @@ class AudioMixin:
                 return
             self.write_log(_t("ui.audio.finished"))
             self._on_audio_stop()
-        elif word in ("invalid", "no_media"):
+        elif word in ("invalid", "no_media") and getattr(self, "_audio_on", False):
             self._on_audio_error()
 
     def _on_audio_error(self, *_a) -> None:
-        detail = ""
-        try:
-            detail = self._audio_player.errorString()
-        except Exception:
-            pass
+        if getattr(self, "_audio_swapping", False):
+            return
+        detail = _a[1] if len(_a) > 1 and isinstance(_a[1], str) else ""
+        if not detail:
+            try:
+                detail = self._audio_player.errorString()
+            except Exception:
+                detail = ""
+        fallbacks = getattr(self, "_audio_fallbacks", None) or []
+        if fallbacks:
+            nxt = fallbacks.pop(0)
+            self.write_log(_t("ui.audio.retrying", detail=detail or "?"))
+            self._audio_swapping = True
+            try:
+                self._audio_player.stop()
+                self._audio_player.setSource(QUrl())
+                self._audio_player.setSource(qurl_for(nxt))
+            finally:
+                self._audio_swapping = False
+            self._audio_player.play()
+            return
+        cb = getattr(self, "_audio_exhausted_cb", None)
+        if cb is not None:
+            self._audio_exhausted_cb = None
+            seq = getattr(self, "_audio_seq", 0)
+            try:
+                launched = bool(cb(detail or ""))
+            except Exception:
+                launched = False
+            if launched:
+                self.write_log(_t("ui.audio.searching_alt", detail=detail or "?"))
+                if getattr(self, "_audio_seq", 0) == seq:
+                    self._on_audio_stop()
+                return
         self.write_log(_t("ui.audio.failed", detail=detail or "?"))
         self._on_audio_stop()
 

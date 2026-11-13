@@ -1149,6 +1149,55 @@ Sleep watcher (`_run_sleep_watch`) membaca `self._wake_sleep_timeout` setiap
 tik, jadi perubahan berlaku segera — tidak perlu restart. Label baru di
 i18n: `ui.wake.sleep_after` dan `ui.wake.minutes`.
 
+### Pemulihan otomatis saat sumber video/audio ditolak (403 Forbidden)
+
+Saat stream video atau audio ditolak oleh server (mis. `403 Forbidden`,
+`AccessDenied`, atau `InvalidMedia`), pemutar sebelumnya langsung menutup panel
+dan melaporkan gagal. Sekarang ada pemulihan berlapis di `actions/video_player.py`,
+`core/playback.py`, `ui/video_fallback.py`, `ui/audio.py`, dan `ui/window.py`:
+
+1. **Peringkat multi-stream per video (`_resolve_youtube_candidates`):** daftar
+   kandidat video (hingga 6 stream: combined dengan `audio=""` agar tidak
+   menimbulkan audio ganda, lalu 720p MP4 `avc1`, stream HTTP lain, lalu HLS
+   `m3u8`) dan hingga 4 kandidat audio dikirim ke pemutar sekaligus.
+2. **Tukar stream transparan di HUD (`VideoFallbackMixin` & `AudioMixin`):**
+   `_on_video_error`, `_on_video_status` (`InvalidMedia`/`NoMedia`),
+   `_on_video_sound_error`, dan `_on_audio_error` otomatis mencoba kandidat
+   berikutnya sambil mencatat alasan kegagalan di log (`ui.video.retrying`,
+   `ui.video.audio_retrying`, `ui.audio.retrying`).
+3. **Pencarian sumber lain yang bisa diputar (`on_exhausted`):** jika seluruh
+   kandidat stream pada video habis atau sebuah URL jarak jauh mengembalikan
+   403 Forbidden, `actions/video_player.py` mencoba `player_client` alternatif
+   (`android`/`ios`, `tv`/`web_safari`) untuk tautan YouTube, lalu mencari hingga
+   5 hasil YouTube (`ytsearch5:...`) sambil melewati ID/URL yang sudah gagal
+   (maksimal 3 kali pencarian ulang agar tidak pernah loop). Label log baru:
+   `ui.video.searching_alt` dan `ui.audio.searching_alt`.
+
+### Remote Control 500 Internal Server Error saat ponsel tersambung
+
+Ketika tombol **Remote Control** dibuka di desktop dan ponsel tersambung
+melalui kode kunci (`/login`), pemindaian QR (`/auto-login`), atau rekoneksi
+perangkat (`/api/device-login`), server mengembalikan **500 Internal Server
+Error**:
+
+- **Akar masalah utama (`ui/window.py`):** `RemoteKeyOverlay.mark_connected()`
+  membaca `self._assistant_name` untuk mengisi teks `ui.phone.connected`,
+  padahal atribut tersebut belum pernah diset di `RemoteKeyOverlay.__init__`,
+  sehingga selalu melempar `AttributeError` tepat saat `_connect_callback`
+  dijalankan oleh FastAPI. Selain itu `JarvisUI.notify_phone_connected()`
+  memanggil `mark_connected()` langsung dari thread server FastAPI tanpa
+  `pyqtSignal` (`_phone_connected_sig`).
+- **Perbaikan tambahan di `dashboard/server.py`:**
+  - `/auto-login` kini memakai `_page()` + `<script nonce="__NONCE__">` agar
+    tidak diblokir Content-Security-Policy browser, serta memakai `json.dumps`
+    dan mengunci `self._device_sessions` dengan `_token_lock`.
+  - `/api/device-login` kini memvalidasi payload `dict`/`str` dengan aman dan
+    memakai `_token_lock` sehingga JSON non-object atau `device_token` non-string
+    tidak memicu `AttributeError` (500).
+  - Parsing header `Content-Length`, direktori `uploads/` yang belum ada saat
+    upload, payload WebSocket non-JSON/non-dict, serta exception di
+    `_connect_callback`/`_wake_callback` ditangani aman tanpa menghasilkan 500.
+
 ### ⏭️ Sprint berikutnya
 
 | Sprint | Fokus | Ukuran "selesai" |

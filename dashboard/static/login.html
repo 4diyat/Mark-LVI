@@ -208,7 +208,7 @@
       } else {
         inp.value = '';
         inp.focus();
-        document.getElementById('err').textContent = 'Invalid or expired key';
+        document.getElementById('err').textContent = (data && data.error) || 'Invalid or expired key';
         shake();
       }
     }

@@ -76,7 +76,8 @@ PERMISSIONS = {
 # actions/ folder uses, because that is what a plugin author will copy.
 _IMPORT_HINTS = {
     "network": {"requests", "httpx", "urllib", "urllib3", "socket", "aiohttp",
-                "websocket", "websockets", "google", "openai", "http"},
+                "websocket", "websockets", "google", "openai", "http",
+                "imaplib", "smtplib", "poplib"},
     "files": {"shutil", "glob", "pathlib", "tempfile"},
     "audio": {"sounddevice", "soundfile", "pyaudio", "wave"},
     "input": {"pyautogui", "pynput", "keyboard", "mouse", "mss", "PIL"},

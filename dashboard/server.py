@@ -12,6 +12,7 @@ Install deps:  pip install fastapi "uvicorn[standard]" cryptography
 import asyncio
 import base64
 import hashlib
+import json
 import re
 import secrets
 import socket
@@ -1130,6 +1131,30 @@ class DashboardServer:
             """The client address a throttle counts against."""
             return (getattr(getattr(req, "client", None), "host", "") or "unknown")
 
+        def _content_length(req: Request) -> int | None:
+            raw = req.headers.get("content-length")
+            if raw is None or not str(raw).strip():
+                return 0
+            try:
+                val = int(str(raw).strip())
+                return val if val >= 0 else None
+            except (ValueError, TypeError):
+                return None
+
+        def _fire_connect() -> None:
+            if self._connect_callback:
+                try:
+                    self._connect_callback()
+                except Exception as exc:
+                    _dlog.warning("connect callback failed: %s", exc)
+
+        def _fire_wake() -> None:
+            if self._wake_callback:
+                try:
+                    self._wake_callback()
+                except Exception as exc:
+                    _dlog.warning("wake callback failed: %s", exc)
+
         # ── Security headers, applied to every response ──────────────────────
         # Implemented as middleware rather than per-route so a route added later
         # cannot forget them, and so the WebSocket handshake carries them too.
@@ -1208,7 +1233,8 @@ class DashboardServer:
                               f"{int(wait) + 1} seconds."},
                     status_code=429,
                 )
-            if int(req.headers.get("content-length") or 0) > _MAX_LOGIN_BODY:
+            clen = _content_length(req)
+            if clen is None or clen > _MAX_LOGIN_BODY:
                 return JSONResponse({"ok": False, "error": "Bad request"}, status_code=400)
             try:
                 body = await req.json()
@@ -1223,8 +1249,7 @@ class DashboardServer:
                 del self._pending_keys[entered]          # one-time use
                 tok = _issue_token(entered, _SCOPE_COMMAND)
                 self._aes_key(entered)                   # pre-derive & cache
-                if self._connect_callback:
-                    self._connect_callback()
+                _fire_connect()
                 asyncio.create_task(self.broadcast(
                     {"type": "sys", "text": "Remote connection established."}
                 ))
@@ -1237,6 +1262,7 @@ class DashboardServer:
         @app.get("/auto-login")
         async def auto_login(key: str = ""):
             """QR code target — validates one-time key, creates session, redirects phone."""
+            key = (key or "").strip().upper()
             now = time.time()
             if not key or key not in self._pending_keys or self._pending_keys[key] <= now:
                 return HTMLResponse("""<!DOCTYPE html>
@@ -1254,19 +1280,19 @@ class DashboardServer:
             tok     = _issue_token(key, _SCOPE_COMMAND)
             dev_tok = secrets.token_urlsafe(32)
             self._aes_key(key)
-            self._device_sessions[dev_tok] = {
-                "session_key": key,
-                "scope": _SCOPE_COMMAND,
-                "last_seen": time.time(),
-            }
+            with self._token_lock:
+                self._device_sessions[dev_tok] = {
+                    "session_key": key,
+                    "scope": _SCOPE_COMMAND,
+                    "last_seen": time.time(),
+                }
 
-            if self._connect_callback:
-                self._connect_callback()
+            _fire_connect()
             asyncio.create_task(self.broadcast(
                 {"type": "sys", "text": "Remote connection established via QR code."}
             ))
 
-            return HTMLResponse(f"""<!DOCTYPE html>
+            return _page(f"""<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width">
 <style>
   body{{background:#07090f;color:#dde3ed;font-family:sans-serif;
@@ -1274,10 +1300,10 @@ class DashboardServer:
   p{{color:#5e6a7e;font-size:14px}}
 </style></head>
 <body>
-<script>
-  sessionStorage.setItem('jarvis_token','{tok}');
-  sessionStorage.setItem('jarvis_key','{key}');
-  localStorage.setItem('jarvis_device_token','{dev_tok}');
+<script nonce="__NONCE__">
+  sessionStorage.setItem('jarvis_token',{json.dumps(tok)});
+  sessionStorage.setItem('jarvis_key',{json.dumps(key)});
+  localStorage.setItem('jarvis_device_token',{json.dumps(dev_tok)});
   setTimeout(function(){{location.replace('/')}},400);
 </script>
 <p>Connecting to JARVIS…</p>
@@ -1290,16 +1316,22 @@ class DashboardServer:
                 body = await req.json()
             except Exception:
                 return JSONResponse({"ok": False}, status_code=400)
-            dev_tok = (body.get("device_token") or "").strip()
-            if not dev_tok or dev_tok not in self._device_sessions:
+            if not isinstance(body, dict):
+                return JSONResponse({"ok": False}, status_code=400)
+            raw_tok = body.get("device_token")
+            dev_tok = raw_tok.strip() if isinstance(raw_tok, str) else ""
+            if not dev_tok:
                 return JSONResponse({"ok": False}, status_code=401)
-            entry = self._device_sessions[dev_tok]
-            session_key = entry["session_key"]
-            entry["last_seen"] = time.time()
-            tok = _issue_token(session_key, entry.get("scope", _SCOPE_COMMAND))
+            with self._token_lock:
+                entry = self._device_sessions.get(dev_tok)
+                if entry is None:
+                    return JSONResponse({"ok": False}, status_code=401)
+                session_key = entry["session_key"]
+                scope = entry.get("scope", _SCOPE_COMMAND)
+                entry["last_seen"] = time.time()
+            tok = _issue_token(session_key, scope)
             self._aes_key(session_key)
-            if self._connect_callback:
-                self._connect_callback()
+            _fire_connect()
             asyncio.create_task(self.broadcast(
                 {"type": "sys", "text": "Known device reconnected automatically."}
             ))
@@ -1330,7 +1362,8 @@ class DashboardServer:
                 self._token_keys.clear()
                 if keep is not None:
                     self._tokens[mine] = keep
-                    self._token_keys[mine] = keep_key
+                    if keep_key is not None:
+                        self._token_keys[mine] = keep_key
             _audit_event("revoked-devices", _who(req), f"{count} devices, {live} sessions")
             return JSONResponse({"ok": True, "revoked": count, "sessions_ended": live})
 
@@ -1339,7 +1372,10 @@ class DashboardServer:
             # A command is one sentence. Without a cap, "send a 200 MB body to
             # /api/command" is a way to make the assistant's own machine spend
             # its memory before any auth check runs inside req.json().
-            if int(req.headers.get("content-length") or 0) > _MAX_COMMAND_BODY:
+            clen = _content_length(req)
+            if clen is None:
+                return JSONResponse({"error": "Bad request"}, status_code=400)
+            if clen > _MAX_COMMAND_BODY:
                 return JSONResponse({"error": "Command too large"}, status_code=413)
             if not _auth(req, _SCOPE_COMMAND):
                 return JSONResponse({"error": "Unauthorized"}, status_code=401)
@@ -1361,8 +1397,7 @@ class DashboardServer:
             if text:
                 _audit_event("command", _who(req), text)
                 await self._command_queue.put(text)
-                if self._wake_callback:
-                    self._wake_callback()
+                _fire_wake()
             return JSONResponse({"ok": True})
 
         @app.post("/api/wake")
@@ -1370,8 +1405,7 @@ class DashboardServer:
             if not _auth(req, _SCOPE_COMMAND):
                 return JSONResponse({"error": "Unauthorized"}, status_code=401)
             _audit_event("wake", _who(req))
-            if self._wake_callback:
-                self._wake_callback()
+            _fire_wake()
             return JSONResponse({"ok": True})
 
         # ── Phone mic real-time audio → Gemini Live ──────────────────────────
@@ -1428,13 +1462,15 @@ class DashboardServer:
                 # One 500 MB file is a decision; fifty of them is a full disk on
                 # the machine the assistant is supposed to be running.
                 used_mb = _dir_size_mb(self._uploads_dir)
-                if used_mb + (int(req.headers.get("content-length") or 0) >> 20) > _UPLOAD_QUOTA_MB:
+                clen = _content_length(req) or 0
+                if used_mb + (clen >> 20) > _UPLOAD_QUOTA_MB:
                     return JSONResponse(
                         {"error": f"Uploads folder is full ({used_mb:.0f} MB of "
                                   f"{_UPLOAD_QUOTA_MB} MB). Delete some files and retry."},
                         status_code=507,
                     )
                 try:
+                    self._uploads_dir.mkdir(parents=True, exist_ok=True)
                     with open(dest, "wb") as fout:
                         while True:
                             chunk = await file.read(65536)
@@ -1523,7 +1559,9 @@ class DashboardServer:
             tok = token.strip()
             if not _valid(tok, _SCOPE_READ):
                 return JSONResponse({"error": "Unauthorized"}, status_code=401)
-            safe = re.sub(r'[/\\]', '', filename)
+            safe = Path(re.sub(r'[/\\]', '', filename)).name
+            if not safe or safe in (".", ".."):
+                return JSONResponse({"error": "Not found"}, status_code=404)
             path = self._uploads_dir / safe
             if not path.exists() or not path.is_file():
                 return JSONResponse({"error": "Not found"}, status_code=404)
@@ -1547,7 +1585,14 @@ class DashboardServer:
                     break
             try:
                 while True:
-                    data = await websocket.receive_json()
+                    try:
+                        data = await websocket.receive_json()
+                    except WebSocketDisconnect:
+                        raise
+                    except Exception:
+                        continue
+                    if not isinstance(data, dict):
+                        continue
                     if data.get("type") == "command":
                         if not _valid(tok, _SCOPE_COMMAND):
                             await websocket.send_json(
@@ -1558,8 +1603,7 @@ class DashboardServer:
                         t   = t[:2000]
                         if t:
                             await self._command_queue.put(t)
-                            if self._wake_callback:
-                                self._wake_callback()
+                            _fire_wake()
             except WebSocketDisconnect:
                 pass
             finally:

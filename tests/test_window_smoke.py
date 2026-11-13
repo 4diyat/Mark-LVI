@@ -653,8 +653,8 @@ def window_module():
     saved = {k: v for k, v in sys.modules.items() if k == "PyQt6" or k.startswith("PyQt6.")}
     stubs = _install_qt()
     sys.modules.update(stubs)
-    for name in ("ui", "ui.window", "ui.audio", "ui.theme", "ui.metrics",
-                 "ui.overlays"):
+    for name in ("ui", "ui.window", "ui.audio", "ui.video_fallback",
+                 "ui.theme", "ui.metrics", "ui.overlays"):
         sys.modules.pop(name, None)
     # `ui/__init__.py` imports the whole window and re-exports it; importing the
     # package is the path main.py takes, so this is the real thing.
@@ -802,3 +802,80 @@ def test_the_video_and_audio_surfaces_do_not_share_a_player(window):
     """A song must not take the screen, and a video must not stop a song."""
     assert window._video_player is not window._audio_player
     assert window._video_audio is not window._audio_out
+
+
+def test_a_403_video_swaps_to_next_candidate_and_searches_when_exhausted(window):
+    logs = []
+    window._log_sig.connect(logs.append)
+    exhausted_reasons = []
+
+    def on_exhausted(reason):
+        exhausted_reasons.append(reason)
+        return True
+
+    window._on_video_open(
+        "https://r1.googlevideo.com/first",
+        "Test Clip",
+        True,
+        "",
+        fallbacks={
+            "video": [{"url": "https://r2.googlevideo.com/second",
+                       "audio": "https://r2.googlevideo.com/audio1"}],
+            "audio": ["https://r2.googlevideo.com/audio2"],
+        },
+        on_exhausted=on_exhausted,
+    )
+    assert window._video_on is True
+    assert window._video_split is False
+
+    # First stream gets 403 Forbidden -> swaps transparently to candidate #2.
+    window._video_player._error = "server replied: Forbidden (403)"
+    window._on_video_error()
+    assert window._video_on is True
+    assert window._video_split is True
+    assert window._video_player.source().toString() == "https://r2.googlevideo.com/second"
+    assert window._video_sound.source().toString() == "https://r2.googlevideo.com/audio1"
+    assert any("403" in line or "Forbidden" in line for line in logs)
+
+    # Separate soundtrack fails -> tries backup audio URL before muting.
+    window._video_sound._error = "HTTP 403"
+    window._on_video_sound_error()
+    assert window._video_split is True
+    assert window._video_sound.source().toString() == "https://r2.googlevideo.com/audio2"
+
+    # Candidate #2 also fails -> triggers alternative source search callback.
+    window._video_player._error = "403 Forbidden"
+    window._on_video_error()
+    assert exhausted_reasons == ["403 Forbidden"]
+    assert window._video_on is False
+    assert any("searching" in line.lower() for line in logs)
+
+
+def test_remote_overlay_connect_does_not_crash_without_assistant_name(window):
+    """Connecting a phone while RemoteKeyOverlay is visible previously crashed
+    with AttributeError on `_assistant_name`, causing HTTP 500 on /login and
+    /auto-login."""
+    calls = {"n": 0}
+
+    def fake_remote_clicked():
+        calls["n"] += 1
+        key = f"ABCD123{calls['n']}"
+        return ("http://192.168.1.5:8000", key,
+                f"http://192.168.1.5:8000/auto-login?key={key}",
+                "192.168.1.5:8000", "")
+
+    window.on_remote_clicked = fake_remote_clicked
+    window._open_remote()
+    ov = window._remote_overlay
+    assert ov is not None and ov.isVisible()
+
+    # Emulate both the background signal path (from FastAPI) and direct slot call.
+    window._phone_connected_sig.emit()
+    window.notify_phone_connected()
+    assert "JARVIS" in ov._timer_lbl.text()
+
+    # Generating a new key after connecting also works cleanly.
+    ov._refresh_key()
+    assert ov._key_lbl.text() == "ABCD1232"
+
+

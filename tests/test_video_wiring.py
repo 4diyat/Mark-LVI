@@ -224,3 +224,16 @@ def test_the_tool_declares_the_actions_it_implements():
                    "pause_audio", "resume_audio", "volume"):
         assert f"'{action}'" in src[enum_start:enum_start + 400], \
             f"{action} is missing from the action enum"
+
+
+def test_the_window_wires_video_fallback_and_retry(main_window):
+    """Forbidden or invalid video streams must try fallback candidates and
+    trigger alternative-source search rather than giving up immediately."""
+    bases = [ast.unparse(b) for b in main_window.bases]
+    assert "VideoFallbackMixin" in bases, f"MainWindow bases are {bases}"
+    assert "_try_next_video_source" in _calls(_method(main_window, "_on_video_error"))
+    assert "_try_next_video_source" in _calls(_method(main_window, "_on_video_status"))
+    assert "_try_next_video_sound" in _calls(_method(main_window, "_on_video_sound_error"))
+    assert "_set_video_fallbacks" in _calls(_method(main_window, "_on_video_open"))
+    assert "_clear_video_fallbacks" in _calls(_method(main_window, "_on_video_close"))
+
