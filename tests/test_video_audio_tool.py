@@ -276,3 +276,333 @@ def test_a_stopped_request_is_abandoned(player, monkeypatch):
     release.set()
     threading.Event().wait(0.3)
     assert player.first("play_audio") is None
+
+
+# ── fallback streams & searching another source on 403 Forbidden ───────────
+
+class FallbackCapablePlayer(FakePlayer):
+    """FakePlayer accepting optional fallback kwargs like real JarvisUI."""
+
+    def show_video(self, source, title="", muted=True, audio_source="",
+                   fallbacks=None, on_exhausted=None, audio_fallbacks=None):
+        self.calls.append((
+            "show_video", source, title, muted, audio_source,
+            list(fallbacks or []), on_exhausted, list(audio_fallbacks or []),
+        ))
+        self._video_on = True
+
+
+def _fake_ytdlp(monkeypatch, handler):
+    import sys
+    import types
+
+    class _YDL:
+        def __init__(self, opts=None):
+            self.opts = opts or {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_a):
+            return False
+
+        def extract_info(self, target, download=False):
+            return handler(self.opts, target)
+
+    mod = types.ModuleType("yt_dlp")
+    mod.YoutubeDL = _YDL
+    monkeypatch.setitem(sys.modules, "yt_dlp", mod)
+
+
+def test_resolve_youtube_ranks_combined_without_double_audio_and_skips_forbidden_search_entry(
+        monkeypatch):
+    def handler(opts, target):
+        if target.startswith("ytsearch5:") and opts.get("extract_flat"):
+            return {
+                "entries": [
+                    {"id": "bad11111111", "title": "Blocked Video",
+                     "url": "https://www.youtube.com/watch?v=bad11111111"},
+                    {"id": "ok222222222", "title": "Working Video",
+                     "url": "https://www.youtube.com/watch?v=ok222222222"},
+                ]
+            }
+        if "bad11111111" in target:
+            raise RuntimeError("HTTP Error 403: Forbidden")
+        return {
+            "id": "ok222222222",
+            "title": "Working Video",
+            "formats": [
+                {"url": "https://cdn/combined360.mp4", "protocol": "https",
+                 "vcodec": "avc1", "acodec": "mp4a", "ext": "mp4",
+                 "height": 360, "tbr": 500},
+                {"url": "https://cdn/vid720_avc.mp4", "protocol": "https",
+                 "vcodec": "avc1", "acodec": "none", "ext": "mp4",
+                 "height": 720, "tbr": 1500},
+                {"url": "https://cdn/vid480.webm", "protocol": "https",
+                 "vcodec": "vp9", "acodec": "none", "ext": "webm",
+                 "height": 480, "tbr": 800},
+                {"url": "https://cdn/aud.m4a", "protocol": "https",
+                 "vcodec": "none", "acodec": "mp4a", "ext": "m4a",
+                 "language_preference": 10, "tbr": 128},
+            ],
+        }
+
+    _fake_ytdlp(monkeypatch, handler)
+    vcands, acands, title, vid, err = vp._resolve_youtube_candidates("lofi beats")
+    assert err == ""
+    assert vid == "ok222222222"
+    assert title == "Working Video"
+    assert vcands[0] == {"url": "https://cdn/combined360.mp4", "audio": ""}
+    assert vcands[1] == {"url": "https://cdn/vid720_avc.mp4",
+                         "audio": "https://cdn/aud.m4a"}
+    assert vcands[2] == {"url": "https://cdn/vid480.webm",
+                         "audio": "https://cdn/aud.m4a"}
+    assert acands == ["https://cdn/aud.m4a"]
+
+
+def test_resolve_youtube_url_falls_back_to_alt_client_then_searches_by_title(
+        monkeypatch):
+    def handler(opts, target):
+        client = (opts.get("extractor_args") or {}).get("youtube", {}).get("player_client")
+        if "badvid12345" in target:
+            if not client:
+                raise RuntimeError("HTTP Error 403: Forbidden")
+            if client == ["android", "ios"]:
+                return {"id": "badvid12345", "title": "Dune Trailer", "formats": []}
+            return {"id": "badvid12345", "title": "Dune Trailer", "formats": []}
+        if target.startswith("ytsearch5:Dune Trailer"):
+            return {
+                "entries": [
+                    {"id": "badvid12345", "title": "Dune Trailer", "formats": [
+                        {"url": "https://cdn/old.mp4", "protocol": "https",
+                         "vcodec": "avc1", "acodec": "mp4a", "ext": "mp4",
+                         "height": 360, "tbr": 400},
+                    ]},
+                    {"id": "altvid67890", "title": "Dune Trailer Mirror", "formats": [
+                        {"url": "https://cdn/mirror.mp4", "protocol": "https",
+                         "vcodec": "avc1", "acodec": "mp4a", "ext": "mp4",
+                         "height": 720, "tbr": 900},
+                    ]},
+                ]
+            }
+        return {}
+
+    _fake_ytdlp(monkeypatch, handler)
+    vcands, _acands, title, vid, err = vp._resolve_youtube_candidates(
+        "https://www.youtube.com/watch?v=badvid12345"
+    )
+    assert err == ""
+    assert vid == "altvid67890"
+    assert title == "Dune Trailer Mirror"
+    assert vcands[0]["url"] == "https://cdn/mirror.mp4"
+
+
+def test_exhausted_video_streams_trigger_search_for_another_playable_source(
+        monkeypatch):
+    p = FallbackCapablePlayer()
+
+    def handler(opts, target):
+        if target.startswith("ytsearch5:"):
+            return {
+                "entries": [
+                    {"id": "vid11111111", "title": "Result 1", "formats": [
+                        {"url": "https://cdn/r1_a.mp4", "protocol": "https",
+                         "vcodec": "avc1", "acodec": "mp4a", "ext": "mp4",
+                         "height": 360, "tbr": 400},
+                        {"url": "https://cdn/r1_b.mp4", "protocol": "https",
+                         "vcodec": "avc1", "acodec": "none", "ext": "mp4",
+                         "height": 720, "tbr": 1000},
+                        {"url": "https://cdn/r1_aud.m4a", "protocol": "https",
+                         "vcodec": "none", "acodec": "mp4a", "ext": "m4a",
+                         "tbr": 128},
+                    ]},
+                    {"id": "vid22222222", "title": "Result 2", "formats": [
+                        {"url": "https://cdn/r2_ok.mp4", "protocol": "https",
+                         "vcodec": "avc1", "acodec": "mp4a", "ext": "mp4",
+                         "height": 720, "tbr": 900},
+                    ]},
+                ]
+            }
+        return {}
+
+    _fake_ytdlp(monkeypatch, handler)
+    vp.video_player({"action": "play", "source": "cyberpunk trailer"}, player=p)
+
+    for _ in range(200):
+        if len(p.calls) >= 1:
+            break
+        threading.Event().wait(0.01)
+
+    first = p.calls[0]
+    assert first[1] == "https://cdn/r1_a.mp4"
+    assert [c["url"] for c in first[5]] == ["https://cdn/r1_b.mp4"]
+    cb = first[6]
+    assert callable(cb)
+
+    # Simulate all stream candidates from Result 1 returning 403 Forbidden.
+    assert cb("Error transferring - server replied: Forbidden") is True
+
+    for _ in range(200):
+        if len(p.calls) >= 2:
+            break
+        threading.Event().wait(0.01)
+
+    second = p.calls[1]
+    assert second[1] == "https://cdn/r2_ok.mp4"
+    assert second[2] == "Result 2"
+
+
+def test_direct_forbidden_url_searches_for_another_playable_source(monkeypatch):
+    p = FallbackCapablePlayer()
+
+    def handler(_opts, target):
+        if "Dune Official Trailer" in target:
+            return {
+                "entries": [
+                    {"id": "alt99999999", "title": "Dune Official Trailer",
+                     "formats": [
+                         {"url": "https://cdn/dune_alt.mp4", "protocol": "https",
+                          "vcodec": "avc1", "acodec": "mp4a", "ext": "mp4",
+                          "height": 720, "tbr": 1200},
+                     ]},
+                ]
+            }
+        return {}
+
+    _fake_ytdlp(monkeypatch, handler)
+    vp.video_player(
+        {"action": "play",
+         "source": "https://blocked.example/Dune_Official_Trailer.mp4"},
+        player=p,
+    )
+    assert len(p.calls) == 1
+    cb = p.calls[0][6]
+    assert callable(cb)
+    assert cb("HTTP 403 Forbidden") is True
+
+    for _ in range(200):
+        if len(p.calls) >= 2:
+            break
+        threading.Event().wait(0.01)
+
+    assert p.calls[1][1] == "https://cdn/dune_alt.mp4"
+
+
+def test_exhausted_audio_stream_searches_another_audio_source(monkeypatch):
+    class AudioFallbackPlayer(FakePlayer):
+        def play_audio(self, source, title="", volume=0.7, loop=False,
+                       fallbacks=None, on_exhausted=None):
+            self.calls.append((
+                "play_audio", source, title, volume, loop,
+                list(fallbacks or []), on_exhausted,
+            ))
+            self._audio_on = True
+
+    p = AudioFallbackPlayer()
+
+    def handler(opts, target):
+        client = (opts.get("extractor_args") or {}).get("youtube", {}).get("player_client")
+        if "aud11111111" in target and not target.startswith("ytsearch"):
+            if client:
+                raise RuntimeError("HTTP Error 403: Forbidden")
+            return {
+                "id": "aud11111111", "title": "Ambient Study Music",
+                "formats": [
+                    {"url": "https://cdn/a1.m4a", "protocol": "https",
+                     "vcodec": "none", "acodec": "mp4a", "ext": "m4a",
+                     "tbr": 128},
+                    {"url": "https://cdn/a1_alt.webm", "protocol": "https",
+                     "vcodec": "none", "acodec": "opus", "ext": "webm",
+                     "tbr": 96},
+                ],
+            }
+        if target.startswith("ytsearch5:Ambient Study Music"):
+            return {
+                "entries": [
+                    {"id": "aud11111111", "title": "Ambient Study Music",
+                     "formats": [{"url": "https://cdn/a1.m4a",
+                                  "protocol": "https", "vcodec": "none",
+                                  "acodec": "mp4a", "ext": "m4a", "tbr": 128}]},
+                    {"id": "aud22222222", "title": "Ambient Study Alt",
+                     "formats": [{"url": "https://cdn/a2_ok.m4a",
+                                  "protocol": "https", "vcodec": "none",
+                                  "acodec": "mp4a", "ext": "m4a", "tbr": 128}]},
+                ]
+            }
+        return {}
+
+    _fake_ytdlp(monkeypatch, handler)
+    vp.video_player(
+        {"action": "play_audio",
+         "source": "https://www.youtube.com/watch?v=aud11111111"},
+        player=p,
+    )
+
+    for _ in range(200):
+        if len(p.calls) >= 1:
+            break
+        threading.Event().wait(0.01)
+
+    first = p.calls[0]
+    assert first[1] == "https://cdn/a1.m4a"
+    assert first[5] == ["https://cdn/a1_alt.webm"]
+    assert first[6]("server replied: Forbidden") is True
+
+    for _ in range(200):
+        if len(p.calls) >= 2:
+            break
+        threading.Event().wait(0.01)
+
+    assert p.calls[1][1] == "https://cdn/a2_ok.m4a"
+
+
+def test_retry_cap_stops_looping_and_stop_cancels_inflight_retry(monkeypatch):
+    p = FallbackCapablePlayer()
+    opened_pages = []
+    monkeypatch.setattr(vp.webbrowser, "open",
+                        lambda url: opened_pages.append(url) or True)
+
+    counter = {"n": 0}
+
+    def handler(_opts, target):
+        counter["n"] += 1
+        vid = f"vid{counter['n']:08d}"
+        return {
+            "entries": [{
+                "id": vid, "title": f"Try {counter['n']}",
+                "formats": [{"url": f"https://cdn/{vid}.mp4",
+                             "protocol": "https", "vcodec": "avc1",
+                             "acodec": "mp4a", "ext": "mp4",
+                             "height": 480, "tbr": 500}],
+            }]
+        }
+
+    _fake_ytdlp(monkeypatch, handler)
+    vp.video_player({"action": "play", "source": "jazz piano"}, player=p)
+
+    # Walk through all retries until the cap stops scheduling new searches.
+    cb = None
+    for idx in range(vp._MAX_RETRY_SEARCHES + 1):
+        for _ in range(200):
+            if len([c for c in p.calls if c[0] == "show_video"]) > idx:
+                break
+            threading.Event().wait(0.01)
+        show_calls = [c for c in p.calls if c[0] == "show_video"]
+        cb = show_calls[-1][6]
+        if idx < vp._MAX_RETRY_SEARCHES:
+            assert cb("403 Forbidden") is True
+        else:
+            assert cb("403 Forbidden") is False
+
+    # Now verify stop cancels an un-fired retry callback as well.
+    p2 = FallbackCapablePlayer()
+    vp.video_player({"action": "play", "source": "ambient rain"}, player=p2)
+    for _ in range(200):
+        if p2.calls:
+            break
+        threading.Event().wait(0.01)
+    cb2 = p2.calls[0][6]
+    vp.video_player({"action": "stop"}, player=p2)
+    assert cb2("403 Forbidden") is False
+
+

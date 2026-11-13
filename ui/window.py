@@ -120,6 +120,7 @@ from ui.metrics import (        # noqa: F401 — same object as ui/metrics._metr
 # still unwritten. Re-exported through the package, so `ui.CustomizeOverlay`
 # and every plugin that names it keep working.
 from ui.audio import AudioMixin, qurl_for
+from ui.video_fallback import VideoFallbackMixin
 from ui.overlays import (      # noqa: F401 — re-exported through the package
     CustomizeOverlay,
     HueWheel,
@@ -3435,7 +3436,7 @@ class RemoteKeyOverlay(QWidget):
         self.closed.emit()
 
 
-class MainWindow(AudioMixin, QMainWindow):
+class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
     _log_sig        = pyqtSignal(str)
     _state_sig      = pyqtSignal(str)
     _content_sig    = pyqtSignal(str, str)   # (title, text) — thread-safe content display
@@ -3444,7 +3445,7 @@ class MainWindow(AudioMixin, QMainWindow):
     _camera_sig     = pyqtSignal(bytes)      # show camera frame preview (small overlay)
     _cam_stream_sig = pyqtSignal(bool)       # True=start live stream, False=stop
     _cam_frame_sig  = pyqtSignal(bytes)      # live camera frame → HUD area
-    _video_open_sig  = pyqtSignal(str, str, bool, str)  # video, title, muted, audio
+    _video_open_sig  = pyqtSignal(str, str, bool, str, object, object)  # video, title, muted, audio, fallbacks, on_exhausted
     _wake_btns_sig   = pyqtSignal()          # wake state resolved off-thread
     _video_close_sig = pyqtSignal()
     _video_mute_sig  = pyqtSignal(bool)
@@ -3452,7 +3453,7 @@ class MainWindow(AudioMixin, QMainWindow):
     # video surface on purpose: sound is played where the assistant speaks from
     # (the `output` device the user chose), not where a video would be drawn, so
     # the two cannot fight over the same device.
-    _audio_open_sig  = pyqtSignal(str, str, float, bool)   # source, title, volume, loop
+    _audio_open_sig  = pyqtSignal(str, str, float, bool, object, object)   # source, title, volume, loop, fallbacks, on_exhausted
     _audio_stop_sig  = pyqtSignal()
     _audio_pause_sig = pyqtSignal(bool)
     _audio_vol_sig   = pyqtSignal(float)
@@ -3590,6 +3591,7 @@ class MainWindow(AudioMixin, QMainWindow):
         # handler; neither is inferable from the player after the fact.
         self._video_ended = False
         self._video_sound_failed = False
+        self._init_video_fallback()
         self._video_cont = QWidget()
         self._video_cont.setStyleSheet(f"background: {C.BG};")
         _vid_v = QVBoxLayout(self._video_cont)
@@ -3916,13 +3918,15 @@ class MainWindow(AudioMixin, QMainWindow):
     # through the signals above, the same way every other panel is driven, so a
     # background thread never touches a widget.
     def _on_video_open(self, source: str, title: str, muted: bool,
-                       audio_source: str = "") -> None:
+                       audio_source: str = "", fallbacks=None,
+                       on_exhausted=None) -> None:
         if not HAVE_VIDEO or not self._video_player:
             self.write_log("SYS: Video playback is not available in this Qt "
                            "install.")
             return
         # A video and the live camera cannot share the centre of the HUD.
         self._cam_stop.set()
+        self._video_seq = getattr(self, "_video_seq", 0) + 1
 
         # ── opening over something ─────────────────────────────────────────
         # The previous version simply loaded a new source over the old one. If
@@ -3931,39 +3935,38 @@ class MainWindow(AudioMixin, QMainWindow):
         # file, and the mute button controlled the new (silent) output while the
         # old one was the thing making noise.
         plan = _pb.opening_while_playing(self._video_on, self._video_split)
-        if plan["stop_timer"] and self._video_sync:
-            self._video_sync.stop()
-        for player, kill in ((self._video_player, plan["stop_video"]),
-                             (self._video_sound, plan["stop_audio"])):
-            if player and kill:
-                try:
-                    player.stop()
-                    player.setSource(QUrl())
-                except Exception:
-                    pass
-        if plan["release_mic"]:
-            self._release_video_mic()
+        self._video_swapping = True
+        try:
+            if plan["stop_timer"] and self._video_sync:
+                self._video_sync.stop()
+            for player, kill in ((self._video_player, plan["stop_video"]),
+                                 (self._video_sound, plan["stop_audio"])):
+                if player and kill:
+                    try:
+                        player.stop()
+                        player.setSource(QUrl())
+                    except Exception:
+                        pass
+            if plan["release_mic"]:
+                self._release_video_mic()
 
-        self._video_title.setText(_t("ui.video.title", title=(title or "VIDEO")[:44].upper()))
-        self._video_split = bool(audio_source)
-        self._video_ended = False
-        self._video_sound_failed = False
-        self._set_video_muted(bool(muted))
+            self._video_title.setText(_t("ui.video.title", title=(title or "VIDEO")[:44].upper()))
+            self._video_split = bool(audio_source)
+            self._video_ended = False
+            self._video_sound_failed = False
+            self._set_video_fallbacks(audio_source, fallbacks, on_exhausted)
+            self._set_video_muted(bool(muted))
 
-        # One classifier for every source, so the window, the tool and the
-        # player cannot disagree about what they were handed: a quoted path, a
-        # `file://` URL, a bare `example.com/clip.mp4` and a `m.youtube.com`
-        # link all arrive here as the right kind of thing.
-        #
-        # THROUGH `qurl_for`, NOT `QUrl(...)`. This line is why local videos did
-        # not play: `QUrl(r"C:\\clips\\a b.mp4")` reads "C:" as a scheme and the
-        # player is asked to fetch it over a protocol that does not exist. See
-        # ui/audio.py for the measurements.
-        self._video_player.setSource(qurl_for(source))
-        if self._video_split:
-            self._video_sound.setSource(qurl_for(audio_source))
-        self._hud_cam_stack.setCurrentIndex(2)
-        self._video_on = True
+            # THROUGH `qurl_for`, NOT `QUrl(...)`. This line is why local
+            # videos did not play: `QUrl(r"C:\\clips\\a b.mp4")` reads "C:" as
+            # a scheme. See ui/audio.py for the measurements.
+            self._video_player.setSource(qurl_for(source))
+            if self._video_split:
+                self._video_sound.setSource(qurl_for(audio_source))
+            self._hud_cam_stack.setCurrentIndex(2)
+            self._video_on = True
+        finally:
+            self._video_swapping = False
         # Re-run now that the video counts as playing: _set_video_muted ran
         # before this line and saw no video, so its mic check was a no-op.
         self._sync_mic_for_video()
@@ -4000,15 +4003,20 @@ class MainWindow(AudioMixin, QMainWindow):
         arrives with the default — which is the right behaviour for the close
         button and for a stop from a tool.
         """
-        if self._video_sync:
-            self._video_sync.stop()
-        for p in (self._video_player, self._video_sound):
-            if p:
-                p.stop()
-                p.setSource(QUrl())
+        self._video_swapping = True
+        try:
+            if self._video_sync:
+                self._video_sync.stop()
+            for p in (self._video_player, self._video_sound):
+                if p:
+                    p.stop()
+                    p.setSource(QUrl())
+        finally:
+            self._video_swapping = False
         self._video_split = False
         self._video_on = False
         self._video_ended = False
+        self._clear_video_fallbacks()
         self._hud_cam_stack.setCurrentIndex(0)
         if mic_from_rule:
             self._release_video_mic()
@@ -4059,51 +4067,6 @@ class MainWindow(AudioMixin, QMainWindow):
             self._video_auto_muted = False
             self._set_muted(False, _t("ui.video.mic_back"))
 
-    def _sync_video_sound(self) -> None:
-        """Keep the separate soundtrack in step with the picture.
-
-        Two players started at the same moment do not stay together: they buffer
-        independently, and measured on a real stream they were about half a
-        second apart after nine seconds. So the sound is nudged back to the
-        picture whenever it drifts far enough to hear — and only then, because
-        correcting a smaller gap is itself audible.
-        """
-        if not (self._video_split and self._video_sound and self._video_player):
-            return
-        try:
-            if self._video_player.playbackState() != QMediaPlayer.PlaybackState.PlayingState:
-                return
-            state = self._sound_state()
-            d = _pb.sync_decision(self._video_player.position(),
-                                  self._video_sound.position(), state)
-            if d["restart"]:
-                # The soundtrack finished or stalled before the picture did.
-                # Comparing positions cannot fix that — the sound has to be put
-                # back at the picture's position and played again, or the rest
-                # of the video is silent with the bar still saying SOUND ON.
-                self._video_sound.setPosition(d["position"])
-                self._video_sound.play()
-                self._video_sound_failed = False
-                self._sync_video_mute_btn()
-            elif d["seek"]:
-                self._video_sound.setPosition(d["position"])
-        except Exception:
-            pass
-
-    def _sound_state(self) -> str:
-        """The sound player's state as a plain word, so the rule stays testable."""
-        if not self._video_sound:
-            return "stopped"
-        try:
-            st = self._video_sound.playbackState()
-            if st == QMediaPlayer.PlaybackState.PlayingState:
-                return "playing"
-            if st == QMediaPlayer.PlaybackState.PausedState:
-                return "paused"
-        except Exception:
-            pass
-        return "stopped"
-
     def _sync_video_mute_btn(self) -> None:
         out = self._video_sound_out if self._video_split else self._video_audio
         muted = bool(out and out.isMuted())
@@ -4129,11 +4092,16 @@ class MainWindow(AudioMixin, QMainWindow):
         self._log_sig.emit(text)
 
     def _on_video_error(self, *_a) -> None:
-        err = ""
-        try:
-            err = self._video_player.errorString()
-        except Exception:
-            pass
+        if getattr(self, "_video_swapping", False):
+            return
+        err = _a[1] if len(_a) > 1 and isinstance(_a[1], str) else ""
+        if not err:
+            try:
+                err = self._video_player.errorString()
+            except Exception:
+                pass
+        if self._try_next_video_source(err):
+            return
         self._report_video_failure(self._video_player, err)
         self._on_video_close()
 
@@ -4161,6 +4129,8 @@ class MainWindow(AudioMixin, QMainWindow):
 
     def _on_video_status(self, status) -> None:
         """The picture's status. EndOfMedia is the one that mattered."""
+        if getattr(self, "_video_swapping", False):
+            return
         word = self._status_word(status)
         if not _pb.should_open_from_ended(word):
             return
@@ -4169,7 +4139,18 @@ class MainWindow(AudioMixin, QMainWindow):
         if word == "ended":
             self.write_log(_t("ui.video.finished"))
         elif word in ("invalid", "no_media"):
-            self._report_video_failure(self._video_player, "")
+            if not self._video_on:
+                return
+            err = ""
+            try:
+                err = self._video_player.errorString()
+            except Exception:
+                pass
+            if self._try_next_video_source(err or word):
+                return
+            self._report_video_failure(self._video_player, err)
+            self._on_video_close()
+            return
         if effect["close"]:
             self._on_video_close(mic_from_rule=effect["release_mic"])
 
@@ -4181,12 +4162,17 @@ class MainWindow(AudioMixin, QMainWindow):
         acceptable answer, because it is indistinguishable from a video that has
         no audio at all — so the bar stops claiming sound and the log says why.
         """
+        if getattr(self, "_video_swapping", False):
+            return
+        detail = _a[1] if len(_a) > 1 and isinstance(_a[1], str) else ""
+        if not detail:
+            try:
+                detail = self._video_sound.errorString()
+            except Exception:
+                pass
+        if self._try_next_video_sound(detail):
+            return
         self._video_sound_failed = True
-        detail = ""
-        try:
-            detail = self._video_sound.errorString()
-        except Exception:
-            pass
         self._report_video_failure(self._video_sound, detail, sound_only=True)
 
     def _report_video_failure(self, player, detail: str = "",
@@ -6893,7 +6879,8 @@ class JarvisUI:
         self._win._camera_sig.emit(img_bytes)
 
     def show_video(self, source: str, title: str = "", muted: bool = True,
-                   audio_source: str = "") -> None:
+                   audio_source: str = "", fallbacks=None,
+                   on_exhausted=None, audio_fallbacks=None) -> None:
         """Thread-safe: play a video where the avatar normally is.
 
         `source` is a local path or a direct media URL. `audio_source` is for
@@ -6906,8 +6893,12 @@ class JarvisUI:
         assistant worse. The user turns sound on from the header button or by
         asking, and closes it the same two ways.
         """
+        payload = ({"video": list(fallbacks or []),
+                    "audio": list(audio_fallbacks)}
+                   if audio_fallbacks else list(fallbacks or []))
         self._win._video_open_sig.emit(str(source or ""), str(title or ""),
-                                       bool(muted), str(audio_source or ""))
+                                       bool(muted), str(audio_source or ""),
+                                       payload, on_exhausted)
 
     def stop_video(self) -> None:
         """Thread-safe: close the video and give the HUD back to the avatar."""
@@ -6925,14 +6916,16 @@ class JarvisUI:
     # it emits and returns. The window's slots run on the Qt thread.
 
     def play_audio(self, source: str, title: str = "", volume: float = 0.7,
-                   loop: bool = False) -> None:
+                   loop: bool = False, fallbacks=None,
+                   on_exhausted=None) -> None:
         """Thread-safe: play audio — a file, a stream URL, or YouTube audio.
 
         Sound goes to the output device chosen in AUDIO DEVICES, not to the
         system default, so a song comes out of the speaker the user picked.
         """
         self._win._audio_open_sig.emit(str(source or ""), str(title or ""),
-                                       float(volume), bool(loop))
+                                       float(volume), bool(loop),
+                                       list(fallbacks or []), on_exhausted)
 
     def stop_audio(self) -> None:
         """Thread-safe: stop the audio and hide its bar."""

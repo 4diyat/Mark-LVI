@@ -491,3 +491,145 @@ def is_audio_source(text: str) -> bool:
     # (`/radio`, `/live/stream`), as opposed to a page (`/watch`, `/index`).
     last = path.rsplit("/", 1)[-1]
     return bool(last) and "." not in last
+
+
+# ── fallback & forbidden-source recovery ────────────────────────────────────
+
+_FORBIDDEN_WORDS = (
+    "403", "forbidden", "access denied", "accessdenied", "unauthorized",
+    "401", "410", "gone", "refused", "blocked", "not permitted",
+)
+_REFUSED_OR_DEAD = _FORBIDDEN_WORDS + (
+    "invalid", "no_media", "error transferring", "http error", "not found",
+    "404", "unable to open", "could not open",
+)
+_GENERIC_TITLES = frozenset({
+    "video", "clip", "movie", "stream", "audio", "song", "track", "music",
+    "index", "playlist", "watch", "live", "play", "media", "download",
+    "file", "sample", "test", "embed",
+})
+_YT_ID_RE = re.compile(
+    r"(?:v=|youtu\.be/|youtube(?:-nocookie)?\.com/(?:shorts|embed|live|v)/)"
+    r"([A-Za-z0-9_-]{11})"
+)
+
+
+def is_forbidden_error(detail: str) -> bool:
+    """True when a player error indicates HTTP 403 / access denied / refused."""
+    low = (detail or "").strip().lower()
+    return bool(low) and any(w in low for w in _FORBIDDEN_WORDS)
+
+
+def youtube_video_id(url: str) -> str:
+    """Extract the 11-character YouTube video id from a URL, or ''."""
+    raw = clean_source(url)
+    if not raw:
+        return ""
+    m = _YT_ID_RE.search(raw)
+    return m.group(1) if m else ""
+
+
+def normalize_video_candidates(items, default_audio: str = "") -> list[dict[str, str]]:
+    """Turn mixed str/dict fallback items into unique `{"url": ..., "audio": ...}`."""
+    if not items:
+        return []
+    if isinstance(items, (str, dict)):
+        items = [items]
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in items:
+        if isinstance(item, dict):
+            url = clean_source(item.get("url") or "")
+            audio = clean_source(item.get("audio") or "")
+        elif isinstance(item, str):
+            url = clean_source(item)
+            audio = clean_source(default_audio)
+        else:
+            continue
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        out.append({"url": url, "audio": audio})
+    return out
+
+
+def normalize_audio_candidates(items) -> list[str]:
+    """Return unique non-empty audio URLs in order."""
+    if not items:
+        return []
+    if isinstance(items, str):
+        items = [items]
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        url = clean_source(item if isinstance(item, str) else "")
+        if url and url not in seen:
+            seen.add(url)
+            out.append(url)
+    return out
+
+
+def _meaningful_query(text: str) -> str:
+    cand = (text or "").strip()
+    if not cand or is_http_url(cand) or _IPV4.match(cand):
+        return ""
+    low = cand.lower()
+    if low in _GENERIC_TITLES:
+        return ""
+    if " " not in cand and len(cand) < 6:
+        return ""
+    return cand if any(ch.isalnum() for ch in cand) else ""
+
+
+def _is_local_ref(raw: str) -> bool:
+    if not raw:
+        return False
+    if local_file(raw) or raw.lower().startswith("file://"):
+        return True
+    if re.match(r"^[A-Za-z]:[/\\]|^\\\\|^[/~]", raw):
+        return True
+    k = kind_of(raw)
+    return k == "file" or (
+        k == "audio" and not is_http_url(raw) and _bare_kind(raw) != "host"
+    )
+
+
+def fallback_search_query(origin: str, title: str = "") -> str:
+    """Return a YouTube search phrase for an unplayable remote source, or ''."""
+    raw = clean_source(origin)
+    if not raw:
+        return _meaningful_query(title)
+    if _is_local_ref(raw):
+        return ""
+    k = kind_of(raw)
+    if k == "unknown":
+        return raw
+    if k == "youtube":
+        t = (title or "").strip()
+        if t and not is_http_url(t) and t.lower() not in _GENERIC_TITLES:
+            return t
+        return ""
+    # Direct remote URL: try explicit title first, then URL filename stem.
+    return _meaningful_query(title) or _meaningful_query(audio_title(raw))
+
+
+def should_search_alternate(origin: str, detail: str, title: str = "",
+                            attempt: int = 0, max_attempts: int = 3) -> bool:
+    """Whether an exhausted video/audio stream should search for another source."""
+    if attempt >= max_attempts:
+        return False
+    raw = clean_source(origin)
+    if raw and _is_local_ref(raw):
+        return False
+    k = kind_of(raw) if raw else "unknown"
+    # Direct YouTube links can try alternate yt-dlp clients on the first retry,
+    # and search by title on subsequent retries when a title is known.
+    if k == "youtube":
+        return attempt == 0 or bool(fallback_search_query(origin, title))
+    if not fallback_search_query(origin, title):
+        return False
+    if k == "unknown":
+        return True
+    low = (detail or "").strip().lower()
+    return any(w in low for w in _REFUSED_OR_DEAD)
+

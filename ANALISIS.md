@@ -1149,6 +1149,30 @@ Sleep watcher (`_run_sleep_watch`) membaca `self._wake_sleep_timeout` setiap
 tik, jadi perubahan berlaku segera — tidak perlu restart. Label baru di
 i18n: `ui.wake.sleep_after` dan `ui.wake.minutes`.
 
+### Pemulihan otomatis saat sumber video/audio ditolak (403 Forbidden)
+
+Saat stream video atau audio ditolak oleh server (mis. `403 Forbidden`,
+`AccessDenied`, atau `InvalidMedia`), pemutar sebelumnya langsung menutup panel
+dan melaporkan gagal. Sekarang ada pemulihan berlapis di `actions/video_player.py`,
+`core/playback.py`, `ui/video_fallback.py`, `ui/audio.py`, dan `ui/window.py`:
+
+1. **Peringkat multi-stream per video (`_resolve_youtube_candidates`):** daftar
+   kandidat video (hingga 6 stream: combined dengan `audio=""` agar tidak
+   menimbulkan audio ganda, lalu 720p MP4 `avc1`, stream HTTP lain, lalu HLS
+   `m3u8`) dan hingga 4 kandidat audio dikirim ke pemutar sekaligus.
+2. **Tukar stream transparan di HUD (`VideoFallbackMixin` & `AudioMixin`):**
+   `_on_video_error`, `_on_video_status` (`InvalidMedia`/`NoMedia`),
+   `_on_video_sound_error`, dan `_on_audio_error` otomatis mencoba kandidat
+   berikutnya sambil mencatat alasan kegagalan di log (`ui.video.retrying`,
+   `ui.video.audio_retrying`, `ui.audio.retrying`).
+3. **Pencarian sumber lain yang bisa diputar (`on_exhausted`):** jika seluruh
+   kandidat stream pada video habis atau sebuah URL jarak jauh mengembalikan
+   403 Forbidden, `actions/video_player.py` mencoba `player_client` alternatif
+   (`android`/`ios`, `tv`/`web_safari`) untuk tautan YouTube, lalu mencari hingga
+   5 hasil YouTube (`ytsearch5:...`) sambil melewati ID/URL yang sudah gagal
+   (maksimal 3 kali pencarian ulang agar tidak pernah loop). Label log baru:
+   `ui.video.searching_alt` dan `ui.audio.searching_alt`.
+
 ### ⏭️ Sprint berikutnya
 
 | Sprint | Fokus | Ukuran "selesai" |

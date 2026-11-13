@@ -140,7 +140,10 @@
   "plugins.no_fields_locked": "No settings to configure — switch it on in the plugin manager to use it.",
   "ui.video.finished": "The video finished — the display is back to the assistant.",
   "ui.video.failed": "The video could not be played: {detail}",
+  "ui.video.retrying": "Stream failed ({detail}) — switching to another playable source…",
+  "ui.video.searching_alt": "Source refused ({detail}) — searching for another playable source…",
   "ui.video.audio_failed": "The video's sound could not be played, so the picture is silent: {detail}",
+  "ui.video.audio_retrying": "Sound stream failed ({detail}) — trying another audio source…",
   "ui.video.mic_held": "The video's sound is on — silence it, close it, or press F4 to talk. Typing still works.",
   "ui.video.mic_back": "The video is quiet again.",
   "ui.audio.playing": "♪  PLAYING: {title}",
@@ -150,5 +153,7 @@
   "ui.audio.loop_on": "🔁 REPEATING",
   "ui.audio.finished": "The audio finished.",
   "ui.audio.failed": "The audio could not be played: {detail}",
+  "ui.audio.retrying": "Audio stream failed ({detail}) — trying another playable source…",
+  "ui.audio.searching_alt": "Audio source refused ({detail}) — searching for another playable source…",
   "ui.audio.unavailable": "Audio playback is not available in this Qt install."
 }

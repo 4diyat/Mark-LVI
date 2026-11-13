@@ -349,3 +349,85 @@ def test_nothing_happens_when_there_is_no_video_and_nothing_was_closed():
     plan = pb.mic_plan(video_on=False, sound_muted=True, already_auto_muted=False,
                        user_muted=False)
     assert plan == {"close": False, "reopen": False, "set_auto": False}
+
+
+# ── 403 forbidden & fallback search decisions ──────────────────────────────
+
+@pytest.mark.parametrize("detail, expected", [
+    ("Error transferring https://r1.googlevideo.com/ - server replied: Forbidden", True),
+    ("HTTP Error 403", True),
+    ("AccessDenied", True),
+    ("401 Unauthorized", True),
+    ("Connection refused", True),
+    ("Codec not supported", False),
+    ("", False),
+])
+def test_forbidden_error_recognition(detail, expected):
+    assert pb.is_forbidden_error(detail) is expected
+
+
+@pytest.mark.parametrize("url, vid", [
+    ("https://www.youtube.com/watch?v=dQw4w9WgXcQ", "dQw4w9WgXcQ"),
+    ("https://m.youtube.com/watch?v=abcDEF12345&t=12", "abcDEF12345"),
+    ("https://youtu.be/xyz_987-123?si=1", "xyz_987-123"),
+    ("https://www.youtube.com/shorts/shortID1234", "shortID1234"),
+    ("https://www.youtube-nocookie.com/embed/embedID1234", "embedID1234"),
+    ("https://example.com/clip.mp4", ""),
+])
+def test_youtube_video_id_extraction(url, vid):
+    assert pb.youtube_video_id(url) == vid
+
+
+def test_normalize_video_candidates_deduplicates_and_keeps_per_stream_audio():
+    cands = pb.normalize_video_candidates(
+        [
+            {"url": "https://cdn/combined.mp4", "audio": ""},
+            "https://cdn/video720.mp4",
+            "https://cdn/video720.mp4",
+            {"url": "", "audio": "https://cdn/a.m4a"},
+            {"url": "https://cdn/video480.mp4", "audio": "https://cdn/a2.m4a"},
+        ],
+        default_audio="https://cdn/a.m4a",
+    )
+    assert cands == [
+        {"url": "https://cdn/combined.mp4", "audio": ""},
+        {"url": "https://cdn/video720.mp4", "audio": "https://cdn/a.m4a"},
+        {"url": "https://cdn/video480.mp4", "audio": "https://cdn/a2.m4a"},
+    ]
+
+
+def test_fallback_search_query_derives_useful_queries_and_ignores_junk():
+    assert pb.fallback_search_query("Dune Part Two trailer") == "Dune Part Two trailer"
+    assert pb.fallback_search_query(
+        "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "Never Gonna Give You Up"
+    ) == "Never Gonna Give You Up"
+    assert pb.fallback_search_query(
+        "https://cdn.example/Dune_Official_Trailer.mp4"
+    ) == "Dune Official Trailer"
+    # Generic stems and local files must not spawn nonsensical web searches.
+    assert pb.fallback_search_query("https://cdn.example/clip.mp4", "clip") == ""
+    assert pb.fallback_search_query("http://192.168.1.5:8080/live") == ""
+    assert pb.fallback_search_query(r"C:\clips\holiday.mp4", "holiday") == ""
+
+
+def test_should_search_alternate_respects_origin_error_and_retry_cap():
+    assert pb.should_search_alternate("lofi beats", "403 Forbidden", attempt=0) is True
+    assert pb.should_search_alternate("lofi beats", "403 Forbidden", attempt=3) is False
+    assert pb.should_search_alternate(
+        "https://cdn.example/Dune_Official_Trailer.mp4",
+        "server replied: Forbidden",
+        attempt=0,
+    ) is True
+    assert pb.should_search_alternate(
+        "https://cdn.example/Dune_Official_Trailer.mp4",
+        "codec unsupported",
+        attempt=0,
+    ) is False
+    assert pb.should_search_alternate(r"C:\clips\Dune_Trailer.mp4", "403 Forbidden") is False
+    assert pb.should_search_alternate(
+        "https://youtu.be/dQw4w9WgXcQ", "403 Forbidden", title="", attempt=0
+    ) is True
+    assert pb.should_search_alternate(
+        "https://youtu.be/dQw4w9WgXcQ", "403 Forbidden", title="", attempt=1
+    ) is False
+

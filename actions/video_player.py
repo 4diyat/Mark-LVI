@@ -24,8 +24,12 @@ SOUND IS OFF UNTIL ASKED FOR
 """
 from __future__ import annotations
 
+import inspect
+import json
 import re
 import threading
+import urllib.parse
+import urllib.request
 import webbrowser
 from pathlib import Path
 
@@ -73,97 +77,342 @@ def _local_path(text: str) -> str:
     return _pb.local_file(text)
 
 
-def _resolve_youtube(url_or_query: str) -> tuple[str, str, str, str]:
-    """(video_url, audio_url, title, error). Needs yt-dlp; says so when absent.
+_META_LOCK = threading.Lock()
+_META_CACHE: dict[tuple, dict] = {}
+_MAX_RETRY_SEARCHES = 3
+_YT_CLIENT_PASSES: tuple[tuple[str, ...] | None, ...] = (
+    None,
+    ("android", "ios"),
+    ("tv", "web_safari"),
+)
 
-    TWO urls, because YouTube no longer offers one.
-    The first version of this asked for a format carrying both picture and
-    sound and got "Requested format is not available". That was not a bad
-    selector, it was a wrong assumption: checked against three videos —
-    including the oldest upload on the site — every one offered ZERO combined
-    formats. Picture and sound are separate streams now, and both are returned
-    so the player can run them together.
 
-    `audio_url` comes back empty when only a combined or video-only stream
-    exists, which is the normal case for everything that is not YouTube.
-    """
+def _remember_meta(vcands: list[dict[str, str]], acands: list[str],
+                   vid: str) -> None:
+    urls_key = tuple(c["url"] for c in vcands)
+    audio_key = ("__audio__", acands[0]) if acands else None
+    payload = {"video": list(vcands), "audio": list(acands), "vid": vid}
+    with _META_LOCK:
+        if len(_META_CACHE) > 32:
+            _META_CACHE.clear()
+        if urls_key:
+            _META_CACHE[urls_key] = payload
+        if audio_key:
+            _META_CACHE[audio_key] = payload
+
+
+def _pop_video_meta(urls: list[str]) -> dict | None:
+    if not urls:
+        return None
+    with _META_LOCK:
+        return _META_CACHE.pop(tuple(urls), None)
+
+
+def _pop_audio_meta(audio_url: str) -> dict | None:
+    if not audio_url:
+        return None
+    with _META_LOCK:
+        return _META_CACHE.pop(("__audio__", audio_url), None)
+
+
+def _fetch_youtube_title(url: str) -> str:
+    """Best-effort title lookup when yt-dlp fails with 403/age-gate."""
+    vid = _pb.youtube_video_id(url)
+    target = f"https://www.youtube.com/watch?v={vid}" if vid else url
+    oembed = ("https://www.youtube.com/oembed?url="
+              f"{urllib.parse.quote(target, safe='')}&format=json")
     try:
-        import yt_dlp
+        req = urllib.request.Request(oembed, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=3.0) as resp:
+            data = json.loads(resp.read().decode("utf-8", errors="replace"))
+        return str(data.get("title") or "").strip()
     except Exception:
-        return "", "", "", ("yt-dlp is not installed, so a YouTube video "
-                            "cannot be played inside the HUD. "
-                            "Run: pip install yt-dlp")
+        return ""
 
-    query = url_or_query if _YT.search(url_or_query) else f"ytsearch1:{url_or_query}"
-    # No "format" here on purpose: ask for everything and choose below, so a
-    # video that lacks whatever was requested cannot fail outright.
-    opts = {"quiet": True, "no_warnings": True, "skip_download": True,
-            "noplaylist": True}
-    try:
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(query, download=False)
-        if info and info.get("entries"):
-            info = info["entries"][0]
-        if not info:
-            return "", "", "", "nothing was found for that."
-    except Exception as e:
-        return "", "", "", f"the video could not be resolved: {e}"
 
-    formats = [f for f in (info.get("formats") or [])
-               if str(f.get("protocol") or "").startswith("http") and f.get("url")]
+def _extract_candidates(
+    info: dict,
+    exclude_urls: set[str] | None = None,
+) -> tuple[list[dict[str, str]], list[str], str]:
+    """Return `(video_candidates, audio_urls, title)` from a yt-dlp info dict."""
+    excluded = exclude_urls or set()
+    raw_formats = [
+        f for f in (info.get("formats") or [])
+        if f.get("url") and f["url"] not in excluded
+    ]
+    http_formats = [
+        f for f in raw_formats
+        if str(f.get("protocol") or "").startswith("http")
+    ]
+    hls_formats = [
+        f for f in raw_formats
+        if str(f.get("protocol") or "") in ("m3u8", "m3u8_native")
+    ]
 
     def has(f, key):
         return f.get(key) not in (None, "none")
 
-    def best(candidates):
-        """Highest quality — but the ORIGINAL language before quality.
+    def audio_key(f):
+        return (
+            f.get("language_preference") or 0,
+            1 if f.get("ext") == "m4a" else 0,
+            f.get("tbr") or 0,
+        )
 
-        YouTube auto-dubs a lot of videos now, and it offers every dub as its
-        own audio stream at the SAME bitrate as the original: measured on one
-        video, English original at 129.483 and Arabic, Bangla, German, Spanish,
-        French, Hindi and Indonesian all at 129.482. Choosing on bitrate alone
-        therefore came down to a thousandth of a kilobit, and a video would play
-        in Arabic one time and English the next for no reason the user could
-        see.
+    audio_formats = sorted(
+        [f for f in http_formats if has(f, "acodec") and not has(f, "vcodec")],
+        key=audio_key,
+        reverse=True,
+    )
+    audio_urls: list[str] = []
+    chosen_audio_meta = None
+    for f in audio_formats:
+        if f["url"] not in audio_urls:
+            audio_urls.append(f["url"])
+            if chosen_audio_meta is None:
+                chosen_audio_meta = f
+        if len(audio_urls) >= 4:
+            break
+    primary_audio = audio_urls[0] if audio_urls else ""
 
-        YouTube marks the original track with language_preference 10 and every
-        dub with -1, so that decides it first and bitrate only breaks ties
-        within the same track. Video formats carry no language, so this is the
-        same ordering for them with the first term always equal.
-        """
-        if not candidates:
-            return None
-        return max(candidates,
-                   key=lambda f: (f.get("language_preference") or 0,
-                                  f.get("tbr") or 0))
+    video_candidates: list[dict[str, str]] = []
+    seen_video: set[str] = set()
 
-    # Combined first — if a video still has one, one player is simpler and
-    # cannot drift. Then picture and sound separately.
-    combined = best([f for f in formats if has(f, "vcodec") and has(f, "acodec")])
-    if combined:
-        return combined["url"], "", info.get("title") or "", ""
+    def add_video(f: dict, audio: str) -> None:
+        url = f.get("url") or ""
+        if not url or url in seen_video or len(video_candidates) >= 6:
+            return
+        seen_video.add(url)
+        video_candidates.append({"url": url, "audio": audio})
 
-    # 720p is the ceiling on purpose: the HUD panel is nowhere near 4K, and a
-    # smaller stream starts sooner and drifts less.
-    video = best([f for f in formats
-                  if has(f, "vcodec") and not has(f, "acodec")
-                  and f.get("ext") == "mp4" and (f.get("height") or 0) <= 720])
-    if not video:
-        video = best([f for f in formats
-                      if has(f, "vcodec") and not has(f, "acodec")])
-    audio = best([f for f in formats
-                  if has(f, "acodec") and not has(f, "vcodec")
-                  and f.get("ext") == "m4a"])
-    if not audio:
-        audio = best([f for f in formats
-                      if has(f, "acodec") and not has(f, "vcodec")])
+    combined = sorted(
+        [f for f in http_formats if has(f, "vcodec") and has(f, "acodec")],
+        key=lambda f: (
+            1 if (f.get("height") or 0) <= 720 else 0,
+            1 if f.get("ext") == "mp4" else 0,
+            f.get("tbr") or 0,
+        ),
+        reverse=True,
+    )
+    for f in combined:
+        add_video(f, "")
 
-    if not video:
-        return "", "", "", "no playable stream was offered for that video."
-    if audio and audio.get("language"):
-        print(f"[Video] audio track: {audio.get('language')} "
-              f"({audio.get('format_note') or audio.get('format_id')})")
-    return video["url"], (audio or {}).get("url", ""), info.get("title") or "", ""
+    mp4_720 = sorted(
+        [
+            f for f in http_formats
+            if has(f, "vcodec") and not has(f, "acodec")
+            and f.get("ext") == "mp4" and (f.get("height") or 0) <= 720
+        ],
+        key=lambda f: (
+            1 if str(f.get("vcodec") or "").startswith("avc") else 0,
+            f.get("tbr") or 0,
+        ),
+        reverse=True,
+    )
+    for f in mp4_720:
+        add_video(f, primary_audio)
+
+    other_http = sorted(
+        [f for f in http_formats if has(f, "vcodec") and not has(f, "acodec")],
+        key=lambda f: (
+            1 if (f.get("height") or 0) <= 720 else 0,
+            1 if f.get("ext") == "mp4" else 0,
+            f.get("tbr") or 0,
+        ),
+        reverse=True,
+    )
+    for f in other_http:
+        add_video(f, primary_audio)
+
+    hls_video = sorted(
+        [f for f in hls_formats if has(f, "vcodec")],
+        key=lambda f: (
+            1 if (f.get("height") or 0) <= 720 else 0,
+            1 if has(f, "acodec") else 0,
+            f.get("tbr") or 0,
+        ),
+        reverse=True,
+    )
+    for f in hls_video:
+        add_video(f, "" if has(f, "acodec") else primary_audio)
+
+    if not audio_urls:
+        for f in combined:
+            if f["url"] not in audio_urls:
+                audio_urls.append(f["url"])
+            if len(audio_urls) >= 2:
+                break
+
+    if chosen_audio_meta and chosen_audio_meta.get("language"):
+        print(f"[Video] audio track: {chosen_audio_meta.get('language')} "
+              f"({chosen_audio_meta.get('format_note') or chosen_audio_meta.get('format_id')})")
+    return video_candidates, audio_urls, info.get("title") or ""
+
+
+def _resolve_youtube_candidates(
+    url_or_query: str,
+    exclude_ids: set[str] | None = None,
+    exclude_urls: set[str] | None = None,
+    client_pass: int = 0,
+    for_audio: bool = False,
+    fallback_title: str = "",
+) -> tuple[list[dict[str, str]], list[str], str, str, str]:
+    """Resolve YouTube URL or query into ranked video/audio candidate streams.
+
+    Returns `(video_candidates, audio_urls, title, video_id, error)`.
+    When the first video or stream cannot be resolved/played (e.g. 403
+    Forbidden), automatically tries alternate yt-dlp clients and up to 5
+    search results, skipping `exclude_ids` and `exclude_urls`.
+    """
+    try:
+        import yt_dlp
+    except Exception:
+        return [], [], "", "", (
+            "yt-dlp is not installed, so a YouTube video "
+            "cannot be played inside the HUD. Run: pip install yt-dlp"
+        )
+
+    skip_ids = set(exclude_ids or ())
+    skip_urls = set(exclude_urls or ())
+
+    def extract(target: str, *, flat: bool = False,
+                client: tuple[str, ...] | None = None):
+        opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "skip_download": True,
+            "noplaylist": True,
+        }
+        if flat:
+            opts["extract_flat"] = "in_playlist"
+        if client:
+            opts["extractor_args"] = {"youtube": {"player_client": list(client)}}
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            return ydl.extract_info(target, download=False)
+
+    last_err = ""
+    search_query = ""
+    is_yt = bool(_YT.search(url_or_query) or _pb.is_youtube(url_or_query))
+
+    if is_yt:
+        vid = _pb.youtube_video_id(url_or_query)
+        known_title = _pb.fallback_search_query(url_or_query, fallback_title)
+        if not (vid and vid in skip_ids):
+            for client in _YT_CLIENT_PASSES[client_pass:]:
+                try:
+                    info = extract(url_or_query, client=client)
+                    if info and info.get("entries"):
+                        info = info["entries"][0]
+                    if info:
+                        known_title = info.get("title") or known_title
+                        vcands, acands, title = _extract_candidates(
+                            info, exclude_urls=skip_urls
+                        )
+                        usable = acands if for_audio else vcands
+                        if usable:
+                            return (
+                                vcands, acands, title,
+                                str(info.get("id") or vid), "",
+                            )
+                except Exception as e:
+                    last_err = str(e)
+        if vid:
+            skip_ids.add(vid)
+        search_query = known_title or _fetch_youtube_title(url_or_query)
+        if not search_query:
+            return (
+                [], [], known_title, vid,
+                last_err or "no playable stream was offered for that video.",
+            )
+    else:
+        search_query = url_or_query
+
+    entries = []
+    for search_target, flat in (
+        (f"ytsearch5:{search_query}", True),
+        (f"ytsearch5:{search_query}", False),
+        (f"ytsearch1:{search_query}", False),
+    ):
+        try:
+            res = extract(search_target, flat=flat)
+            if res and res.get("entries"):
+                entries = [e for e in res["entries"] if e]
+                if entries:
+                    break
+            elif res and res.get("formats"):
+                entries = [res]
+                break
+        except Exception as e:
+            last_err = str(e)
+
+    if not entries:
+        return (
+            [], [], "", "",
+            f"the video could not be resolved: {last_err}"
+            if last_err else "nothing was found for that.",
+        )
+
+    for entry in entries[:5]:
+        eid = str(
+            entry.get("id") or _pb.youtube_video_id(entry.get("url") or "")
+        )
+        if eid and eid in skip_ids:
+            continue
+        info = entry if entry.get("formats") else None
+        if info is None:
+            target = entry.get("url") or (
+                f"https://www.youtube.com/watch?v={eid}" if eid else ""
+            )
+            if not target:
+                continue
+            for client in (None, ("android", "ios")):
+                try:
+                    info = extract(target, client=client)
+                    if info and info.get("entries"):
+                        info = info["entries"][0]
+                    if info and info.get("formats"):
+                        break
+                except Exception as e:
+                    last_err = str(e)
+                    info = None
+        if not info:
+            if eid:
+                skip_ids.add(eid)
+            continue
+        vcands, acands, title = _extract_candidates(info, exclude_urls=skip_urls)
+        usable = acands if for_audio else vcands
+        if usable:
+            return (
+                vcands, acands, title or entry.get("title") or "",
+                str(info.get("id") or eid), "",
+            )
+        if info.get("id") or eid:
+            skip_ids.add(str(info.get("id") or eid))
+
+    return (
+        [], [], "", "",
+        last_err or "no playable stream was offered for that video.",
+    )
+
+
+def _resolve_youtube(url_or_query: str) -> tuple[list[str], str, str, str]:
+    """(video_urls, audio_url, title, error). Needs yt-dlp; says so when absent.
+
+    `video_urls` is a ranked list of playable picture streams, best first. The
+    first entry is what gets opened; the rest are fallbacks the HUD tries
+    automatically if the first one is refused (for example a 403 Forbidden or an
+    expired signature) instead of giving up on the video outright.
+    """
+    vcands, acands, title, vid, err = _resolve_youtube_candidates(url_or_query)
+    if vcands or acands:
+        _remember_meta(vcands, acands, vid)
+    return ([c["url"] for c in vcands],
+            acands[0] if acands else "",
+            title,
+            err)
+
+
+_ORIG_RESOLVE_YOUTUBE = _resolve_youtube
 
 
 def _search_page(query: str) -> str:
@@ -240,6 +489,7 @@ def video_player(parameters: dict = None, response=None, player=None,
         if _pb.kind_of(local) == "audio" and hasattr(player, "play_audio"):
             return _play_audio(player, {"source": local, "action": "play_audio"},
                                title=_pb.audio_title(local))
+        _begin_open()
         player.show_video(_pb.media_url(local), Path(local).name, muted=True)
         return f"Playing {Path(local).name} on the display, muted."
 
@@ -247,8 +497,16 @@ def video_player(parameters: dict = None, response=None, player=None,
     if _pb.is_http_url(source) and not _pb.is_youtube(source):
         if _pb.kind_of(source) == "audio" and hasattr(player, "play_audio"):
             return _play_audio(player, {"source": source, "action": "play_audio"})
-        player.show_video(_pb.media_url(source),
-                          _pb.audio_title(source)[:44] or "VIDEO", muted=True)
+        token = _begin_open()
+        media = _pb.media_url(source)
+        label = _pb.audio_title(source)[:44] or "VIDEO"
+        retry_cb = _make_video_retry_cb(
+            player, token, origin=source, title=label,
+            tried_ids=set(), tried_urls={media}, attempt=0, client_pass=0,
+        )
+        _call_with_supported(
+            player.show_video, media, label, muted=True, on_exhausted=retry_cb
+        )
         return "Playing that on the display, muted."
 
     # ANSWER FIRST, OPEN SECOND.
@@ -267,6 +525,19 @@ def video_player(parameters: dict = None, response=None, player=None,
     # Deliberately a status line rather than a finished English sentence: the
     # model writes the words, in the user's own language.
     return f"status=opening source={source}"
+
+
+def _call_with_supported(fn, *args, **kwargs):
+    """Pass optional fallback kwargs only when `fn` accepts them."""
+    try:
+        params = inspect.signature(fn).parameters
+        if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
+            extra = kwargs
+        else:
+            extra = {k: v for k, v in kwargs.items() if k in params}
+    except (ValueError, TypeError):
+        extra = {}
+    return fn(*args, **extra)
 
 
 def _play_audio(player, params: dict, title: str = "",
@@ -314,26 +585,161 @@ def _play_audio(player, params: dict, title: str = "",
                          daemon=True, name="audio-open").start()
         return f"status=opening source={source}"
 
+    token = _begin_open()
+    media = _pb.media_url(source)
     label = title or _pb.audio_title(source) or "AUDIO"
-    player.play_audio(_pb.media_url(source), label, volume, loop)
+    retry_cb = (
+        _make_audio_retry_cb(
+            player, token, origin=source, title=label, volume=volume,
+            loop=loop, tried_ids=set(), tried_urls={media}, attempt=0,
+            client_pass=0,
+        )
+        if _pb.is_http_url(source) else None
+    )
+    _call_with_supported(
+        player.play_audio, media, label, volume, loop, on_exhausted=retry_cb
+    )
     return f"Playing {label}, at {int(volume * 100)}% volume."
+
+
+def _make_audio_retry_cb(player, token: int, *, origin: str, title: str,
+                         volume: float, loop: bool, tried_ids: set[str],
+                         tried_urls: set[str], attempt: int,
+                         client_pass: int):
+    state = {
+        "origin": origin,
+        "title": title,
+        "volume": volume,
+        "loop": loop,
+        "tried_ids": set(tried_ids),
+        "tried_urls": set(tried_urls),
+        "attempt": attempt,
+        "client_pass": client_pass,
+    }
+
+    def on_exhausted(reason: str = "") -> bool:
+        if not _still_wanted(token):
+            return False
+        if not _pb.should_search_alternate(
+            state["origin"], reason, state["title"],
+            attempt=state["attempt"], max_attempts=_MAX_RETRY_SEARCHES,
+        ):
+            return False
+        threading.Thread(
+            target=_retry_audio_source,
+            args=(player, token, state, reason),
+            daemon=True, name="audio-retry",
+        ).start()
+        return True
+
+    return on_exhausted
+
+
+def _retry_audio_source(player, token: int, state: dict, reason: str) -> None:
+    if not _still_wanted(token):
+        return
+    acands: list[str] = []
+    title = ""
+    vid = ""
+    err = reason or ""
+    use_yt_url = _pb.is_youtube(state["origin"]) and state["client_pass"] == 0
+    query = (
+        state["origin"] if use_yt_url
+        else _pb.fallback_search_query(state["origin"], state["title"])
+    )
+    if query:
+        try:
+            if _resolve_youtube is not _ORIG_RESOLVE_YOUTUBE:
+                _v, audio_url, title, err = _resolve_youtube(query)
+                acands = [
+                    u for u in _pb.normalize_audio_candidates([audio_url])
+                    if u not in state["tried_urls"]
+                ]
+            else:
+                origin_vid = _pb.youtube_video_id(state["origin"])
+                skip_ids = (
+                    state["tried_ids"] - {origin_vid}
+                    if use_yt_url and origin_vid else state["tried_ids"]
+                )
+                _vc, acands, title, vid, err = _resolve_youtube_candidates(
+                    query,
+                    exclude_ids=skip_ids,
+                    exclude_urls=state["tried_urls"],
+                    client_pass=1 if use_yt_url else 0,
+                    for_audio=True,
+                    fallback_title=state["title"],
+                )
+        except Exception as e:                              # noqa: BLE001
+            err = str(e)
+    if not _still_wanted(token):
+        return
+    if acands:
+        next_ids = set(state["tried_ids"])
+        if vid:
+            next_ids.add(vid)
+        next_urls = set(state["tried_urls"]) | set(acands)
+        next_cb = _make_audio_retry_cb(
+            player, token, origin=state["origin"],
+            title=title or state["title"], volume=state["volume"],
+            loop=state["loop"], tried_ids=next_ids, tried_urls=next_urls,
+            attempt=state["attempt"] + 1, client_pass=1,
+        )
+        try:
+            _call_with_supported(
+                player.play_audio, acands[0],
+                title or state["title"] or _pb.audio_title(state["origin"]),
+                state["volume"], state["loop"],
+                fallbacks=acands[1:], on_exhausted=next_cb,
+            )
+            return
+        except Exception as e:                              # noqa: BLE001
+            err = str(e)
+    _say(player, "Tell the user, in one short sentence in their own language: "
+                 f"'{state['origin']}' could not be played as audio ({err}).")
 
 
 def _start_youtube_audio(player, source: str, volume: float, loop: bool,
                          token: int) -> None:
     """Resolve YouTube audio on a thread; speak only if it fails."""
+    acands: list[str] = []
+    title = ""
+    vid = ""
+    err = ""
     try:
-        _video, audio_url, title, err = _resolve_youtube(source)
+        if _resolve_youtube is not _ORIG_RESOLVE_YOUTUBE:
+            _video, audio_url, title, err = _resolve_youtube(source)
+            meta = _pop_audio_meta(audio_url)
+            acands = (
+                list(meta["audio"]) if meta and meta.get("audio")
+                else _pb.normalize_audio_candidates([audio_url])
+            )
+            vid = (meta or {}).get("vid") or _pb.youtube_video_id(source)
+        else:
+            _vc, acands, title, vid, err = _resolve_youtube_candidates(
+                source, for_audio=True
+            )
     except Exception as e:                                  # noqa: BLE001
-        audio_url = title = ""
+        acands = []
+        title = ""
+        vid = ""
         err = str(e)
 
     if not _still_wanted(token):
         return
-    if audio_url:
+    vid = vid or _pb.youtube_video_id(source)
+    if acands:
+        tried_ids = {vid} if vid else set()
+        retry_cb = _make_audio_retry_cb(
+            player, token, origin=source, title=title or _pb.audio_title(source),
+            volume=volume, loop=loop, tried_ids=tried_ids,
+            tried_urls=set(acands), attempt=0, client_pass=0,
+        )
         try:
-            player.play_audio(audio_url, title or _pb.audio_title(source),
-                              volume, loop)
+            _call_with_supported(
+                player.play_audio, acands[0],
+                title or _pb.audio_title(source), volume, loop,
+                fallbacks=acands[1:], on_exhausted=retry_cb,
+            )
             return
         except Exception as e:                              # noqa: BLE001
             err = str(e)
@@ -341,31 +747,117 @@ def _start_youtube_audio(player, source: str, volume: float, loop: bool,
                  f"'{source}' could not be played as audio ({err}).")
 
 
-def _play_youtube(player, source: str, token: int) -> None:
-    """The part that takes seconds. Speaks only if something goes wrong —
-    silence means the video is on screen, which the user can see for
-    themselves."""
-    try:
-        url, audio_url, title, err = _resolve_youtube(source)
-    except Exception as e:                                  # noqa: BLE001
-        url = audio_url = title = ""
-        err = str(e)
+def _make_video_retry_cb(player, token: int, *, origin: str, title: str,
+                         tried_ids: set[str], tried_urls: set[str],
+                         attempt: int, client_pass: int):
+    state = {
+        "origin": origin,
+        "title": title,
+        "tried_ids": set(tried_ids),
+        "tried_urls": set(tried_urls),
+        "attempt": attempt,
+        "client_pass": client_pass,
+    }
 
+    def on_exhausted(reason: str = "") -> bool:
+        if not _still_wanted(token):
+            return False
+        if not _pb.should_search_alternate(
+            state["origin"], reason, state["title"],
+            attempt=state["attempt"], max_attempts=_MAX_RETRY_SEARCHES,
+        ):
+            return False
+        threading.Thread(
+            target=_retry_video_source,
+            args=(player, token, state, reason),
+            daemon=True, name="video-retry",
+        ).start()
+        return True
+
+    return on_exhausted
+
+
+def _retry_video_source(player, token: int, state: dict, reason: str) -> None:
     if not _still_wanted(token):
-        return                       # the user closed it while it was resolving
-
-    if url:
+        return
+    vcands: list[dict[str, str]] = []
+    acands: list[str] = []
+    title = ""
+    vid = ""
+    err = reason or ""
+    use_yt_url = _pb.is_youtube(state["origin"]) and state["client_pass"] == 0
+    query = (
+        state["origin"] if use_yt_url
+        else _pb.fallback_search_query(state["origin"], state["title"])
+    )
+    if query:
         try:
-            player.show_video(url, title or source, muted=True,
-                              audio_source=audio_url)
+            if _resolve_youtube is not _ORIG_RESOLVE_YOUTUBE:
+                raw_urls, audio_url, title, err = _resolve_youtube(query)
+                urls = (
+                    [raw_urls] if isinstance(raw_urls, str)
+                    else list(raw_urls or [])
+                )
+                vcands = [
+                    c for c in _pb.normalize_video_candidates(
+                        urls, default_audio=audio_url
+                    )
+                    if c["url"] not in state["tried_urls"]
+                ]
+                acands = _pb.normalize_audio_candidates([audio_url])
+            else:
+                origin_vid = _pb.youtube_video_id(state["origin"])
+                skip_ids = (
+                    state["tried_ids"] - {origin_vid}
+                    if use_yt_url and origin_vid else state["tried_ids"]
+                )
+                vcands, acands, title, vid, err = _resolve_youtube_candidates(
+                    query,
+                    exclude_ids=skip_ids,
+                    exclude_urls=state["tried_urls"],
+                    client_pass=1 if use_yt_url else 0,
+                    fallback_title=state["title"],
+                )
+        except Exception as e:                              # noqa: BLE001
+            err = str(e)
+    if not _still_wanted(token):
+        return
+    if vcands:
+        next_ids = set(state["tried_ids"])
+        if vid:
+            next_ids.add(vid)
+        next_urls = set(state["tried_urls"]) | {c["url"] for c in vcands}
+        next_cb = _make_video_retry_cb(
+            player, token, origin=state["origin"],
+            title=title or state["title"], tried_ids=next_ids,
+            tried_urls=next_urls, attempt=state["attempt"] + 1, client_pass=1,
+        )
+        try:
+            _call_with_supported(
+                player.show_video,
+                vcands[0]["url"],
+                title or state["title"] or state["origin"],
+                muted=True,
+                audio_source=vcands[0]["audio"],
+                fallbacks=vcands[1:],
+                audio_fallbacks=acands[1:],
+                on_exhausted=next_cb,
+            )
             return
         except Exception as e:                              # noqa: BLE001
             err = str(e)
+    _report_youtube_failure(
+        player, state["origin"], err or reason, title=state["title"]
+    )
 
-    # Resolution failed. Opening it in a browser is worse than playing it in the
-    # HUD, but it is a great deal better than doing nothing, and the reason is
-    # reported rather than swallowed.
-    page = source if _YT.search(source) else _search_page(source)
+
+def _report_youtube_failure(player, source: str, err: str,
+                            title: str = "") -> None:
+    q = _pb.fallback_search_query(source, title) or source
+    page = (
+        source if (_YT.search(source) or _pb.is_youtube(source))
+        else _search_page(q)
+    )
     opened = ""
     try:
         webbrowser.open(page)
@@ -375,6 +867,62 @@ def _play_youtube(player, source: str, token: int) -> None:
     _say(player, "Tell the user, in one short sentence in their own language: "
                  f"'{source}' could not be played on the display "
                  f"({err}){opened}.")
+
+
+def _play_youtube(player, source: str, token: int) -> None:
+    """The part that takes seconds. Speaks only if something goes wrong —
+    silence means the video is on screen, which the user can see for
+    themselves."""
+    try:
+        raw_urls, audio_url, title, err = _resolve_youtube(source)
+    except Exception as e:                                  # noqa: BLE001
+        raw_urls, audio_url, title = [], "", ""
+        err = str(e)
+
+    if not _still_wanted(token):
+        return                       # the user closed it while it was resolving
+
+    urls = (
+        [raw_urls] if isinstance(raw_urls, str)
+        else list(raw_urls or [])
+    )
+    meta = _pop_video_meta(urls)
+    if meta:
+        vcands = list(meta["video"])
+        acands = list(meta["audio"])
+        vid = meta.get("vid") or _pb.youtube_video_id(source)
+    else:
+        vcands = _pb.normalize_video_candidates(urls, default_audio=audio_url)
+        acands = _pb.normalize_audio_candidates([audio_url])
+        vid = _pb.youtube_video_id(source)
+
+    if vcands:
+        tried_ids = {vid} if vid else set()
+        tried_urls = {c["url"] for c in vcands}
+        retry_cb = _make_video_retry_cb(
+            player, token, origin=source, title=title,
+            tried_ids=tried_ids, tried_urls=tried_urls, attempt=0,
+            client_pass=0,
+        )
+        try:
+            _call_with_supported(
+                player.show_video,
+                vcands[0]["url"],
+                title or source,
+                muted=True,
+                audio_source=vcands[0]["audio"],
+                fallbacks=vcands[1:],
+                audio_fallbacks=acands[1:],
+                on_exhausted=retry_cb,
+            )
+            return
+        except Exception as e:                              # noqa: BLE001
+            err = str(e)
+
+    # Resolution failed. Opening it in a browser is worse than playing it in the
+    # HUD, but it is a great deal better than doing nothing, and the reason is
+    # reported rather than swallowed.
+    _report_youtube_failure(player, source, err, title=title)
 
 
 def _say(player, instruction: str) -> None:

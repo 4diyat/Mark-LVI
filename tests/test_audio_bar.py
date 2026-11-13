@@ -479,3 +479,25 @@ def test_an_unresolvable_device_does_not_stop_playback(bar, monkeypatch):
     bar._apply_audio_device()
     bar._on_audio_open("a.mp3", "A", 0.7, False)
     assert bar._audio_player.state == "playing"
+
+
+def test_a_403_audio_stream_tries_backup_then_searches_alternative(bar):
+    exhausted = []
+    bar._on_audio_open(
+        "https://cdn.example/bad.m4a",
+        "My Song",
+        0.5,
+        False,
+        fallbacks=["https://cdn.example/backup.webm"],
+        on_exhausted=lambda reason: (exhausted.append(reason) or True),
+    )
+    bar._on_audio_error(1, "server replied: Forbidden (403)")
+    assert bar._audio_cont.visible is True
+    assert bar._audio_player.source.toString() == "https://cdn.example/backup.webm"
+    assert bar._audio_player.state == "playing"
+
+    # Backup also returns 403 -> triggers alternative search and closes bar.
+    bar._on_audio_error(1, "403 Forbidden")
+    assert exhausted == ["403 Forbidden"]
+    assert bar._audio_cont.visible is False
+
