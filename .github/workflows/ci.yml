@@ -197,6 +197,14 @@ jobs:
           if rejected:
               raise SystemExit("actions failed to load:\n" + "\n".join(rejected))
       - name: Load every plugin through the real loader
+        # PYTHONUTF8, because Windows was the only runner that failed here and
+        # the only difference was non-ASCII text: a `shell: python` step writes
+        # stdout in the console code page, which is cp1252 on the Windows
+        # runners, so an em dash in a print() raised UnicodeEncodeError inside
+        # the step while the loader itself was fine. Asking for UTF-8 says what
+        # this step actually needs instead of forbidding a character.
+        env:
+          PYTHONUTF8: "1"
         # plugins/ ships the template, the worked example and nothing else; the
         # point of this step is that the loader runs against a real folder on
         # this OS without raising.
