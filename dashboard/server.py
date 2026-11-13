@@ -91,6 +91,14 @@ def _get_gemini_key() -> str | None:
 _KEY_CHARS = [c for c in (string.ascii_uppercase + string.digits)
               if c not in ('O', 'I', 'L', '0', '1')]
 
+# How many characters a pairing key has. The login page hard-codes this number
+# in three places (maxlength, the auto-submit length and the minimum length),
+# so it cannot be changed here alone — tests/test_dashboard.py asserts the
+# page and this constant agree. They disagreed once (8 here, 6 there), which
+# made manual entry impossible: the page submitted a truncated key, the
+# server refused it, and the field cleared itself.
+_KEY_LENGTH = 8
+
 # ── AES-256-CBC ───────────────────────────────────────────────────────────────
 _AES_SALT = b'JARVIS-DASHBOARD-v1'
 
@@ -922,7 +930,7 @@ class DashboardServer:
     def new_key(self, expiry_secs: int = 600) -> str:
         now = time.time()
         self._pending_keys = {k: v for k, v in self._pending_keys.items() if v > now}
-        key = ''.join(secrets.choice(_KEY_CHARS) for _ in range(8))
+        key = ''.join(secrets.choice(_KEY_CHARS) for _ in range(_KEY_LENGTH))
         self._pending_keys[key] = now + expiry_secs
         return key
 

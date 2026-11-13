@@ -1099,6 +1099,39 @@ atau audio yang benar-benar diputar. Yang diuji adalah keputusan, routing, dan
 eksekusi kelas-kelasnya dengan pemutar palsu. Membuktikan sebuah film benar-benar
 tampil butuh satu kali jalan di mesin Anda.
 
+### Kode token remote akses: halaman mengharapkan 6 digit, server membuat 8
+
+Melaporkan "pengisian kode token gagal terus, ketika mengetikan digit ke-4
+langsung reset". Penyebabnya bukan di pengetikan, melainkan di **ketidakcocokan
+panjang kunci antara dua file**:
+
+- `dashboard/server.py` membuat kunci **8 karakter** (`range(8)` di `new_key()`),
+  dan overlay desktop menampilkannya apa adanya.
+- `dashboard/static/login.html` mengunci kolom di **6 karakter** di tiga tempat:
+  `maxlength="6"`, auto-submit saat panjangnya 6, dan validasi minimum 6.
+
+Alurnya: pengguna mengetik → di karakter ke-6 halaman **otomatis mengirim**
+kunci yang baru setengah → server membandingkan dengan kunci 8 karakter yang
+menunggu → tidak cocok → `401` → halaman mengosongkan kolomnya
+(`inp.value = ''`) dan menggoyang kartu. Terlihat seperti "reset kembali", dan
+mengetik manual **tidak akan pernah bisa berhasil** — kolomnya sendiri yang
+memotong kunci sebelum selesai. Jalur QR (`/auto-login`) tidak terpengaruh
+karena tidak perlu mengetik.
+
+Perbaikannya: `login.html` disamakan ke 8 di keempat tempat (termasuk
+placeholder 8 titik), dan panjang kunci sekarang satu konstanta
+`dashboard/server.py:_KEY_LENGTH` yang dipakai `new_key()`. Tes barunya,
+`test_login_page_accepts_the_whole_key`, membaca ketiga angka dari halaman
+yang benar-benar disajikan (`GET /login`) dan meng-assert semuanya sama dengan
+`_KEY_LENGTH` — terbukti gagal saat `login.html` dikembalikan ke 6. Fixture
+`tests/test_dashboard.py` juga berhenti menduplikasi angka 8 secara manual dan
+memakai `srv.new_key()`, karena duplikasi angka magis itulah yang membuat
+kedua file bisa drift tanpa ada yang tahu.
+
+Catatan jujur: di kode, reset-nya terpicu di digit ke-**6** (auto-submit),
+bukan ke-4. Hitungan pengguna mungkin meleset, atau jeda kirimnya terasa
+seperti di tengah jalan. Akar masalahnya sama.
+
 ### ⏭️ Sprint berikutnya
 
 | Sprint | Fokus | Ukuran "selesai" |
