@@ -138,7 +138,6 @@ from ui.overlays import (      # noqa: F401 — re-exported through the package
 from core import playback as _pb
 from core.i18n import active_locale as i18n_active, label as _t, set_locale
 
-
 def _assistant_display() -> str:
     """The assistant's name for a label built outside __init__.
 
@@ -152,8 +151,6 @@ def _assistant_display() -> str:
         return get_assistant_name()
     except Exception:      # noqa: BLE001 — a label must never break a dialog
         return "JARVIS"
-
-
 
 class HudCanvas(QWidget):
     def __init__(self, face_path: str, assistant_name: str = "J.A.R.V.I.S", parent=None):
@@ -880,14 +877,12 @@ def _file_category(path: Path) -> str:
         return "folder"
     return _EXT_TO_CAT.get(path.suffix.lower().lstrip("."), "unknown")
 
-
 # Folders nobody means when they say "this project": dependencies, build output,
 # version control. The same list dev_agent skips, so the count on the card is
 # the count of files the coding model will actually look at.
 _SKIP_DIRS = {".git", ".hg", ".svn", "node_modules", "venv", ".venv", "env",
               "__pycache__", ".mypy_cache", ".pytest_cache", "dist", "build",
               ".idea", ".vscode", ".next", "target", ".jarvis_backup"}
-
 
 def _count_files(folder: Path, cap: int = 5000) -> int:
     """Files in a project folder, stopping at `cap` — a whole drive dropped by
@@ -906,7 +901,6 @@ def _fmt_size(size: int) -> str:
     elif size < 1024**2: return f"{size/1024:.1f} KB"
     elif size < 1024**3: return f"{size/1024**2:.1f} MB"
     else:                return f"{size/1024**3:.1f} GB"
-
 
 class FileDropZone(QWidget):
     file_selected = pyqtSignal(str)
@@ -1014,7 +1008,6 @@ class FileDropZone(QWidget):
         self._folder_files = _count_files(Path(path)) if Path(path).is_dir() else 0
         self._canvas.update()
         self.file_selected.emit(path)
-
 
 class _DropCanvas(QWidget):
     def __init__(self, zone: FileDropZone):
@@ -1128,7 +1121,6 @@ class _DropCanvas(QWidget):
         else:
             z.mousePressEvent(e)
 
-
 class _CameraPreview(QWidget):
     """Floating overlay that briefly shows what the camera captured."""
 
@@ -1194,7 +1186,6 @@ class _CameraPreview(QWidget):
         self.show()
         self.raise_()
         self._timer.start(6_000)   # auto-dismiss after 6 s
-
 
 class SetupOverlay(QWidget):
     done = pyqtSignal(str, str)
@@ -1324,8 +1315,6 @@ class SetupOverlay(QWidget):
             return
         self.done.emit(key, self._sel_os)
 
-
-
 class _HudOverlay(QWidget):
     """Base for the floating panels placed by hand over the HUD.
 
@@ -1346,7 +1335,6 @@ class _HudOverlay(QWidget):
         if p is not None:
             p.update(self.geometry())
         super().closeEvent(e)
-
 
 class ConfirmBanner(_HudOverlay):
     """The gate in front of an action that cannot be taken back.
@@ -4130,6 +4118,15 @@ class MainWindow(AudioMixin, QMainWindow):
         out = self._video_sound_out if self._video_split else self._video_audio
         if out:
             self._set_video_muted(not out.isMuted())
+
+    def write_log(self, text: str) -> None:
+        """Thread-safe: append a line to the live log panel.
+
+        Owned by MainWindow because it holds `_log_sig` (wired to `_log.append_log`
+        at startup) and the `_log` widget. `JarvisUI.write_log` delegates to this
+        via `self._win._log_sig.emit`; MainWindow methods call it directly.
+        """
+        self._log_sig.emit(text)
 
     def _on_video_error(self, *_a) -> None:
         err = ""
