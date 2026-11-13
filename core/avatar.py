@@ -12,6 +12,13 @@ Design notes
   OpenGL context, no shader compile, no GPU driver to disagree with us and no
   new pip dependency. It looks the same on a gaming rig, a 2013 laptop, a VM
   and a remote desktop session.
+* **Light and skin come from `core.avatar_face`.** Geometry and motion were
+  already right; what was missing was occlusion (a face is read by its
+  shadowed cavities, and a single-colour ramp has none, so every socket read as
+  *brighter* than the cheek it sits in) and warmth (a real face is never one
+  colour). Both are fields over the mesh, computed in a Qt-free module so they
+  can be asserted without a display. The eye blink deforms the actual lid
+  vertices rather than squashing a drawn outline over motionless skin.
 * **Lip-sync comes from the audio pipeline, not from the avatar.** `main.py`
   already computes a real RMS level off the PCM (`_pcm_level`) for both the mic
   and JARVIS's own output. The avatar just consumes that number, so there is no
@@ -32,6 +39,7 @@ import numpy as np
 from PyQt6.QtCore import QLineF, QPointF, QRectF, Qt
 from PyQt6.QtGui import QBrush, QColor, QPainter, QPen, QPolygonF, QRadialGradient
 
+from core import avatar_face as _face
 from core.avatar_mesh import JAW_MAX, JAW_PIVOT, get_head_mesh
 
 # Perspective camera distance in head-half-heights. Large enough that the nose
@@ -149,8 +157,21 @@ class HoloAvatar:
         # Callers size the head to the room they have with this.
         self.SPAN = mesh["span"][0] - mesh["span"][1]
 
+        # ── the face's lighting/skin fields, computed once ─────────────────
+        # These depend only on the rest geometry, so they are built here and
+        # not per frame. `_cavity` is what makes the sockets read as recesses
+        # and `_warm` as skin; see core/avatar_face for why both matter.
+        self._frames = _face.FaceFrames(self._v0, self._lm, mesh["n_head"])
+        self._cavity = _face.cavity(self._v0, self._frames)
+        self._warm = _face.warm(self._v0, self._frames)
+        self._lid_w = _face.lid_weights(self._v0, self._lm, self._frames)
+
         self._lut_cache: list = []
         self._lut_key = None
+        # Colour columns, cached against the three colours they came from —
+        # the accent picker retints the face every frame it is being dragged.
+        self._cols_key = None
+        self._cols = None
 
         n = self._v0.shape[0]
         self._v = np.empty((n, 3), dtype=np.float32)
@@ -161,6 +182,13 @@ class HoloAvatar:
         self._pitch = 0.0
         self._mouth = 0.0          # 0..1 smoothed jaw opening
         self._glow = 0.0           # 0..1 smoothed overall energy
+        # How much of a blink the GEOMETRY may take. The drawn eye opening is
+        # made from screen-space landmark rings, so at a strong yaw it is an
+        # ellipse seen at an angle — closing the surface under it would slide
+        # that ellipse across a lid that has already gone. So the geometry
+        # closes while the face is towards the viewer, and hands over as it
+        # turns. The painted opening closes at every angle either way.
+        self._blink_face = 1.0
         self._scan = -1.6          # vertical position of the energy sweep
         self._blink = 0.0          # 0 = open, 1 = shut
         self._blink_at = 3.0
@@ -188,6 +216,8 @@ class HoloAvatar:
         self._gaze_bias = [0.0, 0.0]
         self._bias_tgt = [0.0, 0.0]
         self._bias_at = 0.0
+        # NOT `_lid_w` — the rig weights are `_lid_w`; this is how far the
+        # lids are open right now, which the state drives (asleep = low).
         self._lids = 1.0           # 1 = wide, 0 = shut; low while asleep
         self._brow_bias = 0.0      # concentration pulls the brows down
         self._glance = None        # (dx, dy, until_t) — a deliberate look
@@ -403,6 +433,12 @@ class HoloAvatar:
         if self._scan > 1.35:
             self._scan = -1.75
 
+        # The handover between the two halves of a blink, as a function of how
+        # much of the face the camera can still see. 0.45 rad of yaw is where a
+        # real eye's opening becomes an edge; past it the geometry stops.
+        face_on = max(0.0, math.cos(self._yaw)) * max(0.0, math.cos(self._pitch))
+        self._blink_face = float(min(1.0, max(0.0, (face_on - 0.28) / 0.45)))
+
         if self._blink > 0.0:
             self._blink = max(0.0, self._blink - dt * 8.5)
         elif t >= self._blink_at:
@@ -456,6 +492,21 @@ class HoloAvatar:
             v[:, 1] = py + dy * ca - dz * sa
             v[:, 2] = pz + dy * sa + dz * ca
 
+        # ── blink, as geometry ──────────────────────────────────────────────
+        # Applied to the posed head BEFORE the rotation: the lids close in the
+        # face's own frame, and a lid that closes after the yaw is a lid that
+        # closes sideways when the head is turned.
+        #
+        # The eyes only close while the face is actually pointed at the viewer,
+        # because the painted eye opening is drawn from screen-space landmark
+        # rings — see _paint_features. Closing the geometry of an eye whose
+        # drawn opening is at a steep angle would slide that opening across a
+        # lid that has already gone.
+        if self._blink > 0.001:
+            shut = self._blink * self._blink_face
+            if shut > 0.001:
+                v[:] = _face.blink(v, self._lid_w, shut, self._lm)
+
         cy, sy = math.cos(self._yaw), math.sin(self._yaw)
         cp, sp = math.cos(self._pitch), math.sin(self._pitch)
         m = np.array([
@@ -507,73 +558,118 @@ class HoloAvatar:
         ys = cy - verts[:, 1] * k
 
         if self.shaded:
-            self._paint_surface(p, xs, ys, norms, verts, primary, bg, amp)
+            self._paint_surface(p, xs, ys, norms, verts, primary, accent, bg, amp)
         self._paint_wire(p, xs, ys, norms, verts, primary, bg, amp)
         self._paint_features(p, xs, ys, norms, r, primary, accent, bg, amp)
 
     def _paint_surface(self, p: QPainter, xs, ys, norms, verts,
-                       primary: QColor, bg: QColor, amp: float) -> None:
-        """Fill the camera-facing triangles so the head reads as a lit volume."""
+                       primary: QColor, accent: QColor, bg: QColor,
+                       amp: float) -> None:
+        """Fill the camera-facing triangles as lit, occluded, warm skin.
+
+        The maths lives in `core.avatar_face` (Qt-free, so it can be tested);
+        this method only turns its numbers into QPainter calls. Three things
+        happen here that did not before:
+
+          * the colour is not one ramp. Ordinary skin, warm skin (nose, cheeks,
+            lips, ears) and the shadow inside a crevice are three different
+            mixes, so the face has a colour temperature instead of a hue;
+          * the cavities are dark. Light is what reveals form, and the absence
+            of light in the sockets and under the lip is what makes a face a
+            face rather than a glowing shell;
+          * a facet keeps its crisp silhouette while its interior is smooth:
+            the lighting mixes the flat facet normal with the smooth vertex
+            normal, which is the difference between "carved" and "faceted".
+        """
         a, b, c = self._fa, self._fb, self._fc
+        sh = _face.shade_facets(verts, norms, self._f, self._frames,
+                                self._cavity, self._warm, self._fade, amp)
+        bright, nz, dark, heat = sh["bright"], sh["nz"], sh["dark"], sh["heat"]
 
-        # Flat normals, taken from each triangle's own posed geometry — NOT the
-        # averaged vertex normals. Averaging smears the nose, lips and brow
-        # relief into their neighbours and renders the face as a blank egg;
-        # per-facet normals are exactly what makes the anatomy visible.
-        fn = np.cross(verts[b] - verts[a], verts[c] - verts[a])
-        fn /= np.maximum(np.linalg.norm(fn, axis=1, keepdims=True), 1e-9)
-
-        # Point them outwards by agreeing with the vertex normals, which were
-        # oriented at build time. Flipping on the sign of n_z instead would
-        # negate x and y as well and scramble the lighting into moiré.
-        ref = norms[a] + norms[b] + norms[c]
-        fn *= np.sign((fn * ref).sum(1))[:, None]
-
-        nz = fn[:, 2]
+        # Both tests matter. `nz` culls the back of the head; the area test
+        # drops facets seen edge-on, which otherwise paint as one-pixel slivers
+        # of near-black across the cheek.
         area = np.abs((xs[b] - xs[a]) * (ys[c] - ys[a])
                       - (xs[c] - xs[a]) * (ys[b] - ys[a]))
         vis = np.flatnonzero((nz > 0.015) & (area > 3.0))
         if vis.size == 0:
             return
-        fn = fn[vis]
-        nz = nz[vis]
 
-        ax, ay = xs[a][vis], ys[a][vis]
-        bx, by = xs[b][vis], ys[b][vis]
-        cxx, cyy = xs[c][vis], ys[c][vis]
+        table = self._skin_table(bg, primary, accent)
+        n_lvl, n_heat = table.shape[0], table.shape[1]
 
-        # A rim term for the glass edge plus a key light high on the left. The
-        # light leans off-axis on purpose: weight it towards the camera and
-        # every front-facing facet returns the same value, which is a flat mask.
-        fres = np.clip(1.0 - nz, 0.0, 2.0) ** 1.7
-        lam = np.clip(fn[:, 0] * -0.55 + fn[:, 1] * 0.50 + nz * 0.52, 0.0, 1.0)
-        bright = 0.26 + 0.20 * fres + 0.66 * lam ** 1.05
-        bright *= (self._fade[a][vis] + self._fade[b][vis] + self._fade[c][vis]) / 3.0
-        bright *= 0.88 + 0.24 * amp
+        bi = np.clip((bright[vis] * (n_lvl - 1) + 0.5).astype(np.int32), 0, n_lvl - 1)
+        hi_i = np.clip((heat[vis] * (n_heat - 1) + 0.5).astype(np.int32), 0, n_heat - 1)
+        # Occlusion is quantised, not per-facet: a separate brush per facet
+        # would mean 898 setBrush calls. Eight steps is below what the eye can
+        # resolve at HUD size, and it keeps the draw to a handful of runs.
+        dk_i = np.clip((dark[vis] * (table.shape[2] - 1) + 0.5).astype(np.int32),
+                       0, table.shape[2] - 1)
 
-        idx = np.clip((bright * _LUT_N).astype(np.int32), 0, _LUT_N - 1)
+        # Sort so equal brushes are contiguous: part first (the neck always
+        # draws behind the head, because the two meshes interpenetrate and a
+        # pure depth sort tears them into a seam), then the brush key, then
+        # depth within the run. The tiny per-facet term keeps the sort stable
+        # against exactly-equal keys.
+        key = (self._fgroup[vis] * 1.0e7 + (hi_i * n_lvl + bi) * 1.0e3 + dk_i)
+        order = np.argsort(key, kind="stable")
+        vis, bi, hi_i, dk_i = vis[order], bi[order], hi_i[order], dk_i[order]
 
-        # Far facets first: the neck passes behind the jaw and the head is not
-        # convex around the chin.
-        # Sort far-to-near, but group first: neck facets all draw before head
-        # facets, because the two meshes interpenetrate and a pure depth sort
-        # interleaves them into a torn seam.
-        fz = (verts[a, 2][vis] + verts[b, 2][vis] + verts[c, 2][vis]) * (1.0 / 3.0)
-        order = np.argsort(self._fgroup[vis] * 1000.0 + fz, kind="stable")
-        tris = np.stack([ax, ay, bx, by, cxx, cyy], axis=1)[order].tolist()
-        shade = idx[order].tolist()
-        lut = self._lut(bg, primary)
+        px = np.stack([xs[a][vis], ys[a][vis], xs[b][vis], ys[b][vis],
+                       xs[c][vis], ys[c][vis]], axis=1).tolist()
 
         # Aliased fills: adjacent antialiased polygons leave hairline seams, and
         # the interior of a tiled surface has no silhouette worth smoothing —
         # the antialiased wireframe drawn afterwards covers the outline.
         p.setRenderHint(QPainter.RenderHint.Antialiasing, False)
         p.setPen(Qt.PenStyle.NoPen)
-        for q, sh in zip(tris, shade):
-            p.setBrush(lut[sh])
+
+        run = (int(hi_i[0]), int(bi[0]), int(dk_i[0]))
+        p.setBrush(table[bi[0], hi_i[0], dk_i[0]])
+        for q, bh, bl, bd in zip(px, hi_i.tolist(), bi.tolist(), dk_i.tolist()):
+            here = (bh, bl, bd)
+            if here != run:
+                run = here
+                p.setBrush(table[bl, bh, bd])
             p.drawPolygon(QPolygonF([QPointF(q[0], q[1]), QPointF(q[2], q[3]),
                                      QPointF(q[4], q[5])]))
         p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+
+    def _skin_table(self, bg: QColor, primary: QColor, accent: QColor):
+        """Cached brushes, indexed `[brightness level, warmth, shadow step]`.
+
+        Rebuilt only when one of the three colours changes, which is exactly
+        when the accent picker moves — so dragging the hue wheel stays cheap
+        and the retint is still free, as it has to be.
+        """
+        key = (bg.rgb(), primary.rgb(), accent.rgb())
+        if self._cols_key != key:
+            lo, deep, mid, hi, warm_mid = _face.skin_columns(bg, primary, accent)
+            n_lvl, n_heat, n_dk = 12, 3, 5
+            # 180 brushes per retint, and a retint happens on every frame of a
+            # hue-wheel drag — so the loop that builds them is kept as tight as
+            # it can be while staying readable. Measured at ~2 ms for the whole
+            # table, against a 33 ms frame budget.
+            tab = np.empty((n_lvl, n_heat, n_dk), dtype=object)
+            dim = 1.0 - 0.42 * (np.arange(n_dk, dtype=np.float32) / (n_dk - 1.0))
+            for h in range(n_heat):
+                hf = h / (n_heat - 1.0)
+                base = mid + (warm_mid - mid) * hf
+                for k in range(n_lvl):
+                    kf = k / (n_lvl - 1.0)
+                    col = (deep + (base - deep) * (kf / 0.5) if kf < 0.5
+                           else base + (hi - base) * ((kf - 0.5) / 0.5))
+                    # A crevice loses intensity, not hue: scaling the colour is
+                    # what a shadow in skin does, and it keeps the fast opaque
+                    # path Qt takes.
+                    for d in range(n_dk):
+                        rgb = np.clip(col * dim[d], 0.0, 1.0)
+                        tab[k, h, d] = QBrush(QColor(int(rgb[0] * 255),
+                                                     int(rgb[1] * 255),
+                                                     int(rgb[2] * 255)))
+            self._cols_key = key
+            self._cols = tab
+        return self._cols
 
     def _paint_wire(self, p: QPainter, xs, ys, norms, verts,
                     primary: QColor, bg: QColor, amp: float) -> None:
@@ -647,40 +743,94 @@ class HoloAvatar:
         lm = self._lm
         vis = 1.0 - self._blink
 
-        # ── eyes ────────────────────────────────────────────────────────────
+        # The eye's opening is drawn, not modelled: the canonical mesh has
+        # closed lids, so the aperture has to be painted on the landmark rings.
+        # That split is why the blink is done in two halves — the surface is
+        # closed by `_pose` (so the skin around the eye moves, which is what a
+        # blink actually looks like) and the opening is closed here (so the
+        # dark aperture disappears rather than being squashed into a slot).
         for key in ("eye_l", "eye_r"):
             idx = lm[key]
             ex, ey = xs[idx], ys[idx]
             mid_y = float(ey.mean())
             if vis < 0.999:
-                ey = mid_y + (ey - mid_y) * max(0.04, vis)
+                ey = mid_y + (ey - mid_y) * max(0.02, vis)
             poly = QPolygonF([QPointF(float(a), float(b)) for a, b in zip(ex, ey)])
+            br = poly.boundingRect()
 
+            # A socket shadow a little wider than the aperture: the recess the
+            # eye sits in, which the flat apertures never had.
             p.setPen(Qt.PenStyle.NoPen)
-            p.setBrush(QBrush(_blend(bg, primary, 22)))       # socket shadow
+            p.setBrush(QBrush(_blend(bg, primary, 26 + 18 * (1.0 - vis))))
+            p.drawEllipse(br.center(), br.width() * 0.62, br.height() * 0.95)
+
+            p.setBrush(QBrush(_blend(bg, primary, 20)))
             p.drawPolygon(poly)
             p.setBrush(Qt.BrushStyle.NoBrush)
-            p.setPen(QPen(_c(primary, 210 * face), 1.3))      # lid line
+            p.setPen(QPen(_c(primary, 205 * face), 1.25))      # lid line
             p.drawPolygon(poly)
 
+            # Lash line: short strokes along the upper lid only, thicker
+            # towards the outer corner the way real lashes are. This is the
+            # cheapest single thing that turns a drawn ring into an eye.
+            if vis > 0.3:
+                upper = [i for i in range(len(idx))
+                         if ey[i] < mid_y - br.height() * 0.12]
+                if len(upper) > 2:
+                    p.setPen(QPen(_c(primary, 170 * face * vis), 1.6))
+                    for k, i in enumerate(upper):
+                        w = 0.45 + 0.55 * (k / max(1, len(upper) - 1))
+                        p.drawLine(QPointF(float(ex[i]), float(ey[i])),
+                                   QPointF(float(ex[i]),
+                                           float(ey[i]) - br.height() * 0.30 * w))
+
             if vis > 0.35:
-                br = poly.boundingRect()
+                # Iris: an accent ring, a bright pupil, and one specular dot.
+                # The dot is the whole trick — an eye without a highlight reads
+                # as glass, and a wet dot on it reads as alive.
                 gx = br.center().x() + self._gaze[0] * br.width() * 0.16
                 gy = br.center().y() + self._gaze[1] * br.height() * 0.20
                 cpt = QPointF(gx, gy)
                 rad = min(br.height() * 0.62, br.width() * 0.20)
                 p.setPen(Qt.PenStyle.NoPen)
                 p.setBrush(QBrush(_c(accent, (70 + 60 * amp) * face * vis)))
-                p.drawEllipse(cpt, rad, rad * vis)            # iris
-                p.setBrush(QBrush(_c(accent, 245 * face * vis)))
-                p.drawEllipse(cpt, rad * 0.42, rad * 0.42 * vis)   # pupil
+                p.drawEllipse(cpt, rad, rad * vis)                  # iris
+                p.setBrush(QBrush(_c(accent, 250 * face * vis)))
+                p.drawEllipse(cpt, rad * 0.40, rad * 0.40 * vis)    # pupil
+                p.setBrush(QBrush(_blend(bg, primary, 240 * face * vis)))
+                p.drawEllipse(QPointF(gx - rad * 0.34, gy - rad * 0.36),
+                              rad * 0.20, rad * 0.20)               # highlight
 
         # ── brows ───────────────────────────────────────────────────────────
+        # A polyline is a drawn line; a brow is a strip of hair with a shape.
+        # Drawing it as a tapering ribbon — thin at the inner end, thickest
+        # over the arch, thinning to the tail — costs one polygon per brow and
+        # is what stops the upper face reading as a diagram.
         p.setBrush(Qt.BrushStyle.NoBrush)
-        p.setPen(QPen(_c(primary, 150 * face), 1.7))
         for key in ("brow_l", "brow_r"):
             idx = lm[key]
-            p.drawPolyline(self._ring(xs, ys, idx))
+            bx, by = xs[idx], ys[idx]
+            n = len(idx)
+            if n < 2:
+                continue
+            # Perpendicular in screen space, so the strip keeps its width at
+            # any head angle.
+            dx = np.gradient(bx)
+            dy = np.gradient(by)
+            ln = np.maximum(np.hypot(dx, dy), 1e-6)
+            nx, ny = -dy / ln, dx / ln
+            thick = np.linspace(0.55, 1.0, n) * (0.016 + 0.010 * (1.0 - face)) * \
+                max(2.0, float(np.ptp(bx)) * 0.16)
+            top = [QPointF(float(x + u * t * 0.5), float(y + v * t * 0.5))
+                   for x, y, u, v, t in zip(bx, by, nx, ny, thick)]
+            bot = [QPointF(float(x - u * t * 0.5), float(y - v * t * 0.5))
+                   for x, y, u, v, t in zip(bx, by, nx, ny, thick)]
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(QBrush(_c(primary, 120 * face)))
+            p.drawPolygon(QPolygonF(top + bot[::-1]))
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.setPen(QPen(_c(primary, 190 * face), 1.1))
+            p.drawPolyline(QPolygonF(top))
 
         # ── mouth ───────────────────────────────────────────────────────────
         inner = self._ring(xs, ys, lm["lips_in"])

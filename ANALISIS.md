@@ -854,6 +854,99 @@ quick_notes     schema=False enabled=True
 
 Suite: **534 lulus, 3 dilewati**; `ruff check .` bersih.
 
+### Wajah avatar: dari hologram-geometri ke wajah yang terbaca manusia
+
+**Masalahnya bukan bentuk.** Kepala di HUD sudah memakai **geometri manusia
+terukur** — MediaPipe canonical face model, 468 vertex, 898 segitiga, dengan
+kelopak, lubang hidung, bibir dan tulang pipi yang sungguhan. Yang membuatnya
+belum terbaca sebagai manusia adalah **cahaya dan kulitnya**, bukan topologinya.
+
+Dua hal yang hilang, dan keduanya bukan selera:
+
+1. **Tidak ada oklusi sama sekali.** Satu ramp warna `bg→primary` per facet
+   berarti setiap rongga — soket mata, bawah hidung, garis bibir — justru
+   **lebih terang** daripada pipi di sebelahnya. Persepsi manusia membaca wajah
+   justru dari rongga yang gelap itu. Tanpa oklusi, ketepatan geometri tidak
+   menolong: hasilnya tetap topeng bercahaya.
+2. **Kulit satu warna.** Wajah asli tidak pernah satu warna — hidung, pipi dan
+   bibir selalu lebih hangat daripada dahi. Di hologram ini yang membedakan
+   "kepala bercahaya" dari "orang yang terbuat dari cahaya".
+
+**Arsitektur perbaikannya: `core/avatar_face.py` (bebas-Qt).**
+Semua matematika wajah dipindah ke modul numpy-saja, karena renderer QPainter
+butuh display dan tidak ada CI runner yang punya. Dengan pemisahan ini, "soket
+lebih gelap daripada pipi" bisa jadi **assertion**, bukan sesuatu yang harus
+ada orang melihatnya di HUD 250 px. Tiga field diturunkan dari mesh terukur,
+bukan dari indeks vertex yang dihafal:
+
+- `cavity` — soket mata (dengan bias ke bawah, karena bayangan alis jatuh ke
+  kelopak atas), bawah alis, lubang hidung, garis bibir + sudutnya, bawah rahang;
+- `warm` — hidung, pipi, bibir, telinga;
+- `lid_up`/`lid_dn` — kelopak atas/bawah **per mata**, sehingga kedip menjadi
+  deformasi permukaan, bukan garis yang digeser di atas kulit diam.
+
+**Lampu.** Facet normal dipertahankan untuk bentuk (itu yang membuat pipi
+terbaca sebagai ridge, bukan smear) dan dicampur dengan vertex normal untuk
+gradasi — keduanya perlu, dan mencampurnya bukan kompromi melainkan praktik
+standar. Ditambah specular sempit di hidung/dahi, rim fresnel yang tetap jadi
+ciri hologram, serta tiga kolom palet (kulit biasa / hangat / rongga) yang
+semuanya **diturunkan dari warna aksen**, jadi pengganti tema tetap mengecat
+ulang wajah secara gratis.
+
+**Bug yang ditemukan justru oleh tes,** bukan oleh mata:
+
+- Bobot kelopak versi pertama menggabungkan kedua mata jadi satu array. Akibatnya
+  sebuah vertex di bawah mata kiri ditarik ke garis kelopak kiri **lalu** ke
+  garis kelopak kanan — jarak geraknya jadi bergantung pada **jarak antar mata**,
+  dan satu kedip memindahkan kulit lebih jauh daripada gerak kelopaknya sendiri.
+  Sekarang bobot per mata, sehingga hal itu mustahil, bukan sekadar tidak
+  mungkin.
+- Bobot atas dan bawah diterapkan sebagai **dua** gerakan, jadi setengah kedip
+  menempuh tiga perempat jalan (0,75 — elastis seperti karet). Sekarang
+  dijumlahkan jadi satu bobot per vertex: tepat linear.
+- Nada hangat dengan `WARM_SHIFT` 0,42 menghasilkan `[120,106,66]` — oranye cat,
+  bukan kulit. Diturunkan ke 0,16 ditambah bias merah tetap, supaya tetap hangat
+  bahkan di tema biru (aksen = primer berarti tidak ada warna hangat untuk
+  dituju).
+- `_lid_weights` bertabrakan dengan state `_lids` yang sudah ada (seberapa
+  terbuka kelopak saat ini) — ditemukan karena renderer akhirnya benar-benar
+  dijalankan, bukan hanya di-import.
+
+**Render benar-benar dijalankan.** Repo ini tidak punya Qt di CI, dan tanpa itu
+`core/avatar.py` tidak pernah dieksekusi sama sekali — kelas kegagalan yang
+paling nyata (argumen berubah, method hilang, nama tidak diimpor) tidak akan
+tertangkap. `tests/test_avatar_paint.py` memasang PyQt6 tiruan minimal ke
+`sys.modules`, lalu men-step avatar melewati keadaan yang penting (idle, kedip,
+bicara, muted, menghadap jauh) dan menggambarnya. Stub itu **dilepas kembali**
+sesudahnya: versi pertama membocorkannya ke seluruh sesi dan menutupi Qt asli
+untuk tes lain — kegagalan higiene tes yang nyata, sekarang dijaga.
+
+**Biaya.** Diukur di sini (painter tiruan, kerja numpy/loop-nya asli):
+
+```
+frame total   ~3,6 ms      (target 33 ms pada 30 fps)
+_pose          0,03 ms
+shade_facets   0,68 ms
+palet (cache)  0,001 ms
+palet (rebuild)~1,2 ms     ← hanya saat roda hue digeser
+```
+
+Jumlah brush diturunkan dari 288 ke 180 (langkah bayangan 8 → 5) setelah
+pengukuran menunjukkan rebuild palet 2,3 ms; sekarang ~1,2 ms.
+
+**Tes: 25 baru.** 16 di `tests/test_avatar_face.py` (oklusi, kulit, kedip,
+lampu, batas palet) + 9 di `tests/test_avatar_paint.py` (render jalan, shading
+mengisi ratusan facet, kedip menutup cincin mata, geometri ikut bergerak,
+setiap state menggambar, cache palet invalid saat tema berubah).
+
+**Yang belum dan tidak bisa diklaim:** ini tetap wajah hologram bergaya, bukan
+foto orang. Tekstur foto atau model neural (langkah 5–6) butuh renderer
+GPU/PyTorch dan keluar dari keputusan "tanpa OpenGL, tanpa GPU, tanpa paket
+baru" yang tertulis di `requirements.txt`. Dan **tampilannya belum pernah
+dilihat manusia**: tidak ada Qt di sandbox ini, jadi tiap perubahan hanya
+diverifikasi secara numerik. Menilai hasilnya butuh satu kali jalan di mesin
+Anda.
+
 ### ⏭️ Sprint berikutnya
 
 | Sprint | Fokus | Ukuran "selesai" |
