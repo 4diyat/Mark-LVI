@@ -22,11 +22,13 @@ WHAT A RETRANSLATION NEEDS, AND WHY THE HANDLES STAY
 from __future__ import annotations
 
 import math
+import threading
 
 from PyQt6.QtCore import QPointF, Qt, QRectF, pyqtSignal
 from PyQt6.QtGui import QBrush, QColor, QConicalGradient, QFont, QPainter, QPen
 from PyQt6.QtWidgets import (
-    QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget,
+    QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton, QScrollArea,
+    QVBoxLayout, QWidget,
 )
 
 from core.i18n import label as _t, set_locale
@@ -591,3 +593,309 @@ class PluginManagerOverlay(QWidget):
         save_plugin_enabled(name, new_val)
         self._style_toggle(btn, new_val)
 
+
+class PluginSettingsOverlay(QWidget):
+    """Floating overlay — one row per installed plugin, a form where there is one.
+
+    Fully generic: it draws what PluginRegistry.settings_schemas() hands it and
+    knows NOTHING about any specific plugin, so the core stays clean and plugins
+    remain pure drop-in.
+
+    EVERY plugin is listed, in three shapes:
+      * has a schema and is enabled   → the fields, editable, with SAVE;
+      * has a schema but is disabled  → the fields, greyed out, plus why;
+      * no schema at all              → a line saying it needs no settings.
+
+    That third shape is not padding. Four of the five plugins this repository
+    ships declare no PLUGIN_SETTINGS, and this panel used to render ONLY plugins
+    that declared one — so it listed nothing and called the feature broken, two
+    buttons away from a manager listing all five. A plugin that takes no
+    settings still has to prove it exists.
+    """
+
+    _test_done = pyqtSignal(str, bool, str)   # namespace, ok, message
+    _OW = 460
+
+    # Set by the window: opens the plugin manager. A callable rather than an
+    # import of the overlay, so this panel keeps knowing nothing about it.
+    on_open_manager = None
+
+    def __init__(self, sections: list[dict], parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setStyleSheet(f"""
+            PluginSettingsOverlay {{
+                background: rgba(0, 6, 10, 245);
+                border: 1px solid {C.BORDER_B};
+                border-radius: 6px;
+            }}
+        """)
+        self._sections = sections or []
+        self._widgets: dict[tuple, object] = {}    # (namespace, key) -> input widget
+        self._types:   dict[tuple, str]    = {}     # (namespace, key) -> field type
+        self._status_labels: dict[str, QLabel] = {} # namespace -> status QLabel
+        self._test_done.connect(self._on_test_done)
+
+        self._fs = (f"QLineEdit {{ background: #000d12; color: {C.TEXT}; "
+                    f"border: 1px solid {C.BORDER}; border-radius: 3px; padding: 4px 8px; }}"
+                    f"QLineEdit:focus {{ border: 1px solid {C.PRI}; }}")
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(22, 16, 22, 16)
+        root.setSpacing(8)
+
+        root.addWidget(self._lbl(_t("plugins.heading"), 12, True))
+        sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setStyleSheet(f"color: {C.BORDER}; margin: 2px 0;")
+        root.addWidget(sep)
+
+        if not self._sections:
+            root.addWidget(self._lbl(_t("plugins.empty"), 9, color=C.TEXT_DIM))
+            # A panel that says "nothing here" and offers no way forward is a
+            # dead end. The plugins the user expects to configure are listed in
+            # the manager, which is one button away from this message.
+            if self.on_open_manager:
+                man_btn = QPushButton(_t("ui.plugins.heading"))
+                man_btn.setFixedHeight(32)
+                man_btn.setFont(QFont("Courier New", 8, QFont.Weight.Bold))
+                man_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                man_btn.setStyleSheet(f"""
+                    QPushButton {{ background: transparent; color: {C.PRI};
+                        border: 1px solid {C.PRI_DIM}; border-radius: 3px; }}
+                    QPushButton:hover {{ background: {C.PRI_GHO}; border-color: {C.PRI}; }}
+                """)
+                man_btn.clicked.connect(self.on_open_manager)
+                root.addWidget(man_btn)
+        else:
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QFrame.Shape.NoFrame)
+            scroll.setStyleSheet("QScrollArea { background: transparent; }")
+            inner = QWidget()
+            inner.setStyleSheet("background: transparent;")
+            form = QVBoxLayout(inner)
+            form.setContentsMargins(0, 0, 6, 0)
+            form.setSpacing(6)
+            for sec in self._sections:
+                self._build_section(form, sec)
+            form.addStretch(1)
+            scroll.setWidget(inner)
+            root.addWidget(scroll, 1)
+
+        # ── bottom buttons ───────────────────────────────────────────────────
+        btn_row = QHBoxLayout(); btn_row.setSpacing(8)
+        if self._sections:
+            save_btn = QPushButton(_t("ui.save"))
+            save_btn.setFixedHeight(34)
+            save_btn.setFont(QFont("Courier New", 9, QFont.Weight.Bold))
+            save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            save_btn.setStyleSheet(f"""
+                QPushButton {{ background: transparent; color: {C.PRI};
+                    border: 1px solid {C.PRI_DIM}; border-radius: 3px; }}
+                QPushButton:hover {{ background: {C.PRI_GHO}; border: 1px solid {C.PRI}; }}
+            """)
+            save_btn.clicked.connect(self._save_all)
+            btn_row.addWidget(save_btn)
+
+        close_btn = QPushButton(_t("ui.close"))
+        close_btn.setFixedHeight(34)
+        close_btn.setFont(QFont("Courier New", 9))
+        close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        close_btn.setStyleSheet(f"""
+            QPushButton {{ background: transparent; color: {C.TEXT_MED};
+                border: 1px solid {C.BORDER}; border-radius: 3px; }}
+            QPushButton:hover {{ color: {C.TEXT}; border-color: {C.BORDER_B}; }}
+        """)
+        close_btn.clicked.connect(self.hide)
+        btn_row.addWidget(close_btn)
+        root.addLayout(btn_row)
+
+    # ── helpers ───────────────────────────────────────────────────────────────
+    def _lbl(self, txt, fs=9, bold=False, color=C.PRI,
+             align=Qt.AlignmentFlag.AlignLeft):
+        w = QLabel(txt); w.setAlignment(align); w.setWordWrap(True)
+        w.setFont(QFont("Courier New", fs,
+                        QFont.Weight.Bold if bold else QFont.Weight.Normal))
+        w.setStyleSheet(f"color: {color}; background: transparent;")
+        return w
+
+    def _build_section(self, form: QVBoxLayout, sec: dict):
+        ns     = sec.get("namespace") or sec.get("plugin") or "plugin"
+        title  = sec.get("title") or ns
+        fields = sec.get("fields") or []
+        values = sec.get("values") or {}
+
+        form.addSpacing(4)
+        form.addWidget(self._lbl(title, 10, True, C.PRI))
+
+        # Why this form cannot be used yet. A plugin that declared a permission
+        # arrives switched OFF until the user consents (see _enabled), and its
+        # settings are still worth showing: the form is how the user finds out
+        # what the plugin wants configured before saying yes.
+        locked = not sec.get("enabled", True)
+        if locked:
+            form.addWidget(self._lbl(_t("plugins.locked", plugin=sec.get("plugin") or ns),
+                                     8, color=C.ACC2))
+
+        # No schema, no fields — but still a row, because "this plugin takes no
+        # settings" is the answer the user came for, and a plugin missing from
+        # the list looks exactly like a plugin that failed to load.
+        if not fields:
+            form.addWidget(self._lbl(
+                _t("plugins.no_fields") if not locked else _t("plugins.no_fields_locked"),
+                8, color=C.TEXT_DIM))
+
+        for field in fields:
+            if not isinstance(field, dict) or not field.get("key"):
+                continue
+            key   = field["key"]
+            ftype = (field.get("type") or "text").lower()
+            label = field.get("label") or key
+            default = field.get("default")
+            stored  = values.get(key, default)
+
+            form.addWidget(self._lbl(label.upper(), 8, color=C.TEXT_DIM))
+
+            if ftype == "choice":
+                w = QComboBox()
+                w.addItems([str(o) for o in field.get("options", [])])
+                w.setFont(QFont("Courier New", 9))
+                w.setFixedHeight(30)
+                w.setStyleSheet(
+                    f"QComboBox {{ background: #000d12; color: {C.TEXT}; "
+                    f"border: 1px solid {C.BORDER}; border-radius: 3px; padding: 2px 8px; }}"
+                    f"QComboBox QAbstractItemView {{ background: #000d12; color: {C.TEXT}; "
+                    f"selection-background-color: {C.PRI_GHO}; }}")
+                if stored is not None:
+                    w.setCurrentText(str(stored))
+            elif ftype == "toggle":
+                w = QPushButton()
+                w.setCheckable(True)
+                w.setChecked(bool(stored))
+                w.setFixedHeight(28)
+                w.setFont(QFont("Courier New", 8, QFont.Weight.Bold))
+                w.setCursor(Qt.CursorShape.PointingHandCursor)
+                self._style_toggle(w)
+                w.toggled.connect(lambda _=False, b=w: self._style_toggle(b))
+            else:  # text / password
+                w = QLineEdit("" if stored is None else str(stored))
+                w.setFont(QFont("Courier New", 10))
+                w.setFixedHeight(30)
+                w.setStyleSheet(self._fs)
+                if field.get("placeholder"):
+                    w.setPlaceholderText(str(field["placeholder"]))
+                if ftype == "password":
+                    w.setEchoMode(QLineEdit.EchoMode.Password)
+
+            if locked:
+                # Readable, just not editable: greying out beats hiding, because
+                # the values the user typed before the plugin was switched off
+                # are still theirs to look at.
+                w.setEnabled(False)
+            self._widgets[(ns, key)] = w
+            self._types[(ns, key)]   = ftype
+            form.addWidget(w)
+
+        # optional test/connect action button + status line
+        action = sec.get("action")
+        if isinstance(action, dict) and callable(action.get("run")):
+            form.addSpacing(2)
+            ab = QPushButton(str(action.get("label") or "TEST"))
+            ab.setFixedHeight(30)
+            ab.setFont(QFont("Courier New", 8, QFont.Weight.Bold))
+            ab.setCursor(Qt.CursorShape.PointingHandCursor)
+            ab.setStyleSheet(f"""
+                QPushButton {{ background: #00091a; color: {C.PRI};
+                    border: 1px solid {C.PRI_DIM}; border-radius: 3px; }}
+                QPushButton:hover {{ background: {C.PRI_GHO}; border-color: {C.PRI}; }}
+            """)
+            ab.clicked.connect(lambda _=False, n=ns: self._run_action(n))
+            form.addWidget(ab)
+
+        status = self._lbl("", 8, color=C.TEXT_DIM)
+        self._status_labels[ns] = status
+        form.addWidget(status)
+
+        line = QFrame(); line.setFrameShape(QFrame.Shape.HLine)
+        line.setStyleSheet(f"color: {C.BORDER}; margin: 4px 0;")
+        form.addWidget(line)
+
+    def _style_toggle(self, btn: QPushButton):
+        on = btn.isChecked()
+        btn.setText(_t("ui.on") if on else _t("ui.off"))
+        if on:
+            btn.setStyleSheet(f"QPushButton {{ background: {C.PRI_GHO}; color: {C.PRI}; "
+                              f"border: 1px solid {C.PRI}; border-radius: 3px; }}")
+        else:
+            btn.setStyleSheet(f"QPushButton {{ background: transparent; color: {C.TEXT_MED}; "
+                              f"border: 1px solid {C.BORDER}; border-radius: 3px; }}")
+
+    # ── data ──────────────────────────────────────────────────────────────────
+    def _gather(self, ns: str) -> dict:
+        out = {}
+        for (n, key), w in self._widgets.items():
+            if n != ns:
+                continue
+            t = self._types.get((n, key), "text")
+            if t == "choice":
+                out[key] = w.currentText()
+            elif t == "toggle":
+                out[key] = w.isChecked()
+            else:
+                out[key] = w.text().strip()
+        return out
+
+    def _save_ns(self, ns: str):
+        from memory.config_manager import save_plugin_config
+        save_plugin_config(ns, self._gather(ns))
+
+    def _save_all(self):
+        for sec in self._sections:
+            ns = sec.get("namespace") or sec.get("plugin")
+            # Nothing to save in a section with no fields, and a locked one
+            # cannot be written: a "SAVED" that wrote nothing is a lie the user
+            # has no way to check.
+            if ns and sec.get("enabled", True) and sec.get("fields"):
+                self._save_ns(ns)
+                lbl = self._status_labels.get(ns)
+                if lbl:
+                    lbl.setText(_t("ui.saved"))
+                    lbl.setStyleSheet(f"color: {C.PRI}; background: transparent;")
+
+    def _run_action(self, ns: str):
+        sec = next((s for s in self._sections
+                    if (s.get("namespace") or s.get("plugin")) == ns), None)
+        if not sec:
+            return
+        run_fn = (sec.get("action") or {}).get("run")
+        if not callable(run_fn):
+            return
+        if not sec.get("enabled", True):
+            return                        # locked section: nothing to test
+        self._save_ns(ns)                 # persist what the user typed before testing
+        values = self._gather(ns)
+        lbl = self._status_labels.get(ns)
+        if lbl:
+            lbl.setText(_t("ui.testing"))
+            lbl.setStyleSheet(f"color: {C.TEXT_DIM}; background: transparent;")
+
+        def worker():
+            try:
+                res = run_fn(values)
+                if isinstance(res, tuple) and len(res) == 2:
+                    ok, msg = bool(res[0]), str(res[1])
+                else:
+                    ok, msg = bool(res), str(res)
+            except Exception as e:
+                ok, msg = False, str(e)
+            self._test_done.emit(ns, ok, msg)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_test_done(self, ns: str, ok: bool, msg: str):
+        lbl = self._status_labels.get(ns)
+        if not lbl:
+            return
+        lbl.setText(msg)
+        color = C.PRI if ok else "#ff6b6b"
+        lbl.setStyleSheet(f"color: {color}; background: transparent;")

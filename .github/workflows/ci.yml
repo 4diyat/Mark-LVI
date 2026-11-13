@@ -315,24 +315,29 @@ jobs:
                   f"prayer_times permissions came through as {prayer['permissions']!r}")
           if prayer["enabled"]:
               raise SystemExit("prayer_times declared network but started ENABLED")
-          # NOTE the order: a plugin that declared a permission starts OFF, and
-          # settings_schemas() deliberately returns nothing for a plugin that is
-          # not enabled — so asking about the form BEFORE consent looks exactly
-          # like a malformed schema. Switch it on the way the dialog would, then
-          # ask. (This is the bug the first draft of this step had.)
-          from memory.config_manager import save_plugin_enabled
-          save_plugin_enabled("prayer_times", True)
+          # The form must reach the panel BEFORE consent. This step used to
+          # switch the plugin on first, because settings_schemas() filtered
+          # disabled plugins out — which meant the shipped settings panel showed
+          # nothing at all (four of five plugins declare no schema, and the one
+          # that does arrives off). The filter is gone; asserting it here is what
+          # stops it coming back.
           registry = discover_plugins(Path("plugins"), set(), lambda _m: None, lambda _m: None)
-          settings = [sec for sec in registry.settings_schemas()
-                      if sec["namespace"] == "prayer_times"]
-          if len(settings) != 1:
+          sections = {sec["plugin"]: sec for sec in registry.settings_schemas()}
+          missing = sorted(set(rows) - set(sections))
+          if missing:
               raise SystemExit(
-                  "prayer_times declares PLUGIN_SETTINGS but no settings section "
-                  "reached the panel; a malformed schema is dropped silently")
-          fields = {f["key"] for f in settings[0]["fields"]}
+                  f"plugins missing from the settings panel: {missing} — the panel "
+                  "must list every plugin, schema or not")
+          settings = sections["prayer_times"]
+          if not settings["schema"] or settings["enabled"]:
+              raise SystemExit(
+                  "prayer_times should carry a schema and start switched OFF, "
+                  f"got schema={settings['schema']!r} enabled={settings['enabled']!r}")
+          fields = {f["key"] for f in settings["fields"]}
           if fields != {"city", "country", "method", "school"}:
               raise SystemExit(f"prayer_times settings fields are {sorted(fields)}")
-          print("prayer_times: manifest + settings schema reach the panel, starts off")
+          print("all five plugins reach the settings panel; "
+                "prayer_times form visible before consent")
           # The summary line itself says "0 active, 0 rejected, 0 total" — so a
           # naive substring match flags a clean run. Only real rejections start
           # a line about a file.

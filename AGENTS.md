@@ -63,6 +63,12 @@ A plugin is one file `plugins/<name>.py` (no leading underscore) with:
 Helper modules may live beside it with a leading underscore
 (`plugins/_helper.py`); the loader skips those. See `plugins/_template.py`.
 
+Settings are optional. A plugin that needs configuring declares
+`PLUGIN_SETTINGS = {"namespace": ..., "title": ..., "fields": [...]}` and the
+settings panel renders a form for it; a plugin without one still appears in
+that panel, saying it needs no settings. Read the values with
+`get_plugin_config(namespace)` — never from `config/api_keys.json` yourself.
+
 A new plugin is **enabled automatically** the moment its file exists — nothing
 needs to be registered or switched on. Never edit `config/api_keys.json` to
 "enable" one; that file holds the user's API keys and settings.
