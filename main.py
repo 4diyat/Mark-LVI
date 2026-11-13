@@ -90,7 +90,7 @@ from core.wake_word            import (
 
 # How long the assistant stays awake with no user speech before it auto-sleeps
 # again (wake-word mode only).
-WAKE_SLEEP_TIMEOUT = 120.0   # seconds (2 minutes)
+WAKE_SLEEP_TIMEOUT = 300.0   # seconds (5 minutes)
 
 # ── Keep what the console forgets ────────────────────────────────────────────
 # Started before anything else imports and can fail, so the first failure is in
@@ -795,7 +795,7 @@ class JarvisLive:
             if speaking:
                 continue
             if (time.monotonic() - self._last_user_speech) > self._wake_sleep_timeout:
-                self.sleep(reason="no speech for 2 minutes")
+                self.sleep(reason="no speech for 5 minutes")
 
     # ── Wake word: UI callbacks (called from the Qt thread) ──────────────────
 
