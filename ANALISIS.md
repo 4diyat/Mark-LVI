@@ -699,11 +699,12 @@ dan tersimpan di pengaturan plugin (`PLUGIN_SETTINGS`: kota, negara, metode,
 madzhab), karena "kota saya Bandung" adalah fakta tentang pengguna, bukan
 tentang pertanyaan hari ini.
 
-**Temuan CI:** `settings_schemas()` sengaja mengembalikan **kosong** untuk plugin
-yang belum diaktifkan. Jadi step CI yang memeriksa formulir pengaturan sebelum
+**Temuan CI:** `settings_schemas()` mengembalikan **kosong** untuk plugin yang
+belum diaktifkan. Jadi step CI yang memeriksa formulir pengaturan sebelum
 persetujuan terlihat persis seperti skema yang rusak — dan itulah kegagalan
-pertama step ini. Sekarang step tersebut mengaktifkan plugin seperti dialog
-persetujuan, lalu memeriksa empat field-nya.
+pertama step ini. Dulu itu dianggap "sengaja"; sekarang tidak lagi (lihat di
+bawah), dan step CI-nya memeriksa formulir tanpa perlu mengaktifkan plugin
+lebih dulu.
 
 **Tanpa mikrofon, aplikasi tetap hidup.** `_listen_audio` dulu satu
 `try/except` yang me-*re-raise*, dan ia berjalan di dalam `asyncio.TaskGroup`
@@ -764,6 +765,94 @@ pengguna percaya kuncinya di Keychain padahal di file telah berbohong.
 > berbeda dari laptop Linux, jadi resolver yang benar terlihat salah. Sekarang
 > fixture `clean_env`, dan file itu dijalankan ulang dalam subprocess dengan
 > locale Indonesia.
+
+### Panel pengaturan plugin kosong — dan mengapa itu bukan "belum ada plugin"
+
+**Gejala:** fitur *pengaturan plugin* tidak menampilkan satu pun plugin yang
+sudah dibuat, padahal Manajer Plugin di sebelahnya mendaftar kelimanya.
+
+**Bukti, bukan dugaan.** Registry asli dijalankan atas folder `plugins/`:
+
+```
+manager rows:    ['currency_rates','market_price','mt5_orb','prayer_times','quick_notes']
+settings sections: []
+```
+
+Jadi manajer sehat; yang rusak panel pengaturan.
+
+**Akar masalahnya satu baris filter.** `settings_schemas()` hanya meloloskan
+plugin yang **mendeklarasikan** `PLUGIN_SETTINGS` **dan** sedang aktif:
+
+| plugin | punya schema? | aktif? | muncul di panel (dulu) |
+|---|---|---|---|
+| `currency_rates` | tidak | tidak | – |
+| `market_price` | tidak | tidak | – |
+| `mt5_orb` | tidak | tidak | – |
+| `prayer_times` | **ya** (4 field) | tidak (minta izin jaringan) | – |
+| `quick_notes` | tidak | ya | – |
+
+Hasilnya himpunan kosong, dan panel menjawab "tidak ada plugin yang bisa
+dikonfigurasi" — tentang folder yang berisi lima plugin. Pengguna membaca itu
+sebagai fiturnya rusak, dan memang begitu.
+
+Satu keputusan sebelumnya ikut salah: menyembunyikan plugin yang belum
+disetujui dianggap wajar. Padahal **formulirlah cara pengguna tahu apa yang
+diminta plugin** sebelum menjawab pertanyaan izin. Menyembunyikannya membuat
+dialog izin jadi pertanyaan tanpa konteks.
+
+**Perbaikan:**
+
+1. **Setiap plugin yang termuat dapat satu section.** Punya schema → dirender
+   apa adanya. Tidak punya → `fields: []` + `schema: False`, dan panel menulis
+   "plugin ini tidak punya pengaturan, langsung berfungsi begitu diaktifkan".
+   Satu baris teks, tapi baris yang jujur: ia membuktikan pluginnya ada.
+2. **Tidak ada section ganda.** Dedup per-namespace tetap, dan plugin tanpa
+   schema tidak bisa mengklaim namespace milik pemilik schema.
+3. **Plugin yang belum disetujui tampil, tapi terkunci.** `enabled: False`
+   dikirim ke panel; field-nya dirender nonaktif (bukan disembunyikan) dengan
+   keterangan cara mengaktifkannya. Nilai yang sudah pernah diketik tetap bisa
+   dibaca. `_save_all` dan `_run_action` **melewati** section terkunci —
+   menyimpan ke plugin yang tidak bisa membaca config-nya adalah "SAVED" yang
+   bohong.
+4. **Plugin yang ditolak tidak punya section**, dan itu disengaja: loader
+   mengganti record-nya seluruhnya supaya tidak ada yang dipercaya dari file
+   yang gagal diverifikasi — schema-nya termasuk. Alasan penolakan ada di
+   Manajer Plugin.
+5. **Keadaan kosong tidak lagi jadi jalan buntu.** Kalau benar-benar tidak ada
+   plugin, pesannya menyebut itu dan ada tombol langsung ke Manajer Plugin.
+6. **`ui/window.py` 7.031 baris, ceiling 7.000.** `PluginSettingsOverlay`
+   (288 baris) pindah ke `ui/overlays.py` — modul yang memang dibuka dengan
+   alasan "panel yang harus merender ulang dirinya sendiri harus memiliki
+   labelnya". `ui/window.py` mengimpornya balik, jadi `ui.PluginSettingsOverlay`
+   tetap sama.
+
+**Tes (8 baru).** Yang penting bukan jumlahnya, tapi bahwa yang kedua memakai
+folder `plugins/` yang asli beserta manifest-nya — persis kasus yang dilaporkan:
+`test_the_repository_own_plugins_all_reach_the_panel`. Sisanya: setiap plugin
+termuat dapat section; plugin `disabled` tetap muncul dengan `enabled: False`;
+plugin `enabled` benar-benar `True` (panel yang mengunci semuanya bukan
+perbaikan); plugin ditolak tidak muncul; namespace tidak dobel; panel kosong
+hanya kalau plugin memang nol; plus tiga pemeriksaan sumber di
+`tests/test_ui_setup_wiring.py` untuk pengkabelan tombol, `_save_all` yang
+melewati section terkunci, dan field yang di-`setEnabled(False)`.
+
+**Jebakan yang ditemui saat mengerjakan ini:** `PLUGIN["permissions"]` **bukan**
+sumber izin — izin dibaca dari manifest `.json`, dan manifest tanpa `sha256`
+ditolak. Tiga tes pertama saya lulus `permissions=` ke `PLUGIN[...]` dan
+menguji hal yang salah. Helper `_signed()` di `tests/test_loaders.py` sekarang
+menulis manifest yang benar-benar terverifikasi.
+
+Setelah perbaikan, registry atas repo ini sendiri:
+
+```
+currency_rates  schema=False enabled=False
+market_price    schema=False enabled=False
+mt5_orb         schema=False enabled=False
+prayer_times    schema=True  enabled=False   (4 field, terkunci sampai disetujui)
+quick_notes     schema=False enabled=True
+```
+
+Suite: **534 lulus, 3 dilewati**; `ruff check .` bersih.
 
 ### ⏭️ Sprint berikutnya
 

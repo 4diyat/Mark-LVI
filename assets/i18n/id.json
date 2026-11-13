@@ -85,7 +85,7 @@
   "providers.quota_warning": "Dibiarkan begini, semuanya tetap memakai Gemini dan berhenti saat kuota teksnya habis.",
   "providers.coding.inherits": "Kode ditulis oleh apa pun yang menjawab permintaan latar di atas.",
   "providers.coding.same_as_background": "Memakai pengaturan di PERMINTAAN LATAR.",
-  "plugins.empty": "Belum ada plugin yang bisa diatur.\nLetakkan plugin yang butuh pengaturan (misalnya paket printer 3D) ke folder plugins, nanti muncul di sini.",
+  "plugins.empty": "Belum ada plugin yang menyediakan form pengaturan.\nBuka manajer plugin untuk melihat semua plugin dan mengaktifkannya.",
   "ui.visual_input": "◈  MASUKAN VISUAL",
   "ui.default_btn": "BAWAAN",
   "ui.apply_changes": "▸  TERAPKAN PERUBAHAN",
@@ -132,5 +132,8 @@
   "ui.plugins.permissions": "butuh {list}",
   "ui.plugins.consent": "Plugin ini bukan dari repositori ini. Ia menyatakan butuh: {list}. Plugin berjalan di dalam aplikasi dan bisa melakukan apa yang bisa dilakukan aplikasi.",
   "ui.plugins.ask": "AKTIFKAN",
-  "ui.plugins.no_manifest": "tanpa manifest — izin tidak diketahui"
+  "ui.plugins.no_manifest": "tanpa manifest — izin tidak diketahui",
+  "plugins.locked": "\"{plugin}\" sudah terpasang tapi belum diaktifkan — nyalakan di manajer plugin untuk memakai pengaturan ini.",
+  "plugins.no_fields": "Plugin ini tidak punya pengaturan — langsung berfungsi begitu diaktifkan.",
+  "plugins.no_fields_locked": "Tidak ada pengaturan — nyalakan di manajer plugin untuk memakainya."
 }

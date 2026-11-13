@@ -18,6 +18,7 @@ WHY THIS FILE EXISTS
 """
 from __future__ import annotations
 
+import json
 import textwrap
 from pathlib import Path
 
@@ -365,6 +366,133 @@ def test_plugin_settings_schemas_are_deduped_by_namespace(tmp_path):
     assert len(sections) == 1
     assert sections[0]["namespace"] == "printer"
     assert sections[0]["fields"] == [{"key": "ip", "type": "text"}]
+
+
+def _signed(folder: Path, name: str, permissions: list[str],
+            schema: str = "") -> None:
+    """A plugin plus a manifest that actually verifies, so `_enabled` sees the
+    permissions it was declared with (a bare PLUGIN[...] key does nothing —
+    permissions come from the manifest, and a manifest must carry the hash)."""
+    from core.plugin_manifest import sha256_of
+    py = write(folder, f"{name}.py", plugin(name) + schema)
+    (folder / f"{name}.json").write_text(
+        json.dumps({"name": name, "version": "1.0",
+                    "permissions": permissions, "sha256": sha256_of(py)}),
+        encoding="utf-8")
+
+
+def test_a_disabled_plugin_still_offers_its_settings_form(tmp_path, isolated_config):
+    """THE BUG THE USER REPORTED, IN ONE TEST.
+
+    `prayer_times` declares a settings form AND a network permission, so it
+    arrives switched OFF and `_enabled` is False. The panel used to filter on
+    exactly that flag, so every shipped plugin with a form was invisible and the
+    panel claimed there was nothing to configure — while the manager listed all
+    five plugins. A form is how the user learns what a plugin wants configured;
+    asking for consent must not hide it.
+    """
+    folder = tmp_path / "plugins"
+    _signed(folder, "creds", ["network"],
+            "PLUGIN_SETTINGS = {'namespace': 'creds', 'title': 'Creds',\n"
+            "                   'fields': [{'key': 'key', 'type': 'text'}]}\n")
+    reg = discover_plugins(folder, set(), lambda _m: None)
+
+    assert reg.list_for_ui()[0]["enabled"] is False       # not consented...
+    sections = reg.settings_schemas()
+    assert len(sections) == 1                             # ...but still listed
+    assert sections[0]["enabled"] is False                # the panel is told so
+    assert sections[0]["namespace"] == "creds"
+
+
+def test_an_enabled_plugin_says_so(tmp_path, isolated_config):
+    """And the flag must be able to say yes: a panel that greys out everything
+    is not a fix, it is the same panel with a different complaint."""
+    folder = tmp_path / "plugins"
+    _signed(folder, "open_plugin", [],
+            "PLUGIN_SETTINGS = {'namespace': 'open_plugin', 'fields': [{'key': 'a'}]}\n")
+    section = discover_plugins(folder, set(), lambda _m: None).settings_schemas()[0]
+    assert section["enabled"] is True
+
+
+def test_every_loaded_plugin_gets_a_section(tmp_path, isolated_config):
+    """The panel's promise, in the form the user complained about.
+
+    Five plugins ship with this repository. Four declare no settings schema at
+    all. The old `settings_schemas()` returned the intersection of "declares a
+    schema" and "is enabled", so it returned nothing — and the settings panel
+    told the user no plugins were installed. One section per plugin, schema or
+    not, is the fix; the panel decides how to draw a plugin with no fields.
+    """
+    folder = tmp_path / "plugins"
+    write(folder, "with_form.py", plugin("with_form") +
+          "PLUGIN_SETTINGS = {'namespace': 'wf', 'fields': [{'key': 'a'}]}\n")
+    write(folder, "without_form.py", plugin("without_form"))
+    reg = discover_plugins(folder, set(), lambda _m: None)
+
+    sections = {s["plugin"]: s for s in reg.settings_schemas()}
+    assert set(sections) == {"with_form", "without_form"}
+    assert sections["with_form"]["schema"] is True
+    assert [f["key"] for f in sections["with_form"]["fields"]] == ["a"]
+    assert sections["without_form"]["schema"] is False
+    assert sections["without_form"]["fields"] == []
+    assert sections["without_form"]["enabled"] is True
+
+
+def test_the_repository_own_plugins_all_reach_the_panel(isolated_config):
+    """Not a tmp_path fixture: the real `plugins/` folder, the real manifests.
+
+    This is the regression that matters, because it is the one the user hit.
+    `prayer_times` is the interesting row — it declares a form AND a network
+    permission, so it is switched OFF; it must still appear, marked disabled.
+    """
+    reg = discover_plugins(Path(__file__).resolve().parent.parent / "plugins",
+                           set(), lambda _m: None)
+
+    sections = {s["plugin"]: s for s in reg.settings_schemas()}
+    managed = {row["name"] for row in reg.list_for_ui()}
+    assert managed == {"currency_rates", "market_price", "mt5_orb",
+                       "prayer_times", "quick_notes"}
+    assert set(sections) == managed                # the panel lists them all
+
+    prayer = sections["prayer_times"]
+    assert prayer["schema"] is True and prayer["enabled"] is False
+    assert {f["key"] for f in prayer["fields"]} == {"city", "country", "method", "school"}
+
+
+def test_a_refused_plugin_never_reaches_the_settings_panel(tmp_path, isolated_config):
+    """A section carries a schema, which is code the file declared.
+
+    The loader replaces a refused plugin's record precisely so nothing it
+    declared survives — so there is no section for it, however clean the import
+    was, and the manager (which reports the reason) is where the user looks.
+    """
+    folder = tmp_path / "plugins"
+    write(folder, "broken_with_form.py",
+          plugin("broken_with_form") +
+          "PLUGIN_SETTINGS = {'namespace': 'bf', 'fields': [{'key': 'x'}]}\n")
+    (folder / "broken_with_form.json").write_text(
+        json.dumps({"name": "broken_with_form", "permissions": ["telepathy"]}),
+        encoding="utf-8")
+    reg = discover_plugins(folder, set(), lambda _m: None)
+
+    row = reg.list_for_ui()[0]
+    assert row["valid"] is False and row["error"]     # in the manager, with why
+    assert reg.settings_schemas() == []               # and not in the panel
+
+
+def test_a_namespace_claimed_by_two_plugins_is_listed_once(tmp_path, isolated_config):
+    """`settings_schemas` dedupes by namespace — and now that every plugin gets
+    a section, the plugin WITHOUT a schema must not be able to claim a
+    namespace the schema owner already took (that would list it twice)."""
+    folder = tmp_path / "plugins"
+    schema = ("PLUGIN_SETTINGS = {'namespace': 'printer', 'title': 'Printer',\n"
+              "                   'fields': [{'key': 'ip'}]}\n")
+    write(folder, "printer_one.py", plugin("printer_one") + schema)
+    write(folder, "printer_two.py", plugin("printer_two"))
+    reg = discover_plugins(folder, set(), lambda _m: None)
+
+    sections = reg.settings_schemas()
+    assert [s["namespace"] for s in sections] == ["printer", "printer_two"]
 
 
 def test_the_summary_line_counts_active_and_rejected(tmp_path):

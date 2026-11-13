@@ -131,29 +131,55 @@ class PluginRegistry:
             traceback.print_exc()
             return f"Sir, the '{name}' plugin failed: {e}"
 
-    # -- called by ui.py's settings tab to render per-plugin config forms --
+    # -- called by ui/overlays.py's settings panel to render per-plugin forms --
     def settings_schemas(self) -> list[dict]:
-        """One entry per settings SECTION, for enabled plugins that declare a
-        PLUGIN_SETTINGS schema. Sections are deduped by namespace so a suite of
-        plugins sharing one namespace (e.g. the printer trio) shows a single
-        form. Current stored values are merged in so the UI can pre-fill fields.
+        """One entry per plugin: its settings form, or a note that it has none.
+
+        THE PANEL THAT LISTED NOTHING
+            This used to return ONLY plugins that declared a PLUGIN_SETTINGS
+            schema AND were enabled. Every shipped plugin broke one half or the
+            other: five plugins, four declare no schema, and the fifth declares
+            a permission and so arrives switched OFF. The panel's answer to
+            "where are my plugins?" was therefore always "none are installed",
+            while the manager listed all five two buttons away. The user read
+            that as the settings feature being broken, and it was.
+
+            So every loaded plugin gets a section now. One with a schema renders
+            that schema. One without gets `fields: []` and `schema: False`, which
+            the panel turns into a row saying the plugin takes no settings — a
+            line of text, but the honest one: it proves the plugin is there.
+
+        SECTIONS ARE STILL DEDUPED BY NAMESPACE
+            A suite of plugins sharing one namespace (the printer trio) must
+            show ONE form. The plugin that declares the schema wins; the others
+            fall through to the no-schema row only if nothing else claims their
+            namespace, so a namespace is never listed twice.
+
+        A REFUSED plugin is NOT here. The loader replaces its record wholesale,
+        schema included — nothing a rejected file declared is trusted, settings
+        form least of all. It is in the manager, with the reason.
         """
         seen: set[str] = set()
         out: list[dict] = []
-        for name, rec in self._plugins.items():
-            if not rec.settings or not _enabled(rec):
+        for rec in self._all_records:
+            if not rec.valid:
                 continue
-            ns = rec.settings.get("namespace") or rec.name
+            schema = rec.settings if isinstance(rec.settings, dict) else None
+            ns = (schema or {}).get("namespace") or rec.name
             if ns in seen:
                 continue
             seen.add(ns)
             out.append({
                 "plugin":    rec.name,
                 "namespace": ns,
-                "title":     rec.settings.get("title") or rec.name,
-                "fields":    rec.settings.get("fields", []),
+                "title":     (schema or {}).get("title") or rec.name,
+                "schema":    schema is not None,
+                "fields":    (schema or {}).get("fields", []),
                 "values":    get_plugin_config(ns),
-                "action":    rec.settings.get("action"),   # optional test/connect button
+                "action":    (schema or {}).get("action"),   # optional test button
+                # The panel shades the inputs and explains itself. A plugin that
+                # declared a permission sits here switched OFF until consented.
+                "enabled":   _enabled(rec),
             })
         return out
 

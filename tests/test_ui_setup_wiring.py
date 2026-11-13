@@ -30,6 +30,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 UI = ROOT / "ui" / "window.py"
+OVERLAYS = ROOT / "ui" / "overlays.py"
 
 
 @pytest.fixture(scope="module")
@@ -40,6 +41,13 @@ def main_window():
         if isinstance(node, ast.ClassDef) and node.name == "MainWindow":
             return node
     pytest.fail("MainWindow not found in ui/window.py")
+
+
+def _find(tree: ast.AST, name: str) -> ast.ClassDef:
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef) and node.name == name:
+            return node
+    pytest.fail(f"{name} not found in ui/window.py")
 
 
 def _method(cls, name: str) -> ast.FunctionDef:
@@ -121,3 +129,43 @@ def test_dismissing_setup_settles_ready(main_window):
     src = ast.get_source_segment(UI.read_text(encoding="utf-8"),
                                  _method(main_window, "_on_setup_closed")) or ""
     assert "_ready" in src and "True" in src
+
+
+# ── plugin settings: the panel that listed nothing ───────────────────────────
+
+def _source(node: ast.AST) -> str:
+    return ast.unparse(node)
+
+
+def test_the_settings_panel_is_given_a_usage_hook():
+    """The panel's empty state offers a button to the plugin manager, so the
+    window that creates it must hand it the opener. A button that does nothing
+    is worse than no button."""
+    tree = ast.parse(UI.read_text(encoding="utf-8"))
+    opener = _method(_find(tree, "MainWindow"), "_open_plugin_settings")
+    body = _source(opener)
+    assert "on_open_manager" in body
+    assert "_open_plugin_manager" in body
+
+
+def test_saving_skips_a_locked_section():
+    """A plugin that is not enabled must not have its config written: the write
+    would be a no-op the plugin cannot read back, and it would look to the user
+    like the form had been applied."""
+    tree = ast.parse(OVERLAYS.read_text(encoding="utf-8"))
+    save = _method(_find(tree, "PluginSettingsOverlay"), "_save_all")
+    # ast.unparse normalises the quotes, hence the single-quoted key here.
+    assert "sec.get('enabled', True)" in _source(save)
+
+
+def test_a_locked_section_is_read_only_but_still_rendered():
+    """Greyed out, not hidden — and never silently editable.
+
+    The panel now lives in ui/overlays.py: it was 288 lines, and moving it is
+    what kept ui/window.py under its own ceiling.
+    """
+    tree = ast.parse(OVERLAYS.read_text(encoding="utf-8"))
+    build = _method(_find(tree, "PluginSettingsOverlay"), "_build_section")
+    body = _source(build)
+    assert "plugins.locked" in body
+    assert "setEnabled(False)" in body
