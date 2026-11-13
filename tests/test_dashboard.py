@@ -31,8 +31,10 @@ def server(tmp_path, monkeypatch):
     monkeypatch.setattr(ds, "UPLOADS_DIR", tmp_path)
     srv = ds.DashboardServer()
     srv._uploads_dir = tmp_path
-    key = "".join(ds.secrets.choice(ds._KEY_CHARS) for _ in range(8))
-    srv._pending_keys[key] = time.time() + 60
+    # Use the server's own generator rather than re-rolling the length here:
+    # a duplicated magic number is exactly how the login page and the server
+    # drifted apart (8 vs 6) and manual entry became impossible.
+    key = srv.new_key()
     client = TestClient(srv.app)
     token = client.post("/login", json={"pin": key}).json()["token"]
     return srv, client, token, key
@@ -269,3 +271,38 @@ def test_local_address_logs_when_it_can_only_offer_localhost(caplog):
     text = caplog.text
     assert "no LAN address" in text
     assert "no route" in text or "no dns" in text or "no ifaces" in text
+
+
+# ── the login page must accept the whole key ────────────────────────────────
+
+def test_login_page_accepts_the_whole_key(server):
+    """The page and the server must agree on how long a key is.
+
+    They did not: the server minted 8-character keys while login.html capped
+    the field at 6 and auto-submitted at 6. Typing therefore submitted a
+    truncated key, the server refused it, and the page cleared the field —
+    "the code keeps failing and resets". No test caught it because none read
+    the page's numbers against the server's.
+    """
+    import re
+
+    srv, client, _, _ = server
+    html = client.get("/login").text
+
+    maxlength = int(re.search(r'maxlength="(\d+)"', html).group(1))
+    auto_submit = int(re.search(r"length === (\d+)", html).group(1))
+    minimum = int(re.search(r"length < (\d+)", html).group(1))
+
+    assert maxlength == ds._KEY_LENGTH
+    assert auto_submit == ds._KEY_LENGTH
+    assert minimum == ds._KEY_LENGTH
+    assert len(srv.new_key()) == ds._KEY_LENGTH
+
+
+def test_a_full_length_key_logs_in(server):
+    """The key the desktop shows, typed in full, is accepted."""
+    srv, client, _, _ = server
+    key = srv.new_key()
+    r = client.post("/login", json={"pin": key})
+    assert r.status_code == 200
+    assert r.json()["ok"] is True

@@ -25,6 +25,8 @@
   "ui.wake_word.off": "🎙  KATA BANGUN: MATI",
   "ui.wake_word.download": "⬇  KATA BANGUN: UNDUH",
   "ui.wake_word.downloading": "⬇  MENGUNDUH… (sekali saja)",
+  "ui.wake.sleep_after": "Tidur otomatis setelah",
+  "ui.wake.minutes": "menit",
   "ui.autostart.on": "◉  AUTOSTART: AKTIF",
   "ui.autostart.off": "◉  AUTOSTART: MATI",
   "ui.brief.on": "☀  RINGKASAN PAGI: AKTIF",

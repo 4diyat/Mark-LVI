@@ -25,6 +25,8 @@
   "ui.wake_word.off": "🎙  WAKE WORD: OFF",
   "ui.wake_word.download": "⬇  WAKE WORD: DOWNLOAD",
   "ui.wake_word.downloading": "⬇  DOWNLOADING… (one-time)",
+  "ui.wake.sleep_after": "Auto-sleep after",
+  "ui.wake.minutes": "minute(s)",
   "ui.autostart.on": "◉  AUTO-START: ON",
   "ui.autostart.off": "◉  AUTO-START: OFF",
   "ui.brief.on": "☀  MORNING BRIEF: ON",

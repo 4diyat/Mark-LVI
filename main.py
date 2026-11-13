@@ -74,6 +74,7 @@ from actions.web_search        import _news as _fetch_news_sync
 from memory.config_manager     import (
     get_brief_enabled, get_media_resolution, get_proactive_audio_enabled,
     get_push_to_talk_enabled, get_thinking_enabled, get_turn_tuning, get_voice,
+    get_wake_sleep_timeout, save_wake_sleep_timeout,
     get_wake_word_enabled, save_wake_word_enabled,    get_input_device, get_output_device,
 )
 from core                     import gemini as _gemini
@@ -90,7 +91,7 @@ from core.wake_word            import (
 
 # How long the assistant stays awake with no user speech before it auto-sleeps
 # again (wake-word mode only).
-WAKE_SLEEP_TIMEOUT = 120.0   # seconds (2 minutes)
+WAKE_SLEEP_TIMEOUT = 300.0   # seconds (5 minutes)
 
 # ── Keep what the console forgets ────────────────────────────────────────────
 # Started before anything else imports and can fail, so the first failure is in
@@ -723,7 +724,10 @@ class JarvisLive:
         self._wake_enabled     = get_wake_word_enabled()
         self._awake            = not self._wake_enabled
         self._wake_detector: WakeWordDetector | None = None
-        self._wake_sleep_timeout = WAKE_SLEEP_TIMEOUT
+        # Tidur otomatis: baca dari config (disimpan di pengaturan) agar bisa
+        # diubah tanpa restart. WAKE_SLEEP_TIMEOUT adalah default jika belum ada
+        # simpanan.
+        self._wake_sleep_timeout = get_wake_sleep_timeout()
 
         # Restore the saved push-to-talk preference. Doing it here rather than
         # in __init__ means the hotkey thread only exists once there is a
@@ -739,6 +743,8 @@ class JarvisLive:
         self.ui.on_wake_toggle   = self._ui_wake_toggle   # (enable: bool) -> str
         self.ui.on_wake_manual   = self._ui_wake_manual   # () -> toggle awake/asleep
         self.ui.on_wake_install  = self._ui_wake_install  # () -> (ok, msg)
+        self.ui.on_wake_sleep_timeout = (  # (minutes: float) -> None
+            self._ui_wake_sleep_timeout)
 
     # ── Wake word: state machine ─────────────────────────────────────────────
 
@@ -784,6 +790,17 @@ class JarvisLive:
         self.ui.set_state("SLEEPING")
         self.ui.write_log(f"SYS: Sleeping — {reason}. Say 'Hey Jarvis' to wake me.")
 
+    def _ui_wake_sleep_timeout(self, minutes: float) -> None:
+        """User changed the auto-sleep idle time from the settings panel.
+
+        Saved to config and picked up live by the sleep watcher on its next
+        tick — no restart needed.
+        """
+        save_wake_sleep_timeout(minutes)
+        self._wake_sleep_timeout = get_wake_sleep_timeout()
+        self.ui.write_log(
+            f"SYS: Tidur otomatis setelah {int(minutes)} menit diam.")
+
     async def _run_sleep_watch(self) -> None:
         """Auto-sleep after the configured silence window (wake-word mode only)."""
         while True:
@@ -795,7 +812,7 @@ class JarvisLive:
             if speaking:
                 continue
             if (time.monotonic() - self._last_user_speech) > self._wake_sleep_timeout:
-                self.sleep(reason="no speech for 2 minutes")
+                self.sleep(reason="no speech for 5 minutes")
 
     # ── Wake word: UI callbacks (called from the Qt thread) ──────────────────
 
