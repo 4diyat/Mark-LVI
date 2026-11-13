@@ -947,6 +947,97 @@ dilihat manusia**: tidak ada Qt di sandbox ini, jadi tiap perubahan hanya
 diverifikasi secara numerik. Menilai hasilnya butuh satu kali jalan di mesin
 Anda.
 
+### Pemutaran video/audio: tiga bug yang membuat "tidak bisa diputar"
+
+**Gejala yang dilaporkan:** pemutaran video/audio perlu diperbaiki. Setelah
+dibaca seluruh jalurnya, ternyata bukan satu bug — dan salah satunya bukan bug,
+melainkan fitur yang belum ada.
+
+**1. Video yang selesai tidak pernah "selesai".**
+Tidak ada satu pun koneksi ke `mediaStatusChanged`. Saat video habis: HUD tetap
+di halaman video, `video_is_playing()` terus menjawab ya, timer sinkronisasi
+terus jalan — dan kalau suara video sempat menyala, mikrofon yang ditutup JARVIS
+untuk suara itu **tetap tertutup**. Asisten tuli sampai sesi berakhir, tanpa
+video di layar, dan tidak ada satu pesan pun yang menjelaskan kenapa.
+
+**2. Suara video lama menumpuk di video baru.**
+`_on_video_open` tidak menghentikan apa pun sebelum memuat sumber baru. Kalau
+sebelumnya YouTube (dua stream) lalu dibuka file lokal, pemutar suara lama tetap
+berbunyi, dan tombol sound mengendalikan output baru yang senyap.
+
+**3. Error stream audio tidak pernah dilaporkan.**
+`errorOccurred` hanya tersambung ke pemutar gambar. Audio YouTube yang gagal
+menghasilkan video bisu dengan tombol bertuliskan SOUND ON — tak bisa
+dibedakan dari video yang memang tanpa suara.
+
+Ditambah dua cacat kecil yang sama nyata: sinkronisasi hanya satu arah dan buta
+saat ada stream yang berhenti (audio yang selesai lebih dulu membuat sisa video
+bisu), dan sumber tidak dinormalkan sekali — `Path(source).exists()` dipakai
+pada teks mentah, sehingga path dengan kutip dari Explorer gagal, dan
+`m.youtube.com` / `youtube-nocookie.com` tidak cocok regex lama sehingga halaman
+HTML dikirim ke Qt sebagai "video".
+
+**Perbaikan: `core/playback.py` (bebas-Qt).** Semua *keputusan* pindah ke satu
+modul kecil: kapan sumber dianggap berkas/URL/YouTube, kapan video dianggap
+selesai, apa yang harus dibongkar sebelum sumber baru dibuka, kapan dua stream
+layak dikoreksi, dan kapan mikrofon boleh ditutup/dibuka. Jendela hanya
+menjalankan keputusannya. Dengan pemisahan ini, setiap bug di atas menjadi
+assertion yang jalan tanpa display.
+
+**Fitur baru: pemutar audio.** Sebelumnya tidak ada sama sekali — `play_tone()`
+hanya membunyikan sinus 660 Hz untuk tes speaker. Sekarang ada bar audio di
+bawah HUD (berkas, URL stream, atau audio YouTube) dengan jeda, ulangi, dan
+slider volume. Dua keputusan penting di dalamnya:
+
+- **Perangkat keluaran mengikuti pilihan pengguna** di AUDIO DEVICES, bukan
+  default Qt. Memilih speaker lalu mendengar lagu dari speaker laptop adalah
+  keluhan yang panel itu dibuat untuk mencegah.
+- **Suara tidak dicampur dengan video.** Bar audio tidak pernah mengambil layar;
+  avatar tetap terlihat. Itu yang membedakannya dari video.
+
+**`ui/audio.py` sebagai mixin.** Bar audio menambah ~120 baris ke `ui/window.py`
+yang sudah menyentuh plafon 7.000 baris — dan tesnya, dengan benar, menolak.
+Mixin adalah bentuk yang sudah dipakai proyek ini (`ui/theme.py`,
+`ui/metrics.py`): jendela memiliki widget, modul kecil memiliki satu urusan.
+
+**Tes: 75 baru, dan satu di antaranya menemukan bug di tesnya sendiri.**
+
+```
+tests/test_playback.py       58  aturan: klasifikasi sumber, akhir media,
+                                  sinkronisasi, mikrofon
+tests/test_video_audio_tool.py 13  routing tool dengan pemutar palsu:
+                                  .mp3 ke audio, .mp4 ke layar, halaman web
+                                  ditolak, YouTube dijawab seketika
+tests/test_video_wiring.py    12  pengkabelan: signal benar-benar tersambung,
+                                  aturan benar-benar dipakai
+tests/test_audio_bar.py       12  bar audio benar-benar DIJALANKAN dengan
+                                  QMediaPlayer palsu
+```
+
+Dua hal yang ditemukan tes, bukan mata:
+
+- **Klasifikasi sumber.** Versi pertama mengubah `song.mp3` menjadi
+  `https://song.mp3` — mengubah berkas lokal menjadi permintaan DNS. Dan
+  `example.com/clip.mp4` sempat diklasifikasi sebagai berkas, bukan URL. Sekarang
+  bukti host diperiksa lebih dulu, ekstensi kemudian.
+- **Ambiguitas yang tidak bisa dihapus.** `/radio` dan `/page` berbentuk sama.
+  Saya sempat menulis tes yang menuntut keduanya dibedakan, lalu menyadari itu
+  mustahil tanpa menebak: menolak semua path tanpa ekstensi akan mematikan radio
+  internet. Jadi tesnya sekarang menyatakan itu secara eksplisit — yang ambigu
+  dicoba, dan kegagalannya dilaporkan apa adanya.
+
+**Satu bug lagi, ditemukan CI Windows, bukan saya.** Header audio sempat
+menampilkan seluruh path: `C:\Users\me\Music\song.mp3` tidak punya `://`, jadi
+`urlparse` menganggap seluruh string sebagai path, tidak ada `/` untuk dipotong,
+dan labelnya menjadi folder lengkap pengguna. Tidak mungkin terlihat di Linux —
+input itu tidak pernah masuk cabang tersebut di sini. Perbaikannya: potong pada
+**kedua** pemisah dulu, baru cari query string. Tes tetapnya jalan di Linux.
+
+**Yang tidak diklaim.** Tidak ada codec di sandbox ini, jadi tidak ada video
+atau audio yang benar-benar diputar. Yang diuji adalah keputusan, routing, dan
+eksekusi kelas-kelasnya dengan pemutar palsu. Membuktikan sebuah film benar-benar
+tampil butuh satu kali jalan di mesin Anda.
+
 ### ⏭️ Sprint berikutnya
 
 | Sprint | Fokus | Ukuran "selesai" |

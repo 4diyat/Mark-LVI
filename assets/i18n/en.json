@@ -95,7 +95,7 @@
   "ui.plugins.none": "No plugins found in /plugins.",
   "ui.confirm.heading": "⚠  CONFIRM",
   "ui.confirm.button": "▸  CONFIRM",
-  "ui.audio.heading": "🎧  AUDIO DEVICES",
+  "ui.audio.heading": "♪  AUDIO",
   "ui.test": "TEST",
   "ui.volume": "OUTPUT VOLUME",
   "ui.audio.reconnect_note": "Applying reconnects the session. Your conversation is kept.",
@@ -135,5 +135,18 @@
   "ui.plugins.no_manifest": "no manifest — permissions unknown",
   "plugins.locked": "\"{plugin}\" is installed but not enabled yet — turn it on in the plugin manager to use these settings.",
   "plugins.no_fields": "This plugin has no settings to configure — it works as soon as it is switched on.",
-  "plugins.no_fields_locked": "No settings to configure — switch it on in the plugin manager to use it."
+  "plugins.no_fields_locked": "No settings to configure — switch it on in the plugin manager to use it.",
+  "ui.video.finished": "The video finished — the display is back to the assistant.",
+  "ui.video.failed": "The video could not be played: {detail}",
+  "ui.video.audio_failed": "The video's sound could not be played, so the picture is silent: {detail}",
+  "ui.video.mic_held": "The video's sound is on — silence it, close it, or press F4 to talk. Typing still works.",
+  "ui.video.mic_back": "The video is quiet again.",
+  "ui.audio.playing": "♪  PLAYING: {title}",
+  "ui.audio.pause": "⏸ PAUSE",
+  "ui.audio.resume": "▶  RESUME",
+  "ui.audio.loop": "🔁 REPEAT",
+  "ui.audio.loop_on": "🔁 REPEATING",
+  "ui.audio.finished": "The audio finished.",
+  "ui.audio.failed": "The audio could not be played: {detail}",
+  "ui.audio.unavailable": "Audio playback is not available in this Qt install."
 }

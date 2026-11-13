@@ -95,7 +95,7 @@
   "ui.plugins.none": "Tidak ada plugin di /plugins.",
   "ui.confirm.heading": "⚠  KONFIRMASI",
   "ui.confirm.button": "▸  KONFIRMASI",
-  "ui.audio.heading": "🎧  PERANGKAT AUDIO",
+  "ui.audio.heading": "♪  AUDIO",
   "ui.test": "UJI",
   "ui.volume": "VOLUME KELUARAN",
   "ui.audio.reconnect_note": "Menerapkan akan menyambung ulang sesi. Percakapan Anda tetap disimpan.",
@@ -135,5 +135,18 @@
   "ui.plugins.no_manifest": "tanpa manifest — izin tidak diketahui",
   "plugins.locked": "\"{plugin}\" sudah terpasang tapi belum diaktifkan — nyalakan di manajer plugin untuk memakai pengaturan ini.",
   "plugins.no_fields": "Plugin ini tidak punya pengaturan — langsung berfungsi begitu diaktifkan.",
-  "plugins.no_fields_locked": "Tidak ada pengaturan — nyalakan di manajer plugin untuk memakainya."
+  "plugins.no_fields_locked": "Tidak ada pengaturan — nyalakan di manajer plugin untuk memakainya.",
+  "ui.video.finished": "Videonya selesai — layar kembali ke asisten.",
+  "ui.video.failed": "Videonya tidak bisa diputar: {detail}",
+  "ui.video.audio_failed": "Suara videonya tidak bisa diputar, jadi gambarnya tanpa suara: {detail}",
+  "ui.video.mic_held": "Suara video sedang menyala — matikan, tutup, atau tekan F4 untuk bicara. Mengetik tetap bisa.",
+  "ui.video.mic_back": "Videonya sudah senyap lagi.",
+  "ui.audio.playing": "♪  MEMUTAR: {title}",
+  "ui.audio.pause": "⏸ JEDA",
+  "ui.audio.resume": "▶  LANJUT",
+  "ui.audio.loop": "🔁 ULANG",
+  "ui.audio.loop_on": "🔁 DIULANG",
+  "ui.audio.finished": "Audionya selesai.",
+  "ui.audio.failed": "Audionya tidak bisa diputar: {detail}",
+  "ui.audio.unavailable": "Pemutaran audio tidak tersedia di instalasi Qt ini."
 }
