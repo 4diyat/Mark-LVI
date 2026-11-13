@@ -58,12 +58,10 @@ from PyQt6.QtWidgets import (
     QGraphicsScene, QGraphicsView,
     QStackedWidget, QTextEdit, QVBoxLayout, QWidget, QProgressBar, QSlider,
 )
-
 try:
     from core.avatar import HoloAvatar
 except Exception:      # pragma: no cover — HUD must never die over cosmetics
     HoloAvatar = None
-
 
 def _base_dir() -> Path:
     if getattr(sys, "frozen", False):
@@ -74,14 +72,12 @@ BASE_DIR   = _base_dir()
 CONFIG_DIR = BASE_DIR / "config"
 API_FILE   = CONFIG_DIR / "api_keys.json"
 
-
 def _read_full_config() -> dict:
     """Read api_keys.json config dict. Returns {} on any error."""
     try:
         return json.loads(API_FILE.read_text(encoding="utf-8"))
     except Exception:
         return {}
-
 
 # Single source of truth for the release name — the window title, the header
 # badge and the readme must never disagree again.
@@ -94,7 +90,6 @@ _LEFT_W  = 148
 _RIGHT_W = 340
 
 _OS = platform.system()  # "Windows" | "Darwin" | "Linux"
-
 
 # ── the colours and the samplers live in ui/ ────────────────────────────────
 #
@@ -5067,6 +5062,9 @@ class MainWindow(AudioMixin, QMainWindow):
         self._wake_btn.setStyleSheet(self._BTN_DIM)
         self._wake_sleep_btn.hide()
 
+        from ui.wake_sleep import build_wake_sleep_row
+        lay.addLayout(build_wake_sleep_row(lambda m: (getattr(self, "on_wake_sleep_timeout", None) or (lambda _: None))(float(m))))
+
         self._ptt_btn = _row(QPushButton())
         self._ptt_btn.clicked.connect(self._toggle_ptt)
         self._refresh_talk_btns()
@@ -6782,6 +6780,13 @@ class JarvisUI:
     @on_wake_manual.setter
     def on_wake_manual(self, cb):
         self._win.on_wake_manual = cb
+
+    @property
+    def on_wake_sleep_timeout(self):
+        return getattr(self._win, "on_wake_sleep_timeout", None)
+    @on_wake_sleep_timeout.setter
+    def on_wake_sleep_timeout(self, cb):
+        self._win.on_wake_sleep_timeout = cb
 
     @property
     def wake_get_state(self):

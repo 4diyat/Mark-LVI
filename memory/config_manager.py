@@ -295,6 +295,25 @@ def save_wake_word_enabled(enabled: bool) -> None:
     set_config_values(wake_word_enabled=bool(enabled))
 
 
+def get_wake_sleep_timeout() -> float:
+    """Seconds of silence before the assistant auto-sleeps (wake-word mode).
+
+    Stored in minutes so a human can read the config file, exposed in seconds
+    because the sleep watcher works in seconds. Defaults to 5 minutes. The
+    floor is 30 seconds so nobody can accidentally set it to zero and lock the
+    assistant awake forever.
+    """
+    try:
+        v = float(load_api_keys().get("wake_sleep_timeout_min", 5) or 5)
+    except (TypeError, ValueError):
+        v = 5.0
+    return max(v, 0.5) * 60.0
+
+
+def save_wake_sleep_timeout(minutes: float) -> None:
+    _save_flag("wake_sleep_timeout_min", max(float(minutes or 5), 0.5))
+
+
 def get_push_to_talk_enabled() -> bool:
     """Hold-a-key-to-speak. When on, the mic is closed unless the chord is held."""
     return load_api_keys().get("push_to_talk_enabled", False)

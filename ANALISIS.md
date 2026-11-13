@@ -1132,14 +1132,22 @@ Catatan jujur: di kode, reset-nya terpicu di digit ke-**6** (auto-submit),
 bukan ke-4. Hitungan pengguna mungkin meleset, atau jeda kirimnya terasa
 seperti di tengah jalan. Akar masalahnya sama.
 
-### Tidur otomatis: 2 menit → 5 meni diam
+### Tidur otomatis: 2 menit → 5 meni diam, kini bisa diubah di pengaturan
 
 Assisten otomatis tidur setelah diam tanpa ucapan pengguna. Konstanta
 `main.py:WAKE_SLEEP_TIMEOUT` dinaikkan dari `120.0` (2 menit) ke `300.0`
-(5 menit). Pesan log yang menyusul diubah dari "no speech for 2 minutes"
-menjadi "no speech for 5 minutes" agar tidak salah baca. Tidak ada label UI
-atau i18n yang menyebut angka ini, jadi tidak ada berkas terjemahan yang perlu
-diubah.
+(5 menit) sebagai **default**, dan pesan log diubah dari "no speech for 2
+minutes" menjadi "no speech for 5 minutes".
+
+Bedanya dari sebelumnya: nilai ini **tidak lagi dikodekan keras**. Baru-baru ini
+ditambahkan pengaturan `wake_sleep_timeout_min` di `memory/config_manager.py`
+(`get_wake_sleep_timeout` / `save_wake_sleep_timeout`), sebuah baris input
+(menit, 1–120) di panel kontrol wake word (`ui/window.py`,
+`_build_controls_drawer`), dan callback `on_wake_sleep_timeout` yang menyimpan
+ke `api_keys.json` serta memperbarui `main.py:_wake_sleep_timeout` segera.
+Sleep watcher (`_run_sleep_watch`) membaca `self._wake_sleep_timeout` setiap
+tik, jadi perubahan berlaku segera — tidak perlu restart. Label baru di
+i18n: `ui.wake.sleep_after` dan `ui.wake.minutes`.
 
 ### ⏭️ Sprint berikutnya
 
