@@ -1033,6 +1033,67 @@ dan labelnya menjadi folder lengkap pengguna. Tidak mungkin terlihat di Linux �
 input itu tidak pernah masuk cabang tersebut di sini. Perbaikannya: potong pada
 **kedua** pemisah dulu, baru cari query string. Tes tetapnya jalan di Linux.
 
+### Tiga bug yang lolos dari tes — dan kenapa
+
+Melaporkan "masih error" setelah PR #4 merge. Ketiganya nyata, dan ketiganya
+tidak mungkin terlihat oleh tes yang ada pada waktu itu:
+
+**1. `QUrl("C:\clips\a b.mp4")` bukan berkas.** Qt membaca `C:` sebagai
+*skema* — `scheme()` mengembalikan `"c"`, sama seperti `QUrl("http://x")`
+mengembalikan `"http"`. Jadi pemutar diminta mengambil URL lewat protokol yang
+tidak ada, gagal, dan pengguna diberi tahu berkasnya sendiri tidak bisa diputar.
+Diukur dengan PyQt6 sebelum diperbaiki:
+
+```
+QUrl(r"C:\clips\a b.mp4").scheme()               -> 'c'     (salah)
+QUrl.fromLocalFile(r"C:\clips\a b.mp4").scheme() -> 'file'  (benar)
+QUrl("/home/me/a b.mp3").isLocalFile()             -> False   (salah)
+QUrl.fromLocalFile("/home/me/a b.mp3").isLocalFile() -> True  (benar)
+```
+
+Satu helper, `qurl_for` di `ui/audio.py`, sekarang memutuskan lewat
+`core/playback.qurl_safe` (bebas-Qt, teruji) dan memakai `QUrl.fromLocalFile`
+untuk path apa pun. URL HTTP tidak disentuh — query string-nya tidak boleh
+di-encode ulang atau tanda tangan googlevideo rusak.
+
+**2. `QAudioDevice.fromId` tidak ada di PyQt6.** Panggilan itu melempar
+`AttributeError` di dalam `try/except Exception: pass`, jadi perangkat keluaran
+yang dipilih pengguna **diam-diam diabaikan** dan setiap lagu keluar dari
+perangkat default. Persis keluhan yang panel AUDIO DEVICES dibuat untuk
+mencegah. Diganti `QMediaDevices.audioOutputs()` dengan pencocokan deskripsi —
+satu-satunya hal yang dimiliki bersama oleh sounddevice dan Qt.
+
+**3. Bar audio tidak pernah masuk layout.** `_hud_cam_stack` ditambahkan ke
+pembungkus lalu ditambahkan lagi ke splitter; di Qt itu **memindahkan** widget,
+bukan menyalin, jadi pembungkus tertinggal hanya berisi bar audio — dan
+pembungkus itu sendiri tidak pernah ditambahkan ke mana pun. "Putar lagu"
+menjawab "playing", log setuju, dan tidak ada yang muncul. Sekarang bar adalah
+seksi splitter sendiri: punya visibilitas sendiri, menyembunyikan diri saat
+tidak ada lagu, dan mengembalikan tingginya.
+
+**Akar masalahnya satu: tidak ada tes yang mengimpor `ui/window.py`.**
+`test_video_wiring.py` membaca AST — dan AST dengan benar menunjukkan bahwa
+`_build_audio_bar` dipanggil. Yang tidak bisa dilihat AST adalah apakah widget
+yang dibangun itu pernah sampai ke layar.
+
+**Satu celah lagi, tertangkap saat memeriksa ulang:** `qurl_safe` versi pertama
+menganggap `example.com/clip.mp4` sebagai path, karena tidak berskema. Qt akan
+diberi `file:///example.com/clip.mp4` — berkas yang tidak ada, dilaporkan sebagai
+berkas pengguna yang buruk. Sekarang host tanpa skema dikenali lewat
+`_bare_kind` dan diperlakukan sebagai URL.
+
+**`tests/test_window_smoke.py`** sekarang mengimpor jendela dan **membangunnya**,
+dengan stub Qt yang sempit dan ditulis dari stub `.pyi` PyQt6 yang asli — bukan
+dari kode, yang merupakan kesalahan pertama: fake lama menyediakan `fromId`
+karena saya menulisnya dari kode yang memanggilnya, sehingga fake setuju dengan
+bug. Tujuh tes, dan ketiganya terbukti **bisa gagal**: mengembalikan
+`QUrl(media_url(...))`, `QAudioDevice.fromId`, atau menghapus baris layout
+masing-masing menjatuhkan tes yang tepat.
+
+Satu tes lama juga harus diperbaiki, bukan dilonggarkan: `tests/test_audio_bar.py`
+memakai `QUrl` palsu tanpa `fromLocalFile`, dan fake itu menyembunyikan bug
+pertama. Sekarang ia punya `fromLocalFile` dan **tidak** punya `fromId`.
+
 **Yang tidak diklaim.** Tidak ada codec di sandbox ini, jadi tidak ada video
 atau audio yang benar-benar diputar. Yang diuji adalah keputusan, routing, dan
 eksekusi kelas-kelasnya dengan pemutar palsu. Membuktikan sebuah film benar-benar

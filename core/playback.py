@@ -219,6 +219,47 @@ def media_url(text: str) -> str:
     return raw
 
 
+def qurl_safe(text: str) -> bool:
+    """Is this string a PATH that `QUrl(...)` would mangle into a URL?
+
+    `QUrl("C:\\clips\\a b.mp4")` does not describe a file. Qt reads "C:" as a
+    SCHEME — `scheme() == "c"`, which is what `QUrl("http://x")` reports as
+    "http" — so the player is asked to fetch a URL over a protocol that does not
+    exist and reports a format error. The user is then told their own file
+    cannot be played. The same is true of any bare POSIX path: `QUrl` puts it in
+    the URL's path with no scheme and is not a local file for the multimedia
+    backend.
+
+    Measured with PyQt6 before this was written:
+
+        QUrl(r"C:\\clips\\a b.mp4").scheme()   -> 'c'      (wrong)
+        QUrl.fromLocalFile(r"C:\\clips\\a b.mp4").scheme() -> 'file'   (right)
+        QUrl("/home/me/a b.mp3").isLocalFile()  -> False    (wrong)
+        QUrl.fromLocalFile("/home/me/a b.mp3").isLocalFile() -> True    (right)
+
+    So the window asks this before building a QUrl, and a Windows user's own
+    files play. A URL — `http`, `https`, `file` — is not a path and must go
+    straight to `QUrl`, or the query string gets re-encoded and the signature
+    on a googlevideo stream breaks.
+    """
+    raw = clean_source(text)
+    if not raw:
+        return False
+    low = raw.lower()
+    if low.startswith(("http://", "https://", "file://")):
+        return False
+    # A BARE HOST IS NOT A PATH. "example.com/clip.mp4" has no scheme, so the
+    # check above does not catch it, and treating it as a path would hand Qt
+    # `file:///example.com/clip.mp4` — a file that does not exist, reported as
+    # the user's own bad file. `media_url` already knows how to add https, and
+    # the classifier that decides what a source IS lives in one place.
+    if _bare_kind(raw) == "host":
+        return False
+    # A UNC share (\\server\share\clip.mp4) is a path too, and on Windows it is
+    # the normal way to reach a video on another machine.
+    return True
+
+
 # ── end of media ────────────────────────────────────────────────────────────
 
 # What the window should do when a player says it has finished.

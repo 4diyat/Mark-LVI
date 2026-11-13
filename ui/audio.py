@@ -41,6 +41,34 @@ from core.i18n import label as _t
 from ui.theme import C
 
 
+# ── the one correct way to turn a source into a QUrl ────────────────────────
+#
+# THIS FUNCTION IS THE FIX FOR "cannot play my video/lagu".
+#
+# Every player in the window used to do `QUrl(source)`. For a URL that is right.
+# For a local path it is wrong, and wrong in a way that looks like the file is
+# broken rather than the code: `QUrl(r"C:\\clips\\a b.mp4")` reads "C:" as a
+# SCHEME, so the player is asked to fetch `c:\\clips\\a b.mp4` over a protocol
+# that does not exist, fails, and reports a format error. A POSIX path with a
+# space in it is not a local file either — `isLocalFile()` is False — because
+# `QUrl` has no way to know a bare string is meant as a path.
+#
+# `QUrl.fromLocalFile` is what Qt provides for exactly this, and it is what a
+# file:// URL, a Windows drive letter, a UNC share and a spaced path all need.
+# The decision of which one applies lives in core/playback (`qurl_safe`) so it is
+# tested without Qt; this is only the three lines that act on it.
+def qurl_for(source: str):
+    """A `QUrl` that actually points at what the user named."""
+    raw = _pb.clean_source(source)
+    if not raw:
+        return QUrl()
+    if _pb.qurl_safe(raw):
+        # A path: expand `~`, and keep a file:// URL working by asking the
+        # cleaner for the real file first.
+        return QUrl.fromLocalFile(_pb.local_file(raw) or raw)
+    return QUrl(_pb.media_url(raw) or raw)
+
+
 class AudioMixin:
     """Mixed into MainWindow. Expects the attributes `_build_audio_bar` creates."""
 
@@ -98,15 +126,56 @@ class AudioMixin:
                 return
             idx = audio_devices.resolve(name, "output")
             if idx is not None:
-                self._audio_out.setDevice(self._audio_device_for(idx))
+                dev = self._audio_device_for(name)
+                if dev is not None and not dev.isNull():
+                    self._audio_out.setDevice(dev)
         except Exception:
             # A device that cannot be resolved is not a reason to refuse to
             # play: the system default is what would have happened anyway.
             pass
 
-    def _audio_device_for(self, index):
-        from PyQt6.QtMultimedia import QAudioDevice
-        return QAudioDevice.fromId(str(index))
+    def _audio_device_for(self, name: str):
+        """The Qt output device whose description matches the chosen name.
+
+        NOT `QAudioDevice.fromId`, which this used to call and which DOES NOT
+        EXIST in PyQt6 — `QAudioDevice` has no such static method, so the call
+        raised AttributeError inside `_apply_audio_device`'s try block and was
+        swallowed. The result was that the user's chosen speaker was silently
+        ignored and every song came out of the default device: exactly the
+        complaint the AUDIO DEVICES panel exists to prevent.
+
+        `QMediaDevices.audioOutputs()` is the real API. Matching on description
+        is the only thing available without the device id: sounddevice and Qt
+        are two different stacks with two different id spaces, so the name is
+        the one thing they share. `core/audio_devices` already resolves that
+        name to an endpoint, and the description Qt reports is the same string
+        the panel showed.
+        """
+        try:
+            from PyQt6.QtMultimedia import QMediaDevices
+            outs = QMediaDevices.audioOutputs()
+        except Exception:
+            return None
+        wanted = (name or "").strip()
+        if not wanted:
+            return None
+        # EXACT FIRST. A partial match is the fallback because MME truncates
+        # descriptions at 31 characters, which is the same reason
+        # core/audio_devices matches a prefix.
+        for dev in outs:
+            try:
+                if dev.description().strip() == wanted:
+                    return dev
+            except Exception:
+                continue
+        for dev in outs:
+            try:
+                desc = dev.description().strip()
+            except Exception:
+                continue
+            if desc and (desc.startswith(wanted[:24]) or wanted.startswith(desc[:24])):
+                return dev
+        return None
 
     # ── slots ──────────────────────────────────────────────────────────────
 
@@ -132,9 +201,58 @@ class AudioMixin:
         except Exception:
             pass
         self._audio_out.setVolume(vol)
-        self._audio_player.setSource(QUrl(_pb.media_url(source) or source))
-        self._audio_cont.show()
+        # A local file MUST go through qurl_for: `QUrl(r"C:\\music\\a.mp3")`
+        # is a request for scheme "c", which no machine can fetch.
+        self._audio_player.setSource(qurl_for(source))
+        # The bar lives inside the content panel, which is hidden by default.
+        # Showing the bar alone is not enough — a widget cannot be visible
+        # inside a hidden parent, and that was the state of the first version:
+        # the tool answered "playing", and nothing appeared anywhere.
+        self._show_audio_bar()
         self._audio_player.play()
+
+    def _show_audio_bar(self) -> None:
+        """Reveal the bar, and give it height if it lives in the splitter.
+
+        THE BUG THIS REPLACES: the bar was parented to a wrapper widget that was
+        never added to any layout, so playing a song answered "playing", wrote
+        the right log line, and drew nothing at all. A widget is only visible if
+        it is in a layout that is in the window.
+        """
+        try:
+            self._audio_cont.show()
+        except Exception:
+            return
+        split = getattr(self, "_center_split", None)
+        try:
+            if split is not None and self._audio_cont.parentWidget() is split:
+                sizes = list(split.sizes())
+                # A section that was never given height comes back as a 4-pixel
+                # drag handle; 40 px is one line of the bar plus its margins.
+                if len(sizes) > 3 and sizes[3] < 40:
+                    sizes[3] = 40
+                    split.setSizes(sizes)
+        except Exception:
+            pass
+
+    def _collapse_audio_bar(self) -> None:
+        """Give the bar's height back when the song stops.
+
+        Without this the splitter keeps the 40 pixels it lent to a song that is
+        over, and the HUD never gets them back — so playing one track would
+        leave the window permanently smaller.
+        """
+        split = getattr(self, "_center_split", None)
+        try:
+            if split is not None and self._audio_cont.parentWidget() is split:
+                sizes = list(split.sizes())
+                if len(sizes) > 3 and sizes[3]:
+                    spare = sizes[3]
+                    sizes[3] = 0
+                    sizes[0] += spare
+                    split.setSizes(sizes)
+        except Exception:
+            pass
 
     def _on_audio_stop(self) -> None:
         if not getattr(self, "_audio_player", None):
@@ -147,6 +265,7 @@ class AudioMixin:
         self._audio_on = False
         self._audio_paused = False
         self._audio_cont.hide()
+        self._collapse_audio_bar()
 
     def _on_audio_pause(self, paused: bool) -> None:
         if not (getattr(self, "_audio_player", None) and self._audio_on):

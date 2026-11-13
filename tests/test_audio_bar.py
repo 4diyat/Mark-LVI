@@ -101,12 +101,40 @@ class FakeOutput:
         self.device = d
 
 
+class FakeDevice:
+    """A Qt audio output, described the way the AUDIO DEVICES panel names it."""
+
+    def __init__(self, description):
+        self._desc = description
+
+    def description(self):
+        return self._desc
+
+    def isNull(self):
+        return False
+
+    def id(self):
+        return b"qt:" + self._desc.encode()
+
+
 class _Widget:
     def __init__(self, *a, **k):
         self.visible = False
         self.text = ""
+        self.parent = None
+
+    # Real, not a catch-all lambda: the bar asks its parent whether it is the
+    # splitter before touching splitter geometry, and a `__getattr__` that
+    # answered None would make that branch untestable.
+    def parentWidget(self):
+        return self.parent
+
+    def setParent(self, p):
+        self.parent = p
 
     def __getattr__(self, name):
+        if name.startswith("__"):
+            raise AttributeError(name)
         return lambda *a, **k: None
 
     def show(self):
@@ -134,7 +162,35 @@ def _install_qt() -> list[str]:
         pass
 
     core = types.ModuleType("PyQt6.QtCore")
-    core.QUrl = type("QUrl", (), {"__init__": lambda self, u="": setattr(self, "u", u)})
+
+    class QUrl:
+        """`fromLocalFile` included because the window now uses it — the API
+        has it, and a stub without it hid the fact that QUrl(path) is wrong."""
+
+        def __init__(self, url=""):
+            self._url = str(url)
+            self._local = False
+
+        @staticmethod
+        def fromLocalFile(path):
+            u = QUrl(path)
+            u._local = True
+            return u
+
+        def toString(self):
+            return self._url
+
+        def isLocalFile(self):
+            return self._local
+
+        def scheme(self):
+            if self._local:
+                return "file"
+            if self._url.lower().startswith(("http://", "https://", "file://")):
+                return self._url.split(":", 1)[0].lower()
+            return ""
+
+    core.QUrl = QUrl
     core.Qt = types.SimpleNamespace(
         Orientation=types.SimpleNamespace(Horizontal=1),
         PenStyle=types.SimpleNamespace(NoPen=0),
@@ -178,7 +234,12 @@ def _install_qt() -> list[str]:
     mm = types.ModuleType("PyQt6.QtMultimedia")
     mm.QMediaPlayer = FakePlayer
     mm.QAudioOutput = FakeOutput
-    mm.QAudioDevice = types.SimpleNamespace(fromId=lambda i: "device:" + i)
+    # NO `fromId`: PyQt6's QAudioDevice has no such method, and a fake that
+    # offered one let the window call it and silently lose the setting.
+    mm.QAudioDevice = type("QAudioDevice", (), {"description": lambda self: "",
+                                               "isNull": lambda self: False})
+    mm.QMediaDevices = types.SimpleNamespace(
+        audioOutputs=lambda: [FakeDevice("My Headset"), FakeDevice("Speakers")])
 
     pkg = types.ModuleType("PyQt6")
     pkg.QtCore, pkg.QtGui = core, gui
@@ -345,6 +406,33 @@ def test_an_invalid_source_is_treated_as_a_failure(bar):
     assert not bar._audio_cont.visible
 
 
+def test_stopping_gives_the_splitter_its_height_back(bar):
+    """A song must not leave the window permanently 40 px shorter."""
+    class _Split:
+        def __init__(self):
+            self._sizes = [600, 200, 0, 40]
+            self.set_calls = []
+
+        def sizes(self):
+            return list(self._sizes)
+
+        def setSizes(self, s):
+            self._sizes = list(s)
+            self.set_calls.append(list(s))
+
+    split = _Split()
+    bar._center_split = split
+    # The bar must look like it lives in that splitter.
+    # `parentWidget()` must answer the splitter, because that is the condition
+    # the real code checks before touching splitter geometry.
+    bar._audio_cont.setParent(split)
+    bar._on_audio_open("a.mp3", "A", 0.7, False)
+    bar._on_audio_stop()
+
+    assert split.sizes()[3] == 0, "the bar's height was not released"
+    assert split.sizes()[0] > 600, "the height did not go back to the HUD"
+
+
 def test_stopping_closes_the_bar_and_latches_off(bar):
     bar._on_audio_open("a.mp3", "A", 0.7, False)
     bar._on_audio_stop()
@@ -369,7 +457,11 @@ def test_the_chosen_output_device_is_used(bar, monkeypatch):
     bar._apply_audio_device()
 
     assert calls == [("My Headset", "output")]
-    assert bar._audio_out.device == "device:7"
+    # The device Qt was actually handed must be the one the user picked. A
+    # `.description()` check, because sounddevice indices and Qt device ids are
+    # two different spaces and the name is the only thing they share.
+    assert bar._audio_out.device is not None
+    assert bar._audio_out.device.description() == "My Headset"
 
 
 def test_an_unresolvable_device_does_not_stop_playback(bar, monkeypatch):
