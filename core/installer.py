@@ -95,6 +95,12 @@ def install_for_config(config: dict, log: Callable | None = None) -> None:
     tts = config.get("tts_engine", "edgetts").lower()
 
     needed: list[tuple[str, str]] = list(_CORE)
+    # Keep the fallback installer consistent with requirements.txt: a later
+    # unconstrained OpenCV install must not upgrade NumPy behind MT5's back.
+    if platform.system() == "Windows" and sys.version_info < (3, 13):
+        needed = [(mod, {"numpy": "numpy>=1.24,<2",
+                         "cv2": "opencv-python>=4.8,<4.12"}.get(mod, pkg))
+                  for mod, pkg in needed]
     needed += _STT.get(stt, [])
     needed += _TTS.get(tts, [])
     if platform.system() == "Windows":

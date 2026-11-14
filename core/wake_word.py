@@ -17,6 +17,8 @@ CPU. The pretrained wake phrase used here is "Hey Jarvis".
 """
 from __future__ import annotations
 
+import importlib
+import importlib.util
 import queue
 import subprocess
 import sys
@@ -31,11 +33,16 @@ DEFAULT_THRESHOLD = 0.5
 # Mic frames arrive at 16 kHz int16; this is just the detector's input rate.
 SAMPLE_RATE = 16000
 
+# The package imports its own model submodule while initializing. Importing
+# that submodule concurrently with the package can expose a half-built package
+# to Model on some Python versions. Serialize our imports/construction and
+# initialize the package first. Readiness checks never import it at all.
+_MODEL_LOCK = threading.RLock()
+
 
 def is_installed() -> bool:
     """True if the openwakeword package is importable (no model check)."""
     try:
-        import importlib.util
         return importlib.util.find_spec("openwakeword") is not None
     except Exception:
         return False
@@ -49,20 +56,18 @@ def is_ready() -> bool:
     with the detector's own Model when it's already running, which intermittently
     returned False and made the UI flicker to 'not downloaded'. Never raises.
     """
-    if not is_installed():
-        return False
     try:
-        import openwakeword
-        models_dir = Path(openwakeword.__file__).resolve().parent / "resources" / "models"
-        if not models_dir.is_dir():
+        spec = importlib.util.find_spec("openwakeword")
+        if not spec or not spec.submodule_search_locations:
             return False
-        has_wake = (any(models_dir.glob(f"{WAKE_MODEL}*.onnx"))
-                    or any(models_dir.glob(f"{WAKE_MODEL}*.tflite")))
-        has_mel = (any(models_dir.glob("melspectrogram*.onnx"))
-                   or any(models_dir.glob("melspectrogram*.tflite")))
-        has_emb = (any(models_dir.glob("embedding_model*.onnx"))
-                   or any(models_dir.glob("embedding_model*.tflite")))
-        return bool(has_wake and has_mel and has_emb)
+        for location in spec.submodule_search_locations:
+            models_dir = Path(location) / "resources" / "models"
+            # start() uses ONNX, so tflite-only files do not mean ready.
+            if (any(models_dir.glob(f"{WAKE_MODEL}*.onnx"))
+                    and any(models_dir.glob("melspectrogram*.onnx"))
+                    and any(models_dir.glob("embedding_model*.onnx"))):
+                return True
+        return False
     except Exception:
         return False
 
@@ -90,7 +95,10 @@ def install_and_download(logger: Callable[[str], None] = print,
         logger("Wake word: downloading models…")
         _tell("Wake word: downloading models…")
         try:
-            import openwakeword.utils as _u
+            with _MODEL_LOCK:
+                # Import the package before its submodule, matching start().
+                importlib.import_module("openwakeword")
+                _u = importlib.import_module("openwakeword.utils")
             try:
                 _u.download_models([WAKE_MODEL])
             except TypeError:
@@ -132,22 +140,25 @@ class WakeWordDetector:
     def start(self) -> bool:
         """Load the model and spawn the inference thread. Returns True on success.
         Safe to call again — a no-op if already running. Never raises."""
-        if self._running:
+        with _MODEL_LOCK:
+            if self._running:
+                return True
+            try:
+                importlib.import_module("openwakeword")
+                model_module = importlib.import_module("openwakeword.model")
+                self._model = model_module.Model(
+                    wakeword_models=[WAKE_MODEL], inference_framework="onnx")
+            except Exception as e:
+                self._logger(f"Wake word: could not load model — {e}")
+                self._notify("Wake word unavailable — use the WAKE NOW button or disable wake word.")
+                self._model = None
+                return False
+            self._running = True
+            self._ready = True
+            self._thread = threading.Thread(target=self._loop, daemon=True, name="WakeWordThread")
+            self._thread.start()
+            self._logger("Wake word: listening for 'Hey Jarvis'.")
             return True
-        try:
-            from openwakeword.model import Model
-            self._model = Model(wakeword_models=[WAKE_MODEL], inference_framework="onnx")
-        except Exception as e:
-            self._logger(f"Wake word: could not load model — {e}")
-            self._notify("Wake word unavailable — use the WAKE NOW button.")
-            self._model = None
-            return False
-        self._running = True
-        self._ready = True
-        self._thread = threading.Thread(target=self._loop, daemon=True, name="WakeWordThread")
-        self._thread.start()
-        self._logger("Wake word: listening for 'Hey Jarvis'.")
-        return True
 
     def stop(self) -> None:
         self._running = False

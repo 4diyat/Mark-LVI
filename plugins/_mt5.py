@@ -72,18 +72,22 @@ def _module():
     system, which are different fixes."""
     try:
         import MetaTrader5 as mt5  # noqa: PLC0415 — Windows-only, imported late
-    except ImportError as e:
-        # The two failures have different fixes, so the sentence says which one
-        # this is: a Windows user needs `pip install MetaTrader5`, everybody
-        # else needs a different machine.
+    except (ImportError, AttributeError) as e:
         import platform
-        if platform.system() == "Windows":
-            why = ("the MetaTrader5 package is not installed "
-                   "(pip install MetaTrader5)")
-        else:
+        if platform.system() != "Windows":
             why = (f"this is {platform.system()}, and the MetaTrader5 package "
                    "ships Windows wheels only")
-        raise MT5Unavailable(f"MetaTrader 5 is not available here: {why} ({e}).") from e
+        elif isinstance(e, ModuleNotFoundError) and e.name == "MetaTrader5":
+            why = "the MetaTrader5 package is not installed (python -m pip install MetaTrader5)"
+        elif any(text in str(e).lower() for text in (
+                "_array_api", "numpy.core.multiarray", "numpy._core.multiarray")):
+            why = ("the MetaTrader5 binary is incompatible with the installed NumPy. "
+                   "On Python 3.11 or 3.12 run: python -m pip install "
+                   "\"numpy>=1.24,<2\" \"opencv-python>=4.8,<4.12\", "
+                   "then restart JARVIS. On Python 3.13 or newer use a Python 3.12 environment.")
+        else:
+            why = f"the MetaTrader5 package could not be loaded ({e})"
+        raise MT5Unavailable(f"MetaTrader 5 is not available here: {why}.") from e
     return mt5
 
 

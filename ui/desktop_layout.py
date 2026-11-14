@@ -1,0 +1,160 @@
+"""Desktop navigation and conversation surfaces; the window owns all callbacks.
+
+This module only builds widgets on the Qt thread. Audio, file drops, plugin
+consent and action confirmation remain owned by MainWindow and their existing
+signals; rearranging them must not create another session or another log.
+"""
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QFont
+from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSizePolicy, QVBoxLayout, QWidget
+
+from core.i18n import label as _t
+from ui.theme import C
+
+
+def _label(text, size=9, *, bold=False, color=None):
+    label = QLabel(text)
+    label.setFont(QFont("Arial", size, QFont.Weight.Bold if bold else QFont.Weight.Normal))
+    label.setStyleSheet(f"color: {color or C.TEXT_MED}; background: transparent; border: none;")
+    return label
+
+
+def build_navigation(window, metric_cls, width):
+    panel = QWidget()
+    panel.setObjectName("DesktopNavigation")
+    panel.setFixedWidth(width)
+    panel.setStyleSheet(f"QWidget#DesktopNavigation {{ background: {C.DARK}; border-right: 1px solid {C.BORDER}; }}")
+    layout = QVBoxLayout(panel)
+    layout.setContentsMargins(10, 14, 10, 10)
+    layout.setSpacing(5)
+    window._nav_title = _label(_t("desktop.navigation"), 8, bold=True, color=C.PRI_DIM)
+    layout.addWidget(window._nav_title)
+    window._desktop_nav = []
+    buttons = (
+        ("desktop.conversation", lambda: window._input.setFocus()),
+        ("desktop.activity", lambda: window._log.setFocus()),
+        ("desktop.plugins", window._open_plugin_manager),
+        ("desktop.remote", window._open_remote),
+        ("desktop.settings", lambda: window._drawer_btn.click()),
+        ("desktop.controls", lambda: window._ctrl_btn.click()),
+    )
+    for key, callback in buttons:
+        button = QPushButton(_t(key))
+        button.setFixedHeight(32)
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setFont(QFont("Arial", 9))
+        button.setStyleSheet(f"""
+            QPushButton {{ text-align: left; padding: 0 9px; color: {C.TEXT};
+                           background: {C.PANEL}; border: 1px solid {C.BORDER}; border-radius: 5px; }}
+            QPushButton:hover, QPushButton:focus {{ color: {C.PRI}; border-color: {C.PRI_DIM}; }}
+        """)
+        # clicked carries a bool; do not pass it to slots that take no args.
+        button.clicked.connect(lambda _checked=False, fn=callback: fn())
+        layout.addWidget(button)
+        window._desktop_nav.append((button, key))
+    layout.addSpacing(8)
+    window._metrics_heading = _label(_t("desktop.system"), 8, bold=True, color=C.PRI_DIM)
+    layout.addWidget(window._metrics_heading)
+    window._bar_cpu = metric_cls("CPU", C.PRI)
+    window._bar_mem = metric_cls("MEM", C.ACC2)
+    window._bar_net = metric_cls("NET", C.GREEN)
+    window._bar_gpu = metric_cls("GPU", C.ACC)
+    window._bar_tmp = metric_cls("TMP", "#ff6688")
+    for bar in (window._bar_cpu, window._bar_mem, window._bar_net, window._bar_gpu, window._bar_tmp):
+        layout.addWidget(bar)
+    layout.addStretch()
+    window._uptime_lbl = _label(_t("ui.uptime_idle"), 8, color=C.GREEN)
+    window._proc_lbl = _label(_t("ui.proc_idle"), 8)
+    layout.addWidget(window._uptime_lbl)
+    layout.addWidget(window._proc_lbl)
+    return panel
+
+
+def build_conversation(window, log_cls, drop_cls):
+    panel = QWidget()
+    panel.setObjectName("DesktopConversation")
+    panel.setMinimumWidth(280)
+    panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+    panel.setStyleSheet(f"QWidget#DesktopConversation {{ background: {C.BG}; border-right: 1px solid {C.BORDER}; }}")
+    layout = QVBoxLayout(panel)
+    layout.setContentsMargins(16, 14, 16, 12)
+    layout.setSpacing(8)
+    window._conversation_heading = _label(_t("desktop.conversation"), 15, bold=True, color=C.WHITE)
+    window._conversation_subtitle = _label(_t("desktop.conversation_hint"), 8)
+    layout.addWidget(window._conversation_heading)
+    layout.addWidget(window._conversation_subtitle)
+    window._log = log_cls()
+    window._log._ai_name_lc = window._assistant_name.lower()
+    layout.addWidget(window._log, stretch=1)
+    window._file_heading = _label(_t("desktop.files"), 8, bold=True)
+    layout.addWidget(window._file_heading)
+    window._drop_zone = drop_cls()
+    window._drop_zone.file_selected.connect(window._on_file_selected)
+    layout.addWidget(window._drop_zone)
+    window._file_hint = _label(_t("ui.drop.empty"), 8)
+    window._file_hint.setWordWrap(True)
+    layout.addWidget(window._file_hint)
+    layout.addLayout(window._build_input_row())
+    return panel
+
+
+def build_assistant_panel(window):
+    """Place the existing HUD, workspace, media and voice controls together."""
+    panel = QWidget()
+    panel.setObjectName("DesktopAssistant")
+    panel.setMinimumWidth(240)
+    panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+    panel.setStyleSheet(f"QWidget#DesktopAssistant {{ background: {C.DARK}; }}")
+    layout = QVBoxLayout(panel)
+    layout.setContentsMargins(12, 14, 12, 12)
+    layout.setSpacing(8)
+    header = QHBoxLayout()
+    window._assistant_heading = _label(window._assistant_name, 13, bold=True, color=C.WHITE)
+    window._desktop_state = _label(_t("desktop.initialising"), 8, color=C.PRI)
+    header.addWidget(window._assistant_heading)
+    header.addStretch()
+    header.addWidget(window._desktop_state)
+    layout.addLayout(header)
+    layout.addWidget(window._center_split, stretch=1)
+    window._voice_hint = _label(_t("desktop.voice_hint"), 8)
+    window._voice_hint.setWordWrap(True)
+    layout.addWidget(window._voice_hint)
+    window._mute_btn = QPushButton(_t("ui.mic.active"))
+    window._mute_btn.setFixedHeight(34)
+    window._mute_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+    window._mute_btn.clicked.connect(window._toggle_mute)
+    window._style_mute_btn()
+    layout.addWidget(window._mute_btn)
+    window._interrupt_btn = QPushButton(_t("ui.interrupt"))
+    window._interrupt_btn.setFixedHeight(34)
+    window._interrupt_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+    window._interrupt_btn.setStyleSheet(f"""
+        QPushButton {{ background: {C.PANEL2}; color: {C.MUTED_C};
+                       border: 1px solid {C.BORDER}; border-radius: 5px; }}
+        QPushButton:hover {{ border-color: {C.MUTED_C}; }}
+    """)
+    window._interrupt_btn.clicked.connect(window._do_interrupt)
+    layout.addWidget(window._interrupt_btn)
+    return panel
+
+
+def retranslate(window):
+    for button, key in window._desktop_nav:
+        button.setText(_t(key))
+    for attr, key in (("_nav_title", "desktop.navigation"), ("_metrics_heading", "desktop.system"),
+                      ("_conversation_heading", "desktop.conversation"),
+                      ("_conversation_subtitle", "desktop.conversation_hint"),
+                      ("_file_heading", "desktop.files"),
+                      ("_voice_hint", "desktop.voice_hint"), ("_interrupt_btn", "ui.interrupt")):
+        getattr(window, attr).setText(_t(key))
+    update_state(window, window.hud.state)
+
+
+def update_state(window, state):
+    # The HUD remains authoritative; never infer that a microphone or service is
+    # connected from a decorative badge.
+    key = {"LISTENING": "desktop.state_listening", "SPEAKING": "desktop.state_speaking",
+           "SLEEPING": "desktop.state_sleeping", "MUTED": "desktop.state_muted",
+           "NO MIC": "desktop.state_no_mic", "THINKING": "desktop.state_thinking",
+           "PROCESSING": "desktop.state_processing", "IDLE": "desktop.state_idle"}.get(state, "desktop.initialising")
+    window._desktop_state.setText(_t(key))

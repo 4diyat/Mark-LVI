@@ -325,11 +325,9 @@ def _describe_limits(has_vision: bool, has_mic: bool) -> str:
         # behaved as if it could hear — answering "I did not catch that" forever
         # while the user spoke into a device that was not there.
         out.append(
-            "- THERE IS NO MICROPHONE on this machine right now, so you cannot "
-            "hear the user at all. Do not ask them to repeat themselves and do "
-            "not pretend to have heard something. You can still be typed to, and "
-            "your voice still works: say once, briefly, that you cannot hear and "
-            "that the text box works, then carry on.")
+            "- The computer microphone is unavailable. A paired remote device "
+            "may still send audio; respond normally if audio arrives. Do not "
+            "pretend to hear from the computer microphone. Text remains available.")
     return "\n".join(out)
 
 
@@ -2022,20 +2020,29 @@ class JarvisLive:
                 blocksize=CHUNK_SIZE,
                 device=dev,
             )
-            st.start()
+            try:
+                st.start()
+            except Exception:
+                st.close()
+                raise
             return st
 
+        stream = None
         try:
             stream = _open_spk(_spk_dev)
-        except Exception as _e:
-            # A chosen output that the host API accepts by name but refuses to
-            # open (exclusive mode, wrong sample rate, device asleep) must not
-            # cost the user their voice. Fall back to the default and say so.
-            if _spk_dev is None:
-                raise
-            print(f"[JARVIS] ⚠️  Output device '{_spk_name}' failed: {_e} — using default")
-            self.ui.write_log(f"SYS: Speaker '{_spk_name}' unavailable — using system default.")
-            stream = _open_spk(None)
+        except Exception as first_error:
+            if _spk_dev is not None:
+                print(f"[JARVIS] ⚠️  Output device '{_spk_name}' failed: {first_error} — using default")
+                self.ui.write_log(f"SYS: Speaker '{_spk_name}' unavailable — using system default.")
+                try:
+                    stream = _open_spk(None)
+                except Exception as default_error:
+                    first_error = default_error
+            if stream is None:
+                # A phone can play the answer even on a headless computer. Keep
+                # consuming at audio rate so remote listeners are not flooded.
+                print(f"[JARVIS] ⚠️  Local speaker unavailable: {first_error}")
+                self.ui.write_log("SYS: Computer speaker unavailable — remote audio can still play.")
 
         # Ask the device how far behind the speakers actually are, rather than
         # assuming. This is what the echo tail is sized from, so a machine with a
@@ -2078,6 +2085,11 @@ class JarvisLive:
                         batch.extend(self.audio_in_queue.get_nowait())
                     except asyncio.QueueEmpty:
                         break
+
+                # Playback subscribers explicitly opt in; publish at the same
+                # pace as the desktop output, never await a slow phone here.
+                if self._dashboard:
+                    self._dashboard.publish_audio(bytes(batch))
 
                 # Drive the HUD waveform and the avatar's mouth from JARVIS's
                 # own voice. The batch is up to 200 ms long, so we hand over a
@@ -2129,17 +2141,28 @@ class JarvisLive:
                 except Exception:
                     pass
 
-                try:
-                    await asyncio.to_thread(stream.write, bytes(batch))
-                except (RuntimeError, asyncio.CancelledError):
-                    break   # executor shutting down — exit cleanly
+                if stream is not None:
+                    try:
+                        await asyncio.to_thread(stream.write, bytes(batch))
+                    except (RuntimeError, OSError) as error:
+                        print(f"[JARVIS] ⚠️ Local speaker stopped: {error}")
+                        self.ui.write_log("SYS: Computer speaker stopped — remote audio can still play.")
+                        try:
+                            stream.stop()
+                            stream.close()
+                        except Exception:
+                            pass
+                        stream = None
+                if stream is None:
+                    await asyncio.sleep(len(batch) / (RECEIVE_SAMPLE_RATE * 2 * CHANNELS))
         except Exception as e:
             print(f"[JARVIS] ❌ Play: {e}")
             raise
         finally:
             self.set_speaking(False)
-            stream.stop()
-            stream.close()
+            if stream is not None:
+                stream.stop()
+                stream.close()
 
     # ── Morning briefing ────────────────────────────────────────────────────────
 
@@ -2439,21 +2462,51 @@ class JarvisLive:
     async def _relay_phone_audio(self) -> None:
         """Forward phone mic PCM chunks from dashboard queue into the Gemini Live session."""
         q = self._dashboard._phone_audio_queue
-        while True:
-            try:
-                chunk = await asyncio.wait_for(q.get(), timeout=1.0)
-            except asyncio.TimeoutError:
-                # No audio for 1 s → phone mic inactive, give PC mic back
-                self._phone_active = False
-                continue
-            self._phone_active = True   # phone is streaming — silence PC mic
-            with self._speaking_lock:
-                speaking = self._is_speaking
-            if not speaking and not self.ui.muted:
+        self._dashboard._phone_relay_ready = True
+        forwarded = False
+        muted_notified = False
+        try:
+            while True:
                 try:
-                    self.out_queue.put_nowait(chunk)
-                except asyncio.QueueFull:
-                    pass
+                    chunk = await asyncio.wait_for(q.get(), timeout=1.0)
+                except asyncio.TimeoutError:
+                    # A stalled/disconnected phone must return the PC microphone.
+                    if forwarded:
+                        _queue_audio_end(self.out_queue)
+                        forwarded = False
+                    self._phone_active = False
+                    muted_notified = False
+                    continue
+                if chunk.get("phone_audio_end"):
+                    if forwarded:
+                        _queue_audio_end(self.out_queue)
+                        forwarded = False
+                    self._phone_active = False
+                    muted_notified = False
+                    continue
+                # Do not replay stale speech from a previous session or backlog.
+                if time.monotonic() - chunk.get("received_at", time.monotonic()) > 2:
+                    continue
+                self._phone_active = True
+                with self._speaking_lock:
+                    speaking = self._is_speaking
+                if self.ui.muted:
+                    if not muted_notified:
+                        await self._dashboard.broadcast({"type": "sys", "text":
+                            "Desktop microphone is muted; unmute JARVIS before using remote voice."})
+                        muted_notified = True
+                    continue
+                if not speaking:
+                    # Tapping the authenticated phone mic is deliberate, like a
+                    # remote text command; it wakes even when local wake-word is on.
+                    if self._wake_enabled and not self._awake:
+                        self.wake(reason="remote microphone")
+                    _queue_mic_frame(self.out_queue, {
+                        "data": chunk["data"], "mime_type": chunk["mime_type"]})
+                    forwarded = True
+        finally:
+            self._phone_active = False
+            self._dashboard._phone_relay_ready = False
 
     def _on_phone_connected(self) -> None:
         self.ui.write_log("SYS: Phone connected via Remote Dashboard.")

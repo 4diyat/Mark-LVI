@@ -79,7 +79,21 @@ Enable `trading_terminal` in Plugin Manager, then ask JARVIS to open the MT5
 trading terminal (optionally specifying the exact broker symbol). On Windows,
 install `MetaTrader5` and `tzdata`, open the MT5 desktop terminal and sign in
 before connecting. The MetaTrader5 Python bridge does not provide native Linux
-or macOS wheels. The terminal shows the connected server and masked account,
+or macOS wheels. Some MetaTrader5 builds require the NumPy 1.x ABI. On Windows
+with Python 3.11 or 3.12, the requirements constrain NumPy and OpenCV accordingly.
+If an existing installation reports `_ARRAY_API not found` or `numpy.core.multiarray`
+failed to import, close JARVIS and use its **same Python interpreter** to run:
+
+```bat
+C:\Python311\python.exe -m pip install "numpy>=1.24,<2" "opencv-python>=4.8,<4.12"
+C:\Python311\python.exe -m pip check
+```
+
+Replace the executable path if yours differs, and restart JARVIS afterward. NumPy
+1.x has no official Python 3.13 wheel; use a Python 3.12 environment if your MT5
+build needs it. `pip check` may reveal other installed packages that need newer
+NumPy, in which case use a separate virtual environment instead of forcing an
+incompatible global installation. The terminal shows the connected server and masked account,
 bid/ask with its UTC timestamp, closed M1 candles, and the three session ranges.
 It never sends, modifies, or closes orders. Refresh manually or enable 15-second
 refresh; stale data, a disconnected account, and missing candles are flagged.
@@ -324,6 +338,83 @@ door stayed:
   the same network could flip bits and the assistant would act on whatever fell
   out. Over plain HTTP there is no `crypto.subtle` and so no encryption at all —
   the page says `NO ENC` on its own badge rather than pretending otherwise.
+
+#### Remote voice commands
+
+The phone dashboard's microphone requires a **secure browser context** and the
+phone's microphone permission. A normal LAN address such as `http://192.168…`
+is not secure, so the browser will not expose the microphone even though text
+commands work. Configure HTTPS (`dashboard_https`), use a certificate that the
+phone/browser actually trusts, and open the dashboard in a regular browser. A
+self-signed certificate accepted past a warning is not necessarily trusted for
+microphone access. Never enable browser flags that treat an insecure network
+origin as secure: they do not encrypt the connection. Plain HTTP also sends
+remote audio without transport encryption if a browser permits it.
+
+##### HTTPS using your own local CA (optional)
+
+This is **not** a public-CA certificate: it is trusted only on devices where you
+explicitly install and trust your own local CA. Trusting a root CA gives it broad
+power to authenticate other sites too. Do this only on devices you control, and
+remove its trust when you stop using it or if its private key may be compromised.
+Never send the CA private key to a phone or anyone else.
+
+1. On the JARVIS computer, note its LAN IPv4 address (`ipconfig` on Windows),
+   and stop JARVIS. If you have a custom certificate already, back it up first.
+2. From the project folder, using the Python that runs JARVIS, run (replace the
+   example IP; `--replace-server-cert` explicitly replaces the existing server
+   key/certificate, including the old self-signed one):
+
+   ```bat
+   C:\Python311\python.exe tools\setup_local_https.py --ip 192.168.1.17 --replace-server-cert
+   ```
+
+   The tool prints the CA certificate's SHA-256 fingerprint. The certificate
+   and both private keys stay in the git-ignored `config/certs/` folder. The CA
+   key `local_ca.key` is unencrypted: restrict access to that folder using your
+   OS permissions (on Windows, review its file ACLs). Do not upload or share
+   **either** `.key` file. The tool does not modify system trust stores.
+3. Transfer **only** `config/certs/local_ca.crt` to your own phone over a
+   trusted channel. Before trusting it, compare the certificate's SHA-256
+   fingerprint on the phone with the one printed on the computer. Install it as
+   a CA in the phone settings, not as a VPN or user/client certificate. Android
+   menu names vary; search Settings for “Install CA certificate”. On iPhone,
+   install the downloaded profile, then enable full trust in Settings → General
+   → About → Certificate Trust Settings. Phone management policies and browser
+   versions may prevent user-added CAs from being trusted; if they do, use a
+   publicly trusted domain or a managed private HTTPS solution instead.
+4. Set `"dashboard_https": true` in `config/api_keys.json` **without removing
+   the other settings**, restart JARVIS, pair again if needed, and open
+   `https://192.168.1.17:8001` (using your actual IP). Both devices must be able
+   to reach each other; allow the port in the Windows firewall on private networks.
+   In the browser check the site has no certificate warning before allowing mic
+   access. Do not copy the pairing token or private keys into support messages.
+
+The leaf certificate expires after at most 180 days. If it expires or the LAN IP
+changes, stop JARVIS and run the same command with the new IP; the existing CA is
+reused, so no new phone trust is normally required. Use a stable/reserved LAN IP
+if possible. The CA expires after five years; replacing or losing its key needs
+new trust on each phone. No automatic CA rotation or recovery is performed.
+
+Pair with command permission, unmute JARVIS on the computer, and **hold** 🎤.
+Wait for “Voice live”, speak, and release to finish the turn. The first permission
+prompt may interrupt the hold: grant access, then hold the button again. Releasing,
+losing focus, cancelling the touch, or hiding the page closes the phone microphone.
+The deliberate press wakes JARVIS when Wake Word is on; only one phone can stream
+at a time. While JARVIS speaks, incoming phone audio is dropped to prevent echo.
+
+Tap 🔈 to explicitly enable playback on the remote device (tap 🔊 to turn it off).
+New JARVIS audio is streamed live to opted-in, command-authorized devices and also
+plays on the computer; use headphones to avoid feedback. No earlier audio is
+replayed. Remote audio, like the dashboard, requires a trusted connection for
+privacy: HTTP does not encrypt it. Output follows the computer's playback stream; if the local speaker cannot open,
+JARVIS still paces and sends audio to opted-in remote listeners. Push-to-talk on
+the computer does not require holding its hotkey on the phone.
+
+If the button reports a permission error, allow microphone access for the site
+in the browser and OS settings. If voice still fails, check the remote page's
+connection messages and whether the desktop is muted or playing video with
+sound. Do not share your pairing key, session token, or credentials in logs.
 
 **And Windows was blocking it, per executable, invisibly.** This produced the
 strangest report of the release: the dashboard worked when JARVIS was started

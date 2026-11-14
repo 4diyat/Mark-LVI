@@ -691,7 +691,19 @@ def _endpoint_for(name: str):
         # chosen. Exact wins, always; the prefix pass exists only because MME
         # truncates long names to 31 characters.
         exact, partial = None, None
-        for dev in AudioUtilities.GetAllDevices():
+        # pycaw eagerly reads every property of every endpoint (including
+        # disconnected devices). Windows can refuse individual optional
+        # properties and pycaw warns for each one, even when a usable active
+        # endpoint is returned. Suppress only that specific pycaw warning while
+        # enumerating; other warnings and enumeration failures remain visible.
+        import warnings
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore", message=r"^COMError attempting to get property \d+ from device ",
+                category=UserWarning, module=r"^pycaw\.utils$",
+            )
+            devices = AudioUtilities.GetAllDevices()
+        for dev in devices:
             # ONLY ACTIVE ENDPOINTS, AND THIS IS NOT A TIDINESS FILTER.
             #
             # Windows keeps a record of hardware that is no longer here, and it
