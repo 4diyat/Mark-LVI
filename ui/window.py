@@ -3461,6 +3461,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
     _audio_pause_sig = pyqtSignal(bool)
     _audio_vol_sig   = pyqtSignal(float)
     _clipboard_sig  = pyqtSignal(str)        # clipboard text changed (thread-safe)
+    _hand_menu_sig  = pyqtSignal(object)     # menu target captured on gesture thread
     _confirm_sig    = pyqtSignal(str, str)   # (title, detail) — irreversible-action gate
     _confirm_hide_sig = pyqtSignal()
     _wake_dl_sig    = pyqtSignal(bool, str)  # wake-word install finished (ok, message)
@@ -3823,6 +3824,8 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         self._quiz_hide_sig.connect(self._hide_quiz)
         self._review_sig.connect(self._show_review)
         self._cam_stop = threading.Event()
+        from ui.hand_gesture import setup as setup_hand_gesture
+        setup_hand_gesture(self)
 
         # Camera preview overlay (child of central widget, positioned in resizeEvent)
         self._cam_preview = _CameraPreview(self.centralWidget())
@@ -3884,6 +3887,12 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         t.start()
 
     def _cam_loop(self) -> None:
+        from core import camera_lease
+        if not camera_lease.acquire():
+            self._log_sig.emit("ERR: Camera is busy; stop the other camera feature first.")
+            self._cam_stream_sig.emit(False)
+            return
+        cap = None
         try:
             import cv2
             # Reuse camera index detected by screen_processor (cached in api_keys.json)
@@ -3900,6 +3909,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
                 backend = 0
             cap = cv2.VideoCapture(cam_idx, backend)
             if not cap.isOpened():
+                cap.release()
                 cap = cv2.VideoCapture(0)
             if not cap.isOpened():
                 return
@@ -3911,11 +3921,15 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
                 if ret and frame is not None:
                     _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 65])
                     self._cam_frame_sig.emit(buf.tobytes())
-            cap.release()
         except Exception as e:
             print(f"[Camera] Stream error: {e}")
         finally:
-            self._cam_stream_sig.emit(False)
+            try:
+                if cap is not None:
+                    cap.release()
+            finally:
+                camera_lease.release()
+                self._cam_stream_sig.emit(False)
 
     def stop_camera_stream(self) -> None:
         self._cam_stop.set()
@@ -6236,6 +6250,10 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
     # ── Irreversible-action confirmation ─────────────────────────────────────
 
     def _show_confirm_banner(self, title: str, detail: str):
+        if hasattr(self, "_hand_controller"):
+            self._hand_controller.stop()
+        if getattr(self, "_hand_menu", None) is not None:
+            self._hand_menu.close()
         self._hide_confirm_banner()
         ov = ConfirmBanner(title, detail, parent=self.centralWidget())
         ov.answered.connect(self._on_confirm_answered)

@@ -571,6 +571,7 @@ def _install_qt() -> dict[str, types.ModuleType]:
             return _Geometry()
 
     class _App(_Object):
+        aboutToQuit = _Signal()
         # Class-level, because the window calls QApplication.primaryScreen()
         # without having constructed one — a static in Qt, an instance here.
         primaryScreen = staticmethod(lambda: _Screen())
