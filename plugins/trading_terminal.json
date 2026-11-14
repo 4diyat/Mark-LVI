@@ -1,0 +1,10 @@
+{
+  "name": "trading_terminal",
+  "version": "1.0.0",
+  "author": "MARK-LVI",
+  "description": "Read-only MT5 terminal with session ORB signals. No orders.",
+  "permissions": [
+    "network"
+  ],
+  "sha256": "420ecad86f5584309854079897f8c8fed864e3b0d7d217d8db2f0820dc231aaa"
+}

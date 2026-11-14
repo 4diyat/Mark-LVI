@@ -1,0 +1,11 @@
+{
+  "name": "morning_brief",
+  "version": "1.0.0",
+  "author": "MARK-LVI",
+  "description": "Configurable weather, Google Calendar, Gmail unread count and read-only MT5 startup briefing.",
+  "permissions": [
+    "network",
+    "files"
+  ],
+  "sha256": "2ee21b59fcf411aeffe68ced9924166c7547cfa2bc8d2154156efc3d9f520d17"
+}

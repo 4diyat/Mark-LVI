@@ -1,0 +1,11 @@
+{
+  "name": "image_canvas",
+  "version": "1.0.0",
+  "author": "MARK-LVI",
+  "description": "AI image generation using Gemini; explicit generation and save actions.",
+  "permissions": [
+    "network",
+    "files"
+  ],
+  "sha256": "e0c9f33a0376d47b65871f0ef0aeb99be312746461cb4bc4bddcbafab89d46ad"
+}

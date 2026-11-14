@@ -1,0 +1,11 @@
+{
+  "name": "code_editor",
+  "version": "1.0.0",
+  "author": "MARK-LVI",
+  "description": "Interactive code editor; explicit user consent before running unsandboxed code.",
+  "permissions": [
+    "files",
+    "shell"
+  ],
+  "sha256": "debfb82ed6f40c1dee3f4b15ed5113519032c3abb8fb1f309be1cfa879e5ae11"
+}
