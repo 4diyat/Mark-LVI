@@ -142,7 +142,8 @@ def _extract_candidates(
     ]
     http_formats = [
         f for f in raw_formats
-        if str(f.get("protocol") or "").startswith("http")
+        if str(f.get("protocol") or "") in ("http", "https", "")
+        and str(f.get("url") or "").startswith(("http://", "https://"))
     ]
     hls_formats = [
         f for f in raw_formats
@@ -358,34 +359,35 @@ def _resolve_youtube_candidates(
         )
         if eid and eid in skip_ids:
             continue
-        info = entry if entry.get("formats") else None
-        if info is None:
-            target = entry.get("url") or (
-                f"https://www.youtube.com/watch?v={eid}" if eid else ""
-            )
+        target = entry.get("url") or (
+            f"https://www.youtube.com/watch?v={eid}" if eid else ""
+        )
+        # A search result can contain formats that are all unusable by Qt.
+        # Try the other clients for the *same* video before skipping it.
+        if entry.get("formats"):
+            vcands, acands, title = _extract_candidates(entry, exclude_urls=skip_urls)
+            if acands if for_audio else vcands:
+                return vcands, acands, title or entry.get("title") or "", str(entry.get("id") or eid), ""
+        info = {}
+        for client in (None, ("android", "ios")):
             if not target:
-                continue
-            for client in (None, ("android", "ios")):
-                try:
-                    info = extract(target, client=client)
-                    if info and info.get("entries"):
-                        info = info["entries"][0]
-                    if info and info.get("formats"):
-                        break
-                except Exception as e:
-                    last_err = str(e)
-                    info = None
-        if not info:
-            if eid:
-                skip_ids.add(eid)
-            continue
-        vcands, acands, title = _extract_candidates(info, exclude_urls=skip_urls)
-        usable = acands if for_audio else vcands
-        if usable:
-            return (
-                vcands, acands, title or entry.get("title") or "",
-                str(info.get("id") or eid), "",
-            )
+                break
+            try:
+                info = extract(target, client=client)
+                if info and info.get("entries"):
+                    info = info["entries"][0]
+                if info:
+                    vcands, acands, title = _extract_candidates(info, exclude_urls=skip_urls)
+                    usable = acands if for_audio else vcands
+                    if usable:
+                        return (
+                            vcands, acands, title or entry.get("title") or "",
+                            str(info.get("id") or eid), "",
+                        )
+            except Exception as e:
+                last_err = str(e)
+                info = {}
+        info = info or {}
         if info.get("id") or eid:
             skip_ids.add(str(info.get("id") or eid))
 

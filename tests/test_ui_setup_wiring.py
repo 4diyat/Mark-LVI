@@ -148,24 +148,52 @@ def test_the_settings_panel_is_given_a_usage_hook():
     assert "_open_plugin_manager" in body
 
 
-def test_saving_skips_a_locked_section():
-    """A plugin that is not enabled must not have its config written: the write
-    would be a no-op the plugin cannot read back, and it would look to the user
-    like the form had been applied."""
+def test_disabled_plugin_settings_can_be_saved():
     tree = ast.parse(OVERLAYS.read_text(encoding="utf-8"))
     save = _method(_find(tree, "PluginSettingsOverlay"), "_save_all")
-    # ast.unparse normalises the quotes, hence the single-quoted key here.
-    assert "sec.get('enabled', True)" in _source(save)
+    assert "sec.get('enabled', True)" not in _source(save)
 
 
-def test_a_locked_section_is_read_only_but_still_rendered():
-    """Greyed out, not hidden — and never silently editable.
-
-    The panel now lives in ui/overlays.py: it was 288 lines, and moving it is
-    what kept ui/window.py under its own ceiling.
-    """
+def test_disabled_plugin_settings_are_editable_but_test_is_locked():
     tree = ast.parse(OVERLAYS.read_text(encoding="utf-8"))
     build = _method(_find(tree, "PluginSettingsOverlay"), "_build_section")
     body = _source(build)
-    assert "plugins.locked" in body
-    assert "setEnabled(False)" in body
+    assert "plugins.settings_disabled" in body
+    assert "ab.setEnabled(not locked)" in body
+    assert "w.setEnabled(False)" not in body
+    action = _method(_find(tree, "PluginSettingsOverlay"), "_run_action")
+    assert "sec.get('enabled', True)" in _source(action)
+
+
+def test_disabled_plugin_form_saves_and_reports_failure(monkeypatch):
+    from types import SimpleNamespace
+    tree = ast.parse(OVERLAYS.read_text(encoding="utf-8"))
+    method = _method(_find(tree, "PluginSettingsOverlay"), "_save_all")
+    namespace = {"_t": lambda key: key, "C": SimpleNamespace(PRI="green", ACC2="red")}
+    exec(compile(ast.Module(body=[method], type_ignores=[]), str(OVERLAYS), "exec"), namespace)
+    messages = []
+    label = SimpleNamespace(setText=messages.append, setStyleSheet=lambda _: None)
+    saves = []
+    obj = SimpleNamespace(_sections=[{"namespace": "gmail_inbox", "enabled": False,
+                                      "fields": [{"key": "email"}]}],
+                          _status_labels={"gmail_inbox": label},
+                          _save_ns=lambda ns: saves.append(ns) or False)
+    namespace["_save_all"](obj)
+    assert saves == ["gmail_inbox"]
+    assert messages == ["plugins.save_failed"]
+
+
+def test_permissioned_plugin_can_be_enabled_on_first_consent(isolated_config):
+    from types import SimpleNamespace
+    tree = ast.parse(OVERLAYS.read_text(encoding="utf-8"))
+    method = _method(_find(tree, "PluginManagerOverlay"), "_toggle")
+    namespace = {"QPushButton": object}
+    exec(compile(ast.Module(body=[method], type_ignores=[]), str(OVERLAYS), "exec"), namespace)
+    styled, changes = [], []
+    obj = SimpleNamespace(_style_toggle=lambda btn, enabled: styled.append(enabled),
+                          on_changed=lambda: changes.append(True))
+    namespace["_toggle"](obj, "gmail_inbox", object(), default_enabled=False)
+    assert isolated_config.get_plugin_enabled("gmail_inbox", default=False)
+    assert styled == [True] and changes == [True]
+    namespace["_toggle"](obj, "gmail_inbox", object(), default_enabled=False)
+    assert not isolated_config.get_plugin_enabled("gmail_inbox", default=False)

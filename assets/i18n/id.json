@@ -136,6 +136,8 @@
   "ui.plugins.ask": "AKTIFKAN",
   "ui.plugins.no_manifest": "tanpa manifest — izin tidak diketahui",
   "plugins.locked": "\"{plugin}\" sudah terpasang tapi belum diaktifkan — nyalakan di manajer plugin untuk memakai pengaturan ini.",
+  "plugins.settings_disabled": "Plugin {plugin} nonaktif. Pengaturan dapat disimpan, tetapi aktifkan di Plugin Manager sebelum menguji atau menggunakannya.",
+  "plugins.save_failed": "Pengaturan gagal disimpan. Periksa izin file konfigurasi dan coba lagi.",
   "plugins.no_fields": "Plugin ini tidak punya pengaturan — langsung berfungsi begitu diaktifkan.",
   "plugins.no_fields_locked": "Tidak ada pengaturan — nyalakan di manajer plugin untuk memakainya.",
   "ui.video.finished": "Videonya selesai — layar kembali ke asisten.",

@@ -6388,6 +6388,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         plugins = self.get_plugins() if self.get_plugins else []
         cw = self.centralWidget()
         ov = PluginManagerOverlay(plugins, parent=cw)
+        ov.on_changed = getattr(self, "on_plugins_changed", None)
         ov.adjustSize()
         ov.setGeometry(
             (cw.width()  - ov.width())  // 2,
@@ -6525,10 +6526,9 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
             pass
 
     def _check_config(self) -> bool:
-        if not API_FILE.exists(): return False
         try:
-            d = json.loads(API_FILE.read_text(encoding="utf-8"))
-            return bool(d.get("gemini_api_key")) and bool(d.get("os_system"))
+            from memory.config_manager import get_gemini_key, load_api_keys
+            return bool(get_gemini_key()) and bool(load_api_keys().get("os_system"))
         except Exception:
             return False
 
@@ -6599,9 +6599,12 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         self._setup_saved = True
         try:
             from memory.config_manager import save_setup
-            save_setup(key, os_name)
-        except Exception as e:                  # pragma: no cover — disk full etc.
-            print(f"[UI] ⚠️  Could not save the setup: {e}")
+            if not save_setup(key, os_name):
+                raise OSError("Could not write configuration")
+        except Exception as e:
+            self._setup_saved = False
+            self._log.append_log(f"ERR: Could not save setup: {e}")
+            return
         self._ready = True
         ov, self._overlay = getattr(self, "_overlay", None), None
         if ov is not None:

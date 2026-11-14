@@ -573,6 +573,10 @@ class PluginManagerOverlay(QWidget):
         answered, and it cannot be dismissed by accident in a way that leaves
         the plugin switched on. The default button is NO.
         """
+        from memory.config_manager import get_plugin_enabled
+        if get_plugin_enabled(name, default=False):
+            self._toggle(name, btn, default_enabled=False)
+            return
         from PyQt6.QtWidgets import QMessageBox
         box = QMessageBox(self)
         box.setWindowTitle(name)
@@ -582,16 +586,19 @@ class PluginManagerOverlay(QWidget):
                                | QMessageBox.StandardButton.No)
         box.setDefaultButton(QMessageBox.StandardButton.No)
         if box.exec() == QMessageBox.StandardButton.Yes:
-            self._toggle(name, btn)
+            self._toggle(name, btn, default_enabled=False)
         else:
             # The button never said ON, so there is nothing to put back.
             btn.setText(_t("ui.plugins.ask"))
 
-    def _toggle(self, name: str, btn: QPushButton):
+    def _toggle(self, name: str, btn: QPushButton, default_enabled: bool = True):
         from memory.config_manager import get_plugin_enabled, save_plugin_enabled
-        new_val = not get_plugin_enabled(name)
-        save_plugin_enabled(name, new_val)
+        new_val = not get_plugin_enabled(name, default=default_enabled)
+        if not save_plugin_enabled(name, new_val):
+            return
         self._style_toggle(btn, new_val)
+        if callable(getattr(self, "on_changed", None)):
+            self.on_changed()
 
 
 class PluginSettingsOverlay(QWidget):
@@ -603,7 +610,7 @@ class PluginSettingsOverlay(QWidget):
 
     EVERY plugin is listed, in three shapes:
       * has a schema and is enabled   → the fields, editable, with SAVE;
-      * has a schema but is disabled  → the fields, greyed out, plus why;
+      * has a schema but is disabled  → editable fields, with execution disabled;
       * no schema at all              → a line saying it needs no settings.
 
     That third shape is not padding. Four of the five plugins this repository
@@ -734,7 +741,7 @@ class PluginSettingsOverlay(QWidget):
         # what the plugin wants configured before saying yes.
         locked = not sec.get("enabled", True)
         if locked:
-            form.addWidget(self._lbl(_t("plugins.locked", plugin=sec.get("plugin") or ns),
+            form.addWidget(self._lbl(_t("plugins.settings_disabled", plugin=sec.get("plugin") or ns),
                                      8, color=C.ACC2))
 
         # No schema, no fields — but still a row, because "this plugin takes no
@@ -787,11 +794,6 @@ class PluginSettingsOverlay(QWidget):
                 if ftype == "password":
                     w.setEchoMode(QLineEdit.EchoMode.Password)
 
-            if locked:
-                # Readable, just not editable: greying out beats hiding, because
-                # the values the user typed before the plugin was switched off
-                # are still theirs to look at.
-                w.setEnabled(False)
             self._widgets[(ns, key)] = w
             self._types[(ns, key)]   = ftype
             form.addWidget(w)
@@ -809,6 +811,7 @@ class PluginSettingsOverlay(QWidget):
                     border: 1px solid {C.PRI_DIM}; border-radius: 3px; }}
                 QPushButton:hover {{ background: {C.PRI_GHO}; border-color: {C.PRI}; }}
             """)
+            ab.setEnabled(not locked)
             ab.clicked.connect(lambda _=False, n=ns: self._run_action(n))
             form.addWidget(ab)
 
@@ -847,20 +850,19 @@ class PluginSettingsOverlay(QWidget):
 
     def _save_ns(self, ns: str):
         from memory.config_manager import save_plugin_config
-        save_plugin_config(ns, self._gather(ns))
+        return save_plugin_config(ns, self._gather(ns))
 
     def _save_all(self):
         for sec in self._sections:
             ns = sec.get("namespace") or sec.get("plugin")
-            # Nothing to save in a section with no fields, and a locked one
-            # cannot be written: a "SAVED" that wrote nothing is a lie the user
-            # has no way to check.
-            if ns and sec.get("enabled", True) and sec.get("fields"):
-                self._save_ns(ns)
+            # Configuration is safe to edit before granting permission to run.
+            # Sections without fields have nothing to save.
+            if ns and sec.get("fields"):
+                ok = self._save_ns(ns)
                 lbl = self._status_labels.get(ns)
                 if lbl:
-                    lbl.setText(_t("ui.saved"))
-                    lbl.setStyleSheet(f"color: {C.PRI}; background: transparent;")
+                    lbl.setText(_t("ui.saved") if ok else _t("plugins.save_failed"))
+                    lbl.setStyleSheet(f"color: {C.PRI if ok else C.ACC2}; background: transparent;")
 
     def _run_action(self, ns: str):
         sec = next((s for s in self._sections
@@ -872,7 +874,11 @@ class PluginSettingsOverlay(QWidget):
             return
         if not sec.get("enabled", True):
             return                        # locked section: nothing to test
-        self._save_ns(ns)                 # persist what the user typed before testing
+        if not self._save_ns(ns):
+            lbl = self._status_labels.get(ns)
+            if lbl:
+                lbl.setText(_t("plugins.save_failed"))
+            return
         values = self._gather(ns)
         lbl = self._status_labels.get(ns)
         if lbl:

@@ -176,7 +176,7 @@ def load_api_keys() -> dict:
 
 # ── Setup screen ─────────────────────────────────────────────────────────────
 
-def save_api_keys(gemini_api_key: str) -> None:
+def save_api_keys(gemini_api_key: str, **extra) -> bool:
     """Store the API key, keeping every other setting that is already there.
 
     THE KEY GOES TO THE KEYCHAIN FIRST, AND THE FILE KEEPS A COPY.
@@ -188,8 +188,8 @@ def save_api_keys(gemini_api_key: str) -> None:
         machine without a keyring behaves exactly as it did before.
 
         When the keychain accepts it, the file copy is written with a marker key
-        (`gemini_api_key_source`) purely so the settings panel can say where the
-        authoritative copy is instead of guessing.
+        (`gemini_api_key_source`) so reads prefer the correct store. A failed
+        keychain write marks the file authoritative over any stale keychain key.
     """
     key = (gemini_api_key or "").strip()
     stored = False
@@ -201,10 +201,9 @@ def save_api_keys(gemini_api_key: str) -> None:
         # a fact the user should be able to see, and this is the only place that
         # knows it happened.
         print(f"⚠ Keychain unavailable, keeping the key in the config file: {e}")
-    fields = {"gemini_api_key": key}
-    if stored:
-        fields["gemini_api_key_source"] = "keychain"
-    set_config_values(**fields)
+    fields = {"gemini_api_key": key, "gemini_api_key_source": "keychain" if stored else "file"}
+    fields.update(extra)
+    return set_config_values(**fields)
 
 
 def save_setup(gemini_api_key: str, os_name: str = "") -> bool:
@@ -219,20 +218,19 @@ def save_setup(gemini_api_key: str, os_name: str = "") -> bool:
         microphone and speaker choices, the wake-word setting and every plugin
         credential — including OAuth tokens, which then had to be re-authorised.
     """
-    return set_config_values(
-        gemini_api_key=(gemini_api_key or "").strip(),
-        os_system=(os_name or "").strip(),
-    )
+    return save_api_keys(gemini_api_key, os_system=(os_name or "").strip())
 
 
 def get_gemini_key() -> str | None:
     """The Gemini key: the keychain if it has one, else the file.
 
-    Keychain FIRST and not "whichever is non-empty": a key that was rotated in
-    the panel is written to both, but a key the user pasted into the file by
-    hand and then saved once has a keychain copy that is now the newer of the
-    two. Reading the file first would silently keep using the old one.
+    The keychain wins for legacy configs and successful keychain writes. If a
+    keychain write failed, the newly saved file is authoritative instead, so a
+    readable but stale keychain entry cannot undo the user's key rotation.
     """
+    config = load_api_keys()
+    if config.get("gemini_api_key_source") == "file":
+        return config.get("gemini_api_key")
     try:
         from core import keychain
         key = keychain.get_secret()
@@ -240,7 +238,7 @@ def get_gemini_key() -> str | None:
             return key
     except Exception as e:      # noqa: BLE001 — fall through to the file
         print(f"⚠ Keychain read failed, using the config file: {e}")
-    return load_api_keys().get("gemini_api_key")
+    return config.get("gemini_api_key")
 
 def is_configured() -> bool:
     key = get_gemini_key()
@@ -539,7 +537,7 @@ def get_plugin_setting(namespace: str, key: str, default=None):
     return get_plugin_config(namespace).get(key, default)
 
 
-def save_plugin_config(namespace: str, values: dict) -> None:
+def save_plugin_config(namespace: str, values: dict) -> bool:
     """Merge `values` into a namespace's stored config (read-modify-write, like
     every other helper here). Only the provided keys are touched."""
     def _apply(data: dict) -> None:
@@ -552,17 +550,17 @@ def save_plugin_config(namespace: str, values: dict) -> None:
         cur.update(values)
         pc[namespace] = cur
         data["plugin_config"] = pc
-    update_config(_apply)
+    return update_config(_apply)
 
 
-def save_plugin_enabled(plugin_name: str, enabled: bool) -> None:
+def save_plugin_enabled(plugin_name: str, enabled: bool) -> bool:
     def _apply(data: dict) -> None:
         cfg = data.get("plugins_enabled")
         if not isinstance(cfg, dict):
             cfg = {}
         cfg[plugin_name] = bool(enabled)
         data["plugins_enabled"] = cfg
-    update_config(_apply)
+    return update_config(_apply)
 
 # ── Providers: local STT/LLM/TTS and non-Gemini APIs ─────────────────────────
 # Stored here rather than in a file of their own, for the same reason plugin
