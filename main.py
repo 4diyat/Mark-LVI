@@ -64,7 +64,7 @@ from memory.memory_manager import (
 # system_status).
 from core import outcome
 from core.action_loader import strip_meta
-from actions.screen_processor  import _capture_camera, _capture_screen
+from actions.screen_processor  import _capture_camera, _capture_pointed_screen, _capture_screen
 from actions.system_monitor    import SystemMonitor, get_system_status
 from actions.proactive         import ProactiveEngine
 from actions.background_monitor import (
@@ -409,13 +409,16 @@ TOOL_DECLARATIONS = [
             "look at camera, analyze my screen, etc. "
             "You have NO visual ability without this tool. "
             "After the image is captured it is sent directly to you — describe what you see and answer the user's question. "
-            "When using camera: the live view stays open until user says close it or calls close_camera."
+            "When using camera: the live view stays open until user says close it or calls close_camera. "
+            "When the user explicitly asks about what they are pointing at, request screen angle and pointed=true; "
+            "if no pointer or permission is available, ask them to enable it and point, do not guess."
         ),
         "parameters": {
             "type": "OBJECT",
             "properties": {
                 "angle": {"type": "STRING", "description": "'screen' to capture display, 'camera' for webcam. Default: 'screen'"},
-                "text":  {"type": "STRING", "description": "The question or instruction about the captured image"}
+                "text":  {"type": "STRING", "description": "The question or instruction about the captured image"},
+                "pointed": {"type": "BOOLEAN", "description": "True only when the user explicitly asks about a hand-pointed screen location; requires separate user opt-in."}
             },
             "required": ["text"]
         }
@@ -1472,6 +1475,9 @@ class JarvisLive:
                     self._vision_last_time = _now
                     angle     = args.get("angle", "screen").lower()
                     user_text = args.get("text", "What do you see?")
+                    pointed = args.get("pointed") is True
+                    if pointed and angle == "camera":
+                        raise ValueError("Pointed analysis only supports the screen.")
                     if angle == "camera":
                         img_b, mime_t = await loop.run_in_executor(None, _capture_camera)
                         self.ui.start_camera_stream()
@@ -1479,7 +1485,13 @@ class JarvisLive:
                         print(f"[Vision] 📷 Camera: {len(img_b):,} bytes")
                         _stall = "camera"
                     else:
-                        img_b, mime_t = await loop.run_in_executor(None, _capture_screen)
+                        if pointed:
+                            img_b, mime_t = await loop.run_in_executor(None, _capture_pointed_screen)
+                            user_text = ("The red ring marks the approximate location the user pointed at. "
+                                         "Use it only as a guide and say if the target is unclear.\n" + user_text)
+                            self.ui.write_log("SYS: Pointed screen captured for the current vision request.")
+                        else:
+                            img_b, mime_t = await loop.run_in_executor(None, _capture_screen)
                         print(f"[Vision] 🖥️  Screen: {len(img_b):,} bytes")
                         _stall = "screen"
                     self._pending_vision = (img_b, mime_t, user_text, angle)
@@ -1579,6 +1591,10 @@ class JarvisLive:
                     result = f"Unknown tool: {name}"
 
         except Exception as e:
+            if name == "screen_process":
+                self._vision_busy = False
+                self._vision_cam_active = False
+                self._vision_last_time = 0.0
             result = f"Tool '{name}' failed: {e}"
             traceback.print_exc()
             self.speak_error(name, e)

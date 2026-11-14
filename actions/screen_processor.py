@@ -110,6 +110,38 @@ def _capture_screen() -> tuple[bytes, str]:
     return _compress(png, "PNG")
 
 
+
+def _capture_pointed_screen() -> tuple[bytes, str]:
+    """Capture only after opt-in and a fresh local hand pointer; never save a file."""
+    from core import pointing
+    from memory.config_manager import load_api_keys
+
+    settings = load_api_keys().get("hand_gesture")
+    if not isinstance(settings, dict) or settings.get("pointed_vision") is not True:
+        raise RuntimeError("Pointed screen analysis is disabled in Hand control settings.")
+    point = pointing.recent()
+    if point is None:
+        raise RuntimeError("No current hand pointer. Hold one finger pointing at the object while asking again.")
+    if not _PIL:
+        raise RuntimeError("Pillow is needed to mark the pointed screen.")
+    data, _ = _capture_screen()
+    from PIL import ImageDraw
+    img = PIL.Image.open(io.BytesIO(data)).convert("RGB")
+    w, h = img.size
+    x = max(0, min(w - 1, int(point[0] * w)))
+    y = max(0, min(h - 1, int(point[1] * h)))
+    draw = ImageDraw.Draw(img)
+    radius = max(12, min(w, h) // 35)
+    thickness = max(2, radius // 6)
+    draw.ellipse((x-radius, y-radius, x+radius, y+radius), outline="red", width=thickness)
+    draw.line((x-radius*2, y, x-radius, y), fill="red", width=thickness)
+    draw.line((x+radius, y, x+radius*2, y), fill="red", width=thickness)
+    draw.line((x, y-radius*2, x, y-radius), fill="red", width=thickness)
+    draw.line((x, y+radius, x, y+radius*2), fill="red", width=thickness)
+    out = io.BytesIO()
+    img.save(out, format="JPEG", quality=_JPEG_Q)
+    return out.getvalue(), "image/jpeg"
+
 def _cv2_backend() -> int:
     """Return the best OpenCV camera backend for the current OS."""
     if not _CV2:

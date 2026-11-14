@@ -21,6 +21,8 @@ class Mouse:
         self.events.append(("scroll", amount))
     def hotkey(self, *keys):
         self.events.append(("hotkey", *keys))
+    def press(self, key):
+        self.events.append(("press", key))
 
 
 def points(*, pinch=False, middle=False, ring=False, little=False):
@@ -135,7 +137,7 @@ def test_thumb_up_opens_menu_once_until_pose_changes():
 def test_settings_are_bounded_and_three_fingers_remapped():
     from core.hand_gesture import normalize_settings
     assert normalize_settings({"pinch_ms": 0, "movement_range": 100, "three_finger": "shell"}) == {
-        "pinch_ms": 350, "movement_range": 10, "three_finger": "switch"}
+        "pinch_ms": 350, "movement_range": 10, "three_finger": "switch", "pointed_vision": False}
     mouse, now = Mouse(), [0.0]
     engine = GestureEngine(mouse, lambda: now[0], settings={"three_finger": "task_view"})
     engine.update(points(middle=True, ring=True))
@@ -175,3 +177,72 @@ def test_watchdog_stops_when_frames_stall(monkeypatch):
     assert ctl._stop.is_set()
     assert ctl.status == "error"
     assert mouse.events == [("up",)]
+
+
+@pytest.mark.parametrize("dx,dy,key", [(.15, 0, "left"), (-.15, 0, "right"),
+                                        (0, -.15, "up"), (0, .15, "down")])
+def test_arrow_swipe_requires_dwell_and_one_press_per_pose(dx, dy, key):
+    mouse, now = Mouse(), [0.0]
+    engine = GestureEngine(mouse, lambda: now[0], settings={"three_finger": "arrows"})
+    pose = points(middle=True, ring=True)
+    engine.update(pose)
+    now[0] = .9
+    engine.update(pose)
+    assert not mouse.events
+    now[0] = 1.1
+    engine.update(pose)
+    assert engine.gesture == "arrow_ready"
+    pose[9].x += dx
+    pose[9].y += dy
+    engine.update(pose)
+    assert mouse.events == [("press", key)]
+    assert engine.gesture == "arrow_sent"
+    now[0] = 5
+    engine.update(pose)
+    assert mouse.events == [("press", key)]
+    engine.update(None)
+    engine.update(pose)
+    now[0] = 6.1
+    engine.update(pose)
+    pose[9].x += dx
+    pose[9].y += dy
+    engine.update(pose)
+    assert mouse.events == [("press", key), ("press", key)]
+
+
+def test_arrow_does_not_fire_from_jitter_or_when_menu_is_open():
+    mouse, now, allowed = Mouse(), [0.0], [True]
+    engine = GestureEngine(mouse, lambda: now[0], settings={"three_finger": "arrows"},
+                           arrows_allowed=lambda: allowed[0])
+    pose = points(middle=True, ring=True)
+    engine.update(pose)
+    now[0] = 1.1
+    engine.update(pose)
+    pose[9].x += .05
+    engine.update(pose)
+    assert not mouse.events
+    allowed[0] = False
+    now[0] = 2
+    pose[9].x += .2
+    engine.update(pose)
+    allowed[0] = True
+    now[0] = 2.5
+    engine.update(pose)
+    assert not mouse.events
+    now[0] = 3.1
+    engine.update(pose)
+    pose[9].y -= .2
+    engine.update(pose)
+    assert mouse.events == [("press", "up")]
+
+
+def test_pause_disarms_pointer_and_releases_drag_before_menu_action():
+    mouse = Mouse()
+    controller = HandController()
+    controller._engine = GestureEngine(mouse)
+    controller._engine.down = True
+    controller.pause_input()
+    assert controller._paused.is_set()
+    assert mouse.events == [("up",)]
+    controller.resume_input()
+    assert not controller._paused.is_set()

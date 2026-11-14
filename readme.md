@@ -941,16 +941,33 @@ index, middle and ring for one second to switch to the previous application
 your thumb for one second to open the command menu, then use the pointer and
 pinch to select an item. An open hand or ordinary fist is a resting pose.
 
-The menu provides switching apps, Task View, Start, show desktop, window
-minimize/maximize, media playback and volume. Targeted commands use the window
-that had focus when the menu opened; they refuse a changed or missing target.
-Close sends the selected window a normal Windows close request, **not** a forced
-process termination: gesture input stops first and a physical confirmation is
-required. Applications may still ask to save work or refuse to close. Some
-Windows focus or privilege restrictions can prevent an action; the log reports
-failures. In settings, choose the pinch hold time, pointer movement area and
-three-finger action; restart hand control to apply changes. These are presets,
-not automatic calibration or arbitrary shortcut mapping.
+The gesture menu groups Windows/app, system, keyboard navigation, editing,
+browser/tab, and media commands. It supports common operations such as File
+Explorer, Settings, arrow and Tab keys, copy/paste, browser tabs, window snapping,
+and volume. Targeted commands use the window that had focus when the menu
+opened; they refuse a changed or missing target and verify foreground focus
+before sending a shortcut. Shortcuts are interpreted by the target application,
+so their meaning can vary. A sent key is not proof the application performed
+the requested operation. Windows privilege or focus restrictions can prevent it.
+
+Potentially disruptive menu actions (including close, close tab, paste, cut,
+undo/redo, save, Enter, navigation/refresh and Windows lock) stop hand control
+and require a physical confirmation before proceeding. Close sends the selected
+window a normal Windows close request, **not** a forced process termination;
+applications may still ask to save work or refuse to close. Hand control stays
+off after confirmation or cancellation. Other gesture-driven pointer clicks
+and unconfirmed keyboard shortcuts may still have consequences inside apps;
+the app cannot enforce their safety. No shutdown/restart, arbitrary shell
+commands or automatic approvals are exposed by the gesture menu. In settings, choose the pinch hold time, pointer movement area and
+three-finger action; restart hand control to apply changes. To use arrow keys,
+select **Hand control settings → Three-finger action → Arrow keys**, stop and
+restart hand control, and focus the target application. Hold index, middle and
+ring fingers still for one second; when the status says the arrows are ready,
+move your hand up, down, left or right. Each gesture sends one arrow key to the
+focused application. Lower the fingers to re-arm; it does not hold or repeat a
+key. Menus suspend arrow input. Three fingers no longer switch apps in this
+mode, though the command menu still offers switching. These are presets, not
+automatic calibration or arbitrary shortcut mapping.
 
 The mouse button releases on tracking loss. Stop with the panel button or
 physical **Ctrl+Alt+G** globally. A watchdog stops gesture input if frame
@@ -967,3 +984,25 @@ Camera failures are reported in the panel. Multi-monitor control, automatic
 calibration, arbitrary gesture mapping, and full Windows control are not yet
 provided. Gesture recognition and camera performance require real hardware
 validation; lighting, pose and camera positioning affect accuracy.
+
+#### Ask about the item you are pointing at
+
+This is separate opt-in screen sharing. In **Hand control settings → Pointed
+screen sharing with AI**, select **Allow full-screen capture and send to AI on
+request**. With hand control active, point at an item on the primary screen with
+your index finger, keep pointing, and explicitly ask e.g. “Explain the item I am
+pointing at on my screen.” The vision tool captures the **entire primary screen**,
+marks the approximate pointer location with a red ring, and sends it to the
+current vision provider (which may be a remote service). No screenshot is saved
+by this feature. A log entry records the capture. It will refuse the pointed
+request when sharing is off or the pointer is no longer being tracked; it will
+not silently substitute an ordinary screen capture. Disable this option when no
+longer needed. Screen content may include private information. As with existing
+vision, the model chooses whether to call the tool; ask explicitly and check the
+log. The marker is approximate and may be inaccurate with display scaling.
+
+For hands-free desktop use, gesture controls provide pointing, clicks, scrolling,
+arrow-key navigation and window management. Existing voice commands and the
+computer-control actions can open apps and type in the focused field; confirm
+sensitive actions and inspect the target before typing. This remains experimental,
+and neither accurate object identification nor all OS functions are guaranteed.
