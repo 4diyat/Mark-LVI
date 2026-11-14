@@ -909,6 +909,9 @@ class DashboardServer:
         self._audit: list[dict] = []          # last N dashboard actions
         self._audit_lock = threading.Lock()
         self._phone_audio_queue: asyncio.Queue    = asyncio.Queue(maxsize=200)
+        self._phone_audio_active = False  # only one phone may stream at a time
+        self._phone_relay_ready = False
+        self._playback_clients: set[asyncio.Queue] = set()
         self._uploads_dir                 = UPLOADS_DIR
         # Set by serve() when the port could not be taken, so the UI can say
         # why the QR code leads nowhere instead of showing it regardless.
@@ -1064,6 +1067,22 @@ class DashboardServer:
                 dead.add(ws)
         self._clients -= dead
 
+    def publish_audio(self, pcm: bytes) -> None:
+        """Fan out live PCM only to opted-in playback sockets, never to history.
+
+        Called on the dashboard's event loop. Drop the oldest chunk for a slow
+        listener rather than block JARVIS or build an unbounded audio backlog.
+        """
+        if not pcm or len(pcm) % 2:
+            return
+        for queue in tuple(self._playback_clients):
+            if queue.full():
+                try:
+                    queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    pass
+            queue.put_nowait(pcm)
+
     # ── FastAPI app ───────────────────────────────────────────────────────
 
     def _build_app(self) -> "FastAPI":
@@ -1186,8 +1205,14 @@ class DashboardServer:
 
         def _page(html: str) -> HTMLResponse:
             """HTML with the per-response nonce substituted into <script>."""
+            import html as html_module
+            from memory.config_manager import get_assistant_name
+
             nonce = secrets.token_urlsafe(16)
             html = html.replace("{{NONCE}}", nonce).replace("__NONCE__", nonce)
+            # Substitute last: a configured name must never become markup or a
+            # nonce/template instruction, including in attribute contexts.
+            html = html.replace("__ASSISTANT_NAME__", html_module.escape(get_assistant_name(), quote=True))
             resp = HTMLResponse(html)
             resp.headers["Content-Security-Policy"] = (
                 "default-src 'self'; "
@@ -1216,7 +1241,7 @@ class DashboardServer:
             # don't send custom headers (location.href doesn't carry Authorization).
             html = (self._app_html
                     .replace("__IP__", self._ip)
-                    .replace("__PORT__", str(PORT)))
+                    .replace("__PORT__", str(SECURE_PORT if self._ssl_enabled() else PORT)))
             return _page(html)
 
         @app.post("/login")
@@ -1416,25 +1441,83 @@ class DashboardServer:
             if not _valid(tok, _SCOPE_COMMAND):
                 await websocket.close(code=4001)
                 return
-            await websocket.accept()
-            asyncio.create_task(self.broadcast(
-                {"type": "sys", "text": "Phone microphone live."}
-            ))
+            # Mixing two PCM streams would corrupt both utterances and make a
+            # disconnect from one phone end the other phone's turn.
+            if self._phone_audio_active:
+                await websocket.close(code=4009)
+                return
+            self._phone_audio_active = True
+            accepted = False
+            received = False
             try:
+                await websocket.accept()
+                accepted = True
+                message = ("Phone microphone live." if self._phone_relay_ready else
+                           "JARVIS is not connected yet. Wait for an active session before speaking.")
+                asyncio.create_task(self.broadcast({"type": "sys", "text": message}))
                 while True:
                     data = await websocket.receive_bytes()
+                    # Revocation and expiry must also affect an existing stream.
+                    if not _valid(tok, _SCOPE_COMMAND):
+                        await websocket.close(code=4001)
+                        break
+                    # PCM16 mono at 16 kHz, never arbitrary-size WebSocket data.
+                    if not data or len(data) > 8192 or len(data) % 2:
+                        await websocket.close(code=1003)
+                        break
                     try:
                         self._phone_audio_queue.put_nowait(
-                            {"data": data, "mime_type": "audio/pcm"}
+                            {"data": data, "mime_type": "audio/pcm",
+                             "received_at": time.monotonic()}
                         )
+                        received = True
                     except asyncio.QueueFull:
                         pass  # drop frame rather than block
             except WebSocketDisconnect:
                 pass
             finally:
-                asyncio.create_task(self.broadcast(
-                    {"type": "sys", "text": "Phone microphone stopped."}
-                ))
+                self._phone_audio_active = False
+                if received:
+                    # The final boundary must survive a full queue. It follows
+                    # the audio, including when the connection drops abruptly.
+                    if self._phone_audio_queue.full():
+                        try:
+                            self._phone_audio_queue.get_nowait()
+                        except asyncio.QueueEmpty:
+                            pass
+                    self._phone_audio_queue.put_nowait({"phone_audio_end": True})
+                if accepted:
+                    asyncio.create_task(self.broadcast(
+                        {"type": "sys", "text": "Phone microphone stopped."}
+                    ))
+
+        @app.websocket("/ws/phone-playback")
+        async def phone_playback_ws(websocket: WebSocket, token: str = ""):
+            tok = token.strip()
+            if not _valid(tok, _SCOPE_COMMAND):
+                await websocket.close(code=4001)
+                return
+            await websocket.accept()
+            queue: asyncio.Queue = asyncio.Queue(maxsize=12)
+            self._playback_clients.add(queue)
+            try:
+                while True:
+                    # Heartbeat checks disconnection and revocation even in silence.
+                    try:
+                        data = await asyncio.wait_for(queue.get(), timeout=5)
+                    except asyncio.TimeoutError:
+                        data = None
+                    if not _valid(tok, _SCOPE_COMMAND):
+                        await websocket.close(code=4001)
+                        break
+                    if data is None:
+                        await websocket.send_json({"type": "heartbeat"})
+                    else:
+                        await websocket.send_bytes(data)
+            except (WebSocketDisconnect, RuntimeError, OSError):
+                pass
+            finally:
+                self._playback_clients.discard(queue)
 
         # ── File sharing ──────────────────────────────────────────────────────
 

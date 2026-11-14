@@ -572,3 +572,35 @@ def test_a_declared_permission_plugin_ships_disabled():
     assert rows["mt5_orb"]["valid"] is True
     assert rows["mt5_orb"]["enabled"] is False
     assert rows["mt5_orb"]["permissions"] == ["files"]
+
+
+def test_windows_mt5_numpy_abi_failure_explains_repair(mt5_helper, monkeypatch):
+    import builtins
+    import platform
+    original = builtins.__import__
+    def failed_import(name, *args, **kwargs):
+        if name == "MetaTrader5":
+            raise ImportError("numpy.core.multiarray failed to import")
+        return original(name, *args, **kwargs)
+    monkeypatch.setattr(platform, "system", lambda: "Windows")
+    monkeypatch.setattr(builtins, "__import__", failed_import)
+    with pytest.raises(mt5_helper.MT5Unavailable, match="binary is incompatible") as exc:
+        mt5_helper._module()
+    assert "numpy>=1.24,<2" in str(exc.value)
+    assert "opencv-python>=4.8,<4.12" in str(exc.value)
+    assert "not installed" not in str(exc.value)
+
+
+def test_windows_mt5_other_import_error_is_not_misreported_as_missing(mt5_helper, monkeypatch):
+    import builtins
+    import platform
+    original = builtins.__import__
+    def failed_import(name, *args, **kwargs):
+        if name == "MetaTrader5":
+            raise ImportError("DLL load failed")
+        return original(name, *args, **kwargs)
+    monkeypatch.setattr(platform, "system", lambda: "Windows")
+    monkeypatch.setattr(builtins, "__import__", failed_import)
+    with pytest.raises(mt5_helper.MT5Unavailable, match="DLL load failed") as exc:
+        mt5_helper._module()
+    assert "not installed" not in str(exc.value)

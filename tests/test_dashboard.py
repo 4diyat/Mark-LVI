@@ -360,3 +360,129 @@ def test_malformed_inputs_and_callback_errors_do_not_return_500(server, tmp_path
     assert r_up.status_code == 200
     assert (tmp_path / "hello.txt").exists()
 
+
+
+def test_phone_audio_requires_command_permission_and_rechecks_revocation(server):
+    from starlette.websockets import WebSocketDisconnect
+    srv, client, token, _ = server
+    read_tok = f"read-{uuid.uuid4().hex}"
+    now = time.time()
+    with srv._token_lock:
+        srv._tokens[read_tok] = [now, now, ds._SCOPE_READ]
+    for bad in ("invalid", read_tok):
+        with pytest.raises(WebSocketDisconnect):
+            with client.websocket_connect(f"/ws/phone-audio?token={bad}"):
+                pass
+    with client.websocket_connect(f"/ws/phone-audio?token={token}") as ws:
+        ws.send_bytes(b"\x01\x00")
+        with srv._token_lock:
+            srv._tokens.pop(token)
+        ws.send_bytes(b"\x02\x00")
+        with pytest.raises(WebSocketDisconnect) as exc:
+            ws.receive_bytes()
+        assert exc.value.code == 4001
+    chunk = srv._phone_audio_queue.get_nowait()
+    assert chunk["data"] == b"\x01\x00" and chunk["mime_type"] == "audio/pcm"
+    assert srv._phone_audio_queue.get_nowait() == {"phone_audio_end": True}
+
+
+def test_phone_audio_rejects_invalid_frame_and_limits_concurrent_streams(server):
+    from starlette.websockets import WebSocketDisconnect
+    srv, client, token, _ = server
+    with client.websocket_connect(f"/ws/phone-audio?token={token}") as first:
+        with pytest.raises(WebSocketDisconnect) as exc:
+            with client.websocket_connect(f"/ws/phone-audio?token={token}"):
+                pass
+        assert exc.value.code == 4009
+        first.send_bytes(b"x")
+        with pytest.raises(WebSocketDisconnect) as exc:
+            first.receive_bytes()
+        assert exc.value.code == 1003
+    assert srv._phone_audio_queue.empty()
+
+
+def test_phone_audio_disconnect_preserves_end_when_queue_is_full(server):
+    srv, client, token, _ = server
+    with client.websocket_connect(f"/ws/phone-audio?token={token}") as ws:
+        ws.send_bytes(b"\x00\x00")
+        # Synchronize by sending an invalid frame and awaiting the server close.
+        for _ in range(250):
+            ws.send_bytes(b"\x01\x00")
+        ws.send_bytes(b"x")
+        from starlette.websockets import WebSocketDisconnect
+        with pytest.raises(WebSocketDisconnect):
+            ws.receive_bytes()
+    queued = []
+    while not srv._phone_audio_queue.empty():
+        queued.append(srv._phone_audio_queue.get_nowait())
+    assert len(queued) == 200 and queued[-1] == {"phone_audio_end": True}
+
+
+def test_remote_playback_is_opt_in_and_live_only(server):
+    from starlette.websockets import WebSocketDisconnect
+    srv, client, token, _ = server
+    srv.publish_audio(b"\x01\x00")
+    assert not srv._playback_clients and not any("data" in x for x in srv._history)
+    with pytest.raises(WebSocketDisconnect):
+        with client.websocket_connect('/ws/phone-playback?token=invalid'):
+            pass
+    with client:
+        with client.websocket_connect(f'/ws/phone-playback?token={token}') as ws:
+            assert len(srv._playback_clients) == 1
+            client.portal.call(srv.publish_audio, b"\x01\x00\x02\x00")
+            assert ws.receive_bytes() == b"\x01\x00\x02\x00"
+            with srv._token_lock:
+                srv._tokens.pop(token)
+            client.portal.call(srv.publish_audio, b"\x03\x00")
+            with pytest.raises(WebSocketDisconnect) as exc:
+                ws.receive_bytes()
+            assert exc.value.code == 4001
+        assert not srv._playback_clients
+    assert not any("data" in x for x in srv._history)
+
+
+def test_remote_playback_backpressure_is_bounded(server):
+    import asyncio
+    srv, _, _, _ = server
+    q = asyncio.Queue(maxsize=2)
+    srv._playback_clients.add(q)
+    srv.publish_audio(b"\x01\x00")
+    srv.publish_audio(b"\x02\x00")
+    srv.publish_audio(b"\x03\x00")
+    assert q.qsize() == 2
+    assert q.get_nowait() == b"\x02\x00" and q.get_nowait() == b"\x03\x00"
+
+
+def test_interactive_controls_do_not_use_csp_blocked_inline_handlers(server):
+    from html.parser import HTMLParser
+    class HandlerParser(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.handlers = []
+        def handle_starttag(self, tag, attrs):
+            self.handlers.extend((tag, key) for key, _ in attrs if key.lower().startswith("on"))
+    _, client, _, _ = server
+    for path in ("/", "/login"):
+        response = client.get(path)
+        parser = HandlerParser()
+        parser.feed(response.text)
+        assert not parser.handlers, (path, parser.handlers)
+        assert "'unsafe-inline'" not in response.headers["content-security-policy"].split("script-src")[1].split(";")[0]
+    app = client.get("/").text
+    assert "speakerBtn.addEventListener('click', toggleRemotePlayback)" in app
+    assert "getElementById('send-btn').addEventListener('click', doSend)" in app
+    assert "wake.addEventListener('click', doWake)" in app
+    assert "getElementById('connect-btn').addEventListener('click', doLogin)" in client.get("/login").text
+
+@pytest.mark.parametrize("path", ["/login", "/"])
+def test_configured_name_is_rendered_safely_and_updates(server, monkeypatch, path):
+    import memory.config_manager as config
+
+    _, client, _, _ = server
+    monkeypatch.setattr(config, "get_assistant_name", lambda: '<img src=x onerror="alert(1)">')
+    response = client.get(path)
+    assert '&lt;img src=x onerror=&quot;alert(1)&quot;&gt;' in response.text
+    assert '<img src=x onerror=' not in response.text
+    assert '__ASSISTANT_NAME__' not in response.text
+    monkeypatch.setattr(config, "get_assistant_name", lambda: "Friday")
+    assert "Friday" in client.get(path).text

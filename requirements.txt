@@ -12,7 +12,10 @@
 # package, no OpenGL and no GPU. Nothing below was added for it.
 PyQt6>=6.6,<7
 sounddevice>=0.4,<1
-numpy>=1.24,<3
+# MT5 builds can use the NumPy 1.x C ABI. NumPy 1.26 has wheels through
+# Python 3.12; Python 3.13+ users of such MT5 builds should use Python 3.12.
+numpy>=1.24,<2; sys_platform == "win32" and python_version < "3.13"
+numpy>=1.24,<3; sys_platform != "win32" or python_version >= "3.13"
 tzdata>=2024.1  # IANA session time zones on Windows
 google-genai>=2.8.0,<3
 # Declared even though google-genai already installs it. providers/ imports it
@@ -53,7 +56,10 @@ pyperclip
 
 # ── Vision & media ────────────────────────────────────────────────────────────
 pillow>=10,<13
-opencv-python>=4.8,<5
+# OpenCV 4.12+ requires NumPy 2 on Python >=3.9; retain the NumPy 1 ABI
+# on supported Windows Pythons for MT5 compatibility.
+opencv-python>=4.8,<4.12; sys_platform == "win32" and python_version < "3.13"
+opencv-python>=4.8,<5; sys_platform != "win32" or python_version >= "3.13"
 mss>=9,<11
 
 # ── System, files & documents ─────────────────────────────────────────────────
