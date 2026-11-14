@@ -24,14 +24,17 @@ def normalize_settings(raw):
     return {
         "pinch_ms": raw.get("pinch_ms") if raw.get("pinch_ms") in (350, 500, 700) else 350,
         "movement_range": raw.get("movement_range") if raw.get("movement_range") in (0, 10, 20) else 10,
-        "three_finger": raw.get("three_finger") if raw.get("three_finger") in ("switch", "task_view", "none") else "switch",
+        "three_finger": raw.get("three_finger") if raw.get("three_finger") in ("switch", "task_view", "arrows", "none") else "switch",
+        "pointed_vision": raw.get("pointed_vision") is True,
     }
 
 
 class GestureEngine:
-    def __init__(self, mouse, clock=time.monotonic, on_menu=None, settings=None):
+    def __init__(self, mouse, clock=time.monotonic, on_menu=None, settings=None, arrows_allowed=None, on_point=None):
         self.mouse = mouse
         self.on_menu = on_menu
+        self.arrows_allowed = arrows_allowed or (lambda: True)
+        self.on_point = on_point or (lambda _point: None)
         self.settings = normalize_settings(settings)
         self.clock = clock
         self.pinch_since = None
@@ -42,6 +45,7 @@ class GestureEngine:
         self.pose_since = 0.0
         self.triggered = False
         self.gesture = "rest"
+        self.arrow_origin = None
 
     def _mouse_up(self):
         try:
@@ -55,6 +59,7 @@ class GestureEngine:
             ctypes.windll.user32.mouse_event(0x0004, 0, 0, 0, 0)
 
     def release(self):
+        self.on_point(None)
         if self.down:
             # Set the flag first even if the OS backend reports an error.
             self.down = False
@@ -65,6 +70,7 @@ class GestureEngine:
         self.pose = None
         self.triggered = False
         self.gesture = "rest"
+        self.arrow_origin = None
 
     def update(self, points):
         if points is None or len(points) != 21:
@@ -78,13 +84,14 @@ class GestureEngine:
         palm = math.hypot(p[5].x - p[17].x, p[5].y - p[17].y)
         pinch = palm > .025 and math.hypot(p[4].x - p[8].x, p[4].y - p[8].y) < palm * .38
 
-        # Three raised fingers switch app after a dwell and only once per pose.
-        # An open palm remains a safe resting pose.
+        # Three raised fingers perform the configured action. An open palm
+        # remains a safe resting pose.
         thumb_up = p[4].y < p[3].y < p[2].y
         command = ("switch" if index and middle and ring and not little else
                    "menu" if not any((index, middle, ring, little)) and thumb_up else None)
         if command:
-            self.gesture = command
+            self.on_point(None)
+            self.gesture = "arrows" if command == "switch" and self.settings["three_finger"] == "arrows" else command
             if self.down:
                 self._mouse_up()
                 self.down = False
@@ -92,6 +99,30 @@ class GestureEngine:
             self.pos = self.scroll_y = None
             if command != self.pose:
                 self.pose, self.pose_since, self.triggered = command, self.clock(), False
+                self.arrow_origin = None
+            elif command == "switch" and self.settings["three_finger"] == "arrows":
+                self.gesture = "arrows"
+                if not self.arrows_allowed():
+                    # A menu has focus: require a fresh dwell after it closes.
+                    self.pose_since = self.clock()
+                    self.arrow_origin = None
+                    return
+                if not self.triggered and self.clock() - self.pose_since >= 1.0:
+                    self.gesture = "arrow_ready"
+                    if self.arrow_origin is None:
+                        self.arrow_origin = (p[9].x, p[9].y)
+                    else:
+                        dx = p[9].x - self.arrow_origin[0]
+                        dy = p[9].y - self.arrow_origin[1]
+                        if max(abs(dx), abs(dy)) >= .12:
+                            # The camera is mirrored like the pointer: an image
+                            # x decrease is a movement to the user's right.
+                            key = ("left" if dx > 0 else "right") if abs(dx) > abs(dy) else ("down" if dy > 0 else "up")
+                            self.mouse.press(key)
+                            self.triggered = True
+                            self.gesture = "arrow_sent"
+                elif self.triggered:
+                    self.gesture = "arrow_sent"
             elif not self.triggered and self.clock() - self.pose_since >= 1.0:
                 self.triggered = True
                 if command == "menu":
@@ -103,7 +134,9 @@ class GestureEngine:
                     self.mouse.hotkey("win", "tab")
             return
         self.pose, self.triggered = None, False
+        self.arrow_origin = None
         if middle and index and not ring and not little:
+            self.on_point(None)
             self.gesture = "scroll"
             if self.down:
                 self._mouse_up()
@@ -131,6 +164,8 @@ class GestureEngine:
             y = int(.7 * self.pos[1] + .3 * y)
         self.pos = (x, y)
         self.mouse.moveTo(x, y)
+        # No hand position is retained during menus, a pinch, or lost tracking.
+        self.on_point((x / width, y / height) if not pinch and self.arrows_allowed() else None)
         if pinch:
             if self.pinch_since is None:
                 self.pinch_since = self.clock()
@@ -150,6 +185,8 @@ class HandController:
         self.settings = normalize_settings(None)
         self._lock = threading.Lock()
         self._stop = threading.Event()
+        self.menu_open = threading.Event()
+        self._paused = threading.Event()
         self._engine = None
         self.thread = None
         self.status = "off"
@@ -164,14 +201,20 @@ class HandController:
                 self.status = "windows_only"
                 return False
             self.settings = normalize_settings(settings)
+            from core import pointing
+            pointing.update(None)
             self._stop.clear()
+            self.menu_open.clear()
+            self._paused.clear()
             self.status, self.error = "starting", ""
             self.thread = threading.Thread(target=self._run, args=(camera_index,), name="hand-gesture", daemon=True)
             self.thread.start()
         return True
 
     def stop(self):
+        from core import pointing
         self._stop.set()
+        pointing.update(None)
         with self._lock:
             if self._engine:
                 try:
@@ -179,6 +222,16 @@ class HandController:
                 except Exception as exc:
                     self.error = str(exc)
                     self.status = "error"
+
+    def pause_input(self):
+        """Disarm generated input while a menu command targets a window."""
+        self._paused.set()
+        with self._lock:
+            if self._engine:
+                self._engine.release()
+
+    def resume_input(self):
+        self._paused.clear()
 
     def _emergency(self):
         try:
@@ -221,7 +274,10 @@ class HandController:
             with self._lock:
                 if self._stop.is_set():
                     return
-                self._engine = GestureEngine(pyautogui, on_menu=self.on_menu, settings=self.settings)
+                from core import pointing
+                self._engine = GestureEngine(pyautogui, on_menu=self.on_menu, settings=self.settings,
+                                             arrows_allowed=lambda: not self.menu_open.is_set(),
+                                             on_point=pointing.update)
                 self._last_frame = time.monotonic()
                 self.status = "active"
             watcher = threading.Thread(target=self._emergency, name="hand-emergency", daemon=True)
@@ -244,7 +300,8 @@ class HandController:
                 with self._lock:
                     if not self._stop.is_set():
                         self._last_frame = time.monotonic()
-                        self._engine.update(landmarks[0].landmark if landmarks else None)
+                        if not self._paused.is_set():
+                            self._engine.update(landmarks[0].landmark if landmarks else None)
         except Exception as exc:
             self.error = str(exc)
             self.status = "error"

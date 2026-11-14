@@ -11,8 +11,9 @@ class FakeWin:
         self.visible = True
         self.posts, self.shows = [], []
         self.foreground_allowed = True
+        self.foreground = self.handle
     def GetForegroundWindow(self):
-        return self.handle
+        return self.foreground
     def GetShellWindow(self):
         return 999
     def GetDesktopWindow(self):
@@ -30,6 +31,8 @@ class FakeWin:
         buf.value = self.title
         return len(self.title)
     def SetForegroundWindow(self, handle):
+        if self.foreground_allowed:
+            self.foreground = handle
         return self.foreground_allowed
     def PostMessageW(self, *args):
         self.posts.append(args)
@@ -54,7 +57,7 @@ def test_target_identity_is_checked_before_close_or_window_action():
     actions = WindowsActions(win, keys)
     target = actions.capture()
     assert target == WindowTarget(win.handle, win.pid, win.title)
-    assert actions.run("close", target)
+    assert actions.run("close", target, confirmed=True)
     assert win.posts == [(125, 0x10, 0, 0)]
     win.title = "Different document"
     assert not actions.run("close", target)
@@ -71,6 +74,7 @@ def test_switch_refuses_when_windows_does_not_restore_target():
     win, keys = FakeWin(), FakeInput()
     actions = WindowsActions(win, keys)
     target = actions.capture()
+    win.foreground = 555
     win.foreground_allowed = False
     assert not actions.run("switch", target)
     assert not keys.keys
@@ -125,6 +129,80 @@ def test_shell_and_own_process_are_not_targets(monkeypatch):
     monkeypatch.setattr("core.gesture_actions.os.getpid", lambda: 50)
     target = actions.capture()
     win.handle = 999
+    win.foreground = 999
     assert actions.capture() is None
     assert not actions.valid(WindowTarget(999, win.pid, win.title))
     assert not actions.valid(target)
+
+
+def test_snap_requires_original_target_and_foreground():
+    win, keys = FakeWin(), FakeInput()
+    actions = WindowsActions(win, keys)
+    target = actions.capture()
+    win.foreground = 555
+    win.foreground_allowed = False
+    assert not actions.run("snap_left", target)
+    assert not keys.keys
+    win.foreground_allowed = True
+    assert actions.run("snap_left", target)
+    assert actions.run("snap_right", target)
+    assert keys.keys == [("win", "left"), ("win", "right")]
+    win.pid += 1
+    assert not actions.run("snap_left", target)
+    assert len(keys.keys) == 2
+
+
+def test_every_menu_action_is_supported_and_unique():
+    from core.gesture_actions import ACTION_GROUPS, GLOBAL_KEYS, RISKY_ACTIONS, TARGET_ACTIONS
+    items = [item for group in ACTION_GROUPS.values() for item in group]
+    assert len(items) == len(set(items))
+    assert set(items) == set(GLOBAL_KEYS) | TARGET_ACTIONS
+    assert RISKY_ACTIONS <= set(items)
+
+
+def test_risky_actions_reject_without_confirmation():
+    from core.gesture_actions import RISKY_ACTIONS
+    win, keys = FakeWin(), FakeInput()
+    backend = WindowsActions(win, keys)
+    target = backend.capture()
+    for action in RISKY_ACTIONS:
+        assert not backend.run(action, target)
+    assert not keys.keys and not win.posts
+
+
+def test_confirmation_disarms_and_rechecks_then_refocuses_target():
+    from core.gesture_actions import action_with_confirmation
+    win, keys = FakeWin(), FakeInput()
+    backend = WindowsActions(win, keys)
+    target = backend.capture()
+    class Controller:
+        stopped = False
+        def stop(self):
+            self.stopped = True
+    ctl = Controller()
+    def confirmed(t):
+        assert ctl.stopped and t == target
+        win.foreground = 555  # Confirmation dialog changed the focused window.
+        return True
+    assert action_with_confirmation(ctl, backend, "paste", target, confirmed) == "done"
+    assert keys.keys == [("ctrl", "v")]
+    assert win.foreground == target.handle
+    win.title = "Different target"
+    assert action_with_confirmation(ctl, backend, "cut", target, confirmed) == "invalid"
+    assert keys.keys == [("ctrl", "v")]
+    assert action_with_confirmation(ctl, backend, "lock_screen", None, lambda t: t is None) == "done"
+    assert keys.keys[-1] == ("win", "l")
+    assert action_with_confirmation(ctl, backend, "shutdown", None, lambda _: True) == "invalid"
+
+
+def test_all_menu_labels_exist_in_every_locale():
+    import json
+    from pathlib import Path
+    from core.gesture_actions import ACTION_GROUPS
+    root = Path(__file__).resolve().parents[1]
+    for locale in ("en", "id"):
+        labels = json.loads((root / "assets" / "i18n" / f"{locale}.json").read_text(encoding="utf-8"))
+        for group, actions in ACTION_GROUPS.items():
+            assert "gesture.group_" + group in labels
+            for action in actions:
+                assert "gesture.action_" + action in labels

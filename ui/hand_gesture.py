@@ -70,7 +70,8 @@ def setup(window):
         for key, caption, choices in (
             ("pinch_ms", "gesture.setting_pinch", ((350, "gesture.ms_350"), (500, "gesture.ms_500"), (700, "gesture.ms_700"))),
             ("movement_range", "gesture.setting_range", ((0, "gesture.range_full"), (10, "gesture.range_medium"), (20, "gesture.range_small"))),
-            ("three_finger", "gesture.setting_three", (("switch", "gesture.action_switch"), ("task_view", "gesture.action_task_view"), ("none", "gesture.action_none"))),
+            ("three_finger", "gesture.setting_three", (("switch", "gesture.action_switch"), ("task_view", "gesture.action_task_view"), ("arrows", "gesture.action_arrows"), ("none", "gesture.action_none"))),
+            ("pointed_vision", "gesture.setting_vision", ((False, "gesture.vision_off"), (True, "gesture.vision_on"))),
         ):
             sub = menu.addMenu(_t(caption))
             for value, label in choices:
@@ -78,7 +79,13 @@ def setup(window):
                 action.setCheckable(True)
                 action.setChecked(settings[key] == value)
                 actions[action] = (key, value)
-        chosen = menu.exec(QCursor.pos())
+        from core import pointing
+        controller.menu_open.set()
+        pointing.update(None)
+        try:
+            chosen = menu.exec(QCursor.pos())
+        finally:
+            controller.menu_open.clear()
         if chosen in actions:
             key, value = actions[chosen]
             settings[key] = value
@@ -90,32 +97,41 @@ def setup(window):
             return
         menu = QMenu(window)
         window._hand_menu = menu
+        from core.gesture_actions import ACTION_GROUPS, TARGET_ACTIONS
         choices = {}
-        for key in ("switch", "task_view", "desktop", "start", "minimize", "maximize",
-                    "volume_up", "volume_down", "volume_mute", "media_play", "close"):
-            action = menu.addAction(_t("gesture.action_" + key))
-            if key in ("switch", "minimize", "maximize", "close"):
-                action.setEnabled(target is not None)
-            choices[action] = key
+        for group, commands in ACTION_GROUPS.items():
+            sub = menu.addMenu(_t("gesture.group_" + group))
+            for key in commands:
+                action = sub.addAction(_t("gesture.action_" + key))
+                if key in TARGET_ACTIONS:
+                    action.setEnabled(target is not None)
+                choices[action] = key
+        from core import pointing
+        controller.menu_open.set()
+        pointing.update(None)
         try:
             selected = menu.exec(QCursor.pos())
         finally:
+            controller.menu_open.clear()
             window._hand_menu = None
         command = choices.get(selected)
         if command is None or controller._stop.is_set():
             return
-        from core.gesture_actions import WindowsActions, close_with_confirmation
+        from core.gesture_actions import RISKY_ACTIONS, WindowsActions, action_with_confirmation
         try:
+            controller.pause_input()
             backend = WindowsActions()
-            if command == "close":
+            if command in RISKY_ACTIONS:
                 def confirm(close_target):
                     from PyQt6.QtWidgets import QMessageBox
                     window._hand_closing_confirm = True
                     try:
                         dialog = QMessageBox(window)
-                        dialog.setWindowTitle(_t("gesture.close_title"))
+                        dialog.setWindowTitle(_t("gesture.confirm_action_title"))
                         dialog.setTextFormat(Qt.TextFormat.PlainText)
-                        dialog.setText(_t("gesture.close_detail").format(title=close_target.title))
+                        target_title = close_target.title if close_target is not None else _t("gesture.system_target")
+                        dialog.setText(_t("gesture.confirm_action_detail").format(
+                            action=_t("gesture.action_" + command), title=target_title))
                         dialog.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
                         dialog.setDefaultButton(QMessageBox.StandardButton.No)
                         answer = dialog.exec()
@@ -124,13 +140,16 @@ def setup(window):
                                 not (banner is not None and banner.isVisible()))
                     finally:
                         window._hand_closing_confirm = False
-                result = close_with_confirmation(controller, backend, target, confirm)
+                target_for_action = target if command in TARGET_ACTIONS else None
+                result = action_with_confirmation(controller, backend, command, target_for_action, confirm)
                 if result == "invalid":
                     window._log.append_log(_t("gesture.action_failed"))
             elif not backend.run(command, target):
                 window._log.append_log(_t("gesture.action_failed"))
         except Exception as exc:
             window._log.append_log(_t("gesture.action_error").format(error=str(exc)))
+        finally:
+            controller.resume_input()
 
     button.clicked.connect(toggle)
     settings_button.clicked.connect(settings_menu)
