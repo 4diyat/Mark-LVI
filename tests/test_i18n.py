@@ -103,6 +103,8 @@ def test_the_two_locales_are_not_the_same_file():
         "ui.video.title",           # "▶  {title}"
         "ui.video.heading",         # "▶  VIDEO"
         "ui.setup.panel",           # "◈ SETUP"
+        "trading.quote",            # market notation and placeholders
+        "trading.session_asia", "trading.session_london", "trading.session_new_york",  # proper names
     }
     shared = [key for key in shared
               if any(ch.isalpha() for ch in en[key])

@@ -45,6 +45,75 @@ It's not just an assistant — it's an extension of your digital life.
 
 ## 🚀 Capabilities
 
+### Expanded morning brief
+
+The original startup greeting and world news still work by themselves. To add
+weather, today's upcoming Google Calendar events, the Gmail unread count and
+MT5 ORB observations, enable **`morning_brief`** in Plugin Manager, then use
+Plugin Settings → **Morning Brief — sources**. Each source can be switched off
+individually. The weather city is required; an optional two-letter country code
+helps disambiguate it. Weather requests send the city to Open-Meteo.
+
+For Calendar, enable Google Calendar API in a Google Cloud project, create a
+**Desktop app** OAuth client and place its JSON at
+`config/calendar_credentials.json` (or set another path in the form). Press
+**AUTHORIZE GOOGLE CALENDAR** to approve read-only access in your browser; the
+app stores a token at `config/token_calendar.json`. Startup never launches an
+OAuth browser flow. Only the primary calendar and at most five upcoming event
+titles/times for the rest of today are included; descriptions are not fetched
+for the briefing. Titles are sent to the assistant model and displayed/spoken,
+so switch Calendar off if that is not appropriate for your privacy or setting.
+
+For Gmail, enable and configure `gmail_inbox` separately; the briefing only
+reads the inbox unread count, not message bodies. For market information, enable
+and configure `trading_terminal` separately with a running logged-in MT5 on
+Windows. It reports read-only M1/ORB data and clearly marks stale data; no orders
+are placed. Missing, disabled, or timed-out sources are reported as unavailable,
+not guessed, and cannot hold the startup briefing indefinitely. The main
+Morning Brief switch in Controls must also be on; as before, startup briefing is
+skipped if wake-word mode starts the assistant asleep.
+
+### Read-only MT5 trading terminal (ORB)
+
+Enable `trading_terminal` in Plugin Manager, then ask JARVIS to open the MT5
+trading terminal (optionally specifying the exact broker symbol). On Windows,
+install `MetaTrader5` and `tzdata`, open the MT5 desktop terminal and sign in
+before connecting. The MetaTrader5 Python bridge does not provide native Linux
+or macOS wheels. The terminal shows the connected server and masked account,
+bid/ask with its UTC timestamp, closed M1 candles, and the three session ranges.
+It never sends, modifies, or closes orders. Refresh manually or enable 15-second
+refresh; stale data, a disconnected account, and missing candles are flagged.
+
+The range defaults to the first **15 closed one-minute candles** after Tokyo
+09:00, London 08:00, and New York 09:30 local time. Starts and range length
+(1–120 minutes) can be edited in the window or Plugin Settings. IANA time zones
+handle DST; MT5 epoch timestamps are treated as UTC. The default observation
+windows are eight hours for Asia and London, and 6.5 hours for New York. These
+are configurable-start analysis conventions, not universal market hours. The
+first close outside the range is an observation, not a recommendation or a
+backtest. Missing candles prevent a signal, and stale feeds are clearly marked.
+The older `mt5_orb` plugin is a separate legacy M30 strategy with different
+session and broker-offset assumptions; do not compare its output as if the two
+strategies were identical.
+
+### Code editor and AI image canvas
+
+Enable `code_editor` and/or `image_canvas` in Plugin Manager and approve each
+plugin's permissions. Ask the assistant to open the code editor, or to open the
+image canvas with a description. Each workspace also has tabs for the other
+feature when its plugin is enabled.
+
+* **Editor:** open, edit and save UTF-8 files; run saved Python files or
+  JavaScript files (Node.js must be on PATH). Each run requires a confirmation.
+  **Execution is not sandboxed:** code runs with your account's permissions,
+  including access to files, network and credentials. Only run trusted code.
+  A 15-second timeout stops the direct process, not necessarily its children.
+* **Canvas:** type a prompt and press Generate. The prompt is sent to Gemini's
+  `gemini-2.5-flash-image` using your configured Gemini API key; model access,
+  network access, quota and possible usage charges apply. Preview the result
+  and use Save Image to keep it. Image generation does not start automatically
+  when the assistant opens the canvas.
+
 ### Core Features
 | Feature | Description |
 |---|---|

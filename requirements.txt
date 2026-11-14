@@ -13,6 +13,7 @@
 PyQt6>=6.6,<7
 sounddevice>=0.4,<1
 numpy>=1.24,<3
+tzdata>=2024.1  # IANA session time zones on Windows
 google-genai>=2.8.0,<3
 # Declared even though google-genai already installs it. providers/ imports it
 # directly, and a package you import is a package you depend on — relying on
@@ -73,7 +74,9 @@ qrcode[pil]>=7,<9
 # it work on the next launch, not send you back to pip. Every one of these is
 # imported inside a try/except at the point of use, so an uninstalled extra
 # disables exactly one plugin and never touches the rest of the app.
-google-api-python-client     # gmail_control, calendar_control — OAuth
+google-api-python-client     # Gmail and Calendar APIs
+google-auth-httplib2          # authorized, bounded Calendar HTTP
+httplib2                      # Calendar HTTP transport
 google-auth-oauthlib         # gmail_control, calendar_control — OAuth
 tinytuya                     # home_assistant — Tuya / Smart Life bulbs
 paho-mqtt                    # printer_control — MQTT printers

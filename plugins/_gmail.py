@@ -638,11 +638,14 @@ class ImapGmailClient:
 class OAuthGmailClient:
     """Read-only Gmail REST API client via google-api-python-client."""
 
-    def __init__(self, credentials_path: Path, token_path: Path):
+    def __init__(self, credentials_path: Path, token_path: Path, allow_interactive: bool = True):
         self.credentials_path = Path(credentials_path)
         self.token_path = Path(token_path)
+        self.allow_interactive = allow_interactive
 
     def _service(self):
+        if not self.allow_interactive and not self.token_path.is_file():
+            raise GmailError("Gmail OAuth requires authorization in Plugin Settings first.")
         from google.auth.transport.requests import Request
         from google.oauth2.credentials import Credentials
         from google_auth_oauthlib.flow import InstalledAppFlow
@@ -657,6 +660,8 @@ class OAuthGmailClient:
             if creds and creds.expired and creds.refresh_token:
                 creds.refresh(Request())
             else:
+                if not self.allow_interactive:
+                    raise GmailError("Gmail OAuth requires authorization in Plugin Settings first.")
                 if not self.credentials_path.is_file():
                     raise GmailError(
                         f"File OAuth tidak ditemukan di {self.credentials_path}."

@@ -39,7 +39,11 @@ WHAT THIS MODULE DOES NOT DO
 from __future__ import annotations
 
 from dataclasses import dataclass
+import threading
 from typing import NamedTuple
+
+
+_CONNECTION_LOCK = threading.Lock()
 
 
 class MT5Unavailable(RuntimeError):
@@ -89,6 +93,8 @@ class Session:
     because a half-open bridge holds the terminal's IPC slot."""
     mt5: object
     terminal: str = ""
+    _owns_lock: bool = False
+    _closed: bool = False
 
     def __enter__(self):
         return self
@@ -98,12 +104,19 @@ class Session:
         return False
 
     def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
         try:
             self.mt5.shutdown()
         except Exception:
             # Shutting down a bridge that is already gone is the normal case
             # when the terminal was closed under us. Nothing to report.
             pass
+        finally:
+            if self._owns_lock:
+                self._owns_lock = False
+                _CONNECTION_LOCK.release()
 
     def select(self, symbol: str) -> None:
         """Make sure the broker actually offers this symbol.
@@ -164,15 +177,28 @@ def connect(timeout_ms: int = 60_000, portable: bool = False) -> Session:
     connects to a different terminal with different symbols.
     """
     mt5 = _module()
-    if not mt5.initialize(timeout=timeout_ms, portable=portable):
-        code = mt5.last_error()
-        raise MT5Unavailable(
-            "Could not attach to a MetaTrader 5 terminal "
-            f"({code}). The terminal has to be running and logged in — the "
-            "Python package is a bridge to it, not a data service of its own.")
-    info = mt5.terminal_info()
-    name = getattr(info, "name", "") if info is not None else ""
-    return Session(mt5=mt5, terminal=str(name or ""))
+    if not _CONNECTION_LOCK.acquire(timeout=10):
+        raise MT5Unavailable("Another MT5 data request is still running; try again.")
+    initialized = False
+    try:
+        if not mt5.initialize(timeout=timeout_ms, portable=portable):
+            code = mt5.last_error()
+            raise MT5Unavailable(
+                "Could not attach to a MetaTrader 5 terminal "
+                f"({code}). The terminal has to be running and logged in — the "
+                "Python package is a bridge to it, not a data service of its own.")
+        initialized = True
+        info = mt5.terminal_info()
+        name = getattr(info, "name", "") if info is not None else ""
+        return Session(mt5=mt5, terminal=str(name or ""), _owns_lock=True)
+    except BaseException:
+        try:
+            if initialized:
+                mt5.shutdown()
+        finally:
+            _CONNECTION_LOCK.release()
+        raise
+
 
 
 def pip_size(symbol_info) -> float:

@@ -3450,6 +3450,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
     _cam_frame_sig  = pyqtSignal(bytes)      # live camera frame → HUD area
     _video_open_sig  = pyqtSignal(str, str, bool, str, object, object)  # video, title, muted, audio, fallbacks, on_exhausted
     _wake_btns_sig   = pyqtSignal()          # wake state resolved off-thread
+    _ptt_shortcut_sig = pyqtSignal(bool)
     _video_close_sig = pyqtSignal()
     _video_mute_sig  = pyqtSignal(bool)
     # Audio playback — a file, a stream URL, or YouTube audio. Separate from the
@@ -3806,6 +3807,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         self._cam_stream_sig.connect(self._on_cam_stream)
         self._cam_frame_sig.connect(self._on_cam_frame)
         self._wake_btns_sig.connect(self._refresh_wake_btns)
+        self._ptt_shortcut_sig.connect(self._apply_ptt_shortcut)
         self._video_open_sig.connect(self._on_video_open)
         self._video_close_sig.connect(self._on_video_close)
         self._video_mute_sig.connect(self._on_video_mute)
@@ -5284,18 +5286,19 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         "broken": ("RED", "!"),
     }
     _JOB_PHASES = ("reading", "planning", "writing", "checking")
-
     def _show_code_job(self, job: dict):
         """Slot — Qt main thread. Draws the coding agent's progress."""
         import time as _time
         if not job:
             return
+        if job.get("kind") in ("creative_workspace", "trading_terminal"):
+            from ui.workspace_router import open_workspace
+            open_workspace(self, job); return
         e = self._esc
         col = lambda name: getattr(C, name, C.TEXT)
         status = job.get("status", "")
         finished = job.get("finished")
         took = (finished or _time.time()) - job.get("started", _time.time())
-
         # Phase strip: where in the job it is, readable at a glance.
         strip = []
         phases = list(job.get("phases") or self._JOB_PHASES)
@@ -5946,7 +5949,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
                 text-align: left; padding: 0 8px; }}
             QPushButton:hover {{ color: {C.TEXT}; border: 1px solid {C.BORDER_B}; }}"""
         self._wake_btn.setEnabled(True)
-        if not st["ready"]:
+        if not st["ready"] and not st["enabled"]:
             self._wake_btn.setText(_t("ui.wake_word.download"))
             self._wake_btn.setStyleSheet(_off)
             self._wake_sleep_btn.hide()
@@ -6087,7 +6090,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
 
     def _toggle_wake_word(self):
         st = self._wake_state()
-        if not st["ready"]:
+        if not st["ready"] and not st["enabled"]:
             # First time: download openwakeword + model in a worker thread.
             self._wake_btn.setText(_t("ui.wake_word.downloading"))
             self._wake_btn.setEnabled(False)
