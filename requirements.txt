@@ -58,7 +58,11 @@ pyperclip
 pillow>=10,<13
 # OpenCV 4.12+ requires NumPy 2 on Python >=3.9; retain the NumPy 1 ABI
 # on supported Windows Pythons for MT5 compatibility.
-opencv-python>=4.8,<4.12; sys_platform == "win32" and python_version < "3.13"
+# MediaPipe supplies hand landmarks. The contrib OpenCV distribution provides
+# cv2; do not install the non-contrib wheel alongside it in this environment.
+mediapipe==0.10.21; sys_platform == "win32" and platform_machine == "AMD64" and python_version >= "3.10" and python_version < "3.13"
+opencv-contrib-python>=4.8,<4.12; sys_platform == "win32" and platform_machine == "AMD64" and python_version >= "3.10" and python_version < "3.13"
+opencv-python>=4.8,<4.12; sys_platform == "win32" and python_version < "3.13" and (platform_machine != "AMD64" or python_version < "3.10")
 opencv-python>=4.8,<5; sys_platform != "win32" or python_version >= "3.13"
 mss>=9,<11
 
@@ -119,7 +123,7 @@ pynvml                       # system_monitor + the HUD's GPU meter (NVIDIA)
 #   pip install pandas       # file_processor: spreadsheet/CSV analysis
 #   pip install pydub        # file_processor: audio metadata and conversion
 #                            #   (also needs ffmpeg on PATH for most formats)
-#   pip install mediapipe    # pushup_counter: elbow-angle rep detection
+#   pip install mediapipe    # optional vision plugins on non-Windows systems
 
 # ── Optional: running the assistant on your own models ───────────────────────
 # ⚙ → ENGINE & PROVIDERS lets you replace Gemini Live with your own speech

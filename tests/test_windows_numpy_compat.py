@@ -8,7 +8,9 @@ from core import installer
 def test_requirements_limit_numpy_and_opencv_on_windows_python_311_312():
     text = (Path(__file__).resolve().parents[1] / "requirements.txt").read_text(encoding="utf-8")
     assert 'numpy>=1.24,<2; sys_platform == "win32" and python_version < "3.13"' in text
-    assert 'opencv-python>=4.8,<4.12; sys_platform == "win32" and python_version < "3.13"' in text
+    assert 'opencv-contrib-python>=4.8,<4.12; sys_platform == "win32"' in text
+    assert 'mediapipe==0.10.21; sys_platform == "win32"' in text
+    assert 'opencv-python>=4.8,<4.12; sys_platform == "win32"' in text
     assert 'sys_platform != "win32" or python_version >= "3.13"' in text
 
 
@@ -20,3 +22,21 @@ def test_fallback_installer_limits_numpy_and_opencv_on_windows(monkeypatch):
     with patch.object(installer.sys, "version_info", (3, 11, 0)):
         installer.install_for_config({})
     assert packages == ["numpy>=1.24,<2", "opencv-python>=4.8,<4.12"]
+
+
+def test_mediapipe_cv2_wheels_do_not_overlap():
+    from packaging.requirements import Requirement
+
+    lines = (Path(__file__).resolve().parents[1] / "requirements.txt").read_text(encoding="utf-8").splitlines()
+    specs = [Requirement(line) for line in lines if line.startswith(("opencv-python", "opencv-contrib-python", "mediapipe=="))]
+    for os_name, machine, version, cv, mp in [
+        ("win32", "AMD64", "3.11", "opencv-contrib-python", True),
+        ("win32", "AMD64", "3.12", "opencv-contrib-python", True),
+        ("win32", "AMD64", "3.13", "opencv-python", False),
+        ("win32", "ARM64", "3.11", "opencv-python", False),
+        ("linux", "x86_64", "3.11", "opencv-python", False),
+    ]:
+        environment = {"sys_platform": os_name, "platform_machine": machine, "python_version": version}
+        active = [spec.name for spec in specs if spec.marker.evaluate(environment)]
+        assert [name for name in active if name.startswith("opencv-")] == [cv]
+        assert ("mediapipe" in active) == mp

@@ -163,6 +163,16 @@ def _get_camera_index() -> int:
 
 
 def _capture_camera() -> tuple[bytes, str]:
+    from core import camera_lease
+    if not camera_lease.acquire():
+        raise RuntimeError("Camera is in use by live view or hand gesture control. Stop it first.")
+    try:
+        return _capture_camera_owned()
+    finally:
+        camera_lease.release()
+
+
+def _capture_camera_owned() -> tuple[bytes, str]:
     if not _CV2:
         raise RuntimeError("OpenCV (cv2) is not installed. Run: pip install opencv-python")
 
@@ -171,13 +181,15 @@ def _capture_camera() -> tuple[bytes, str]:
     cap     = cv2.VideoCapture(index, backend)
 
     if not cap.isOpened():
+        cap.release()
         raise RuntimeError(f"Camera index {index} could not be opened.")
 
-    for _ in range(10):
-        cap.read()
-
-    ret, frame = cap.read()
-    cap.release()
+    try:
+        for _ in range(10):
+            cap.read()
+        ret, frame = cap.read()
+    finally:
+        cap.release()
 
     if not ret or frame is None:
         raise RuntimeError("Camera returned no frame.")

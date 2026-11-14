@@ -913,3 +913,57 @@ Engineered by a developer building a real-world JARVIS-style assistant.
 |---|---|
 | YouTube | [@FatihMakes](https://www.youtube.com/@FatihMakes) |
 | Instagram | [@fatihmakes](https://www.instagram.com/fatihmakes) |
+
+### Experimental Windows hand control
+
+This feature is off by default. On Windows AMD64 with Python 3.10–3.12,
+`python -m pip install -r requirements.txt` installs MediaPipe and the
+`opencv-contrib-python` distribution of OpenCV. If this environment already
+contains `opencv-python`, remove **both** OpenCV distributions before
+reinstalling the requirements:
+
+```bash
+python -m pip uninstall -y opencv-python opencv-contrib-python
+python -m pip install -r requirements.txt
+python -m pip check
+```
+
+Restart the app. `cv2` remains available through the
+contrib distribution. Other OSes, architectures and Python versions are not
+supported by this gesture implementation.
+
+Enable hand control in the desktop assistant panel. Point with the index finger
+to move the primary-monitor cursor; pinch thumb and index for the configured
+hold time (default 0.35 seconds) to press, hold and move to drag, release to
+click/drop. Raise index and middle fingers and move vertically to scroll. Raise
+index, middle and ring for one second to switch to the previous application
+(Alt+Tab) by default; change pose to re-arm. Fold the four fingers and raise
+your thumb for one second to open the command menu, then use the pointer and
+pinch to select an item. An open hand or ordinary fist is a resting pose.
+
+The menu provides switching apps, Task View, Start, show desktop, window
+minimize/maximize, media playback and volume. Targeted commands use the window
+that had focus when the menu opened; they refuse a changed or missing target.
+Close sends the selected window a normal Windows close request, **not** a forced
+process termination: gesture input stops first and a physical confirmation is
+required. Applications may still ask to save work or refuse to close. Some
+Windows focus or privilege restrictions can prevent an action; the log reports
+failures. In settings, choose the pinch hold time, pointer movement area and
+three-finger action; restart hand control to apply changes. These are presets,
+not automatic calibration or arbitrary shortcut mapping.
+
+The mouse button releases on tracking loss. Stop with the panel button or
+physical **Ctrl+Alt+G** globally. A watchdog stops gesture input if frame
+capture or recognition stalls. PyAutoGUI's corner fail-safe remains active.
+The application stops gesture input before an assistant confirmation banner
+appears; complete confirmations with physical input. Gesture-controlled clicks
+can still activate destructive controls in other apps or Windows: use care and
+keep a physical mouse and keyboard nearby.
+
+The feature processes frames locally and takes exclusive access to the camera
+within the assistant's live-view and capture paths. Stop one camera feature
+before starting another; other applications or plugins may also use the camera.
+Camera failures are reported in the panel. Multi-monitor control, automatic
+calibration, arbitrary gesture mapping, and full Windows control are not yet
+provided. Gesture recognition and camera performance require real hardware
+validation; lighting, pose and camera positioning affect accuracy.
