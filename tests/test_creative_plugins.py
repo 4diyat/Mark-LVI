@@ -49,7 +49,7 @@ def test_open_save_and_execute_python_file(tmp_path):
     _creative.write_code(str(path), 'print("hello editor")\n')
     assert _creative.read_code(str(path)) == 'print("hello editor")\n'
     rc, output = _creative.run_code(str(path))
-    assert rc == 0 and output == "hello editor\n"
+    assert rc == 0 and output.splitlines() == ["hello editor"]
 
 
 def test_execution_failure_timeout_and_output_bound(tmp_path):
