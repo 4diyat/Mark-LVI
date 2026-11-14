@@ -606,3 +606,40 @@ def test_retry_cap_stops_looping_and_stop_cancels_inflight_retry(monkeypatch):
     assert cb2("403 Forbidden") is False
 
 
+
+
+def test_candidates_exclude_dash_segments_but_allow_unlabelled_http():
+    info = {"formats": [
+        {"url": "https://example.test/segments", "protocol": "http_dash_segments",
+         "vcodec": "avc1", "acodec": "none", "ext": "mp4", "height": 360},
+        {"url": "https://example.test/video.mp4", "vcodec": "avc1",
+         "acodec": "mp4a", "ext": "mp4", "height": 360},
+    ]}
+    video, _, _ = vp._extract_candidates(info)
+    assert [f["url"] for f in video] == ["https://example.test/video.mp4"]
+
+
+def test_search_retries_same_video_if_first_client_has_no_playable_format(monkeypatch):
+    import sys
+    from types import SimpleNamespace
+    attempts = []
+
+    class Downloader:
+        def __init__(self, opts):
+            self.opts = opts
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+        def extract_info(self, target, download=False):
+            attempts.append((target, self.opts.get("extractor_args")))
+            if target.startswith("ytsearch"):
+                return {"entries": [{"id": "abc", "url": "https://youtube.com/watch?v=abc"}]}
+            if not self.opts.get("extractor_args"):
+                return {"id": "abc", "formats": [{"url": "https://bad", "protocol": "http_dash_segments", "vcodec": "avc"}]}
+            return {"id": "abc", "formats": [{"url": "https://good", "protocol": "https", "vcodec": "avc", "acodec": "aac"}]}
+
+    monkeypatch.setitem(sys.modules, "yt_dlp", SimpleNamespace(YoutubeDL=Downloader))
+    videos, _, _, vid, error = vp._resolve_youtube_candidates("test query")
+    assert not error and vid == "abc" and videos[0]["url"] == "https://good"
+    assert len(attempts) == 3

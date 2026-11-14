@@ -155,7 +155,7 @@ def test_saving_a_key_without_a_keyring_still_writes_the_file(isolated_config, n
     it did before this feature existed."""
     isolated_config.save_api_keys("key-bbbbbbbbbbbbbbbbbb")
     assert isolated_config.get_gemini_key() == "key-bbbbbbbbbbbbbbbbbb"
-    assert "gemini_api_key_source" not in isolated_config.load_api_keys()
+    assert isolated_config.load_api_keys()["gemini_api_key_source"] == "file"
 
 
 def test_the_keychain_wins_over_the_file_when_they_disagree(isolated_config, keyring):
@@ -179,3 +179,17 @@ def test_a_broken_keyring_does_not_stop_a_save(isolated_config, keyring):
     keyring.fail_on.update({"get", "set"})
     isolated_config.save_api_keys("key-dddddddddddddddddd")
     assert isolated_config.get_gemini_key() == "key-dddddddddddddddddd"
+
+
+def test_setup_replaces_old_keychain_key(isolated_config, keyring):
+    isolated_config.save_api_keys("old-key-abcdefghijkl")
+    assert isolated_config.save_setup("new-key-abcdefghijkl", "linux")
+    assert isolated_config.get_gemini_key() == "new-key-abcdefghijkl"
+    assert keyring.store[(app_keychain.SERVICE, app_keychain.ACCOUNT)] == "new-key-abcdefghijkl"
+
+
+def test_failed_keychain_rotation_uses_new_file_key(isolated_config, keyring):
+    isolated_config.save_api_keys("old-key-abcdefghijkl")
+    keyring.fail_on.add("set")
+    assert isolated_config.save_setup("new-key-abcdefghijkl", "linux")
+    assert isolated_config.get_gemini_key() == "new-key-abcdefghijkl"

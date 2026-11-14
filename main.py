@@ -591,6 +591,27 @@ def _keep_context_of(exc: BaseException) -> bool:
     return True
 
 
+def _exception_details(exc: BaseException) -> str:
+    """Include TaskGroup causes; str(ExceptionGroup) hides the real error."""
+    parts = [str(exc)]
+    for child in getattr(exc, "exceptions", ()):
+        parts.append(_exception_details(child))
+    return " | ".join(parts)
+
+
+def _is_invalid_api_key(message: str) -> bool:
+    text = message.lower()
+    return "api key not valid" in text or "api_key_invalid" in text
+
+
+def _queue_mic_frame(queue, frame) -> None:
+    """Drop a frame under backpressure instead of raising in the event loop."""
+    try:
+        queue.put_nowait(frame)
+    except asyncio.QueueFull:
+        pass
+
+
 class JarvisLive:
     def __init__(self, ui: JarvisUI):
         # Platform limits are announced once per run, not once per
@@ -653,6 +674,8 @@ class JarvisLive:
         self.ui.on_interrupt      = self.interrupt
         self.ui.on_voice_change   = self._on_voice_change     # voice picker → rebuild session
         self.ui.on_audio_device_change = self._on_audio_device_change
+        self.ui._win.on_plugins_changed = lambda: self.request_reconnect(
+            keep_context=False, reason="plugin permissions changed")
         # True while there is no working microphone. Read by _build_config so
         # the model is TOLD it cannot hear (see _describe_limits) instead of
         # waiting for speech that will never arrive. Reset by
@@ -1571,7 +1594,9 @@ class JarvisLive:
             await self.session.send_realtime_input(
                 audio=types.Blob(
                     data=msg["data"],
-                    mime_type=msg.get("mime_type", "audio/pcm"),
+                    mime_type=(f"audio/pcm;rate={SEND_SAMPLE_RATE}"
+                               if msg.get("mime_type", "audio/pcm") == "audio/pcm"
+                               else msg["mime_type"]),
                 )
             )
 
@@ -1642,8 +1667,8 @@ class JarvisLive:
             if not self.ui.muted and not self._phone_active:
                 data = indata.tobytes()
                 loop.call_soon_threadsafe(
-                    self.out_queue.put_nowait,
-                    {"data": data, "mime_type": "audio/pcm"}
+                    _queue_mic_frame, self.out_queue,
+                    {"data": data, "mime_type": f"audio/pcm;rate={SEND_SAMPLE_RATE}"}
                 )
                 # Feed the live mic level to the HUD so the waveform reacts to
                 # the user's actual voice while listening. Purely cosmetic — any
@@ -2723,7 +2748,7 @@ class JarvisLive:
                     self._conn_backoff = 0
                     continue
 
-                err_str = str(e)
+                err_str = _exception_details(e)
                 print(f"[JARVIS] Error ({type(e).__name__}): {e}")
                 traceback.print_exc()
 
@@ -2775,7 +2800,7 @@ class JarvisLive:
                     continue
 
                 # Invalid API key — stop hammering the API, prompt re-configuration
-                if "API key not valid" in err_str or "1007" in err_str:
+                if _is_invalid_api_key(err_str):
                     self.ui.write_log("ERR: API key invalid — please re-enter your key.")
                     self.ui.set_state("SLEEPING")
                     self.ui.prompt_reconfig()
