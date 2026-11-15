@@ -429,5 +429,11 @@
   "image_editor.save_flatten_warning": "PNG, JPEG dan BMP disimpan sebagai gambar gabungan. Lapisan dapat diedit hanya selama sesi ini. Lanjutkan?",
   "image_editor.flattened": "Gambar diubah dan lapisan digabungkan. Undo dapat memulihkannya.",
   "workspace.camera_starting": "SYS: Memulai pratinjau kamera…",
-  "video_control.open": "Buka video…"
+  "video_control.open": "Buka video…",
+  "workspace.favorites": "FAVORIT",
+  "workspace.home": "Beranda",
+  "workspace.desktop": "Desktop saya",
+  "workspace.documents": "Dokumen",
+  "workspace.downloads": "Unduhan",
+  "workspace.search": "Cari berkas…"
 }

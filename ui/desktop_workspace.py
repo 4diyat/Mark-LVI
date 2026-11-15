@@ -5,13 +5,29 @@ thread-safe dispatch are still owned by the existing application.
 """
 from pathlib import Path
 
-from PyQt6.QtCore import QDir, Qt, QTimer, QUrl
-from PyQt6.QtGui import QDesktopServices, QFileSystemModel
+from PyQt6.QtCore import QDir, QSize, Qt, QTimer, QUrl
+from PyQt6.QtGui import QBrush, QDesktopServices, QFileSystemModel, QPixmap
 from PyQt6.QtWidgets import (QHBoxLayout, QLabel, QLineEdit, QMdiArea,
-                             QMdiSubWindow, QPushButton, QScrollArea, QTreeView, QVBoxLayout, QWidget)
+                             QMdiSubWindow, QPushButton, QScrollArea, QStyle, QToolButton,
+                             QTreeView, QVBoxLayout, QWidget)
 
 from core.i18n import label as _t
 from ui.theme import C
+
+
+class WallpaperArea(QMdiArea):
+    """Scale the original wallpaper to cover the desktop, not the app windows."""
+    def __init__(self):
+        super().__init__()
+        self._wallpaper = QPixmap(str(Path(__file__).resolve().parent.parent / "assets/workspace/aurora.png"))
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if not self._wallpaper.isNull():
+            image = self._wallpaper.scaled(self.viewport().size(),
+                                           Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                                           Qt.TransformationMode.SmoothTransformation)
+            self.setBackground(QBrush(image))
 
 
 class PersistentWindow(QMdiSubWindow):
@@ -53,28 +69,77 @@ class FileBrowser(QWidget):
     """Read-only navigation; opening files delegates to the user's OS."""
     def __init__(self):
         super().__init__()
-        layout = QVBoxLayout(self)
+        self.setObjectName("WorkspaceFiles")
+        self.setStyleSheet(f"""
+            QWidget#WorkspaceFiles {{ background: {C.DESKTOP_PANEL}; color: {C.DESKTOP_TEXT}; }}
+            QLabel {{ color: {C.DESKTOP_MUTED}; }}
+            QTreeView {{ background: {C.DESKTOP_PANEL}; color: {C.DESKTOP_TEXT}; border: none;
+                         alternate-background-color: {C.DESKTOP_SIDEBAR}; }}
+            QTreeView::item:selected {{ background: {C.DESKTOP_DOCK}; color: {C.DESKTOP_TEXT}; }}
+            QHeaderView::section {{ background: {C.DESKTOP_BAR}; color: {C.DESKTOP_MUTED};
+                                    border: none; padding: 6px; }}
+            QLineEdit {{ background: {C.DESKTOP_DOCK}; color: {C.DESKTOP_TEXT};
+                         border: 1px solid {C.DESKTOP_BORDER}; border-radius: 6px; padding: 6px; }}
+            QPushButton {{ background: transparent; color: {C.DESKTOP_TEXT}; border: none;
+                           text-align: left; padding: 8px; border-radius: 6px; }}
+            QPushButton:hover {{ background: {C.DESKTOP_DOCK}; }}
+        """)
+        root = QHBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+        sidebar = QWidget()
+        sidebar.setFixedWidth(145)
+        sidebar.setStyleSheet(f"background: {C.DESKTOP_SIDEBAR};")
+        favorites = QVBoxLayout(sidebar)
+        favorites.setContentsMargins(10, 12, 10, 10)
+        favorites.addWidget(QLabel(_t("workspace.favorites")))
+        home = Path.home()
+        for key, folder in (("workspace.home", home), ("workspace.desktop", home / "Desktop"),
+                            ("workspace.documents", home / "Documents"), ("workspace.downloads", home / "Downloads")):
+            button = QPushButton(_t(key))
+            button.setEnabled(folder.is_dir())
+            button.clicked.connect(lambda checked=False, target=folder: self.navigate(str(target)))
+            favorites.addWidget(button)
+        favorites.addStretch(1)
+        root.addWidget(sidebar)
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(12, 10, 12, 10)
         header = QHBoxLayout()
         up = QPushButton(_t("workspace.up"))
         up.clicked.connect(self._up)
         header.addWidget(up)
-        self.path = QLineEdit(str(Path.home()))
+        self.path = QLineEdit(str(home))
         self.path.returnPressed.connect(lambda: self.navigate(self.path.text()))
         header.addWidget(self.path, 1)
+        self.search = QLineEdit()
+        self.search.setPlaceholderText(_t("workspace.search"))
+        self.search.setMaximumWidth(170)
+        self.search.textChanged.connect(self._filter)
+        header.addWidget(self.search)
         layout.addLayout(header)
         self.model = QFileSystemModel(self)
         self.model.setReadOnly(True)
         self.model.setFilter(QDir.Filter.AllDirs | QDir.Filter.Files | QDir.Filter.NoDotAndDotDot)
-        self.model.setRootPath(str(Path.home()))
+        self.model.setNameFilterDisables(False)
+        self.model.setRootPath(str(home))
         self.view = QTreeView()
         self.view.setModel(self.model)
+        self.view.setAlternatingRowColors(True)
         self.view.setSortingEnabled(True)
         self.view.doubleClicked.connect(self._open)
-        layout.addWidget(self.view)
+        layout.addWidget(self.view, 1)
         self.status = QLabel(_t("workspace.files_hint"))
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
-        self.navigate(str(Path.home()))
+        root.addWidget(content, 1)
+        self.navigate(str(home))
+
+    def _filter(self, text):
+        # QFileSystemModel applies these patterns to files; directories remain
+        # navigable. This never alters or sends a user's files.
+        text = text.strip()
+        self.model.setNameFilters([f"*{text}*"] if text else [])
 
     def navigate(self, path):
         target = Path(path).expanduser()
@@ -103,16 +168,20 @@ def build(window):
     shell.setStyleSheet(f"""
         QWidget#WorkspaceShell {{ background: qlineargradient(x1:0,y1:0,x2:1,y2:1,
             stop:0 #06142c, stop:0.55 #073847, stop:1 #071127); }}
-        QMdiArea {{ background: transparent; border: none; }}
-        QMdiSubWindow {{ background: {C.PANEL}; border: 1px solid {C.BORDER_B}; }}
-        QPushButton#DockButton {{ color: {C.WHITE}; background: {C.PANEL2};
-            border: 1px solid {C.BORDER}; border-radius: 8px; padding: 7px 10px; }}
-        QPushButton#DockButton:hover {{ border-color: {C.PRI}; }}
+        QMdiArea {{ border: none; }}
+        QMdiSubWindow {{ background: {C.DESKTOP_PANEL}; border: 1px solid {C.DESKTOP_BORDER}; }}
+        QMdiSubWindow::title {{ background: {C.DESKTOP_SIDEBAR}; color: {C.DESKTOP_TEXT};
+                               padding: 5px; }}
+        QWidget#DesktopDock {{ background: {C.DESKTOP_DOCK}; border: 1px solid {C.DESKTOP_BORDER};
+                               border-radius: 15px; }}
+        QToolButton#DockButton {{ color: {C.DESKTOP_TEXT}; background: transparent;
+            border: none; border-radius: 8px; padding: 4px; }}
+        QToolButton#DockButton:hover {{ background: {C.DESKTOP_SIDEBAR}; }}
     """)
     layout = QVBoxLayout(shell)
     layout.setContentsMargins(8, 6, 8, 8)
     layout.setSpacing(6)
-    mdi = QMdiArea()
+    mdi = WallpaperArea()
     mdi.setViewMode(QMdiArea.ViewMode.SubWindowView)
     mdi.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
     mdi.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
@@ -128,8 +197,11 @@ def build(window):
         window._desktop_windows[name] = sub
         return sub
 
-    add("chat", window._right_panel, "workspace.chat").show()
-    add("assistant", window._assistant_panel, "workspace.assistant").show()
+    assistant = add("assistant", window._assistant_panel, "workspace.assistant")
+    assistant.show()
+    # The real conversation now lives alongside the HUD in the assistant panel.
+    window._desktop_windows["chat"] = assistant
+    add("files", FileBrowser(), "workspace.files").show()
     add("navigation", window._left_panel, "workspace.navigation").hide()
     video = VideoWindow(window)
     video.setWidget(window._video_cont)
@@ -159,6 +231,8 @@ def build(window):
             sub.showNormal()
             mdi.setActiveSubWindow(sub)
             sub.raise_()
+            if name == "chat":
+                window._input.setFocus()
 
     def creative(tab):
         from ui.creative import open_workspace
@@ -177,26 +251,32 @@ def build(window):
         open_trade(window, {"kind": "mt5_trade", "draft": {}})
 
     dock = QWidget()
+    dock.setObjectName("DesktopDock")
     row = QHBoxLayout(dock)
     row.setContentsMargins(4, 0, 4, 0)
     row.addStretch(1)
-    buttons = (("workspace.chat", lambda: focus("chat")),
-               ("workspace.assistant", lambda: focus("assistant")),
-               ("workspace.video", lambda: focus("video")),
-               ("workspace.camera", lambda: focus("camera")),
-               ("workspace.files", lambda: focus("files")),
-               ("workspace.code", lambda: creative("editor")),
-               ("workspace.image", image_editor),
-               ("workspace.ai_image", lambda: creative("canvas")),
-               ("workspace.trading", trading),
-               ("workspace.order", order),
-               ("workspace.navigation", lambda: focus("navigation")),
-               ("desktop.plugins", window._open_plugin_manager),
-               ("desktop.settings", lambda: window._drawer_btn.click()))
+    buttons = (("workspace.chat", "SP_MessageBoxInformation", lambda: focus("chat")),
+               ("workspace.files", "SP_DirIcon", lambda: focus("files")),
+               ("workspace.video", "SP_MediaPlay", lambda: focus("video")),
+               ("workspace.camera", "SP_ComputerIcon", lambda: focus("camera")),
+               ("workspace.code", "SP_FileIcon", lambda: creative("editor")),
+               ("workspace.image", "SP_FileDialogDetailedView", image_editor),
+               ("workspace.ai_image", "SP_FileDialogContentsView", lambda: creative("canvas")),
+               ("workspace.trading", "SP_FileDialogInfoView", trading),
+               ("workspace.order", "SP_DialogApplyButton", order),
+               ("workspace.navigation", "SP_TitleBarMenuButton", lambda: focus("navigation")),
+               ("desktop.plugins", "SP_DriveNetIcon", window._open_plugin_manager),
+               ("desktop.settings", "SP_FileDialogListView", lambda: window._drawer_btn.click()))
     window._workspace_dock = []
-    for key, action in buttons:
-        button = QPushButton(_t(key))
+    for key, icon, action in buttons:
+        button = QToolButton()
+        button.setText(_t(key))
         button.setObjectName("DockButton")
+        button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
+        button.setIcon(window.style().standardIcon(getattr(QStyle.StandardPixmap, icon)))
+        button.setIconSize(QSize(28, 28))
+        button.setMinimumWidth(64)
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
         button.clicked.connect(lambda checked=False, fn=action: fn())
         row.addWidget(button)
         window._workspace_dock.append((button, key))
@@ -204,21 +284,23 @@ def build(window):
     dock_scroll = QScrollArea()
     dock_scroll.setWidgetResizable(True)
     dock_scroll.setWidget(dock)
-    dock_scroll.setFixedHeight(58)
+    dock_scroll.setFixedHeight(76)
+    dock_scroll.setMaximumWidth(1020)
     dock_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     dock_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
     dock_scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
-    layout.addWidget(dock_scroll)
+    layout.addWidget(dock_scroll, 0, Qt.AlignmentFlag.AlignHCenter)
 
     def position_initial():
         width = max(mdi.viewport().width(), 800)
         height = max(mdi.viewport().height(), 500)
-        chat, assistant, nav = (window._desktop_windows[k] for k in ("chat", "assistant", "navigation"))
-        chat.setGeometry(18, 18, max(340, int(width * .47)), max(340, height - 38))
-        assistant.setGeometry(max(370, int(width * .50)), 18,
-                              max(300, int(width * .47) - 18), max(340, height - 38))
+        files, assistant, nav = (window._desktop_windows[k] for k in ("files", "assistant", "navigation"))
+        files.setGeometry(int(width * .045), int(height * .10),
+                          max(440, int(width * .45)), max(320, int(height * .66)))
+        assistant.setGeometry(max(490, int(width * .65)), int(height * .12),
+                              max(320, int(width * .29)), max(480, int(height * .72)))
         nav.resize(240, max(350, min(height - 40, 700)))
-        chat.show()
+        files.show()
         assistant.show()
         nav.hide()
     QTimer.singleShot(0, position_initial)
@@ -228,7 +310,7 @@ def build(window):
 def retranslate(window):
     for button, key in getattr(window, "_workspace_dock", ()):
         button.setText(_t(key))
-    for name, key in (("chat", "workspace.chat"), ("assistant", "workspace.assistant"),
+    for name, key in (("assistant", "workspace.assistant"),
                       ("navigation", "workspace.navigation"), ("files", "workspace.files"),
                       ("video", "workspace.video"), ("camera", "workspace.camera")):
         sub = getattr(window, "_desktop_windows", {}).get(name)

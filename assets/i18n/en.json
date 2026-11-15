@@ -429,5 +429,11 @@
   "image_editor.save_flatten_warning": "PNG, JPEG and BMP save a flattened image. Editable layers remain only in this session. Continue?",
   "image_editor.flattened": "Transformed; layers were flattened. Undo can restore them.",
   "workspace.camera_starting": "SYS: Starting camera preview…",
-  "video_control.open": "Open video…"
+  "video_control.open": "Open video…",
+  "workspace.favorites": "FAVORITES",
+  "workspace.home": "Home",
+  "workspace.desktop": "Desktop",
+  "workspace.documents": "Documents",
+  "workspace.downloads": "Downloads",
+  "workspace.search": "Search files…"
 }

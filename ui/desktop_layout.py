@@ -75,10 +75,10 @@ def build_conversation(window, log_cls, drop_cls):
     panel.setObjectName("DesktopConversation")
     panel.setMinimumWidth(280)
     panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-    panel.setStyleSheet(f"QWidget#DesktopConversation {{ background: {C.BG}; border-right: 1px solid {C.BORDER}; }}")
+    panel.setStyleSheet(f"QWidget#DesktopConversation {{ background: {C.DESKTOP_PANEL}; border: none; }}")
     layout = QVBoxLayout(panel)
-    layout.setContentsMargins(16, 14, 16, 12)
-    layout.setSpacing(8)
+    layout.setContentsMargins(8, 6, 8, 8)
+    layout.setSpacing(5)
     window._conversation_heading = _label(_t("desktop.conversation"), 15, bold=True, color=C.WHITE)
     window._conversation_subtitle = _label(_t("desktop.conversation_hint"), 8)
     layout.addWidget(window._conversation_heading)
@@ -104,10 +104,10 @@ def build_assistant_panel(window):
     panel.setObjectName("DesktopAssistant")
     panel.setMinimumWidth(240)
     panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-    panel.setStyleSheet(f"QWidget#DesktopAssistant {{ background: {C.DARK}; }}")
+    panel.setStyleSheet(f"QWidget#DesktopAssistant {{ background: {C.DESKTOP_PANEL}; }}")
     layout = QVBoxLayout(panel)
-    layout.setContentsMargins(12, 14, 12, 12)
-    layout.setSpacing(8)
+    layout.setContentsMargins(10, 8, 10, 8)
+    layout.setSpacing(5)
     header = QHBoxLayout()
     window._assistant_heading = _label(window._assistant_name, 13, bold=True, color=C.WHITE)
     window._desktop_state = _label(_t("desktop.initialising"), 8, color=C.PRI)
@@ -115,7 +115,10 @@ def build_assistant_panel(window):
     header.addStretch()
     header.addWidget(window._desktop_state)
     layout.addLayout(header)
-    layout.addWidget(window._center_split, stretch=1)
+    window.hud.setMinimumSize(180, 180)
+    layout.addWidget(window._center_split, stretch=2)
+    # Keep the real conversation and input in the assistant window, not a mock.
+    layout.addWidget(window._right_panel, stretch=3)
     window._voice_hint = _label(_t("desktop.voice_hint"), 8)
     window._voice_hint.setWordWrap(True)
     layout.addWidget(window._voice_hint)
@@ -147,6 +150,8 @@ def retranslate(window):
                       ("_file_heading", "desktop.files"),
                       ("_voice_hint", "desktop.voice_hint"), ("_interrupt_btn", "ui.interrupt")):
         getattr(window, attr).setText(_t(key))
+    window._ctrl_btn.setText(_t("desktop.controls"))
+    window._drawer_btn.setText(_t("desktop.settings"))
     update_state(window, window.hud.state)
 
 
@@ -158,3 +163,42 @@ def update_state(window, state):
            "NO MIC": "desktop.state_no_mic", "THINKING": "desktop.state_thinking",
            "PROCESSING": "desktop.state_processing", "IDLE": "desktop.state_idle"}.get(state, "desktop.initialising")
     window._desktop_state.setText(_t(key))
+
+
+def build_menu_bar(window):
+    """Compact top bar; existing settings and controls still use their slots."""
+    bar = QWidget()
+    bar.setObjectName("DesktopMenuBar")
+    bar.setFixedHeight(30)
+    window._desktop_menu_bar = bar
+    bar.setStyleSheet(f"QWidget#DesktopMenuBar {{ background: {C.DESKTOP_BAR}; "
+                      f"border-bottom: 1px solid {C.DESKTOP_BORDER}; }}")
+    row = QHBoxLayout(bar)
+    row.setContentsMargins(14, 0, 14, 0)
+    row.setSpacing(12)
+    window._title_lbl = _label(window._assistant_name.upper(), 9, bold=True, color=C.DESKTOP_TEXT)
+    row.addWidget(window._title_lbl)
+    window._sub_lbl = _label("", 7, color=C.DESKTOP_MUTED)
+    window._sub_lbl.hide()  # retained for existing name/locale updates
+    row.addWidget(window._sub_lbl)
+    row.addStretch(1)
+    window._clock_lbl = _label("00:00", 9, color=C.DESKTOP_TEXT)
+    row.addWidget(window._clock_lbl)
+    window._date_lbl = _label("", 8, color=C.DESKTOP_MUTED)
+    row.addWidget(window._date_lbl)
+    def menu_button(text, tip, slot):
+        button = QPushButton(text)
+        button.setCheckable(True)
+        button.setToolTip(_t(tip))
+        button.setFixedHeight(24)
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setStyleSheet(f"QPushButton {{ background: transparent; color: {C.DESKTOP_TEXT}; "
+                             f"border: none; padding: 0 6px; }} "
+                             f"QPushButton:hover, QPushButton:checked {{ background: {C.DESKTOP_DOCK}; "
+                             "border-radius: 4px; }")
+        button.clicked.connect(slot)
+        row.addWidget(button)
+        return button
+    window._ctrl_btn = menu_button(_t("desktop.controls"), "ui.controls_button", window._toggle_controls)
+    window._drawer_btn = menu_button(_t("desktop.settings"), "ui.setup_button", window._toggle_drawer)
+    return bar

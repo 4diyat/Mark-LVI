@@ -26,9 +26,11 @@ def setup(window):
     settings_button.setToolTip(_t("gesture.settings_hint"))
     status = QLabel(_t("gesture.off"))
     status.setWordWrap(True)
-    window._assistant_panel.layout().addWidget(status)
-    window._assistant_panel.layout().addWidget(button)
-    window._assistant_panel.layout().addWidget(settings_button)
+    # Gesture controls remain available from the Controls window without
+    # overcrowding the assistant's conversation surface.
+    window._left_panel.layout().addWidget(status)
+    window._left_panel.layout().addWidget(button)
+    window._left_panel.layout().addWidget(settings_button)
 
     def toggle():
         if controller.thread and controller.thread.is_alive():

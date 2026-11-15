@@ -450,7 +450,7 @@ def test_the_repository_own_plugins_all_reach_the_panel(isolated_config):
 
     sections = {s["plugin"]: s for s in reg.settings_schemas()}
     managed = {row["name"] for row in reg.list_for_ui()}
-    assert managed == {"code_editor", "currency_rates", "gmail_inbox", "image_canvas", "image_editor", "market_price",
+    assert managed == {"barehands", "code_editor", "currency_rates", "gmail_inbox", "image_canvas", "image_editor", "market_price",
                        "morning_brief", "mt5_orb", "mt5_trade", "prayer_times", "quick_notes", "trading_terminal"}
     assert set(sections) == managed                # the panel lists them all
 
