@@ -150,7 +150,7 @@ feature when its plugin is enabled.
 | 🎧 Audio Device Picker | Choose the microphone and speakers by name, filtered to the short list your OS shows — and measured, so every entry actually works |
 | 🔗 Session Continuity | A dropped connection, a voice change or a device change no longer wipes the conversation |
 | 🧩 Plugin System | Drop a single `.py` file into `plugins/` — JARVIS learns a new skill on next launch |
-| 📺 Video on the HUD | Plays YouTube, a local file or any video URL **where the avatar sits** — starts muted, sound on request |
+| 📺 Video player | Plays YouTube, a local file or video URL in a separate desktop panel — starts muted, sound on request |
 | 🪜 Model Ladder | Nine Gemini models in one measured order — a quota, a timeout or an outage steps to the next rung instead of failing |
 | 🔌 Choose Your Engine | Gemini Live, or your own STT + LLM + TTS — picked in the UI, no file editing |
 | 🏠 Local & Third-Party Models | Ollama · LM Studio · llama.cpp · vLLM · OpenAI · Groq · DeepSeek · Mistral · xAI · OpenRouter — one setting, because they share a protocol |
@@ -499,8 +499,8 @@ One new dependency for the whole release — `yt-dlp`, and only to turn a YouTub
 
 ### The display
 
-#### 📺 Video where the face is
-The HUD already had a surface that takes the centre of the screen and gives it back: the camera. Video shares that same stack, so the avatar, the live camera and a video can never be on screen at the same time — and a video always lands exactly where you are already looking.
+#### 📺 Video in its own workspace
+Video and live camera preview open in separate movable desktop panels alongside the avatar. The video panel can open a local file, pause and seek where supported. The camera dock button requests camera access; the preview appears only after the device opens. Closing the video panel stops playback; closing the camera panel requests capture to stop.
 
 It accepts **a local file, a direct media URL, a YouTube link, or just a description** ("play the new Dune trailer") and searches for it. It **starts muted every time**, because a soundtrack playing over the assistant is the one thing that could make JARVIS worse rather than better. You turn the sound on by asking, or from the button in the video header.
 
@@ -830,7 +830,7 @@ Mark LVI/
 │   ├── file_processor.py     # Document reading and summarization
 │   ├── send_message.py       # Messaging integration
 │   ├── weather_report.py     # Live city weather data
-│   ├── video_player.py       # Plays video on the HUD, where the avatar normally is
+│   ├── video_player.py       # Opens the video or audio player
 │   └── desktop.py            # Desktop and taskbar control
 ├── memory/
 │   ├── memory_manager.py     # Load/save long_term.json — sessions, monitors, identity
@@ -1006,3 +1006,59 @@ arrow-key navigation and window management. Existing voice commands and the
 computer-control actions can open apps and type in the focused field; confirm
 sensitive actions and inspect the target before typing. This remains experimental,
 and neither accurate object identification nor all OS functions are guaranteed.
+
+### MT5 order review (experimental)
+
+`mt5_trade` is a separate, permissioned plugin and is **disabled by default**.
+The existing `trading_terminal` ORB workspace remains read-only. To try orders,
+use Windows and the same MT5 setup described above, enable `mt5_trade` in Plugin
+Manager, and ask JARVIS to open an MT5 order draft. A desktop dialog starts in
+**OFF** mode every time. Choose DEMO or LIVE locally, verify the logged-in MT5
+account and broker server, enter a mandatory stop loss, the maximum lots and an
+estimated loss limit in account currency, and use **Check and review order**.
+Review and confirm every request; LIVE also requires typing `LIVE`. JARVIS can
+fill a draft, but the plugin itself does not approve or submit it.
+
+Supported actions are market buy/sell and changes to an existing pending order's
+price, stop loss and take profit (limit and stop orders only; stop-limit orders
+are not supported). Closing positions, creating/cancelling pending orders and
+editing open positions are not supported. Broker checks may reject
+requests, including pending-order modifications; filling mode is IOC and may not
+be supported by every broker. The loss estimate is not a guarantee: slippage,
+gaps, fees, failed stops, and currency conversion can increase losses. Orders may
+be partially filled. A missing/uncertain result is never retried automatically;
+check positions, order history and the Experts/Journal in MT5 before acting again.
+Account and quote can change after checks, and no software confirmation can
+eliminate market or broker risk. Gesture input is stopped during confirmation and
+new JARVIS tools are blocked while the confirmation is open, but other software
+or already-running processes can control the desktop; this is not a security
+sandbox or proof of physical input. Test with a demo account first. This integration
+has not been verified against a real Windows MT5 terminal or broker.
+
+### Desktop workspace
+
+JARVIS starts full screen; **F11** switches between full-screen and windowed
+mode. The desktop dock opens the existing conversation, assistant, plugin manager,
+settings, ORB workspace and order-review flow, plus a basic file browser and
+image editor. Chat, assistant and controls panels can be moved, resized or hidden
+and restored from the dock. Closing the main window asks before discarding
+unsaved code or image edits. The file browser opens files using the operating
+system; it does not organize, move or delete them.
+
+The local image editor opens images chosen by the person and supports rotate,
+horizontal flip, grayscale, crop by pixel bounds, simple text layers, one-level
+undo and Save As. Text layers can be hidden or removed, but are editable only
+in the current session. Saving PNG/JPEG/BMP flattens the visible image, and
+image-wide transforms flatten all layers after a warning; undo restores them.
+The separate optional `image_editor` plugin lets JARVIS propose an operation or
+text; a person must choose the image and apply/save the change. The existing `image_canvas` plugin
+is still a separate AI image generator. The code editor and both MT5 tools retain
+their existing plugin permissions and confirmation requirements. Enable each
+permissioned plugin in Plugin Manager before asking JARVIS to use it.
+
+This is an initial workspace rather than a full operating-system replacement:
+audio remains its own player, while video has its own desktop panel. Code editor,
+image editor and ORB workspaces use movable desktop panels; the order review stays
+a separate dialog with its confirmation safeguards. Camera, video and avatar use
+separate panels, subject to camera hardware access and permissions. Visual and
+device behaviour must be checked on the target desktop.

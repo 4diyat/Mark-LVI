@@ -1,0 +1,197 @@
+"""Opt-in local order review. All Qt objects remain on the main thread."""
+from __future__ import annotations
+
+import threading
+
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtWidgets import (QComboBox, QDialog, QGridLayout, QInputDialog, QLabel, QLineEdit,
+                             QMessageBox, QPushButton, QVBoxLayout)
+
+from core.i18n import label as _t
+from plugins import _mt5_trade as trade
+from ui.theme import C
+
+
+class OrderDialog(QDialog):
+    _prepared = pyqtSignal(object, str)
+    _finished = pyqtSignal(str)
+
+    def __init__(self, host, draft):
+        super().__init__(host)
+        self._host = host
+        self._busy = False
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+        self.setWindowTitle(_t("trade.title"))
+        self.resize(640, 560)
+        layout = QVBoxLayout(self)
+        warning = QLabel(_t("trade.warning"))
+        warning.setWordWrap(True)
+        layout.addWidget(warning)
+        grid = QGridLayout()
+        self.mode = QComboBox()
+        for label, value in (("trade.off", "OFF"), ("trade.demo", "DEMO"), ("trade.live", "LIVE")):
+            self.mode.addItem(_t(label), value)
+        grid.addWidget(QLabel(_t("trade.mode")), 0, 0)
+        grid.addWidget(self.mode, 0, 1)
+        self.kind = QComboBox()
+        self.kind.addItem(_t("trade.market"), "market")
+        self.kind.addItem(_t("trade.modify"), "modify_pending")
+        self.kind.setCurrentIndex(1 if draft.get("kind") == "modify_pending" else 0)
+        grid.addWidget(QLabel(_t("trade.kind")), 1, 0)
+        grid.addWidget(self.kind, 1, 1)
+        self.side = QComboBox()
+        self.side.addItem(_t("trade.choose_side"), "")
+        self.side.addItem(_t("trade.buy"), "buy")
+        self.side.addItem(_t("trade.sell"), "sell")
+        self.side.setCurrentIndex({"buy": 1, "sell": 2}.get(draft.get("side"), 0))
+        grid.addWidget(QLabel(_t("trade.side")), 2, 0)
+        grid.addWidget(self.side, 2, 1)
+        self.fields = {}
+        for row, (key, label, fallback) in enumerate((
+            ("symbol", "trade.symbol", ""), ("volume", "trade.volume", ""),
+            ("ticket", "trade.ticket", ""), ("price", "trade.price", ""),
+            ("sl", "trade.sl", ""), ("tp", "trade.tp", "0"),
+            ("max_volume", "trade.max_volume", "0.01"), ("max_loss", "trade.max_loss", ""),
+        ), start=3):
+            grid.addWidget(QLabel(_t(label)), row, 0)
+            # Maximum is always initialized locally, never taken from an AI draft.
+            value = fallback if key in ("max_volume", "max_loss") else str(draft.get(key, fallback) or fallback)
+            field = QLineEdit(value[:80])
+            self.fields[key] = field
+            grid.addWidget(field, row, 1)
+        layout.addLayout(grid)
+        self.status = QLabel(_t("trade.not_sent"))
+        self.status.setWordWrap(True)
+        self.status.setTextFormat(Qt.TextFormat.PlainText)
+        layout.addWidget(self.status)
+        self.review = QPushButton(_t("trade.review"))
+        self.review.clicked.connect(self._prepare)
+        layout.addWidget(self.review)
+        self._prepared.connect(self._on_prepared)
+        self._finished.connect(self._on_finished)
+
+    def _allowed(self):
+        try:
+            return any(r.get("name") == "mt5_trade" and r.get("valid") and r.get("enabled")
+                       for r in self._host.get_plugins())
+        except Exception:
+            return False
+
+    def _set_busy(self, value):
+        self._busy = value
+        self.review.setEnabled(not value)
+        self.mode.setEnabled(not value)
+        self.kind.setEnabled(not value)
+        self.side.setEnabled(not value)
+        for widget in self.fields.values():
+            widget.setEnabled(not value)
+
+    def _prepare(self):
+        if self._busy or not self._allowed():
+            self.status.setText(_t("trade.disabled"))
+            return
+        mode = self.mode.currentData()
+        draft = {k: w.text().strip() for k, w in self.fields.items() if k not in ("max_volume", "max_loss")}
+        draft.update(kind=self.kind.currentData(), side=self.side.currentData())
+        maximum = self.fields["max_volume"].text().strip()
+        max_loss = self.fields["max_loss"].text().strip()
+        self._set_busy(True)
+        self.status.setText(_t("trade.checking"))
+        def worker():
+            try:
+                prepared, error = trade.prepare(draft, mode, maximum, max_loss), ""
+            except Exception as exc:
+                prepared, error = None, str(exc)
+            try:
+                self._prepared.emit(prepared, error)
+            except RuntimeError:
+                pass
+        threading.Thread(target=worker, name="mt5-order-review", daemon=True).start()
+
+    def _on_prepared(self, prepared, error):
+        if error or not self._allowed():
+            self._set_busy(False)
+            self.status.setText(_t("trade.error", error=error[:400] if error else _t("trade.disabled")))
+            return
+        # Disarm hand input before showing a local approval dialog. The order
+        # cannot be approved by a tool argument or a remote dashboard request.
+        controller = getattr(self._host, "_hand_controller", None)
+        if controller is not None:
+            controller.stop()
+        if getattr(self._host, "_confirm_overlay", None) is not None:
+            self._set_busy(False)
+            self.status.setText(_t("trade.conflict"))
+            return
+        from core import trade_guard
+        if not trade_guard.begin():
+            self._set_busy(False)
+            self.status.setText(_t("trade.conflict"))
+            return
+        self._host._hand_closing_confirm = True
+        try:
+            msg = QMessageBox(self)
+            msg.setWindowTitle(_t("trade.confirm_title"))
+            msg.setStyleSheet(f"QMessageBox {{ background: {C.PANEL}; color: {C.WHITE}; }} "
+                              f"QLabel {{ color: {C.WHITE}; min-width: 500px; }} "
+                              f"QPushButton {{ background: {C.PANEL2}; color: {C.WHITE}; "
+                              f"border: 1px solid {C.BORDER_B}; border-radius: 6px; padding: 8px 20px; }} "
+                              f"QPushButton:focus {{ border: 2px solid {C.PRI}; }}")
+            msg.setTextFormat(Qt.TextFormat.PlainText)
+            msg.setText(_t("trade.confirm_detail", summary=prepared.summary))
+            msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            msg.setDefaultButton(QMessageBox.StandardButton.No)
+            msg.setWindowModality(Qt.WindowModality.ApplicationModal)
+            accepted = msg.exec() == QMessageBox.StandardButton.Yes
+            if accepted and prepared.mode == "LIVE":
+                text, ok = QInputDialog.getText(self, _t("trade.live_confirm_title"),
+                                                _t("trade.live_confirm_detail"))
+                accepted = ok and text.strip() == "LIVE"
+        finally:
+            self._host._hand_closing_confirm = False
+            trade_guard.end()
+        if (not accepted or not self._allowed() or
+                getattr(self._host, "_confirm_overlay", None) is not None):
+            self._set_busy(False)
+            self.status.setText(_t("trade.cancelled"))
+            return
+        self.status.setText(_t("trade.sending"))
+        def worker():
+            try:
+                # Recheck revocation on the worker immediately before the call.
+                from memory.config_manager import get_plugin_enabled
+                if not get_plugin_enabled("mt5_trade", default=False):
+                    result = _t("trade.disabled")
+                else:
+                    result = trade.execute(prepared)
+            except Exception as exc:
+                result = _t("trade.error", error=str(exc)[:400])
+            # Logging is marshalled by MainWindow even if this dialog was closed.
+            try:
+                self._host.write_log(_t("trade.result_log", result=result[:350]))
+                self._finished.emit(result)
+            except RuntimeError:
+                from core import logbook
+                logbook.get("mt5_trade").warning("MT5 order result: %s", result[:350])
+        threading.Thread(target=worker, name="mt5-order-submit", daemon=True).start()
+
+    def _on_finished(self, result):
+        self._set_busy(False)
+        self.status.setText(result)
+
+
+def open_trade(window, request):
+    try:
+        allowed = any(r.get("name") == "mt5_trade" and r.get("valid") and r.get("enabled")
+                      for r in window.get_plugins())
+    except Exception:
+        allowed = False
+    if not allowed:
+        window.write_log(_t("trade.disabled"))
+        return
+    dialog = OrderDialog(window, request.get("draft") or {})
+    if not hasattr(window, "_order_dialogs"):
+        window._order_dialogs = set()
+    window._order_dialogs.add(dialog)
+    dialog.destroyed.connect(lambda: window._order_dialogs.discard(dialog))
+    dialog.show()
+    dialog.raise_()

@@ -282,5 +282,5 @@ def open_workspace(window, request):
         window._creative_dialogs = set()
     window._creative_dialogs.add(dialog)
     dialog.destroyed.connect(lambda: window._creative_dialogs.discard(dialog))
-    dialog.show()
-    dialog.raise_()
+    from ui.desktop_workspace import show_document
+    show_document(window, dialog)
