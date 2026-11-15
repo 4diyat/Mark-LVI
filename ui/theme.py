@@ -41,6 +41,14 @@ class C:
     WHITE     = "#d8f8ff"
     DARK      = "#000d14"
     BAR_BG    = "#011520"
+    # Neutral desktop chrome is independent of the customizable HUD accent.
+    DESKTOP_PANEL = "#202a35"
+    DESKTOP_SIDEBAR = "#273240"
+    DESKTOP_BAR = "#172334"
+    DESKTOP_BORDER = "#54616f"
+    DESKTOP_TEXT = "#eef3f8"
+    DESKTOP_MUTED = "#aeb9c7"
+    DESKTOP_DOCK = "#354252"
 
 
 # Keys tied to the accent colour — status colours (ACC, GREEN, RED…) stay fixed

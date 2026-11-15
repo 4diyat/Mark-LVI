@@ -179,10 +179,14 @@ class _Object:
     currentIndexChanged = _Signal()
     textChanged = _Signal()
     returnPressed = _Signal()
+    doubleClicked = _Signal()
     sliderReleased = _Signal()
     activated = _Signal()
     triggered = _Signal()
     timeout = _Signal()
+
+    def style(self):
+        return types.SimpleNamespace(standardIcon=lambda *_: _Object())
 
     def width(self):
         return 980
@@ -530,6 +534,7 @@ def _install_qt() -> dict[str, types.ModuleType]:
             return 0
 
     core.Qt = _Enum()
+    core.QDir = type("QDir", (), {"Filter": _Enum()})
     core.QTimer = type("QTimer", (_Object,), {"start": lambda s, *a: None,
                                              "stop": lambda s, *a: None,
                                              "setInterval": lambda s, *a: None,
@@ -575,6 +580,7 @@ def _install_qt() -> dict[str, types.ModuleType]:
     widgets.QMdiArea = _MdiArea
     widgets.QMdiSubWindow = _MdiSubWindow
     widgets.QSizePolicy.Policy = _Enum()
+    widgets.QStyle = _stub_class("QStyle")
 
     class _Geometry(_Object):
         def width(self):
@@ -903,8 +909,9 @@ def test_remote_overlay_connect_does_not_crash_without_assistant_name(window):
 def test_desktop_shell_hosts_the_original_panels_and_dock(window):
     """The shell must reparent the real session widgets, not copies or placeholders."""
     windows = window._desktop_windows
-    assert set(windows) == {"chat", "assistant", "navigation", "video", "camera"}
-    assert window._right_panel.parentWidget() is windows["chat"]
+    assert set(windows) == {"chat", "assistant", "navigation", "video", "camera", "files"}
+    assert windows["chat"] is windows["assistant"]
+    assert window._right_panel.parentWidget() is window._assistant_panel
     assert window._assistant_panel.parentWidget() is windows["assistant"]
     assert window._left_panel.parentWidget() is windows["navigation"]
     assert windows["chat"].parentWidget() is window._desktop_mdi
@@ -1079,3 +1086,25 @@ def test_queued_camera_started_signal_does_not_reopen_after_stop(window):
     window._on_cam_stream(True)
     assert not window._camera_active
     assert window._desktop_windows["camera"]._visible is False
+
+
+def test_desktop_drawer_fits_under_compact_menu_and_inside_screen(window, monkeypatch):
+    geometry = []
+    drawer = types.SimpleNamespace(setFixedWidth=lambda _w: None, adjustSize=lambda: None,
+                                   sizeHint=lambda: types.SimpleNamespace(height=lambda: 300),
+                                   setGeometry=lambda *args: geometry.append(args))
+    monkeypatch.setattr(window._desktop_menu_bar, "height", lambda: 30)
+    monkeypatch.setattr(window.centralWidget(), "width", lambda: 820)
+    window._place_drawer(drawer, 790)
+    assert geometry == [(600, 30, 220, 300)]
+
+
+def test_jarvis_state_is_forwarded_to_optional_barehands_bridge(monkeypatch, window):
+    from plugins import _barehands
+    from ui.window import JarvisUI
+
+    observed = []
+    monkeypatch.setattr(_barehands, "publish_state", observed.append)
+    ui = types.SimpleNamespace(_win=window)
+    JarvisUI.set_state(ui, "THINKING")
+    assert observed == ["THINKING"]

@@ -1062,3 +1062,28 @@ image editor and ORB workspaces use movable desktop panels; the order review sta
 a separate dialog with its confirmation safeguards. Camera, video and avatar use
 separate panels, subject to camera hardware access and permissions. Visual and
 device behaviour must be checked on the target desktop.
+
+### Optional: Barehands hand-tracked board
+
+[Barehands](https://github.com/jaredrhod/barehands) by Jared Rhodenizer is a
+separate AGPL-3.0-or-later application, not bundled with JARVIS. On the desktop
+machine, clone that repository and start its server (`run.bat` on Windows or
+`python3 server.py` elsewhere). Open `http://127.0.0.1:8794/stage.html` in
+Chrome on that same machine, allow camera access, and verify hand tracking.
+Barehands loads MediaPipe and three.js from public CDNs on first use, so it
+needs internet then. Do not expose the Barehands server to the network.
+
+In JARVIS Plugin Settings, open **Barehands — local board**, enter the absolute
+folder containing its `server.py` and `stage.html`, and enable integration. Its
+port is read from that installation's `barehands.json`, defaulting to 8794.
+Configure the ring name and optional notes folders in Barehands' own config and
+restart its server; JARVIS does not alter that config or your notes. Ask JARVIS
+to show a card, present text, stage an image/model already inside Barehands'
+`media/` folder, or inspect the board. A successful command is *queued*, not
+proof the tracker rendered it; board inspection is the last heartbeat and can
+be stale. Board and note text are untrusted content, not instructions. The
+ring mirrors JARVIS state only while integration is enabled; Barehands times
+out a stale state if JARVIS crashes. No camera or server is started by JARVIS.
+If JARVIS's own gesture/camera feature is active, stop it before starting
+Barehands if the webcam cannot be shared. The integration is opt-in and does
+not copy files into or widen the Barehands media jail.
