@@ -179,6 +179,7 @@ class _Object:
     currentIndexChanged = _Signal()
     textChanged = _Signal()
     returnPressed = _Signal()
+    sliderReleased = _Signal()
     activated = _Signal()
     triggered = _Signal()
     timeout = _Signal()
@@ -361,6 +362,10 @@ class QMediaPlayer(_Object):
     def __init__(self, *a, **k):
         super().__init__(*a, **k)
         self.mediaStatusChanged = _Signal()
+        self.positionChanged = _Signal()
+        self.durationChanged = _Signal()
+        self.seekableChanged = _Signal()
+        self.playbackStateChanged = _Signal()
         self.errorOccurred = _Signal()
         self.sources = []
         self.state = self.PlaybackState.StoppedState
@@ -529,7 +534,8 @@ def _install_qt() -> dict[str, types.ModuleType]:
                                              "stop": lambda s, *a: None,
                                              "setInterval": lambda s, *a: None,
                                              "setSingleShot": lambda s, *a: None,
-                                             "timeout": _Signal()})
+                                             "timeout": _Signal(),
+                                             "singleShot": staticmethod(lambda *a: None)})
     core.pyqtSignal = _Signal
     for geom in ("QLineF", "QPointF", "QPoint", "QRectF", "QSizeF", "QRect", "QSize"):
         setattr(core, geom, type(geom, (_Object,), {}))
@@ -557,6 +563,15 @@ def _install_qt() -> dict[str, types.ModuleType]:
         base = _Layout if name in layouts else None
         setattr(widgets, name, _stub_class(name, base))
     widgets.QMainWindow = _stub_class("QMainWindow")
+    class _MdiArea(_Object):
+        ViewMode = _Enum()
+        def addSubWindow(self, sub):
+            _reparent(sub, self)
+    class _MdiSubWindow(_Object):
+        def setWidget(self, widget):
+            _reparent(widget, self)
+    widgets.QMdiArea = _MdiArea
+    widgets.QMdiSubWindow = _MdiSubWindow
     widgets.QSizePolicy.Policy = _Enum()
 
     class _Geometry(_Object):
@@ -880,3 +895,184 @@ def test_remote_overlay_connect_does_not_crash_without_assistant_name(window):
     assert ov._key_lbl.text() == "ABCD1232"
 
 
+
+
+def test_desktop_shell_hosts_the_original_panels_and_dock(window):
+    """The shell must reparent the real session widgets, not copies or placeholders."""
+    windows = window._desktop_windows
+    assert set(windows) == {"chat", "assistant", "navigation", "video", "camera"}
+    assert window._right_panel.parentWidget() is windows["chat"]
+    assert window._assistant_panel.parentWidget() is windows["assistant"]
+    assert window._left_panel.parentWidget() is windows["navigation"]
+    assert windows["chat"].parentWidget() is window._desktop_mdi
+    keys = {key for _, key in window._workspace_dock}
+    assert {"workspace.files", "workspace.code", "workspace.image", "workspace.trading",
+            "desktop.plugins", "desktop.settings"} <= keys
+    assert window._center_split.parentWidget() is window._assistant_panel
+
+
+def test_video_is_independent_from_camera_and_close_stops_it(window, monkeypatch):
+    """Opening, retrying or closing a video must not stop or replace a live camera."""
+    camera_indices = []
+    monkeypatch.setattr(window._hud_cam_stack, "setCurrentIndex", camera_indices.append)
+    window._on_cam_stream(True)
+    assert camera_indices == []
+    assert window._camera_cont.parentWidget() is window._desktop_windows["camera"]
+    window._cam_stop.clear()
+    window._on_video_open("https://example.com/video.mp4", "Video", True)
+    assert not window._cam_stop.is_set()
+    assert window._video_on
+    assert camera_indices == []
+    assert window._video_cont.parentWidget() is window._desktop_windows["video"]
+    window._swap_video_stream("https://example.com/fallback.mp4")
+    assert camera_indices == [] and not window._cam_stop.is_set()
+    window._on_video_close()
+    assert not window._video_on and camera_indices == []
+    assert not window._cam_stop.is_set()
+
+
+def test_video_window_close_requests_stop(window, monkeypatch):
+    called = []
+    monkeypatch.setattr(window, "_on_video_close", lambda: called.append(True))
+    event = types.SimpleNamespace(ignore=lambda: called.append("ignored"))
+    window._desktop_windows["video"].closeEvent(event)
+    assert called == [True, "ignored"]
+
+
+def test_document_is_hosted_inside_movable_desktop(window):
+    from ui.desktop_workspace import show_document
+    document = _Object()
+    subwindow = show_document(window, document)
+    assert document.parentWidget() is subwindow
+    assert subwindow.parentWidget() is window._desktop_mdi
+
+
+def test_video_controls_pause_and_seek_picture_and_sound_together(window, monkeypatch):
+    from ui import video_controls as controls
+    window._on_video_open("https://example.com/video.mp4", "Video", True,
+                          "https://example.com/audio.mp4")
+    controls.toggle_pause(window)
+    assert window._video_player.playbackState() == QMediaPlayer.PlaybackState.PausedState
+    assert window._video_sound.playbackState() == QMediaPlayer.PlaybackState.PausedState
+    controls.duration_changed(window, 120000)
+    controls.seekable_changed(window, True)
+    monkeypatch.setattr(window._video_seek, "value", lambda: 45000)
+    controls.seek(window)
+    assert window._video_player.position() == 45000
+    assert window._video_sound.position() == 45000
+    controls.toggle_pause(window)
+    assert window._video_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
+    assert window._video_sound.playbackState() == QMediaPlayer.PlaybackState.PlayingState
+    controls.seekable_changed(window, False)
+    monkeypatch.setattr(window._video_seek, "value", lambda: 90000)
+    controls.seek(window)
+    assert window._video_player.position() == 45000
+    window._on_video_close()
+    assert not window._video_seekable and window._video_duration_ms == 0
+
+
+def test_closing_camera_panel_stops_capture_without_stopping_video(window, monkeypatch):
+    stopped = []
+    monkeypatch.setattr(window, "stop_camera_stream", lambda: stopped.append(True))
+    event = types.SimpleNamespace(ignore=lambda: None)
+    window._video_on = True
+    window._desktop_windows["camera"].closeEvent(event)
+    assert stopped == [True]
+    assert window._video_on
+
+
+def test_stopping_camera_does_not_hide_video_or_replace_avatar(window, monkeypatch):
+    changes = []
+    monkeypatch.setattr(window._hud_cam_stack, "setCurrentIndex", changes.append)
+    window._on_video_open("https://example.com/v.mp4", "Video", True)
+    window._on_cam_stream(True)
+    window._on_cam_stream(False)
+    assert window._video_on and not changes
+    assert window._desktop_windows["camera"]._visible is False
+
+
+def test_duplicate_camera_start_does_not_spawn_or_clear_stop(window, monkeypatch):
+    import threading
+    started = threading.Event()
+    release = threading.Event()
+    def capture():
+        started.set()
+        release.wait(2)
+    monkeypatch.setattr(window, "_cam_loop", capture)
+    try:
+        window.start_camera_stream()
+        assert started.wait(1)
+        original = window._cam_thread
+        window.stop_camera_stream()
+        window.start_camera_stream()
+        assert window._cam_thread is original and window._cam_stop.is_set()
+    finally:
+        release.set()
+        window._cam_thread.join(2)
+
+
+def test_app_close_checks_all_unsaved_documents_without_closing_early(window):
+    from ui.desktop_workspace import confirm_shutdown
+    checked = []
+    class Document:
+        def __init__(self, answer): self.answer = answer
+        def _may_discard(self):
+            checked.append(self.answer)
+            return self.answer
+    window._creative_dialogs = {Document(True)}
+    window._image_editors = {Document(False)}
+    assert not confirm_shutdown(window)
+    assert checked == [True, False]
+    window._image_editors = {Document(True)}
+    assert confirm_shutdown(window)
+
+
+def test_image_flatten_cancel_and_undo_restore_layers(window_module, monkeypatch):
+    import ui.image_editor as editor
+    from core.image_layers import make_text_layer
+    instance = editor.ImageEditor.__new__(editor.ImageEditor)
+    instance._image = "original"
+    layer = make_text_layer("hello", 0, 5, 12, 100, 100)
+    instance._layers = [layer]
+    instance._undo_state = None
+    instance._dirty = False
+    instance._status = _Object()
+    instance._update_layers = lambda: None
+    instance._render = lambda: None
+    buttons = types.SimpleNamespace(Yes=1, No=2)
+    monkeypatch.setattr(editor, "QMessageBox", types.SimpleNamespace(
+        StandardButton=buttons, question=lambda *a: 2))
+    instance._change("flat")
+    assert instance._image == "original" and instance._layers == [layer] and not instance._dirty
+    monkeypatch.setattr(editor.QMessageBox, "question", lambda *a: 1)
+    instance._change("flat")
+    assert instance._image == "flat" and instance._layers == [] and instance._dirty
+    instance.undo()
+    assert instance._image == "original" and instance._layers == [layer]
+
+
+def test_video_open_button_opens_local_selection_muted(window, monkeypatch):
+    from ui import video_controls as controls
+    monkeypatch.setattr(controls.QFileDialog, "getOpenFileName",
+                        lambda *a: ("/home/user/sample clip.mp4", "Videos"), raising=False)
+    controls.open_local(window)
+    assert window._video_on and window._video_player.source().isLocalFile()
+    assert window._video_audio.isMuted()
+
+
+def test_app_close_refusal_keeps_media_running(window, monkeypatch):
+    import ui.desktop_workspace as workspace
+    monkeypatch.setattr(workspace, "confirm_shutdown", lambda _: False)
+    calls = []
+    monkeypatch.setattr(window, "stop_camera_stream", lambda: calls.append("camera"))
+    monkeypatch.setattr(window, "_on_video_close", lambda: calls.append("video"))
+    event = types.SimpleNamespace(ignore=lambda: calls.append("ignored"))
+    window.closeEvent(event)
+    assert calls == ["ignored"]
+
+
+def test_queued_camera_started_signal_does_not_reopen_after_stop(window):
+    window._cam_stop.set()
+    window._on_cam_stream(True)
+    assert not window._camera_active
+    assert window._desktop_windows["camera"]._visible is False

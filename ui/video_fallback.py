@@ -80,6 +80,8 @@ class VideoFallbackMixin:
     def _swap_video_stream(self, source: str, audio_source: str = "") -> None:
         """Load the next candidate stream cleanly without leaving stale audio."""
         muted = self._video_muted_state()
+        from ui.video_controls import reset as reset_video_controls
+        reset_video_controls(self)
         self._video_swapping = True
         try:
             if self._video_sync:
@@ -98,8 +100,9 @@ class VideoFallbackMixin:
             self._video_player.setSource(qurl_for(source))
             if self._video_split and self._video_sound:
                 self._video_sound.setSource(qurl_for(audio_source))
-            self._hud_cam_stack.setCurrentIndex(2)
             self._video_on = True
+            from ui.desktop_workspace import show_video
+            show_video(self)
         finally:
             self._video_swapping = False
         self._sync_mic_for_video()

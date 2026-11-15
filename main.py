@@ -1422,6 +1422,13 @@ class JarvisLive:
     async def _execute_tool(self, fc) -> types.FunctionResponse:
         name = fc.name
         args = dict(fc.args or {})
+        # No new model-initiated tools while a human reviews a live order.
+        # This is not a sandbox and cannot stop already-running external apps.
+        from core.trade_guard import active as trade_review_active
+        if trade_review_active():
+            return types.FunctionResponse(
+                id=fc.id, name=name,
+                response={"result": "An MT5 order is awaiting local review. No tool was run."})
 
         print(f"[JARVIS] 🔧 {name}  {args}")
         _t_tool = time.monotonic()

@@ -1,0 +1,10 @@
+{
+  "name": "mt5_trade",
+  "version": "1.0.0",
+  "author": "MARK-LVI",
+  "description": "MT5 market orders and pending-order modifications require explicit desktop approval. Financial risk.",
+  "permissions": [
+    "network"
+  ],
+  "sha256": "918bdae10f38112de9e41c8077d7488d3aaf8827061fc7f21df9cbf462c841dd"
+}

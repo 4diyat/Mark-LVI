@@ -3536,7 +3536,6 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         body.setSpacing(0)
 
         self._left_panel = self._build_left_panel()
-        body.addWidget(self._left_panel, stretch=0)
 
         # Center column: HUD + resizable content panel via QSplitter
         self.hud = HudCanvas(face_path, _display)
@@ -3544,8 +3543,9 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         self._content_panel = self._build_content_panel()
         self._quiz_panel = self._build_quiz_panel()
 
-        # Live camera container — replaces HUD when camera stream is active
+        # Live camera container is hosted separately by the desktop workspace.
         _cam_cont = QWidget()
+        self._camera_cont = _cam_cont
         _cam_cont.setStyleSheet("background: #000308;")
         _cam_v = QVBoxLayout(_cam_cont)
         _cam_v.setContentsMargins(0, 0, 0, 0)
@@ -3579,11 +3579,8 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         _cam_v.addWidget(self._cam_live_lbl, stretch=1)
 
         # ── Video surface ────────────────────────────────────────────────
-        # Built exactly like the camera page above and stacked beside it,
-        # because it is the same idea: something takes the centre of the HUD
-        # for a while and then gives it back. Sharing the stack rather than
-        # inventing a second mechanism means the avatar, the camera and a video
-        # can never be on screen at once.
+        # The video widget is hosted separately by the desktop workspace, so
+        # starting or stopping video does not interrupt the camera/HUD stack.
         self._video_split = False        # is the sound a separate stream?
         self._video_auto_muted = False   # did JARVIS close the mic, or the user?
         # A plain flag rather than reading the widget. video_is_playing() is
@@ -3728,11 +3725,14 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
             _miss.setStyleSheet(f"color: {C.TEXT_DIM}; background: transparent;")
             _vid_v.addWidget(_miss, stretch=1)
 
-        # Stack: 0 = animated HUD, 1 = live camera, 2 = video
+        if HAVE_VIDEO:
+            from ui.video_controls import install as install_video_controls
+            install_video_controls(self, _vid_v)
+
+        # Keep the HUD stack for existing assistant panel logic. Camera and video
+        # each have their own desktop surface.
         self._hud_cam_stack = QStackedWidget()
         self._hud_cam_stack.addWidget(self.hud)
-        self._hud_cam_stack.addWidget(_cam_cont)
-        self._hud_cam_stack.addWidget(self._video_cont)
 
         # The audio strip is a SECTION OF THE SPLITTER, and it is here because
         # the previous home was not a home at all.
@@ -3771,10 +3771,10 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         # Conversation is the primary surface; the avatar and real tool/media
         # workspace remain together in the assistant column.
         self._right_panel = self._build_right_panel()
-        body.addWidget(self._right_panel, stretch=5)
         from ui.desktop_layout import build_assistant_panel
         self._assistant_panel = build_assistant_panel(self)
-        body.addWidget(self._assistant_panel, stretch=3)
+        from ui.desktop_workspace import build as build_desktop_workspace
+        body.addWidget(build_desktop_workspace(self), stretch=1)
 
         root.addLayout(body, stretch=1)
         root.addWidget(self._build_footer())
@@ -3824,6 +3824,9 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         self._quiz_hide_sig.connect(self._hide_quiz)
         self._review_sig.connect(self._show_review)
         self._cam_stop = threading.Event()
+        self._cam_start_lock = threading.Lock()
+        self._cam_thread = None
+        self._camera_active = False
         from ui.hand_gesture import setup as setup_hand_gesture
         setup_hand_gesture(self)
 
@@ -3860,12 +3863,26 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
             pw, ph,
         )
 
-    # --- Live camera stream in HUD area ------------------------------------
+    def closeEvent(self, event):
+        from ui.desktop_workspace import confirm_shutdown
+        if not confirm_shutdown(self):
+            event.ignore()
+            return
+        self.stop_camera_stream()
+        self._on_video_close()
+        super().closeEvent(event)
+
+    # --- Live camera stream in its desktop panel ----------------------------
     def _on_cam_stream(self, start: bool) -> None:
+        from ui.desktop_workspace import hide_camera, show_camera
+        # A queued "started" signal can arrive after the user requested stop.
+        if start and self._cam_stop.is_set():
+            return
+        self._camera_active = bool(start)
         if start:
-            self._hud_cam_stack.setCurrentIndex(1)
+            show_camera(self)
         else:
-            self._hud_cam_stack.setCurrentIndex(0)
+            hide_camera(self)
             self._cam_live_lbl.clear()
 
     def _on_cam_frame(self, data: bytes) -> None:
@@ -3881,10 +3898,12 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
                 )
 
     def start_camera_stream(self) -> None:
-        self._cam_stop.clear()
-        self._cam_stream_sig.emit(True)
-        t = threading.Thread(target=self._cam_loop, daemon=True, name="cam-stream")
-        t.start()
+        with self._cam_start_lock:
+            if self._cam_thread is not None and self._cam_thread.is_alive():
+                return
+            self._cam_stop.clear()
+            self._cam_thread = threading.Thread(target=self._cam_loop, daemon=True, name="cam-stream")
+            self._cam_thread.start()
 
     def _cam_loop(self) -> None:
         from core import camera_lease
@@ -3912,10 +3931,17 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
                 cap.release()
                 cap = cv2.VideoCapture(0)
             if not cap.isOpened():
+                self._log_sig.emit("ERR: Could not open the camera.")
                 return
-            # warm-up frames
+            # Do not claim the feed is running until the device opened, and
+            # honour a stop requested while initialization was in progress.
             for _ in range(5):
+                if self._cam_stop.is_set():
+                    return
                 cap.read()
+            if self._cam_stop.is_set():
+                return
+            self._cam_stream_sig.emit(True)
             while not self._cam_stop.wait(0.033) and cap.isOpened():
                 ret, frame = cap.read()
                 if ret and frame is not None:
@@ -3934,7 +3960,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
     def stop_camera_stream(self) -> None:
         self._cam_stop.set()
 
-    # --- Video in the HUD area ---------------------------------------------
+    # --- Video in its independent desktop window -----------------------------
     #
     # Everything below runs on the Qt thread. Plugins and the assistant reach it
     # through the signals above, the same way every other panel is driven, so a
@@ -3946,8 +3972,8 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
             self.write_log("SYS: Video playback is not available in this Qt "
                            "install.")
             return
-        # A video and the live camera cannot share the centre of the HUD.
-        self._cam_stop.set()
+        from ui.video_controls import reset as reset_video_controls
+        reset_video_controls(self)
         self._video_seq = getattr(self, "_video_seq", 0) + 1
 
         # ── opening over something ─────────────────────────────────────────
@@ -3985,8 +4011,9 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
             self._video_player.setSource(qurl_for(source))
             if self._video_split:
                 self._video_sound.setSource(qurl_for(audio_source))
-            self._hud_cam_stack.setCurrentIndex(2)
             self._video_on = True
+            from ui.desktop_workspace import show_video
+            show_video(self)
         finally:
             self._video_swapping = False
         # Re-run now that the video counts as playing: _set_video_muted ran
@@ -4016,7 +4043,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
             pass
 
     def _on_video_close(self, mic_from_rule: bool | None = None) -> None:
-        """Take the video off the HUD.
+        """Stop and hide the video window.
 
         `mic_from_rule` is how a finished video says "the microphone was closed
         for the sound, so it must open again even though the mute switch has
@@ -4039,7 +4066,11 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         self._video_on = False
         self._video_ended = False
         self._clear_video_fallbacks()
-        self._hud_cam_stack.setCurrentIndex(0)
+        if HAVE_VIDEO:
+            from ui.video_controls import reset as reset_video_controls
+            reset_video_controls(self)
+        from ui.desktop_workspace import hide_video
+        hide_video(self)
         if mic_from_rule:
             self._release_video_mic()
         self._sync_mic_for_video()      # gives the microphone back
@@ -5175,7 +5206,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         import time as _time
         if not job:
             return
-        if job.get("kind") in ("creative_workspace", "trading_terminal"):
+        if job.get("kind") in ("creative_workspace", "trading_terminal", "mt5_trade", "image_editor"):
             from ui.workspace_router import open_workspace
             open_workspace(self, job); return
         e = self._esc
@@ -6160,7 +6191,9 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
             self._sub_lbl.setText(_t("app.title"))
         self._input.setPlaceholderText(_t("ui.placeholder.command"))
         from ui.desktop_layout import retranslate
+        from ui.desktop_workspace import retranslate as retranslate_workspace
         retranslate(self)
+        retranslate_workspace(self)
         self._uptime_lbl.setText(_t("ui.uptime_idle"))
         self._proc_lbl.setText(_t("ui.proc_idle"))
         # Buttons whose text depends on state are read from the state they are
@@ -6572,7 +6605,7 @@ class JarvisUI:
         self._app.setStyle("Fusion")
         self._win = MainWindow(face_path)
         self.root = _RootShim(self._app)
-        self._win.show()
+        self._win.showFullScreen()
 
     @property
     def muted(self) -> bool:
@@ -6847,7 +6880,7 @@ class JarvisUI:
         return bool(self._win.audio_is_playing())
 
     def start_camera_stream(self) -> None:
-        """Thread-safe: start live camera feed in the full HUD area."""
+        """Thread-safe: start the live camera feed in its desktop panel."""
         self._win.start_camera_stream()
 
     def stop_camera_stream(self) -> None:
