@@ -336,3 +336,12 @@ def test_the_package_exports_every_name_the_rest_of_the_project_uses():
     # ui.C must be the very class the accent code rebinds, or a theme change
     # applies to whoever imported the other one.
     assert package.C is package.theme.C
+
+
+def test_filesystem_model_is_imported_from_qtgui():
+    """Qt 6 moved QFileSystemModel out of QtWidgets; importing it there crashes startup."""
+    tree = _tree(UI_PKG / "desktop_workspace.py")
+    owners = [node.module for node in ast.walk(tree)
+              if isinstance(node, ast.ImportFrom)
+              and any(alias.name == "QFileSystemModel" for alias in node.names)]
+    assert owners == ["PyQt6.QtGui"]

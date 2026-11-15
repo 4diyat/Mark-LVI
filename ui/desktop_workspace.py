@@ -6,8 +6,8 @@ thread-safe dispatch are still owned by the existing application.
 from pathlib import Path
 
 from PyQt6.QtCore import QDir, Qt, QTimer, QUrl
-from PyQt6.QtGui import QDesktopServices
-from PyQt6.QtWidgets import (QFileSystemModel, QHBoxLayout, QLabel, QLineEdit, QMdiArea,
+from PyQt6.QtGui import QDesktopServices, QFileSystemModel
+from PyQt6.QtWidgets import (QHBoxLayout, QLabel, QLineEdit, QMdiArea,
                              QMdiSubWindow, QPushButton, QScrollArea, QTreeView, QVBoxLayout, QWidget)
 
 from core.i18n import label as _t
