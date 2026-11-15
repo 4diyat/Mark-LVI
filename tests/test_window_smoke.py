@@ -544,6 +544,8 @@ def _install_qt() -> dict[str, types.ModuleType]:
     for name in ("QBrush", "QColor", "QCursor", "QFont", "QKeySequence",
                  "QPainter", "QPen", "QPixmap", "QRadialGradient", "QShortcut"):
         setattr(gui, name, type(name, (_Object,), {}))
+    # Qt 6 exposes QFileSystemModel from QtGui, not QtWidgets.
+    gui.QFileSystemModel = type("QFileSystemModel", (_Object,), {})
     gui.QColor.Weight = None
     gui.QFont.Weight = _Enum()
     gui.QDragEnterEvent = gui.QDropEvent = type("_Event", (_Object,), {})
@@ -642,7 +644,8 @@ def _install_qt() -> dict[str, types.ModuleType]:
         cache = {}
 
         def __getattr__(name):
-            if name.startswith("__"):
+            if name.startswith("__") or (module_globals.get("__name__") == "PyQt6.QtWidgets"
+                                          and name == "QFileSystemModel"):
                 raise AttributeError(name)
             if name not in cache:
                 cache[name] = type(name, (_Object,), {})
