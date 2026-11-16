@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDialog, QGridLayout, QHBoxLa
 from core.i18n import label as _t
 from memory.config_manager import get_plugin_config, save_plugin_config
 from plugins import _trading_terminal as terminal
-from ui.theme import C
+from ui.theme import C, workspace_stylesheet
 
 
 class CandleChart(QWidget):
@@ -85,9 +85,7 @@ class TradingTerminal(QDialog):
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         self.setWindowTitle(_t("trading.title"))
         self.resize(1000, 750)
-        self.setStyleSheet(f"QDialog, QWidget {{ background:#001018; color:{C.TEXT}; }} "
-                           f"QLineEdit, QSpinBox, QComboBox, QPushButton {{ background:#001c25; "
-                           f"color:{C.TEXT}; border:1px solid {C.BORDER}; padding:4px; }}")
+        self.setStyleSheet(workspace_stylesheet())
         self._data_ready.connect(self._on_data)
         settings = dict(terminal.DEFAULTS)
         settings.update(get_plugin_config("trading_terminal"))

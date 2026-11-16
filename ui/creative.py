@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (QDialog, QFileDialog, QHBoxLayout, QLabel,
 
 from core.i18n import label as _t
 from plugins import _creative
-from ui.theme import C
+from ui.theme import workspace_stylesheet
 
 
 class CreativeWorkspace(QDialog):
@@ -24,9 +24,7 @@ class CreativeWorkspace(QDialog):
         self.setWindowTitle(_t("creative.title"))
         self.resize(850, 680)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
-        self.setStyleSheet(f"QDialog, QWidget {{ background: #001018; color: {C.TEXT}; }} "
-                           f"QPushButton, QLineEdit, QPlainTextEdit {{ background: #001c25; "
-                           f"color: {C.TEXT}; border: 1px solid {C.BORDER}; padding: 5px; }}")
+        self.setStyleSheet(workspace_stylesheet())
         self._host = parent
         self._path = None
         self._image = None

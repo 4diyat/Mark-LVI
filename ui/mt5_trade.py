@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (QComboBox, QDialog, QGridLayout, QInputDialog, QLab
 
 from core.i18n import label as _t
 from plugins import _mt5_trade as trade
-from ui.theme import C
+from ui.theme import C, workspace_stylesheet
 
 
 class OrderDialog(QDialog):
@@ -23,6 +23,7 @@ class OrderDialog(QDialog):
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         self.setWindowTitle(_t("trade.title"))
         self.resize(640, 560)
+        self.setStyleSheet(workspace_stylesheet())
         layout = QVBoxLayout(self)
         warning = QLabel(_t("trade.warning"))
         warning.setWordWrap(True)

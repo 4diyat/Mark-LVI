@@ -96,7 +96,7 @@ class HueWheel(QWidget):
         # centre preview circle
         preview = QColor.fromHsvF(self._hue, 1.0, 1.0)
         inner   = rect.adjusted(30, 30, -30, -30)
-        p.setPen(QPen(qcol(C.BORDER_B), 1))
+        p.setPen(QPen(qcol(C.DESKTOP_BORDER), 1))
         p.setBrush(QBrush(preview))
         p.drawEllipse(inner)
 
@@ -144,8 +144,8 @@ class CustomizeOverlay(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(f"""
             CustomizeOverlay {{
-                background: rgba(0, 6, 10, 245);
-                border: 1px solid {C.BORDER_B};
+                background: {C.DESKTOP_PANEL};
+                border: 1px solid {C.DESKTOP_BORDER};
                 border-radius: 6px;
             }}
         """)
@@ -160,17 +160,17 @@ class CustomizeOverlay(QWidget):
             w.setStyleSheet(f"color: {color}; background: transparent;")
             return w
 
-        _fs = (f"QLineEdit {{ background: #000d12; color: {C.TEXT}; "
-               f"border: 1px solid {C.BORDER}; border-radius: 3px; padding: 4px 8px; }}"
+        _fs = (f"QLineEdit {{ background: {C.DESKTOP_BAR}; color: {C.DESKTOP_TEXT}; "
+               f"border: 1px solid {C.DESKTOP_BORDER}; border-radius: 3px; padding: 4px 8px; }}"
                f"QLineEdit:focus {{ border: 1px solid {C.PRI}; }}")
 
         self._head_lbl = _lbl(_t("setup.customise"), 12, True)
         lay.addWidget(self._head_lbl)
         sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet(f"color: {C.BORDER}; margin: 2px 0;")
+        sep.setStyleSheet(f"color: {C.DESKTOP_BORDER}; margin: 2px 0;")
         lay.addWidget(sep)
 
-        self._name_cap = _lbl(_t("setup.name"), 8, color=C.TEXT_DIM,
+        self._name_cap = _lbl(_t("setup.name"), 8, color=C.DESKTOP_MUTED,
                               align=Qt.AlignmentFlag.AlignLeft)
         lay.addWidget(self._name_cap)
         self._name_input = QLineEdit(assistant_name)
@@ -180,7 +180,7 @@ class CustomizeOverlay(QWidget):
         lay.addWidget(self._name_input)
 
         lay.addSpacing(4)
-        self._user_cap = _lbl(_t("setup.user_name"), 8, color=C.TEXT_DIM,
+        self._user_cap = _lbl(_t("setup.user_name"), 8, color=C.DESKTOP_MUTED,
                               align=Qt.AlignmentFlag.AlignLeft)
         lay.addWidget(self._user_cap)
         self._user_input = QLineEdit(user_name)
@@ -195,7 +195,7 @@ class CustomizeOverlay(QWidget):
         # every locale. Selecting one and applying rebuilds the Live session.
         from memory.config_manager import AVAILABLE_VOICES, DEFAULT_VOICE
         lay.addSpacing(4)
-        self._voice_cap = _lbl(_t("setup.voice"), 8, color=C.TEXT_DIM,
+        self._voice_cap = _lbl(_t("setup.voice"), 8, color=C.DESKTOP_MUTED,
                               align=Qt.AlignmentFlag.AlignLeft)
         lay.addWidget(self._voice_cap)
         self._sel_voice   = (voice or DEFAULT_VOICE)
@@ -221,7 +221,7 @@ class CustomizeOverlay(QWidget):
         # The names of the languages are written in the languages themselves —
         # a user who cannot read the current UI still recognises their own.
         lay.addSpacing(4)
-        self._lang_cap = _lbl(_t("setup.language"), 8, color=C.TEXT_DIM,
+        self._lang_cap = _lbl(_t("setup.language"), 8, color=C.DESKTOP_MUTED,
                               align=Qt.AlignmentFlag.AlignLeft)
         lay.addWidget(self._lang_cap)
         from core.i18n import LOCALES, resolve
@@ -249,7 +249,7 @@ class CustomizeOverlay(QWidget):
         # ── UI colour — colour wheel ─────────────────────────────────────────
         lay.addSpacing(4)
         clr_hdr = QHBoxLayout()
-        self._colour_cap = _lbl(_t("setup.colour"), 8, color=C.TEXT_DIM,
+        self._colour_cap = _lbl(_t("setup.colour"), 8, color=C.DESKTOP_MUTED,
                                 align=Qt.AlignmentFlag.AlignLeft)
         clr_hdr.addWidget(self._colour_cap)
         clr_hdr.addStretch()
@@ -259,10 +259,10 @@ class CustomizeOverlay(QWidget):
         df_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         df_btn.setStyleSheet(f"""
             QPushButton {{
-                background: transparent; color: {C.TEXT_MED};
-                border: 1px solid {C.BORDER}; border-radius: 3px;
+                background: transparent; color: {C.DESKTOP_MUTED};
+                border: 1px solid {C.DESKTOP_BORDER}; border-radius: 3px;
             }}
-            QPushButton:hover {{ color: {C.TEXT}; border-color: {C.BORDER_B}; }}
+            QPushButton:hover {{ color: {C.DESKTOP_TEXT}; border-color: {C.DESKTOP_BORDER}; }}
         """)
         df_btn.clicked.connect(lambda: self._set_color(DEFAULT_UI_COLOR))
         clr_hdr.addWidget(df_btn)
@@ -310,10 +310,10 @@ class CustomizeOverlay(QWidget):
         cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         cancel_btn.setStyleSheet(f"""
             QPushButton {{
-                background: transparent; color: {C.TEXT_MED};
-                border: 1px solid {C.BORDER}; border-radius: 3px;
+                background: transparent; color: {C.DESKTOP_MUTED};
+                border: 1px solid {C.DESKTOP_BORDER}; border-radius: 3px;
             }}
-            QPushButton:hover {{ color: {C.TEXT}; border-color: {C.BORDER_B}; }}
+            QPushButton:hover {{ color: {C.DESKTOP_TEXT}; border-color: {C.DESKTOP_BORDER}; }}
         """)
         cancel_btn.clicked.connect(self._cancel)
         btn_row.addWidget(cancel_btn)
@@ -336,8 +336,8 @@ class CustomizeOverlay(QWidget):
     def _refresh_lang_btns(self) -> None:
         palette_on = (f"QPushButton {{ background: {C.PRI_GHO}; color: {C.PRI};"
                       f" border: 1px solid {C.PRI}; border-radius: 3px; }}")
-        palette_off = (f"QPushButton {{ background: transparent; color: {C.TEXT_MED};"
-                       f" border: 1px solid {C.BORDER}; border-radius: 3px; }}")
+        palette_off = (f"QPushButton {{ background: transparent; color: {C.DESKTOP_MUTED};"
+                       f" border: 1px solid {C.DESKTOP_BORDER}; border-radius: 3px; }}")
         for code, btn in self._lang_btns.items():
             btn.setChecked(code == self._sel_lang)
             btn.setStyleSheet(palette_on if code == self._sel_lang else palette_off)
@@ -383,9 +383,9 @@ class CustomizeOverlay(QWidget):
                 """)
             else:
                 b.setStyleSheet(f"""
-                    QPushButton {{ background: transparent; color: {C.TEXT_MED};
-                        border: 1px solid {C.BORDER}; border-radius: 3px; }}
-                    QPushButton:hover {{ color: {C.TEXT}; border-color: {C.BORDER_B}; }}
+                    QPushButton {{ background: transparent; color: {C.DESKTOP_MUTED};
+                        border: 1px solid {C.DESKTOP_BORDER}; border-radius: 3px; }}
+                    QPushButton:hover {{ color: {C.DESKTOP_TEXT}; border-color: {C.DESKTOP_BORDER}; }}
                 """)
 
     # ── colour flow ──────────────────────────────────────────────────────────
@@ -449,8 +449,8 @@ class PluginManagerOverlay(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(f"""
             PluginManagerOverlay {{
-                background: rgba(0, 6, 10, 245);
-                border: 1px solid {C.BORDER_B};
+                background: {C.DESKTOP_PANEL};
+                border: 1px solid {C.DESKTOP_BORDER};
                 border-radius: 6px;
             }}
         """)
@@ -465,13 +465,13 @@ class PluginManagerOverlay(QWidget):
         hdr.setStyleSheet(f"color: {C.PRI}; background: transparent;")
         lay.addWidget(hdr)
         sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet(f"color: {C.BORDER}; margin: 2px 0;")
+        sep.setStyleSheet(f"color: {C.DESKTOP_BORDER}; margin: 2px 0;")
         lay.addWidget(sep)
 
         if not plugins:
             empty = QLabel(_t("ui.plugins.none"))
             empty.setFont(QFont("Courier New", 8))
-            empty.setStyleSheet(f"color: {C.TEXT_DIM}; background: transparent;")
+            empty.setStyleSheet(f"color: {C.DESKTOP_MUTED}; background: transparent;")
             lay.addWidget(empty)
 
         for p in plugins:
@@ -484,10 +484,10 @@ class PluginManagerOverlay(QWidget):
         close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         close_btn.setStyleSheet(f"""
             QPushButton {{
-                background: transparent; color: {C.TEXT_MED};
-                border: 1px solid {C.BORDER}; border-radius: 3px;
+                background: transparent; color: {C.DESKTOP_MUTED};
+                border: 1px solid {C.DESKTOP_BORDER}; border-radius: 3px;
             }}
-            QPushButton:hover {{ color: {C.TEXT}; border-color: {C.BORDER_B}; }}
+            QPushButton:hover {{ color: {C.DESKTOP_TEXT}; border-color: {C.DESKTOP_BORDER}; }}
         """)
         close_btn.clicked.connect(self.hide)
         lay.addWidget(close_btn)
@@ -499,7 +499,7 @@ class PluginManagerOverlay(QWidget):
         label_text = p["name"] if p["valid"] else f"{p['name']}  (⚠ {p['file']})"
         lbl = QLabel(label_text)
         lbl.setFont(QFont("Courier New", 8))
-        lbl.setStyleSheet(f"color: {C.TEXT if p['valid'] else C.TEXT_DIM}; background: transparent;")
+        lbl.setStyleSheet(f"color: {C.DESKTOP_TEXT if p['valid'] else C.DESKTOP_MUTED}; background: transparent;")
         # The tooltip is where a third-party plugin's declaration is read
         # BEFORE the toggle is pressed. `permissions` is empty for every plugin
         # in this repository, so their tooltips are unchanged.
@@ -522,8 +522,8 @@ class PluginManagerOverlay(QWidget):
             btn.setEnabled(False)
             btn.setStyleSheet(f"""
                 QPushButton {{
-                    background: transparent; color: {C.TEXT_DIM};
-                    border: 1px solid {C.BORDER}; border-radius: 3px;
+                    background: transparent; color: {C.DESKTOP_MUTED};
+                    border: 1px solid {C.DESKTOP_BORDER}; border-radius: 3px;
                 }}
             """)
         elif perms and not p["enabled"]:
@@ -559,10 +559,10 @@ class PluginManagerOverlay(QWidget):
             btn.setText(_t("ui.off"))
             btn.setStyleSheet(f"""
                 QPushButton {{
-                    background: transparent; color: {C.TEXT_DIM};
-                    border: 1px solid {C.BORDER}; border-radius: 3px;
+                    background: transparent; color: {C.DESKTOP_MUTED};
+                    border: 1px solid {C.DESKTOP_BORDER}; border-radius: 3px;
                 }}
-                QPushButton:hover {{ color: {C.TEXT}; border-color: {C.BORDER_B}; }}
+                QPushButton:hover {{ color: {C.DESKTOP_TEXT}; border-color: {C.DESKTOP_BORDER}; }}
             """)
 
     def _ask_and_toggle(self, name: str, btn: QPushButton, perms: tuple) -> None:
@@ -632,8 +632,8 @@ class PluginSettingsOverlay(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(f"""
             PluginSettingsOverlay {{
-                background: rgba(0, 6, 10, 245);
-                border: 1px solid {C.BORDER_B};
+                background: {C.DESKTOP_PANEL};
+                border: 1px solid {C.DESKTOP_BORDER};
                 border-radius: 6px;
             }}
         """)
@@ -643,8 +643,8 @@ class PluginSettingsOverlay(QWidget):
         self._status_labels: dict[str, QLabel] = {} # namespace -> status QLabel
         self._test_done.connect(self._on_test_done)
 
-        self._fs = (f"QLineEdit {{ background: #000d12; color: {C.TEXT}; "
-                    f"border: 1px solid {C.BORDER}; border-radius: 3px; padding: 4px 8px; }}"
+        self._fs = (f"QLineEdit {{ background: {C.DESKTOP_BAR}; color: {C.DESKTOP_TEXT}; "
+                    f"border: 1px solid {C.DESKTOP_BORDER}; border-radius: 3px; padding: 4px 8px; }}"
                     f"QLineEdit:focus {{ border: 1px solid {C.PRI}; }}")
 
         root = QVBoxLayout(self)
@@ -653,11 +653,11 @@ class PluginSettingsOverlay(QWidget):
 
         root.addWidget(self._lbl(_t("plugins.heading"), 12, True))
         sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet(f"color: {C.BORDER}; margin: 2px 0;")
+        sep.setStyleSheet(f"color: {C.DESKTOP_BORDER}; margin: 2px 0;")
         root.addWidget(sep)
 
         if not self._sections:
-            root.addWidget(self._lbl(_t("plugins.empty"), 9, color=C.TEXT_DIM))
+            root.addWidget(self._lbl(_t("plugins.empty"), 9, color=C.DESKTOP_MUTED))
             # A panel that says "nothing here" and offers no way forward is a
             # dead end. The plugins the user expects to configure are listed in
             # the manager, which is one button away from this message.
@@ -709,9 +709,9 @@ class PluginSettingsOverlay(QWidget):
         close_btn.setFont(QFont("Courier New", 9))
         close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         close_btn.setStyleSheet(f"""
-            QPushButton {{ background: transparent; color: {C.TEXT_MED};
-                border: 1px solid {C.BORDER}; border-radius: 3px; }}
-            QPushButton:hover {{ color: {C.TEXT}; border-color: {C.BORDER_B}; }}
+            QPushButton {{ background: transparent; color: {C.DESKTOP_MUTED};
+                border: 1px solid {C.DESKTOP_BORDER}; border-radius: 3px; }}
+            QPushButton:hover {{ color: {C.DESKTOP_TEXT}; border-color: {C.DESKTOP_BORDER}; }}
         """)
         close_btn.clicked.connect(self.hide)
         btn_row.addWidget(close_btn)
@@ -750,7 +750,7 @@ class PluginSettingsOverlay(QWidget):
         if not fields:
             form.addWidget(self._lbl(
                 _t("plugins.no_fields") if not locked else _t("plugins.no_fields_locked"),
-                8, color=C.TEXT_DIM))
+                8, color=C.DESKTOP_MUTED))
 
         for field in fields:
             if not isinstance(field, dict) or not field.get("key"):
@@ -761,7 +761,7 @@ class PluginSettingsOverlay(QWidget):
             default = field.get("default")
             stored  = values.get(key, default)
 
-            form.addWidget(self._lbl(label.upper(), 8, color=C.TEXT_DIM))
+            form.addWidget(self._lbl(label.upper(), 8, color=C.DESKTOP_MUTED))
 
             if ftype == "choice":
                 w = QComboBox()
@@ -769,9 +769,9 @@ class PluginSettingsOverlay(QWidget):
                 w.setFont(QFont("Courier New", 9))
                 w.setFixedHeight(30)
                 w.setStyleSheet(
-                    f"QComboBox {{ background: #000d12; color: {C.TEXT}; "
-                    f"border: 1px solid {C.BORDER}; border-radius: 3px; padding: 2px 8px; }}"
-                    f"QComboBox QAbstractItemView {{ background: #000d12; color: {C.TEXT}; "
+                    f"QComboBox {{ background: {C.DESKTOP_BAR}; color: {C.DESKTOP_TEXT}; "
+                    f"border: 1px solid {C.DESKTOP_BORDER}; border-radius: 3px; padding: 2px 8px; }}"
+                    f"QComboBox QAbstractItemView {{ background: {C.DESKTOP_BAR}; color: {C.DESKTOP_TEXT}; "
                     f"selection-background-color: {C.PRI_GHO}; }}")
                 if stored is not None:
                     w.setCurrentText(str(stored))
@@ -815,12 +815,12 @@ class PluginSettingsOverlay(QWidget):
             ab.clicked.connect(lambda _=False, n=ns: self._run_action(n))
             form.addWidget(ab)
 
-        status = self._lbl("", 8, color=C.TEXT_DIM)
+        status = self._lbl("", 8, color=C.DESKTOP_MUTED)
         self._status_labels[ns] = status
         form.addWidget(status)
 
         line = QFrame(); line.setFrameShape(QFrame.Shape.HLine)
-        line.setStyleSheet(f"color: {C.BORDER}; margin: 4px 0;")
+        line.setStyleSheet(f"color: {C.DESKTOP_BORDER}; margin: 4px 0;")
         form.addWidget(line)
 
     def _style_toggle(self, btn: QPushButton):
@@ -830,8 +830,8 @@ class PluginSettingsOverlay(QWidget):
             btn.setStyleSheet(f"QPushButton {{ background: {C.PRI_GHO}; color: {C.PRI}; "
                               f"border: 1px solid {C.PRI}; border-radius: 3px; }}")
         else:
-            btn.setStyleSheet(f"QPushButton {{ background: transparent; color: {C.TEXT_MED}; "
-                              f"border: 1px solid {C.BORDER}; border-radius: 3px; }}")
+            btn.setStyleSheet(f"QPushButton {{ background: transparent; color: {C.DESKTOP_MUTED}; "
+                              f"border: 1px solid {C.DESKTOP_BORDER}; border-radius: 3px; }}")
 
     # ── data ──────────────────────────────────────────────────────────────────
     def _gather(self, ns: str) -> dict:
@@ -883,7 +883,7 @@ class PluginSettingsOverlay(QWidget):
         lbl = self._status_labels.get(ns)
         if lbl:
             lbl.setText(_t("ui.testing"))
-            lbl.setStyleSheet(f"color: {C.TEXT_DIM}; background: transparent;")
+            lbl.setStyleSheet(f"color: {C.DESKTOP_MUTED}; background: transparent;")
 
         def worker():
             try:

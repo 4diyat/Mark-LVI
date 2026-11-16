@@ -9,7 +9,7 @@ from PyQt6.QtCore import QDir, QRectF, QSize, Qt, QTimer, QUrl
 from PyQt6.QtGui import (QBrush, QColor, QDesktopServices, QFileSystemModel, QIcon,
                          QLinearGradient, QPainter, QPixmap)
 from PyQt6.QtWidgets import (QHBoxLayout, QLabel, QLineEdit, QMdiArea,
-                             QMdiSubWindow, QPushButton, QScrollArea, QSizeGrip, QStyle, QToolButton,
+                             QMdiSubWindow, QMenu, QPushButton, QScrollArea, QSizeGrip, QStyle, QToolButton,
                              QTreeView, QVBoxLayout, QWidget)
 
 from core.i18n import label as _t
@@ -25,7 +25,8 @@ class WallpaperArea(QMdiArea):
 
     def position_dock(self):
         if self._dock is not None:
-            width = max(1, min(1020, self.viewport().width() - 20))
+            preferred = self._dock.widget().sizeHint().width() + 16
+            width = max(1, min(1020, max(500, preferred), self.viewport().width() - 20))
             self._dock.setGeometry((self.viewport().width() - width) // 2,
                                    max(0, self.viewport().height() - 86), width, 76)
             self._dock.raise_()
@@ -140,6 +141,20 @@ class PersistentWindow(QMdiSubWindow):
         event.ignore()
 
 
+class DocumentWindow(PersistentWindow):
+    """Shared workspace chrome while preserving the document's close veto."""
+    def __init__(self, document):
+        super().__init__()
+        self._document = document
+
+    def closeEvent(self, event):
+        if self._document.close():
+            # Bypass PersistentWindow's hide-only behaviour for disposable docs.
+            QMdiSubWindow.closeEvent(self, event)
+        else:
+            event.ignore()
+
+
 class VideoWindow(PersistentWindow):
     """Closing the video window stops playback; hiding must not leave sound playing."""
     def __init__(self, host):
@@ -154,17 +169,6 @@ class VideoWindow(PersistentWindow):
         super().resizeEvent(event)
         # Wait until the embedded graphics view has received its new geometry.
         QTimer.singleShot(0, self._host._fit_video)
-
-
-class HandBoardWindow(PersistentWindow):
-    """Stop hand input started by this board before hiding it."""
-    def __init__(self, board):
-        super().__init__()
-        self._board = board
-
-    def closeEvent(self, event):
-        self._board.stop_owned_control()
-        super().closeEvent(event)
 
 
 class CameraWindow(PersistentWindow):
@@ -373,7 +377,7 @@ def build(window):
         if "handboard" not in window._desktop_windows:
             from ui.hand_board import HandBoard
             board = HandBoard(window)
-            sub = HandBoardWindow(board)
+            sub = PersistentWindow()
             sub.setWidget(board)
             sub.setWindowTitle(_t("handboard.title"))
             mdi.addSubWindow(sub)
@@ -426,23 +430,26 @@ def build(window):
     row = QHBoxLayout(dock)
     row.setContentsMargins(4, 0, 4, 0)
     row.addStretch(1)
-    buttons = (("workspace.chat", "SP_MessageBoxInformation", lambda: focus("chat")),
-               ("workspace.files", "SP_DirIcon", lambda: focus("files")),
-               ("handboard.title", "SP_DesktopIcon", open_handboard),
-               ("workspace.video", "SP_MediaPlay", lambda: focus("video")),
-               ("workspace.camera", "SP_ComputerIcon", lambda: focus("camera")),
-               ("workspace.code", "SP_FileIcon", lambda: creative("editor")),
-               ("workspace.image", "SP_FileDialogDetailedView", image_editor),
-               ("workspace.ai_image", "SP_FileDialogContentsView", lambda: creative("canvas")),
-               ("workspace.trading", "SP_FileDialogInfoView", trading),
-               ("workspace.order", "SP_DialogApplyButton", order),
-               ("workspace.navigation", "SP_TitleBarMenuButton", lambda: focus("navigation")),
-               ("desktop.plugins", "SP_DriveNetIcon", window._open_plugin_manager),
-               ("desktop.settings", "SP_FileDialogListView", lambda: window._drawer_btn.click()))
+    # Group related destinations instead of repeating overlapping dock entries.
+    buttons = (
+        ("workspace.chat", "SP_MessageBoxInformation", lambda: focus("chat")),
+        ("workspace.files", "SP_DirIcon", lambda: focus("files")),
+        ("workspace.editors", "SP_FileIcon", (("workspace.code", lambda: creative("editor")),
+                                                ("workspace.image", image_editor),
+                                                ("workspace.ai_image", lambda: creative("canvas")))),
+        ("workspace.media", "SP_MediaPlay", (("workspace.video", lambda: focus("video")),
+                                                 ("workspace.camera", lambda: focus("camera")))),
+        ("workspace.trading", "SP_FileDialogInfoView", (("workspace.trading", trading),
+                                                           ("workspace.order", order))),
+        ("workspace.apps", "SP_TitleBarMenuButton", (("handboard.title", open_handboard),
+                                                         ("workspace.navigation", lambda: focus("navigation")),
+                                                         ("desktop.plugins", window._open_plugin_manager))),
+        ("desktop.settings", "SP_FileDialogListView", lambda: window._drawer_btn.click()),
+    )
     window._workspace_dock = []
-    colors = (C.DOCK_BLUE, C.DOCK_TEAL, C.DOCK_GREEN, C.DOCK_PURPLE, C.DOCK_CHARCOAL,
-              C.DOCK_BLUE, C.DOCK_GREEN, C.DOCK_PURPLE, C.DOCK_ORANGE,
-              C.DOCK_GREEN, C.DOCK_CHARCOAL, C.DOCK_ORANGE, C.DOCK_CHARCOAL)
+    window._workspace_dock_actions = []
+    colors = (C.DOCK_BLUE, C.DOCK_TEAL, C.DOCK_GREEN, C.DOCK_PURPLE,
+              C.DOCK_ORANGE, C.DOCK_CHARCOAL, C.DOCK_CHARCOAL)
     for (key, icon, action), color in zip(buttons, colors):
         button = QToolButton()
         button.setText(_t(key))
@@ -452,7 +459,16 @@ def build(window):
         button.setIconSize(QSize(44, 44))
         button.setMinimumWidth(64)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
-        button.clicked.connect(lambda checked=False, fn=action: fn())
+        if isinstance(action, tuple):
+            menu = QMenu(button)
+            for label, callback in action:
+                entry = menu.addAction(_t(label))
+                entry.triggered.connect(lambda checked=False, fn=callback: fn())
+                window._workspace_dock_actions.append((entry, label))
+            button.setMenu(menu)
+            button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        else:
+            button.clicked.connect(lambda checked=False, fn=action: fn())
         row.addWidget(button)
         window._workspace_dock.append((button, key))
     row.addStretch(1)
@@ -488,6 +504,8 @@ def build(window):
 def retranslate(window):
     for button, key in getattr(window, "_workspace_dock", ()):
         button.setText(_t(key))
+    for action, key in getattr(window, "_workspace_dock_actions", ()):
+        action.setText(_t(key))
     for name, key in (("assistant", "workspace.assistant"),
                       ("navigation", "workspace.navigation"), ("files", "workspace.files"),
                       ("video", "workspace.video"), ("camera", "workspace.camera"), ("handboard", "handboard.title")):
@@ -515,10 +533,10 @@ def show_document(window, document, kind="document"):
     confirmation and explicit LIVE acknowledgement remain separate.
     """
     document.setWindowFlags(Qt.WindowType.Widget)
-    sub = QMdiSubWindow()
+    sub = DocumentWindow(document)
     sub.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
-    sub.setWindowTitle(document.windowTitle())
     sub.setWidget(document)
+    sub.setWindowTitle(document.windowTitle())
     window._desktop_mdi.addSubWindow(sub)
     window._workspace_document_counter += 1
     doc_id = f"doc-{window._workspace_document_counter}"

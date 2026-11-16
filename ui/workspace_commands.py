@@ -116,7 +116,7 @@ def execute(window, command):
             return {"ok": False, "message": "Document windows must be closed by the user so unsaved changes can be reviewed."}
         if target == "handboard":
             sub.close()
-            return {"ok": True, "message": "Hand board hidden; hand control started from it was asked to stop."}
+            return {"ok": True, "message": "Hand board hidden; workspace hand control remains unchanged."}
         if target == "camera":
             window.stop_camera_stream()
             sub.hide()

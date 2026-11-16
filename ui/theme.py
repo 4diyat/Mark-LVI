@@ -57,6 +57,24 @@ class C:
     DOCK_ORANGE = "#9a704e"
 
 
+def workspace_stylesheet() -> str:
+    """Shared, accessible workspace controls; HUD accent remains independent."""
+    return f"""
+        QDialog, QWidget {{ background: {C.DESKTOP_PANEL}; color: {C.DESKTOP_TEXT}; }}
+        QPushButton, QToolButton {{ background: {C.DESKTOP_DOCK}; color: {C.DESKTOP_TEXT};
+            border: 1px solid {C.DESKTOP_BORDER}; border-radius: 6px; padding: 6px; }}
+        QPushButton:hover, QToolButton:hover {{ background: {C.DESKTOP_SIDEBAR}; }}
+        QPushButton:disabled, QToolButton:disabled {{ color: {C.DESKTOP_MUTED}; }}
+        QLineEdit, QPlainTextEdit, QTextEdit, QListWidget, QSpinBox, QComboBox {{
+            background: {C.DESKTOP_BAR}; color: {C.DESKTOP_TEXT};
+            border: 1px solid {C.DESKTOP_BORDER}; border-radius: 5px; padding: 5px; }}
+        QTabWidget::pane {{ border: 1px solid {C.DESKTOP_BORDER}; }}
+        QTabBar::tab {{ background: {C.DESKTOP_SIDEBAR}; color: {C.DESKTOP_TEXT};
+            padding: 7px 12px; border: 1px solid {C.DESKTOP_BORDER}; }}
+        QTabBar::tab:selected {{ background: {C.DESKTOP_DOCK}; }}
+    """
+
+
 # Keys tied to the accent colour — status colours (ACC, GREEN, RED…) stay fixed
 _HUE_LINKED = (
     "BG", "PANEL", "PANEL2", "BORDER", "BORDER_B", "BORDER_A",
