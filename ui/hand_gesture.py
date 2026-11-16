@@ -153,6 +153,8 @@ def setup(window):
         finally:
             controller.resume_input()
 
+    window._hand_toggle = toggle
+    window._hand_status = status
     button.clicked.connect(toggle)
     settings_button.clicked.connect(settings_menu)
     window._hand_menu_sig.connect(open_menu)

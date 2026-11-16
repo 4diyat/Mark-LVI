@@ -49,6 +49,12 @@ class C:
     DESKTOP_TEXT = "#eef3f8"
     DESKTOP_MUTED = "#aeb9c7"
     DESKTOP_DOCK = "#354252"
+    DOCK_BLUE = "#347bac"
+    DOCK_TEAL = "#27687c"
+    DOCK_PURPLE = "#61598a"
+    DOCK_CHARCOAL = "#505a69"
+    DOCK_GREEN = "#4d806d"
+    DOCK_ORANGE = "#9a704e"
 
 
 # Keys tied to the accent colour — status colours (ACC, GREEN, RED…) stay fixed

@@ -331,4 +331,4 @@ def open_editor(window, request):
     window._image_editors.add(dialog)
     dialog.destroyed.connect(lambda: window._image_editors.discard(dialog))
     from ui.desktop_workspace import show_document
-    show_document(window, dialog)
+    show_document(window, dialog, "image_editor")

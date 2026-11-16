@@ -180,7 +180,7 @@ class HudCanvas(QWidget):
             from memory.config_manager import get_hud_style
             self.hud_style = get_hud_style()
         except Exception:
-            self.hud_style = "face"
+            self.hud_style = "orb"
         self._core_phase = 0.0
 
         self._tick       = 0
@@ -594,6 +594,11 @@ class HudCanvas(QWidget):
         if not p.isActive():      # device not ready (e.g. 0-size during layout) — skip cleanly
             return
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        if self.hud_style == "orb":
+            from ui.desktop_orb import paint_orb
+            paint_orb(p, self.width(), self.height(), self._amp_disp, self.muted)
+            p.end()
+            return
         p.fillRect(self.rect(), qcol(C.BG))
 
         W, H = self.width(), self.height()
@@ -3443,6 +3448,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
     _state_sig      = pyqtSignal(str)
     _content_sig    = pyqtSignal(str, str)   # (title, text) — thread-safe content display
     _codejob_sig    = pyqtSignal(object)     # dev_agent job state — live coding panel
+    _workspace_command_sig = pyqtSignal(object)  # worker request, completed on Qt thread
     _reconfig_sig   = pyqtSignal()           # trigger setup overlay from any thread
     _camera_sig     = pyqtSignal(bytes)      # show camera frame preview (small overlay)
     _cam_stream_sig = pyqtSignal(bool)       # True=start live stream, False=stop
@@ -3472,6 +3478,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
     def __init__(self, face_path: str):
         super().__init__()
         self._face_path = face_path
+        self._ui_thread_id = threading.get_ident()
 
         # Load customization from config
         _cfg = _read_full_config()
@@ -3523,7 +3530,8 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         self._customize_overlay: CustomizeOverlay | None = None
 
         central = QWidget()
-        central.setStyleSheet(f"background: {C.BG};")
+        central.setObjectName("DesktopRoot")
+        central.setStyleSheet(f"QWidget#DesktopRoot {{ background: {C.BG}; }}")
         self.setCentralWidget(central)
 
         root = QVBoxLayout(central)
@@ -3807,6 +3815,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         self._state_sig.connect(self._apply_state)
         self._content_sig.connect(self._show_content)
         self._codejob_sig.connect(self._show_code_job)
+        self._workspace_command_sig.connect(self._execute_workspace_command)
         self._reconfig_sig.connect(self._show_setup)
         self._camera_sig.connect(self._show_camera_frame)
         self._confirm_sig.connect(self._show_confirm_banner)
@@ -3854,6 +3863,16 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         sc_full.activated.connect(self._toggle_fullscreen)
         sc_intr = QShortcut(QKeySequence("Escape"), self)
         sc_intr.activated.connect(self._do_interrupt)
+
+    def _execute_workspace_command(self, request):
+        """Run on the Qt thread and always return an explicit outcome."""
+        if not request.claim():
+            return
+        try:
+            from ui.workspace_commands import execute
+            request.finish(execute(self, request.command))
+        except Exception as exc:
+            request.finish({"ok": False, "message": f"Workspace command failed: {exc}"})
 
     def _show_camera_frame(self, img_bytes: bytes):
         """Slot — display camera preview overlay (main thread)."""
@@ -4990,8 +5009,8 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         self._input.setFixedHeight(30)
         self._input.setStyleSheet(f"""
             QLineEdit {{
-                background: #000d14; color: {C.WHITE};
-                border: 1px solid {C.BORDER}; border-radius: 3px; padding: 3px 7px;
+                background: {C.DESKTOP_DOCK}; color: {C.DESKTOP_TEXT};
+                border: 1px solid {C.DESKTOP_BORDER}; border-radius: 6px; padding: 3px 7px;
             }}
             QLineEdit:focus {{ border: 1px solid {C.PRI}; }}
         """)
@@ -5004,8 +5023,8 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         send.setCursor(Qt.CursorShape.PointingHandCursor)
         send.setStyleSheet(f"""
             QPushButton {{
-                background: {C.PANEL}; color: {C.PRI};
-                border: 1px solid {C.PRI_DIM}; border-radius: 3px;
+                background: {C.DESKTOP_DOCK}; color: {C.DESKTOP_TEXT};
+                border: 1px solid {C.DESKTOP_BORDER}; border-radius: 6px;
             }}
             QPushButton:hover {{ background: {C.PRI_GHO}; border: 1px solid {C.PRI}; }}
         """)
@@ -5841,7 +5860,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
 
     def _refresh_hud_btn(self):
         from memory.config_manager import get_hud_style
-        face = get_hud_style() == "face"
+        current = get_hud_style()
         # Neither state is "off", so both read as active — this is a choice
         # between two things, not a switch with a disabled side.
         style = f"""
@@ -5849,21 +5868,16 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
                 border: 1px solid {C.BORDER_A}; border-radius: 3px;
                 text-align: left; padding: 0 8px; }}
             QPushButton:hover {{ color: {C.WHITE}; border: 1px solid {C.BORDER_B}; }}"""
-        self._hud_btn.setText(_t("ui.hud.face") if face
-                              else _t("ui.hud.core"))
+        self._hud_btn.setText(_t("ui.hud." + current))
         self._hud_btn.setStyleSheet(style)
-        self._hud_btn.setToolTip(
-            "An animated head that speaks your words and shows what JARVIS is "
-            "doing. Tap to switch to the reactor core."
-            if face else
-            "A reactor core that turns with the state and moves with your voice. "
-            "Tap to switch to the animated head.")
+        self._hud_btn.setToolTip(_t("ui.hud.cycle_hint"))
 
     def _toggle_hud_style(self):
         """Swap the centrepiece. Both objects stay in memory, so the change is
         instant and switching back costs nothing."""
         from memory.config_manager import get_hud_style, save_hud_style
-        want = "core" if get_hud_style() == "face" else "face"
+        styles = ("orb", "face", "core")
+        want = styles[(styles.index(get_hud_style()) + 1) % len(styles)]
         save_hud_style(want)
         try:
             self.hud.hud_style = want
@@ -5871,9 +5885,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         except Exception:
             pass
         self._refresh_hud_btn()
-        self._log.append_log(
-            "SYS: HUD switched to the animated face." if want == "face"
-            else "SYS: HUD switched to the reactor core.")
+        self._log.append_log("SYS: " + _t("ui.hud." + want))
 
     def _toggle_ptt(self):
         from memory.config_manager import (get_push_to_talk_enabled,
@@ -6335,31 +6347,22 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         if getattr(self, "_deaf", False):
             self._mute_btn.setText(_t("ui.mic.absent"))
             self._mute_btn.setEnabled(False)
-            self._mute_btn.setStyleSheet(f"""
-                QPushButton {{
-                    background: #0b0b12; color: {C.MUTED_C};
-                    border: 1px solid {C.BORDER}; border-radius: 3px;
-                }}
-            """)
-            return
-        self._mute_btn.setEnabled(True)
-        if self._muted:
+        elif self._muted:
             self._mute_btn.setText(_t("ui.mic.muted"))
-            self._mute_btn.setStyleSheet(f"""
-                QPushButton {{
-                    background: #140006; color: {C.MUTED_C};
-                    border: 1px solid {C.MUTED_C}; border-radius: 3px;
-                }}
-            """)
+            self._mute_btn.setEnabled(True)
+        elif self.hud.state == "INITIALISING":
+            self._mute_btn.setText(_t("ui.mic.initialising"))
+            self._mute_btn.setEnabled(True)
         else:
             self._mute_btn.setText(_t("ui.mic.active"))
-            self._mute_btn.setStyleSheet(f"""
-                QPushButton {{
-                    background: #00140a; color: {C.GREEN};
-                    border: 1px solid {C.GREEN}; border-radius: 3px;
-                }}
-                QPushButton:hover {{ background: #001f10; }}
-            """)
+            self._mute_btn.setEnabled(True)
+        border = C.MUTED_C if self._muted else C.DESKTOP_BORDER
+        self._mute_btn.setStyleSheet(f"""
+            QPushButton {{ background: {C.DESKTOP_DOCK}; color: {C.DESKTOP_TEXT};
+                           border: 1px solid {border}; border-radius: 6px; }}
+            QPushButton:hover {{ background: {C.DESKTOP_SIDEBAR}; }}
+            QPushButton:disabled {{ color: {C.DESKTOP_MUTED}; }}
+        """)
 
     def _send(self):
         txt = self._input.text().strip()
@@ -6713,6 +6716,18 @@ class JarvisUI:
     def show_code_job(self, job: dict) -> None:
         """Thread-safe: draw the coding agent's live progress in the panel."""
         self._win._codejob_sig.emit(dict(job))
+
+    def control_workspace(self, command: dict) -> dict:
+        """Worker-only request to the desktop; timeout cancels unstarted work."""
+        from core.workspace_control import WorkspaceRequest, validate
+        if threading.get_ident() == self._win._ui_thread_id:
+            return {"ok": False, "message": "Workspace control must run on a worker thread."}
+        try:
+            request = WorkspaceRequest(validate(command))
+        except ValueError as exc:
+            return {"ok": False, "message": str(exc)}
+        self._win._workspace_command_sig.emit(request)
+        return request.wait(3.0)
 
     def show_quiz(self, topic: str, questions, grade=None) -> None:
         """Thread-safe: put an interactive quiz on the board.

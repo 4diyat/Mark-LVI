@@ -5,10 +5,11 @@ thread-safe dispatch are still owned by the existing application.
 """
 from pathlib import Path
 
-from PyQt6.QtCore import QDir, QSize, Qt, QTimer, QUrl
-from PyQt6.QtGui import QBrush, QDesktopServices, QFileSystemModel, QPixmap
+from PyQt6.QtCore import QDir, QRectF, QSize, Qt, QTimer, QUrl
+from PyQt6.QtGui import (QBrush, QColor, QDesktopServices, QFileSystemModel, QIcon,
+                         QLinearGradient, QPainter, QPixmap)
 from PyQt6.QtWidgets import (QHBoxLayout, QLabel, QLineEdit, QMdiArea,
-                             QMdiSubWindow, QPushButton, QScrollArea, QStyle, QToolButton,
+                             QMdiSubWindow, QPushButton, QScrollArea, QSizeGrip, QStyle, QToolButton,
                              QTreeView, QVBoxLayout, QWidget)
 
 from core.i18n import label as _t
@@ -20,6 +21,14 @@ class WallpaperArea(QMdiArea):
     def __init__(self):
         super().__init__()
         self._wallpaper = QPixmap(str(Path(__file__).resolve().parent.parent / "assets/workspace/aurora.png"))
+        self._dock = None
+
+    def position_dock(self):
+        if self._dock is not None:
+            width = max(1, min(1020, self.viewport().width() - 20))
+            self._dock.setGeometry((self.viewport().width() - width) // 2,
+                                   max(0, self.viewport().height() - 86), width, 76)
+            self._dock.raise_()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -28,10 +37,104 @@ class WallpaperArea(QMdiArea):
                                            Qt.AspectRatioMode.KeepAspectRatioByExpanding,
                                            Qt.TransformationMode.SmoothTransformation)
             self.setBackground(QBrush(image))
+        self.position_dock()
+
+
+class WindowTitleBar(QWidget):
+    """Draggable title bar with working close, minimize and maximize controls."""
+    def __init__(self, sub):
+        super().__init__()
+        self._sub = sub
+        self._drag_offset = None
+        self.setFixedHeight(33)
+        self.setObjectName("WorkspaceTitleBar")
+        self.setStyleSheet(f"QWidget#WorkspaceTitleBar {{ background: {C.DESKTOP_SIDEBAR}; "
+                           f"border-bottom: 1px solid {C.DESKTOP_BORDER}; }}")
+        row = QHBoxLayout(self)
+        row.setContentsMargins(12, 0, 12, 0)
+        row.setSpacing(7)
+        for color, tip, action in (("#ff6058", "workspace.close", sub.close),
+                                   ("#ffbd2e", "workspace.minimize", sub.showMinimized),
+                                   ("#28c840", "workspace.maximize", self.toggle_maximize)):
+            button = QPushButton()
+            button.setFixedSize(12, 12)
+            button.setToolTip(_t(tip))
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setStyleSheet(f"QPushButton {{ background: {color}; border: none; border-radius: 6px; }}")
+            button.clicked.connect(lambda checked=False, fn=action: fn())
+            row.addWidget(button)
+        row.addStretch(1)
+        self.title = QLabel("")
+        self.title.setStyleSheet(f"color: {C.DESKTOP_TEXT}; background: transparent; border: none; font-weight: bold;")
+        row.addWidget(self.title)
+        row.addStretch(1)
+        row.addSpacing(50)  # balances the three controls at the opposite edge
+
+    def toggle_maximize(self):
+        if self._sub.isMaximized():
+            self._sub.showNormal()
+        else:
+            self._sub.showMaximized()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_offset = event.globalPosition().toPoint() - self._sub.pos()
+            self._sub.setFocus()
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._drag_offset is not None and event.buttons() & Qt.MouseButton.LeftButton and not self._sub.isMaximized():
+            self._sub.move(event.globalPosition().toPoint() - self._drag_offset)
+            event.accept()
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        self._drag_offset = None
+        super().mouseReleaseEvent(event)
+
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.toggle_maximize()
+            event.accept()
+        else:
+            super().mouseDoubleClickEvent(event)
 
 
 class PersistentWindow(QMdiSubWindow):
-    """Closing a core panel hides it; its dock button can restore it."""
+    """Real subwindow with custom chrome; closing hides its live content."""
+    def __init__(self):
+        super().__init__()
+        self.setWindowFlags(Qt.WindowType.SubWindow | Qt.WindowType.FramelessWindowHint)
+        self._workspace_title = None
+
+    def setWidget(self, widget):
+        wrapper = QWidget()
+        wrapper.setObjectName("WorkspaceWindowBody")
+        wrapper.setStyleSheet(f"QWidget#WorkspaceWindowBody {{ background: {C.DESKTOP_PANEL}; }}")
+        layout = QVBoxLayout(wrapper)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        self._workspace_title = WindowTitleBar(self)
+        layout.addWidget(self._workspace_title)
+        layout.addWidget(widget, 1)
+        resize_row = QHBoxLayout()
+        resize_row.setContentsMargins(0, 0, 0, 0)
+        resize_row.addStretch(1)
+        grip = QSizeGrip(wrapper)
+        grip.setFixedSize(12, 12)
+        grip.setToolTip(_t("workspace.resize"))
+        resize_row.addWidget(grip)
+        layout.addLayout(resize_row)
+        super().setWidget(wrapper)
+
+    def setWindowTitle(self, title):
+        super().setWindowTitle(title)
+        if self._workspace_title is not None:
+            self._workspace_title.title.setText(title)
+
     def closeEvent(self, event):
         self.hide()
         event.ignore()
@@ -51,6 +154,17 @@ class VideoWindow(PersistentWindow):
         super().resizeEvent(event)
         # Wait until the embedded graphics view has received its new geometry.
         QTimer.singleShot(0, self._host._fit_video)
+
+
+class HandBoardWindow(PersistentWindow):
+    """Stop hand input started by this board before hiding it."""
+    def __init__(self, board):
+        super().__init__()
+        self._board = board
+
+    def closeEvent(self, event):
+        self._board.stop_owned_control()
+        super().closeEvent(event)
 
 
 class CameraWindow(PersistentWindow):
@@ -145,11 +259,12 @@ class FileBrowser(QWidget):
         target = Path(path).expanduser()
         if not target.is_dir():
             self.status.setText(_t("workspace.bad_folder"))
-            return
+            return False
         path = str(target.resolve())
         self.view.setRootIndex(self.model.setRootPath(path))
         self.path.setText(path)
         self.status.setText(_t("workspace.files_hint"))
+        return True
 
     def _up(self):
         self.navigate(str(Path(self.path.text()).parent))
@@ -160,6 +275,39 @@ class FileBrowser(QWidget):
             self.navigate(path)
         elif not QDesktopServices.openUrl(QUrl.fromLocalFile(path)):
             self.status.setText(_t("workspace.open_failed"))
+
+
+def dock_icon(style, icon_name, color):
+    """Make a rounded, coloured tile around the platform's real action icon."""
+    pixmap = QPixmap(44, 44)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    gradient = QLinearGradient(0, 0, 0, 44)
+    gradient.setColorAt(0, QColor(color).lighter(145))
+    gradient.setColorAt(1, QColor(color).darker(130))
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QBrush(gradient))
+    painter.drawRoundedRect(QRectF(1, 1, 42, 42), 10, 10)
+    icon = style.standardIcon(getattr(QStyle.StandardPixmap, icon_name))
+    painter.drawPixmap(8, 8, icon.pixmap(28, 28))
+    painter.end()
+    return QIcon(pixmap)
+
+
+def initial_window_geometry(width, height):
+    """Keep both initial panels within the desktop above the floating dock."""
+    width, height = max(1, width), max(1, height)
+    floor = max(1, height - 90)
+    file_x = max(0, int(width * .045))
+    file_y = max(0, int(height * .10))
+    file_w = max(1, int(width * (.45 if width >= 1100 else .48)))
+    file_h = max(1, min(int(height * .66), floor - file_y))
+    assistant_w = max(1, min(max(320, int(width * .29)), width))
+    assistant_x = min(int(width * .65), width - assistant_w)
+    assistant_y = max(0, int(height * .12))
+    assistant_h = max(1, min(max(400, int(height * .72)), floor - assistant_y))
+    return (file_x, file_y, file_w, file_h), (assistant_x, assistant_y, assistant_w, assistant_h)
 
 
 def build(window):
@@ -179,8 +327,8 @@ def build(window):
         QToolButton#DockButton:hover {{ background: {C.DESKTOP_SIDEBAR}; }}
     """)
     layout = QVBoxLayout(shell)
-    layout.setContentsMargins(8, 6, 8, 8)
-    layout.setSpacing(6)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(0)
     mdi = WallpaperArea()
     mdi.setViewMode(QMdiArea.ViewMode.SubWindowView)
     mdi.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
@@ -188,6 +336,8 @@ def build(window):
     layout.addWidget(mdi, 1)
     window._desktop_mdi = mdi
     window._desktop_windows = {}
+    window._workspace_documents = {}
+    window._workspace_document_counter = 0
 
     def add(name, widget, title):
         sub = PersistentWindow()
@@ -201,7 +351,8 @@ def build(window):
     assistant.show()
     # The real conversation now lives alongside the HUD in the assistant panel.
     window._desktop_windows["chat"] = assistant
-    add("files", FileBrowser(), "workspace.files").show()
+    window._workspace_file_browser = FileBrowser()
+    add("files", window._workspace_file_browser, "workspace.files").show()
     add("navigation", window._left_panel, "workspace.navigation").hide()
     video = VideoWindow(window)
     video.setWidget(window._video_cont)
@@ -217,6 +368,26 @@ def build(window):
     camera.resize(600, 430)
     camera.hide()
     window._desktop_windows["camera"] = camera
+
+    def open_handboard():
+        if "handboard" not in window._desktop_windows:
+            from ui.hand_board import HandBoard
+            board = HandBoard(window)
+            sub = HandBoardWindow(board)
+            sub.setWidget(board)
+            sub.setWindowTitle(_t("handboard.title"))
+            mdi.addSubWindow(sub)
+            sub.resize(900, 600)
+            window._hand_board = board
+            window._desktop_windows["handboard"] = sub
+        sub = window._desktop_windows["handboard"]
+        sub.showNormal()
+        mdi.setActiveSubWindow(sub)
+        sub.raise_()
+        mdi.position_dock()
+        return sub
+
+    window._open_handboard = open_handboard
 
     def focus(name):
         if name == "camera" and not window._camera_active:
@@ -257,6 +428,7 @@ def build(window):
     row.addStretch(1)
     buttons = (("workspace.chat", "SP_MessageBoxInformation", lambda: focus("chat")),
                ("workspace.files", "SP_DirIcon", lambda: focus("files")),
+               ("handboard.title", "SP_DesktopIcon", open_handboard),
                ("workspace.video", "SP_MediaPlay", lambda: focus("video")),
                ("workspace.camera", "SP_ComputerIcon", lambda: focus("camera")),
                ("workspace.code", "SP_FileIcon", lambda: creative("editor")),
@@ -268,20 +440,23 @@ def build(window):
                ("desktop.plugins", "SP_DriveNetIcon", window._open_plugin_manager),
                ("desktop.settings", "SP_FileDialogListView", lambda: window._drawer_btn.click()))
     window._workspace_dock = []
-    for key, icon, action in buttons:
+    colors = (C.DOCK_BLUE, C.DOCK_TEAL, C.DOCK_GREEN, C.DOCK_PURPLE, C.DOCK_CHARCOAL,
+              C.DOCK_BLUE, C.DOCK_GREEN, C.DOCK_PURPLE, C.DOCK_ORANGE,
+              C.DOCK_GREEN, C.DOCK_CHARCOAL, C.DOCK_ORANGE, C.DOCK_CHARCOAL)
+    for (key, icon, action), color in zip(buttons, colors):
         button = QToolButton()
         button.setText(_t(key))
         button.setObjectName("DockButton")
         button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
-        button.setIcon(window.style().standardIcon(getattr(QStyle.StandardPixmap, icon)))
-        button.setIconSize(QSize(28, 28))
+        button.setIcon(dock_icon(window.style(), icon, color))
+        button.setIconSize(QSize(44, 44))
         button.setMinimumWidth(64)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         button.clicked.connect(lambda checked=False, fn=action: fn())
         row.addWidget(button)
         window._workspace_dock.append((button, key))
     row.addStretch(1)
-    dock_scroll = QScrollArea()
+    dock_scroll = QScrollArea(mdi.viewport())
     dock_scroll.setWidgetResizable(True)
     dock_scroll.setWidget(dock)
     dock_scroll.setFixedHeight(76)
@@ -289,20 +464,23 @@ def build(window):
     dock_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     dock_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
     dock_scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
-    layout.addWidget(dock_scroll, 0, Qt.AlignmentFlag.AlignHCenter)
+    mdi._dock = dock_scroll
+    mdi.subWindowActivated.connect(lambda _sub: mdi.position_dock())
+    dock_scroll.show()
+    mdi.position_dock()
 
     def position_initial():
-        width = max(mdi.viewport().width(), 800)
-        height = max(mdi.viewport().height(), 500)
+        width = mdi.viewport().width()
+        height = mdi.viewport().height()
         files, assistant, nav = (window._desktop_windows[k] for k in ("files", "assistant", "navigation"))
-        files.setGeometry(int(width * .045), int(height * .10),
-                          max(440, int(width * .45)), max(320, int(height * .66)))
-        assistant.setGeometry(max(490, int(width * .65)), int(height * .12),
-                              max(320, int(width * .29)), max(480, int(height * .72)))
+        file_geometry, assistant_geometry = initial_window_geometry(width, height)
+        files.setGeometry(*file_geometry)
+        assistant.setGeometry(*assistant_geometry)
         nav.resize(240, max(350, min(height - 40, 700)))
         files.show()
         assistant.show()
         nav.hide()
+        mdi.position_dock()
     QTimer.singleShot(0, position_initial)
     return shell
 
@@ -312,7 +490,7 @@ def retranslate(window):
         button.setText(_t(key))
     for name, key in (("assistant", "workspace.assistant"),
                       ("navigation", "workspace.navigation"), ("files", "workspace.files"),
-                      ("video", "workspace.video"), ("camera", "workspace.camera")):
+                      ("video", "workspace.video"), ("camera", "workspace.camera"), ("handboard", "handboard.title")):
         sub = getattr(window, "_desktop_windows", {}).get(name)
         if sub:
             sub.setWindowTitle(_t(key))
@@ -330,7 +508,7 @@ def hide_video(window):
     window._desktop_windows["video"].hide()
 
 
-def show_document(window, document):
+def show_document(window, document, kind="document"):
     """Host a non-modal workspace in MDI, keeping its own closeEvent/consent.
 
     Order approval is deliberately not embedded here: its application-modal
@@ -342,6 +520,10 @@ def show_document(window, document):
     sub.setWindowTitle(document.windowTitle())
     sub.setWidget(document)
     window._desktop_mdi.addSubWindow(sub)
+    window._workspace_document_counter += 1
+    doc_id = f"doc-{window._workspace_document_counter}"
+    window._workspace_documents[doc_id] = (kind, sub)
+    sub.destroyed.connect(lambda *_args, key=doc_id: window._workspace_documents.pop(key, None))
     sub.resize(document.size())
     sub.show()
     window._desktop_mdi.setActiveSubWindow(sub)
