@@ -38,6 +38,27 @@ def main():
         assert dock.parentWidget() is mdi.viewport()
         assert 500 <= dock.width() <= mdi.viewport().width()
         assert all(button.isVisible() for button, _ in window._workspace_dock)
+        # Activation is discoverable in Apps -> Controls and needs no external
+        # server, installation directory, or camera in this smoke test.
+        controls = next(action for action, key in window._workspace_dock_actions if key == "workspace.navigation")
+        controls.trigger()
+        navigation = window._desktop_windows["navigation"]
+        app.processEvents()
+        assert navigation.isVisible()
+        hand_button = next(button for button in window._left_panel.findChildren(QPushButton)
+                           if button.text() == translate("gesture.enable"))
+        assert hand_button.isVisible()
+        assert hand_button.mapTo(navigation, QPoint(0, 0)).y() + hand_button.height() <= navigation.height()
+        assert config.set_config_values(camera_index=3)
+        starts = []
+        original_start = window._hand_controller.start
+        window._hand_controller.start = lambda index: starts.append(index)
+        try:
+            hand_button.click()
+            assert starts == [3]
+        finally:
+            window._hand_controller.start = original_start
+            navigation.hide()
         assert window.hud.hud_style == "orb"
         assert window._drop_zone.isHidden()
         QTest.mouseClick(window._attachment_toggle, Qt.MouseButton.LeftButton)
