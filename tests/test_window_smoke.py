@@ -1124,15 +1124,37 @@ def test_desktop_drawer_fits_under_compact_menu_and_inside_screen(window, monkey
     assert geometry == [(600, 30, 220, 300)]
 
 
-def test_jarvis_state_is_forwarded_to_optional_barehands_bridge(monkeypatch, window):
-    from plugins import _barehands
+def test_jarvis_state_is_forwarded_to_the_ui(window, monkeypatch):
     from ui.window import JarvisUI
 
     observed = []
-    monkeypatch.setattr(_barehands, "publish_state", observed.append)
-    ui = types.SimpleNamespace(_win=window)
-    JarvisUI.set_state(ui, "THINKING")
+    monkeypatch.setattr(window, "_state_sig", types.SimpleNamespace(emit=observed.append))
+    JarvisUI.set_state(types.SimpleNamespace(_win=window), "THINKING")
     assert observed == ["THINKING"]
+
+
+def test_hand_control_activation_uses_configured_camera_without_external_plugin(window, monkeypatch, tmp_path):
+    import memory.config_manager as cfg
+
+    calls = []
+    config_file = tmp_path / "api_keys.json"
+    config_file.write_text('{"camera_index": 3}', encoding="utf-8")
+    monkeypatch.setattr(cfg, "CONFIG_FILE", config_file)
+    monkeypatch.setattr(cfg, "_LAST_GOOD", {})
+    monkeypatch.setattr(window._workspace_gestures, "update", lambda _samples: None)
+    monkeypatch.setattr(window._hand_controller, "start", lambda camera: calls.append(camera))
+    assert window._hand_controller.thread is None
+    window._hand_toggle()
+    assert calls == [3]
+
+
+def test_hand_control_does_not_start_while_confirmation_is_open(window, monkeypatch):
+    calls = []
+    window._hand_closing_confirm = True
+    monkeypatch.setattr(window._workspace_gestures, "update", lambda _samples: None)
+    monkeypatch.setattr(window._hand_controller, "start", lambda camera: calls.append(camera))
+    window._hand_toggle()
+    assert calls == []
 
 
 def test_attachment_panel_can_be_opened_without_replacing_session(window):

@@ -1020,6 +1020,28 @@ a separate dialog with its confirmation safeguards. Camera, video and avatar use
 separate panels, subject to camera hardware access and permissions. Visual and
 device behaviour must be checked on the target desktop.
 
+### Cara mengaktifkan kontrol tangan
+
+1. Jalankan JARVIS desktop di Windows AMD64 dengan Python 3.10–3.12. Pastikan
+   dependensi dari `requirements.txt` terpasang dan webcam tidak digunakan oleh
+   pratinjau kamera JARVIS atau aplikasi lain. Jika baru memasang dependensi,
+   mulai ulang JARVIS.
+2. Pada dock, pilih **Aplikasi → Kontrol** (bahasa Inggris: **Apps → Controls**).
+3. Di panel Kontrol, klik **Aktifkan kontrol tangan**. Tunggu status **Kontrol
+   tangan AKTIF** dan pastikan jendela JARVIS mendapat fokus. Kamera tidak
+   dimulai otomatis; tidak perlu mengisi installation path atau menjalankan
+   Barehands eksternal.
+4. Tunjuk lalu cubit jempol dan telunjuk selama 0,35 detik. Lepaskan untuk klik,
+   atau gerakkan tangan untuk menyeret judul jendela. Gunakan dua tangan untuk
+   mengubah ukuran jendela atau memanipulasi kartu di Papan Tangan.
+5. Untuk berhenti, klik **Hentikan kontrol tangan** di panel yang sama. Jika
+   kamera sibuk atau muncul pesan error, tutup fitur kamera lain, periksa izin
+   kamera Windows dan instalasi dependensi, lalu coba lagi. Kontrol tangan ini
+   terbatas pada workspace JARVIS; konfirmasi sensitif memerlukan input fisik.
+
+Model pengenalan tangan dan webcam belum diuji pada perangkat Windows nyata.
+Pencahayaan, posisi tangan, dan spesifikasi perangkat dapat memengaruhi hasil.
+
 ### Papan tangan bawaan JARVIS (eksperimental)
 
 **Papan Tangan / Hand Board** tersedia melalui **Aplikasi → Papan Tangan** di dock workspace JARVIS. Ini
@@ -1046,8 +1068,7 @@ komponen mesh terpisah, pilih kartunya dan geser **Pisahkan bagian** untuk
 mengurai/menyatukan secara perkiraan; mesh yang tersambung tidak dapat diurai.
 Pengatur tersebut dapat digeser dengan gesture, tetapi bukan gesture exploded
 view di udara. Gesture melempar, tepuk, dan cakar belum tersedia. Papan hanya menyimpan maksimal 30 kartu selama sesi. Pengenalan tangan
-belum diuji pada kamera Windows nyata. Plugin Barehands lama tetap opsional dan
-terpisah.
+belum diuji pada kamera Windows nyata.
 
 ### Mengontrol workspace dengan JARVIS
 
@@ -1067,28 +1088,3 @@ penghentian kamera; meminimalkannya saja tidak menghentikan kamera. Meminimalkan
 video juga tidak menghentikan pemutaran. Pembukaan dan penghentian kamera bersifat
 asinkron, jadi permintaan memulai bukan jaminan perangkat berhasil dibuka.
 Kontrol editor dan order MT5 tetap mengikuti izin serta konfirmasi yang ada.
-
-### Optional: Barehands hand-tracked board
-
-[Barehands](https://github.com/jaredrhod/barehands) by Jared Rhodenizer is a
-separate AGPL-3.0-or-later application, not bundled with JARVIS. On the desktop
-machine, clone that repository and start its server (`run.bat` on Windows or
-`python3 server.py` elsewhere). Open `http://127.0.0.1:8794/stage.html` in
-Chrome on that same machine, allow camera access, and verify hand tracking.
-Barehands loads MediaPipe and three.js from public CDNs on first use, so it
-needs internet then. Do not expose the Barehands server to the network.
-
-In JARVIS Plugin Settings, open **Barehands — local board**, enter the absolute
-folder containing its `server.py` and `stage.html`, and enable integration. Its
-port is read from that installation's `barehands.json`, defaulting to 8794.
-Configure the ring name and optional notes folders in Barehands' own config and
-restart its server; JARVIS does not alter that config or your notes. Ask JARVIS
-to show a card, present text, stage an image/model already inside Barehands'
-`media/` folder, or inspect the board. A successful command is *queued*, not
-proof the tracker rendered it; board inspection is the last heartbeat and can
-be stale. Board and note text are untrusted content, not instructions. The
-ring mirrors JARVIS state only while integration is enabled; Barehands times
-out a stale state if JARVIS crashes. No camera or server is started by JARVIS.
-If JARVIS's own gesture/camera feature is active, stop it before starting
-Barehands if the webcam cannot be shared. The integration is opt-in and does
-not copy files into or widen the Barehands media jail.

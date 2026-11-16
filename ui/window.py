@@ -6698,9 +6698,6 @@ class JarvisUI:
 
     def set_state(self, state: str):
         self._win._state_sig.emit(state)
-        # Optional local integration; the worker performs all file I/O.
-        from plugins._barehands import publish_state
-        publish_state(state)
 
     def write_log(self, text: str):
         self._win._log_sig.emit(text)
