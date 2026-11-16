@@ -932,80 +932,37 @@ Restart the app. `cv2` remains available through the
 contrib distribution. Other OSes, architectures and Python versions are not
 supported by this gesture implementation.
 
-Enable hand control in the desktop assistant panel. Point with the index finger
-to move the primary-monitor cursor; pinch thumb and index for the configured
-hold time (default 0.35 seconds) to press, hold and move to drag, release to
-click/drop. Raise index and middle fingers and move vertically to scroll. Raise
-index, middle and ring for one second to switch to the previous application
-(Alt+Tab) by default; change pose to re-arm. Fold the four fingers and raise
-your thumb for one second to open the command menu, then use the pointer and
-pinch to select an item. An open hand or ordinary fist is a resting pose.
+Enable hand control via **Apps → Controls** in the workspace dock. Tracking runs
+locally and sends interactions only to JARVIS's workspace widgets; it does not
+move the operating-system pointer, send system keys or control other apps.
+Camera access is opt-in and exclusive with JARVIS's other camera features.
 
-The gesture menu groups Windows/app, system, keyboard navigation, editing,
-browser/tab, and media commands. It supports common operations such as File
-Explorer, Settings, arrow and Tab keys, copy/paste, browser tabs, window snapping,
-and volume. Targeted commands use the window that had focus when the menu
-opened; they refuse a changed or missing target and verify foreground focus
-before sending a shortcut. Shortcuts are interpreted by the target application,
-so their meaning can vary. A sent key is not proof the application performed
-the requested operation. Windows privilege or focus restrictions can prevent it.
+- Point and hold a thumb/index pinch for 0.35 seconds, then release to click an
+  internal widget. Loss of tracking cancels the click. The dock's grouped menus
+  can be selected the same way.
+- Pinch and drag a window title to move it; pinch with both hands over a window
+  and change their separation to resize it.
+- On Hand Board, pinch and drag a card; pinch with both hands around a card to
+  scale and rotate it in 2D. Move both hands together to turn an OBJ model's
+  wireframe in 3D. Select a model with disconnected mesh components and drag
+  the **Separate parts** slider to spread or reassemble them; the slider also
+  works with a pinch gesture.
+- Raise index and middle fingers and move vertically to scroll an internal
+  scroll area. Colored rings indicate the tracked fingertips.
 
-Potentially disruptive menu actions (including close, close tab, paste, cut,
-undo/redo, save, Enter, navigation/refresh and Windows lock) stop hand control
-and require a physical confirmation before proceeding. Close sends the selected
-window a normal Windows close request, **not** a forced process termination;
-applications may still ask to save work or refuse to close. Hand control stays
-off after confirmation or cancellation. Other gesture-driven pointer clicks
-and unconfirmed keyboard shortcuts may still have consequences inside apps;
-the app cannot enforce their safety. No shutdown/restart, arbitrary shell
-commands or automatic approvals are exposed by the gesture menu. In settings, choose the pinch hold time, pointer movement area and
-three-finger action; restart hand control to apply changes. To use arrow keys,
-select **Hand control settings → Three-finger action → Arrow keys**, stop and
-restart hand control, and focus the target application. Hold index, middle and
-ring fingers still for one second; when the status says the arrows are ready,
-move your hand up, down, left or right. Each gesture sends one arrow key to the
-focused application. Lower the fingers to re-arm; it does not hold or repeat a
-key. Menus suspend arrow input. Three fingers no longer switch apps in this
-mode, though the command menu still offers switching. These are presets, not
-automatic calibration or arbitrary shortcut mapping.
-
-The mouse button releases on tracking loss. Stop with the panel button or
-physical **Ctrl+Alt+G** globally. A watchdog stops gesture input if frame
-capture or recognition stalls. PyAutoGUI's corner fail-safe remains active.
-The application stops gesture input before an assistant confirmation banner
-appears; complete confirmations with physical input. Gesture-controlled clicks
-can still activate destructive controls in other apps or Windows: use care and
-keep a physical mouse and keyboard nearby.
-
-The feature processes frames locally and takes exclusive access to the camera
-within the assistant's live-view and capture paths. Stop one camera feature
-before starting another; other applications or plugins may also use the camera.
-Camera failures are reported in the panel. Multi-monitor control, automatic
-calibration, arbitrary gesture mapping, and full Windows control are not yet
-provided. Gesture recognition and camera performance require real hardware
-validation; lighting, pose and camera positioning affect accuracy.
-
-#### Ask about the item you are pointing at
-
-This is separate opt-in screen sharing. In **Hand control settings → Pointed
-screen sharing with AI**, select **Allow full-screen capture and send to AI on
-request**. With hand control active, point at an item on the primary screen with
-your index finger, keep pointing, and explicitly ask e.g. “Explain the item I am
-pointing at on my screen.” The vision tool captures the **entire primary screen**,
-marks the approximate pointer location with a red ring, and sends it to the
-current vision provider (which may be a remote service). No screenshot is saved
-by this feature. A log entry records the capture. It will refuse the pointed
-request when sharing is off or the pointer is no longer being tracked; it will
-not silently substitute an ordinary screen capture. Disable this option when no
-longer needed. Screen content may include private information. As with existing
-vision, the model chooses whether to call the tool; ask explicitly and check the
-log. The marker is approximate and may be inaccurate with display scaling.
-
-For hands-free desktop use, gesture controls provide pointing, clicks, scrolling,
-arrow-key navigation and window management. Existing voice commands and the
-computer-control actions can open apps and type in the focused field; confirm
-sensitive actions and inspect the target before typing. This remains experimental,
-and neither accurate object identification nor all OS functions are guaranteed.
+Dock menus, workspace drop-downs and selected settings overlays also accept
+pinch-and-release. The workspace must be in focus. Confirmation banners and modal dialogs suspend
+hand input; use physical input for those confirmations and file dialogs. Gesture
+clicks can still invoke ordinary workspace actions, so inspect the target. Stop
+tracking via Controls. This is not the original Barehands code: throwing,
+clap, claw and empty-air exploded-view gestures are not implemented. Part
+separation is an approximation based on disconnected vertex indices, not a CAD
+assembly; a single connected mesh cannot be separated. Not all popups and drag-based
+controls are gesture enabled; use a mouse or keyboard as needed. Camera and
+two-hand recognition have not been validated on real Windows hardware;
+lighting, positioning and recognition errors affect operation. The tracker
+smooths fingertip motion and requires two open frames to end a pinch; losing a
+pinching hand cancels the interaction rather than sending a click.
 
 ### MT5 order review (experimental)
 
@@ -1065,32 +1022,32 @@ device behaviour must be checked on the target desktop.
 
 ### Papan tangan bawaan JARVIS (eksperimental)
 
-**Papan Tangan / Hand Board** tersedia dari dock dalam workspace JARVIS. Ini
+**Papan Tangan / Hand Board** tersedia melalui **Aplikasi → Papan Tangan** di dock workspace JARVIS. Ini
 implementasi mandiri, bukan Barehands dan tidak menjalankan server atau browser
-terpisah. Tambahkan catatan atau gambar menggunakan tombol papan; pilih dan
-geser kartunya dengan mouse, atau aktifkan **kontrol tangan** dari papan.
+terpisah. Tambahkan catatan, gambar, atau model OBJ menggunakan tombol papan; pilih dan
+geser kartunya dengan mouse. Kontrol tangan diaktifkan dari Controls dan berlaku
+untuk jendela workspace, bukan hanya papan.
 JARVIS juga dapat membuka papan, menambahkan catatan dan membaca posisi/konten
 kartu yang ada jika diminta. Konten papan adalah data tak tepercaya, bukan
 instruksi bagi model. Catatan hanya ditampilkan sebagian pada kartu; teks
 lengkap dapat dibaca JARVIS melalui daftar papan.
 
-Kontrol tangan memakai implementasi pointer JARVIS yang sudah ada, bukan kode
-Barehands: saat ini khusus Windows AMD64 dengan Python 3.10–3.12 dan dependensi
-MediaPipe pada requirements. Kamera **tidak dimulai saat papan dibuka**; tekan
-Aktifkan kontrol tangan secara eksplisit, tunjuk kartu, cubit dan tahan untuk
-menyeret, lalu lepaskan. Kontrol ini menggerakkan pointer Windows sehingga juga
-bisa memengaruhi aplikasi lain. Hentikan dengan tombol atau Ctrl+Alt+G; dialog
-penambahan/hapus menghentikan kontrol tangan dan membutuhkan input fisik.
-Papan menghentikan kontrol yang dimulai darinya saat ditutup. Meminimalkan papan
-atau kontrol yang sebelumnya dimulai dari tempat lain tidak menghentikannya.
-Kamera harus bebas dari live preview atau fitur kamera lain.
-
-Papan ini masih tahap awal: maksimum 30 kartu catatan/gambar, hanya dalam memori
-sampai JARVIS ditutup. Tidak ada penyimpanan papan, manipulasi dua tangan,
-scaling, model 3D, atau gesture Barehands lanjutan. Kamera dan pengenalan tangan
-harus divalidasi dengan perangkat nyata; mouse tetap dapat dipakai tanpa kamera.
-Plugin Barehands lama masih opsional dan terpisah, tetapi tidak diperlukan untuk
-papan bawaan ini.
+Kontrol tangan hanya bekerja pada workspace JARVIS: cubit dan lepas untuk klik,
+cubit dan geser judul untuk memindahkan jendela, atau cubit dengan kedua tangan
+untuk mengubah ukurannya. Di Papan Tangan, cubit dan geser kartu atau gunakan
+dua tangan untuk mengubah skala dan memutar kartu 2D. Gerakkan kedua tangan
+bersama untuk memutar tampilan model 3D. Angkat telunjuk dan jari
+tengah lalu gerakkan vertikal untuk menggulir. Tahan cubitan 0,35 detik. Input
+terhenti saat dialog konfirmasi tampil; gunakan mouse/keyboard untuk konfirmasi
+dan dialog berkas. Sebagian popup dan kontrol yang memerlukan drag belum dapat
+dikendalikan gesture. Model 3D terbatas pada wireframe OBJ lokal maksimal 2 MB:
+material, tekstur, dan animasi tidak didukung. Untuk model yang memiliki
+komponen mesh terpisah, pilih kartunya dan geser **Pisahkan bagian** untuk
+mengurai/menyatukan secara perkiraan; mesh yang tersambung tidak dapat diurai.
+Pengatur tersebut dapat digeser dengan gesture, tetapi bukan gesture exploded
+view di udara. Gesture melempar, tepuk, dan cakar belum tersedia. Papan hanya menyimpan maksimal 30 kartu selama sesi. Pengenalan tangan
+belum diuji pada kamera Windows nyata. Plugin Barehands lama tetap opsional dan
+terpisah.
 
 ### Mengontrol workspace dengan JARVIS
 

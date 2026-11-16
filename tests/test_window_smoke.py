@@ -188,6 +188,9 @@ class _Object:
     def style(self):
         return types.SimpleNamespace(standardIcon=lambda *_: _Object())
 
+    def sizeHint(self):
+        return self
+
     def width(self):
         return 980
 
@@ -570,6 +573,21 @@ def _install_qt() -> dict[str, types.ModuleType]:
         # AttributeError and the window cannot even be constructed.
         base = _Layout if name in layouts else None
         setattr(widgets, name, _stub_class(name, base))
+    class _Menu(_Object):
+        def addAction(self, text):
+            action = _Object()
+            action.setText(text)
+            action.triggered = _Signal()
+            return action
+    widgets.QMenu = _Menu
+    class _ScrollArea(_Object):
+        def setWidget(self, widget):
+            self._widget = widget
+            _reparent(widget, self)
+        def widget(self):
+            return self._widget
+    widgets.QScrollArea = _ScrollArea
+    widgets.QToolButton = _stub_class("QToolButton")
     widgets.QMainWindow = _stub_class("QMainWindow")
     class _MdiArea(_Object):
         ViewMode = _Enum()
@@ -920,8 +938,11 @@ def test_desktop_shell_hosts_the_original_panels_and_dock(window):
     assert window._left_panel.parentWidget().parentWidget() is windows["navigation"]
     assert windows["chat"].parentWidget() is window._desktop_mdi
     keys = {key for _, key in window._workspace_dock}
-    assert {"workspace.files", "workspace.code", "workspace.image", "workspace.trading",
-            "desktop.plugins", "desktop.settings"} <= keys
+    assert keys == {"workspace.chat", "workspace.files", "workspace.editors", "workspace.media",
+                    "workspace.trading", "workspace.apps", "desktop.settings"}
+    actions = {key for _, key in window._workspace_dock_actions}
+    assert {"workspace.code", "workspace.image", "workspace.video", "workspace.camera",
+            "workspace.order", "handboard.title", "desktop.plugins"} <= actions
     assert window._center_split.parentWidget() is window._assistant_panel
 
 
@@ -957,7 +978,7 @@ def test_document_is_hosted_inside_movable_desktop(window):
     from ui.desktop_workspace import show_document
     document = _Object()
     subwindow = show_document(window, document)
-    assert document.parentWidget() is subwindow
+    assert document.parentWidget().parentWidget() is subwindow
     assert subwindow.parentWidget() is window._desktop_mdi
 
 

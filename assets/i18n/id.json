@@ -450,12 +450,21 @@
   "handboard.add_image": "Tambah gambar",
   "handboard.start_hand": "Aktifkan kontrol tangan",
   "handboard.stop_hand": "Hentikan kontrol tangan",
-  "handboard.instructions": "Geser kartu dengan mouse atau aktifkan kontrol tangan Windows eksperimental: tunjuk, cubit dan tahan untuk menggeser. Input tangan juga dapat memengaruhi aplikasi lain. Ctrl+Alt+G menghentikannya. Catatan dan gambar hanya disimpan selama sesi; 3D belum didukung.",
+  "handboard.instructions": "Cubit dan geser kartu; gunakan dua tangan untuk skala atau putar. Untuk 3D, gerakkan kedua tangan bersama untuk memutar model. Kartu hanya tersimpan selama sesi.",
   "handboard.note_title": "Judul catatan",
   "handboard.note_body": "Isi catatan",
   "handboard.limit": "Catatan tidak dapat ditambahkan. Periksa panjang atau batas 30 objek.",
   "handboard.image_error": "Gambar tidak dapat ditambahkan. Gunakan gambar valid maksimal 10 MB dan 8192 piksel per sisi.",
   "handboard.remove": "Hapus pilihan",
   "handboard.select_item": "Pilih kartu terlebih dahulu.",
-  "handboard.confirm_remove": "Hapus kartu yang dipilih dari sesi ini? Kontrol tangan tetap mati; konfirmasi dengan input fisik."
+  "handboard.confirm_remove": "Hapus kartu yang dipilih dari sesi ini? Kontrol tangan tetap mati; konfirmasi dengan input fisik.",
+  "gesture.workspace_help": "Hanya di JARVIS: cubit dan lepas untuk klik, cubit judul untuk memindahkan, atau gunakan dua tangan untuk mengubah ukuran jendela atau skala dan putaran kartu. Angkat telunjuk dan jari tengah lalu gerakkan vertikal untuk menggulir. Tahan cubitan 0,35 detik.",
+  "gesture.workspace_active": "Kontrol tangan AKTIF • hanya jendela JARVIS",
+  "workspace.editors": "Editor",
+  "workspace.media": "Multimedia",
+  "workspace.apps": "Aplikasi",
+  "handboard.add_model": "Tambah model 3D",
+  "handboard.model_error": "Model OBJ tidak dapat dimuat. Periksa geometri dan batas 2 MB.",
+  "handboard.explode": "Pisahkan bagian",
+  "handboard.explode_help": "Pilih model OBJ dengan bagian terpisah, lalu geser pengatur ini."
 }

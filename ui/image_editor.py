@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (QDialog, QDialogButtonBox, QFileDialog, QFormLayout
 from core.i18n import label as _t
 from core.image_geometry import valid_crop
 from core.image_layers import make_text_layer, set_visible
-from ui.theme import C
+from ui.theme import workspace_stylesheet
 
 
 class ImageEditor(QDialog):
@@ -17,8 +17,7 @@ class ImageEditor(QDialog):
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         self.setWindowTitle(_t("image_editor.title"))
         self.resize(900, 680)
-        self.setStyleSheet(f"QDialog, QWidget {{ background: {C.PANEL}; color: {C.WHITE}; }} "
-                           f"QPushButton {{ background: {C.PANEL2}; border: 1px solid {C.BORDER}; padding: 7px; }}")
+        self.setStyleSheet(workspace_stylesheet())
         self._image = None
         self._layers = []
         self._undo_state = None

@@ -1457,8 +1457,8 @@ class AudioDeviceOverlay(_HudOverlay):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(f"""
             AudioDeviceOverlay {{
-                background: rgba(0, 6, 10, 245);
-                border: 1px solid {C.BORDER_B};
+                background: {C.DESKTOP_PANEL};
+                border: 1px solid {C.DESKTOP_BORDER};
                 border-radius: 6px;
             }}
         """)
@@ -1474,28 +1474,28 @@ class AudioDeviceOverlay(_HudOverlay):
         lay.addWidget(hdr)
 
         sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet(f"color: {C.BORDER}; margin: 2px 0;")
+        sep.setStyleSheet(f"color: {C.DESKTOP_BORDER}; margin: 2px 0;")
         lay.addWidget(sep)
 
         _combo_css = (
-            f"QComboBox {{ background: #000d12; color: {C.TEXT}; "
-            f"border: 1px solid {C.BORDER}; border-radius: 3px; padding: 4px 8px; }}"
-            f"QComboBox:hover {{ border-color: {C.BORDER_B}; }}"
-            f"QComboBox QAbstractItemView {{ background: #000d12; color: {C.TEXT}; "
-            f"selection-background-color: {C.PRI_GHO}; border: 1px solid {C.BORDER}; }}"
+            f"QComboBox {{ background: {C.DESKTOP_BAR}; color: {C.DESKTOP_TEXT}; "
+            f"border: 1px solid {C.DESKTOP_BORDER}; border-radius: 3px; padding: 4px 8px; }}"
+            f"QComboBox:hover {{ border-color: {C.DESKTOP_BORDER}; }}"
+            f"QComboBox QAbstractItemView {{ background: {C.DESKTOP_BAR}; color: {C.DESKTOP_TEXT}; "
+            f"selection-background-color: {C.PRI_GHO}; border: 1px solid {C.DESKTOP_BORDER}; }}"
         )
 
         _test_css = (
-            f"QPushButton {{ background: transparent; color: {C.TEXT_DIM}; "
-            f"border: 1px solid {C.BORDER}; border-radius: 3px; }}"
+            f"QPushButton {{ background: transparent; color: {C.DESKTOP_MUTED}; "
+            f"border: 1px solid {C.DESKTOP_BORDER}; border-radius: 3px; }}"
             f"QPushButton:hover {{ color: {C.PRI}; border-color: {C.PRI_DIM}; }}"
-            f"QPushButton:disabled {{ color: {C.BORDER}; }}"
+            f"QPushButton:disabled {{ color: {C.DESKTOP_BORDER}; }}"
         )
 
         def _row(label: str, kind: str, current: str) -> QComboBox:
             cap = QLabel(label)
             cap.setFont(QFont("Courier New", 8))
-            cap.setStyleSheet(f"color: {C.TEXT_DIM}; background: transparent;")
+            cap.setStyleSheet(f"color: {C.DESKTOP_MUTED}; background: transparent;")
             lay.addWidget(cap)
 
             box = QComboBox()
@@ -1548,7 +1548,7 @@ class AudioDeviceOverlay(_HudOverlay):
             meter.setTextVisible(False)
             meter.setFixedHeight(6)
             meter.setStyleSheet(
-                f"QProgressBar {{ background: #000d12; border: 1px solid {C.BORDER}; "
+                f"QProgressBar {{ background: {C.DESKTOP_BAR}; border: 1px solid {C.DESKTOP_BORDER}; "
                 f"border-radius: 3px; }}"
                 f"QProgressBar::chunk {{ background: {C.PRI}; border-radius: 2px; }}")
             meter.hide()
@@ -1557,7 +1557,7 @@ class AudioDeviceOverlay(_HudOverlay):
             result = QLabel("")
             result.setWordWrap(True)
             result.setFont(QFont("Courier New", 7))
-            result.setStyleSheet(f"color: {C.TEXT_DIM}; background: transparent;")
+            result.setStyleSheet(f"color: {C.DESKTOP_MUTED}; background: transparent;")
             lay.addWidget(result)
 
             test.clicked.connect(
@@ -1598,7 +1598,7 @@ class AudioDeviceOverlay(_HudOverlay):
         if _vol_now is not None:
             vcap = QLabel(_t("ui.volume"))
             vcap.setFont(QFont("Courier New", 8))
-            vcap.setStyleSheet(f"color: {C.TEXT_DIM}; background: transparent;")
+            vcap.setStyleSheet(f"color: {C.DESKTOP_MUTED}; background: transparent;")
             lay.addSpacing(4)
             lay.addWidget(vcap)
 
@@ -1608,8 +1608,8 @@ class AudioDeviceOverlay(_HudOverlay):
             self._vol.setValue(int(_vol_now))
             self._vol.setFixedHeight(22)
             self._vol.setStyleSheet(
-                f"QSlider::groove:horizontal {{ background: #000d12; height: 4px; "
-                f"border: 1px solid {C.BORDER}; border-radius: 2px; }}"
+                f"QSlider::groove:horizontal {{ background: {C.DESKTOP_BAR}; height: 4px; "
+                f"border: 1px solid {C.DESKTOP_BORDER}; border-radius: 2px; }}"
                 f"QSlider::sub-page:horizontal {{ background: {C.PRI_DIM}; "
                 f"border-radius: 2px; }}"
                 f"QSlider::handle:horizontal {{ background: {C.PRI}; width: 10px; "
@@ -1617,7 +1617,7 @@ class AudioDeviceOverlay(_HudOverlay):
             self._vol_lbl = QLabel(f"{int(_vol_now)}%")
             self._vol_lbl.setFont(QFont("Courier New", 8))
             self._vol_lbl.setFixedWidth(40)
-            self._vol_lbl.setStyleSheet(f"color: {C.TEXT}; background: transparent;")
+            self._vol_lbl.setStyleSheet(f"color: {C.DESKTOP_TEXT}; background: transparent;")
             vrow.addWidget(self._vol, 1)
             vrow.addWidget(self._vol_lbl)
             lay.addLayout(vrow)
@@ -1635,7 +1635,7 @@ class AudioDeviceOverlay(_HudOverlay):
         note = QLabel(_t("ui.audio.reconnect_note"))
         note.setWordWrap(True)
         note.setFont(QFont("Courier New", 7))
-        note.setStyleSheet(f"color: {C.TEXT_DIM}; background: transparent;")
+        note.setStyleSheet(f"color: {C.DESKTOP_MUTED}; background: transparent;")
         lay.addSpacing(6)
         lay.addWidget(note)
 
@@ -1657,9 +1657,9 @@ class AudioDeviceOverlay(_HudOverlay):
         cancel.setFont(QFont("Courier New", 9))
         cancel.setCursor(Qt.CursorShape.PointingHandCursor)
         cancel.setStyleSheet(f"""
-            QPushButton {{ background: transparent; color: {C.TEXT_MED};
-                border: 1px solid {C.BORDER}; border-radius: 3px; }}
-            QPushButton:hover {{ color: {C.TEXT}; border-color: {C.BORDER_B}; }}
+            QPushButton {{ background: transparent; color: {C.DESKTOP_MUTED};
+                border: 1px solid {C.DESKTOP_BORDER}; border-radius: 3px; }}
+            QPushButton:hover {{ color: {C.DESKTOP_TEXT}; border-color: {C.DESKTOP_BORDER}; }}
         """)
         cancel.clicked.connect(self.hide)
         row.addWidget(cancel)
@@ -1722,7 +1722,7 @@ class AudioDeviceOverlay(_HudOverlay):
         name = box.currentData() or ""
         self._active = (button, label, meter)
         button.setEnabled(False)
-        label.setStyleSheet(f"color: {C.TEXT_DIM}; background: transparent;")
+        label.setStyleSheet(f"color: {C.DESKTOP_MUTED}; background: transparent;")
         label.setText("Speak now…" if kind == "input" else "Playing a tone…")
         if meter is not None and kind == "input":
             meter.setValue(0)
@@ -1761,7 +1761,7 @@ class AudioDeviceOverlay(_HudOverlay):
             meter.setValue(0)
             meter.hide()
         label.setStyleSheet(
-            f"color: {C.PRI if good else C.TEXT_DIM}; background: transparent;")
+            f"color: {C.PRI if good else C.DESKTOP_MUTED}; background: transparent;")
         label.setText(text)
 
     def _apply(self):
@@ -1796,8 +1796,8 @@ class MemoryOverlay(_HudOverlay):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(f"""
             MemoryOverlay {{
-                background: rgba(0, 6, 10, 246);
-                border: 1px solid {C.BORDER_B};
+                background: {C.DESKTOP_PANEL};
+                border: 1px solid {C.DESKTOP_BORDER};
                 border-radius: 6px;
             }}
         """)
@@ -1882,7 +1882,7 @@ class MemoryOverlay(_HudOverlay):
         self._lay.addWidget(hdr)
 
         sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet(f"color: {C.BORDER}; margin: 2px 0;")
+        sep.setStyleSheet(f"color: {C.DESKTOP_BORDER}; margin: 2px 0;")
         self._lay.addWidget(sep)
 
         rows = all_entries_for_ui()
@@ -1892,20 +1892,20 @@ class MemoryOverlay(_HudOverlay):
                      f"memory/long_term.json on this machine.")
         cap.setWordWrap(True)
         cap.setFont(QFont("Courier New", 7))
-        cap.setStyleSheet(f"color: {C.TEXT_DIM}; background: transparent;")
+        cap.setStyleSheet(f"color: {C.DESKTOP_MUTED}; background: transparent;")
         self._lay.addWidget(cap)
 
         if not rows:
             empty = QLabel(_t("ui.memory.empty"))
             empty.setFont(QFont("Courier New", 9))
-            empty.setStyleSheet(f"color: {C.TEXT_MED}; background: transparent;")
+            empty.setStyleSheet(f"color: {C.DESKTOP_MUTED}; background: transparent;")
             self._lay.addWidget(empty)
         else:
             scroll = QScrollArea()
             scroll.setWidgetResizable(True)
             scroll.setFixedHeight(min(420, 34 * len(rows) + 10))
             scroll.setStyleSheet(
-                f"QScrollArea {{ border: 1px solid {C.BORDER}; border-radius: 3px; "
+                f"QScrollArea {{ border: 1px solid {C.DESKTOP_BORDER}; border-radius: 3px; "
                 f"background: transparent; }}"
             )
             inner = QWidget()
@@ -1916,15 +1916,15 @@ class MemoryOverlay(_HudOverlay):
             for r in rows:
                 line = QHBoxLayout(); line.setSpacing(6)
                 txt = QLabel(f"<b>{r['key'].replace('_', ' ')}</b> "
-                             f"<span style='color:{C.TEXT_MED}'>— {r['value']}</span>")
+                             f"<span style='color:{C.DESKTOP_MUTED}'>— {r['value']}</span>")
                 txt.setWordWrap(True)
                 txt.setFont(QFont("Courier New", 8))
-                txt.setStyleSheet(f"color: {C.TEXT}; background: transparent;")
+                txt.setStyleSheet(f"color: {C.DESKTOP_TEXT}; background: transparent;")
                 line.addWidget(txt, 1)
 
                 meta = QLabel(f"{r['category'][:4]} · {r['updated'] or '—'}")
                 meta.setFont(QFont("Courier New", 7))
-                meta.setStyleSheet(f"color: {C.TEXT_DIM}; background: transparent;")
+                meta.setStyleSheet(f"color: {C.DESKTOP_MUTED}; background: transparent;")
                 line.addWidget(meta)
 
                 rm = QPushButton("✕")
@@ -1933,8 +1933,8 @@ class MemoryOverlay(_HudOverlay):
                 rm.setCursor(Qt.CursorShape.PointingHandCursor)
                 rm.setToolTip(_t("ui.forget"))
                 rm.setStyleSheet(f"""
-                    QPushButton {{ background: transparent; color: {C.TEXT_DIM};
-                        border: 1px solid {C.BORDER}; border-radius: 3px; }}
+                    QPushButton {{ background: transparent; color: {C.DESKTOP_MUTED};
+                        border: 1px solid {C.DESKTOP_BORDER}; border-radius: 3px; }}
                     QPushButton:hover {{ color: {C.RED}; border-color: {C.RED}; }}
                 """)
                 rm.clicked.connect(
@@ -1954,9 +1954,9 @@ class MemoryOverlay(_HudOverlay):
         close.setFont(QFont("Courier New", 9))
         close.setCursor(Qt.CursorShape.PointingHandCursor)
         close.setStyleSheet(f"""
-            QPushButton {{ background: transparent; color: {C.TEXT_MED};
-                border: 1px solid {C.BORDER}; border-radius: 3px; }}
-            QPushButton:hover {{ color: {C.TEXT}; border-color: {C.BORDER_B}; }}
+            QPushButton {{ background: transparent; color: {C.DESKTOP_MUTED};
+                border: 1px solid {C.DESKTOP_BORDER}; border-radius: 3px; }}
+            QPushButton:hover {{ color: {C.DESKTOP_TEXT}; border-color: {C.DESKTOP_BORDER}; }}
         """)
         close.clicked.connect(self.hide)
         self._lay.addWidget(close)
@@ -2104,8 +2104,8 @@ class ProvidersOverlay(_HudOverlay):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(f"""
             ProvidersOverlay {{
-                background: rgba(0, 6, 10, 249);
-                border: 1px solid {C.BORDER_B};
+                background: {C.DESKTOP_PANEL};
+                border: 1px solid {C.DESKTOP_BORDER};
                 border-radius: 8px;
             }}
         """)
@@ -2123,7 +2123,7 @@ class ProvidersOverlay(_HudOverlay):
         sub = QLabel(_t("ui.engine.intro"))
         sub.setWordWrap(True)
         sub.setFont(QFont("Courier New", 8))
-        sub.setStyleSheet(f"color: {C.TEXT_DIM}; background: transparent;")
+        sub.setStyleSheet(f"color: {C.DESKTOP_MUTED}; background: transparent;")
         outer.addWidget(sub)
 
         # ── Mode: two cards, not a dropdown ─────────────────────────────────
@@ -2155,7 +2155,7 @@ class ProvidersOverlay(_HudOverlay):
             "QScrollArea { background: transparent; }"
             f"QScrollBar:vertical {{ background: {C.DARK}; width: 9px; "
             f"margin: 0; border-radius: 4px; }}"
-            f"QScrollBar::handle:vertical {{ background: {C.BORDER_B}; "
+            f"QScrollBar::handle:vertical {{ background: {C.DESKTOP_BORDER}; "
             f"border-radius: 4px; min-height: 30px; }}"
             "QScrollBar::add-line, QScrollBar::sub-line { height: 0; }"
             "QScrollBar::add-page, QScrollBar::sub-page { background: none; }")
@@ -2175,7 +2175,7 @@ class ProvidersOverlay(_HudOverlay):
         self._footer = QLabel("")
         self._footer.setWordWrap(True)
         self._footer.setFont(QFont("Courier New", 7))
-        self._footer.setStyleSheet(f"color: {C.TEXT_DIM}; background: transparent;")
+        self._footer.setStyleSheet(f"color: {C.DESKTOP_MUTED}; background: transparent;")
 
         # Every value below is a service id — "openai_compat@minimax" — so the
         # fallback, the coding model and ② THINKING can each be a different
@@ -2197,7 +2197,7 @@ class ProvidersOverlay(_HudOverlay):
         apply_btn.setStyleSheet(f"""
             QPushButton {{ background: {C.PRI_GHO}; color: {C.PRI};
                 border: 1px solid {C.PRI_DIM}; border-radius: 4px; }}
-            QPushButton:hover {{ background: {C.BORDER}; border-color: {C.PRI}; }}
+            QPushButton:hover {{ background: {C.DESKTOP_BORDER}; border-color: {C.PRI}; }}
         """)
         apply_btn.clicked.connect(self._apply)
         row.addWidget(apply_btn, 2)
@@ -2207,9 +2207,9 @@ class ProvidersOverlay(_HudOverlay):
         close.setFont(QFont("Courier New", 9))
         close.setCursor(Qt.CursorShape.PointingHandCursor)
         close.setStyleSheet(f"""
-            QPushButton {{ background: transparent; color: {C.TEXT_MED};
-                border: 1px solid {C.BORDER}; border-radius: 4px; }}
-            QPushButton:hover {{ color: {C.TEXT}; border-color: {C.BORDER_B}; }}
+            QPushButton {{ background: transparent; color: {C.DESKTOP_MUTED};
+                border: 1px solid {C.DESKTOP_BORDER}; border-radius: 4px; }}
+            QPushButton:hover {{ color: {C.DESKTOP_TEXT}; border-color: {C.DESKTOP_BORDER}; }}
         """)
         close.clicked.connect(self.hide)
         row.addWidget(close, 1)
@@ -2236,11 +2236,11 @@ class ProvidersOverlay(_HudOverlay):
                 QPushButton {{
                     text-align: left; padding: 10px 12px;
                     background: {C.PRI_GHO if on else 'transparent'};
-                    color: {C.TEXT if on else C.TEXT_DIM};
-                    border: 1px solid {C.PRI_DIM if on else C.BORDER};
+                    color: {C.DESKTOP_TEXT if on else C.DESKTOP_MUTED};
+                    border: 1px solid {C.PRI_DIM if on else C.DESKTOP_BORDER};
                     border-radius: 5px;
                 }}
-                QPushButton:hover {{ border-color: {C.BORDER_B}; }}
+                QPushButton:hover {{ border-color: {C.DESKTOP_BORDER}; }}
             """)
 
     def _on_live_ready(self) -> None:
@@ -2312,7 +2312,7 @@ class ProvidersOverlay(_HudOverlay):
         values = self._values(pid) or dict(self._get_cfg(pid))
 
         def report(ok, msg):
-            colour = C.TEXT_DIM if ok is None else (C.GREEN if ok else C.RED)
+            colour = C.DESKTOP_MUTED if ok is None else (C.GREEN if ok else C.RED)
             mark = "" if ok is None else ("✓  " if ok else "✕  ")
             QTimer.singleShot(0, lambda: self._say(pid, mark + msg, colour))
 
@@ -2339,7 +2339,7 @@ class ProvidersOverlay(_HudOverlay):
         elif keep:
             box.setCurrentText(keep)
         self._say(pid, f"{len(items)} model{'s' if len(items) != 1 else ''} "
-                       f"found on this server — pick one above.", C.TEXT_DIM)
+                       f"found on this server — pick one above.", C.DESKTOP_MUTED)
 
     def _set_mode(self, value: str) -> None:
         if value == self._mode:
@@ -2354,7 +2354,7 @@ class ProvidersOverlay(_HudOverlay):
         """A bordered section. Grouping is the difference between three
         decisions and eleven controls."""
         w = QWidget()
-        w.setStyleSheet(f"background: {C.PANEL}; border: 1px solid {C.BORDER}; "
+        w.setStyleSheet(f"background: {C.PANEL}; border: 1px solid {C.DESKTOP_BORDER}; "
                         f"border-radius: 5px;")
         lay = QVBoxLayout(w)
         lay.setContentsMargins(12, 10, 12, 11)
@@ -2369,7 +2369,7 @@ class ProvidersOverlay(_HudOverlay):
         lb.setWordWrap(True)
         lb.setFont(QFont("Courier New", size,
                          QFont.Weight.Bold if bold else QFont.Weight.Normal))
-        lb.setStyleSheet(f"color: {colour or C.TEXT_MED}; background: transparent; "
+        lb.setStyleSheet(f"color: {colour or C.DESKTOP_MUTED}; background: transparent; "
                          f"border: none;")
         return lb
 
@@ -2378,13 +2378,13 @@ class ProvidersOverlay(_HudOverlay):
         box.setFont(QFont("Courier New", 8))
         box.setFixedHeight(29)
         box.setStyleSheet(
-            f"QComboBox {{ background: {C.DARK}; color: {C.TEXT}; "
-            f"border: 1px solid {C.BORDER}; border-radius: 3px; padding: 3px 9px; }}"
-            f"QComboBox:hover {{ border-color: {C.BORDER_B}; }}"
+            f"QComboBox {{ background: {C.DARK}; color: {C.DESKTOP_TEXT}; "
+            f"border: 1px solid {C.DESKTOP_BORDER}; border-radius: 3px; padding: 3px 9px; }}"
+            f"QComboBox:hover {{ border-color: {C.DESKTOP_BORDER}; }}"
             f"QComboBox::drop-down {{ border: none; width: 18px; }}"
-            f"QComboBox QAbstractItemView {{ background: {C.DARK}; color: {C.TEXT}; "
+            f"QComboBox QAbstractItemView {{ background: {C.DARK}; color: {C.DESKTOP_TEXT}; "
             f"selection-background-color: {C.PRI_GHO}; "
-            f"border: 1px solid {C.BORDER_B}; padding: 2px; }}")
+            f"border: 1px solid {C.DESKTOP_BORDER}; padding: 2px; }}")
         return box
 
     def _line(self, text: str = "") -> QLineEdit:
@@ -2392,8 +2392,8 @@ class ProvidersOverlay(_HudOverlay):
         w.setFont(QFont("Courier New", 8))
         w.setFixedHeight(27)
         w.setStyleSheet(
-            f"QLineEdit {{ background: {C.DARK}; color: {C.TEXT}; "
-            f"border: 1px solid {C.BORDER}; border-radius: 3px; padding: 2px 9px; }}"
+            f"QLineEdit {{ background: {C.DARK}; color: {C.DESKTOP_TEXT}; "
+            f"border: 1px solid {C.DESKTOP_BORDER}; border-radius: 3px; padding: 2px 9px; }}"
             f"QLineEdit:focus {{ border-color: {C.PRI_DIM}; }}")
         return w
 
@@ -2402,11 +2402,11 @@ class ProvidersOverlay(_HudOverlay):
         b.setFixedHeight(25)
         b.setFont(QFont("Courier New", 7, QFont.Weight.Bold))
         b.setCursor(Qt.CursorShape.PointingHandCursor)
-        col = colour or C.TEXT_MED
+        col = colour or C.DESKTOP_MUTED
         b.setStyleSheet(f"""
             QPushButton {{ background: transparent; color: {col};
-                border: 1px solid {C.BORDER}; border-radius: 3px; padding: 0 12px; }}
-            QPushButton:hover {{ border-color: {C.BORDER_B}; color: {C.TEXT}; }}
+                border: 1px solid {C.DESKTOP_BORDER}; border-radius: 3px; padding: 0 12px; }}
+            QPushButton:hover {{ border-color: {C.DESKTOP_BORDER}; color: {C.DESKTOP_TEXT}; }}
         """)
         b.clicked.connect(slot)
         return b
@@ -2560,8 +2560,8 @@ class ProvidersOverlay(_HudOverlay):
                 self._body_lay.addWidget(self._slot_box(slot, num, name, what))
         else:
             w, lay = self._box([])
-            lay.addWidget(self._label(_t("providers.simple.1"), 8, C.TEXT_DIM))
-            lay.addWidget(self._label(_t("providers.simple.2"), 7, C.TEXT_DIM))
+            lay.addWidget(self._label(_t("providers.simple.1"), 8, C.DESKTOP_MUTED))
+            lay.addWidget(self._label(_t("providers.simple.2"), 7, C.DESKTOP_MUTED))
             self._body_lay.addWidget(w)
 
         self._body_lay.addWidget(self._sidecar_box_widget())
@@ -2571,7 +2571,7 @@ class ProvidersOverlay(_HudOverlay):
 
     def _slot_box(self, slot: str, num: str, name: str, what: str) -> QWidget:
         head = self._label(f"{num}  {name}", 9, C.PRI, bold=True)
-        w, lay = self._box([head, self._label(what, 7, C.TEXT_DIM)])
+        w, lay = self._box([head, self._label(what, 7, C.DESKTOP_MUTED)])
 
         def fmt(entry, decl):
             label = entry["label"]
@@ -2686,20 +2686,20 @@ class ProvidersOverlay(_HudOverlay):
 
         for _key, (w, f) in shown.items():
             lay.addWidget(self._label(
-                f.label + ("" if f.required else "   (optional)"), 7, C.TEXT_DIM))
+                f.label + ("" if f.required else "   (optional)"), 7, C.DESKTOP_MUTED))
             lay.addWidget(w)
             # A text box already shows its hint as placeholder text. Adding the
             # label as well printed every hint twice, which is how the panel
             # came to look careless.
             if f.hint and not isinstance(w, QLineEdit):
-                lay.addWidget(self._label(f.hint, 7, C.TEXT_DIM))
+                lay.addWidget(self._label(f.hint, 7, C.DESKTOP_MUTED))
 
         fields = dict(shown)
         fields.update(carried)
         self._hidden[pid] = set(carried) | {f.key for f, _w in advanced}
 
         # Buttons and status.
-        status = self._label("", 7, C.TEXT_DIM)
+        status = self._label("", 7, C.DESKTOP_MUTED)
         self._status[pid] = status
 
         brow = QHBoxLayout(); brow.setSpacing(6)
@@ -2724,12 +2724,12 @@ class ProvidersOverlay(_HudOverlay):
         lay.addWidget(status)
 
         if self._more.get(pid):
-            lay.addWidget(self._label("─" * 46, 7, C.BORDER))
+            lay.addWidget(self._label("─" * 46, 7, C.DESKTOP_BORDER))
             for f, w in advanced:
-                lay.addWidget(self._label(f"{f.label}   (optional)", 7, C.TEXT_DIM))
+                lay.addWidget(self._label(f"{f.label}   (optional)", 7, C.DESKTOP_MUTED))
                 lay.addWidget(w)
                 if f.hint and not isinstance(w, QLineEdit):
-                    lay.addWidget(self._label(f.hint, 7, C.TEXT_DIM))
+                    lay.addWidget(self._label(f.hint, 7, C.DESKTOP_MUTED))
                 fields[f.key] = (w, f)
                 self._hidden[pid].discard(f.key)
         else:
@@ -2748,7 +2748,7 @@ class ProvidersOverlay(_HudOverlay):
                 w.addItem(str(c), str(c))
             w.setEditable(f.key in ("base_url", "model", "voice_id"))
             if w.isEditable():
-                w.lineEdit().setStyleSheet(f"color: {C.TEXT}; background: transparent;")
+                w.lineEdit().setStyleSheet(f"color: {C.DESKTOP_TEXT}; background: transparent;")
             if value:
                 j = w.findData(str(value))
                 if j < 0:
@@ -2779,7 +2779,7 @@ class ProvidersOverlay(_HudOverlay):
     def _sidecar_box_widget(self) -> QWidget:
         head = self._label(_t("providers.background"), 9, C.PRI, bold=True)
         w, lay = self._box([head])
-        lay.addWidget(self._label(_t("providers.background.desc"), 7, C.TEXT_DIM))
+        lay.addWidget(self._label(_t("providers.background.desc"), 7, C.DESKTOP_MUTED))
 
         # Read the stored choice BEFORE the box exists. The first version asked
         # the combo — and at this point that is the empty box being built, so
@@ -2809,11 +2809,11 @@ class ProvidersOverlay(_HudOverlay):
         # ② section, so a service picked here gets its own form, right here.
         if sid:
             if self._mode == "pipeline" and sid == self._pipe.get("llm"):
-                lay.addWidget(self._label(_t("providers.uses_thinking"), 7, C.TEXT_DIM))
+                lay.addWidget(self._label(_t("providers.uses_thinking"), 7, C.DESKTOP_MUTED))
             else:
                 self._fields_into(lay, "llm", sid)
         else:
-            lay.addWidget(self._label(_t("providers.quota_warning"), 7, C.TEXT_DIM))
+            lay.addWidget(self._label(_t("providers.quota_warning"), 7, C.DESKTOP_MUTED))
         return w
 
     def _coding_box_widget(self) -> QWidget:
@@ -2826,7 +2826,7 @@ class ProvidersOverlay(_HudOverlay):
         project instead of nothing."""
         head = self._label(_t("providers.coding"), 9, C.PRI, bold=True)
         w, lay = self._box([head])
-        lay.addWidget(self._label(_t("providers.coding.desc"), 7, C.TEXT_DIM))
+        lay.addWidget(self._label(_t("providers.coding.desc"), 7, C.DESKTOP_MUTED))
 
         sid = self._coding
 
@@ -2852,11 +2852,11 @@ class ProvidersOverlay(_HudOverlay):
         lay.addWidget(self._coding_combo)
 
         if not sid:
-            lay.addWidget(self._label(_t("providers.coding.inherits"), 7, C.TEXT_DIM))
+            lay.addWidget(self._label(_t("providers.coding.inherits"), 7, C.DESKTOP_MUTED))
         elif sid == self._sidecar:
-            lay.addWidget(self._label(_t("providers.coding.same_as_background"), 7, C.TEXT_DIM))
+            lay.addWidget(self._label(_t("providers.coding.same_as_background"), 7, C.DESKTOP_MUTED))
         elif self._mode == "pipeline" and sid == self._pipe.get("llm"):
-            lay.addWidget(self._label(_t("providers.uses_thinking"), 7, C.TEXT_DIM))
+            lay.addWidget(self._label(_t("providers.uses_thinking"), 7, C.DESKTOP_MUTED))
         else:
             self._fields_into(lay, "llm", sid)
         return w
@@ -2952,13 +2952,13 @@ class ProvidersOverlay(_HudOverlay):
         # about to read — and a deleted QWidget raises rather than returning
         # something wrong, so it takes the click down with it.
         values = self._values(pid)
-        self._say(pid, "checking…", C.TEXT_DIM)
+        self._say(pid, "checking…", C.DESKTOP_MUTED)
         QApplication.processEvents()
         try:
             inst = self._registry.build(pid, values)
             probe = getattr(inst, "probe", None)
             if probe is None:
-                self._say(pid, "Nothing to check for this one.", C.TEXT_DIM)
+                self._say(pid, "Nothing to check for this one.", C.DESKTOP_MUTED)
                 return
             ok, msg = probe()
         except Exception as e:
@@ -2978,7 +2978,7 @@ class ProvidersOverlay(_HudOverlay):
 
     def _list(self, pid: str) -> None:
         values = self._values(pid)          # before processEvents — see _test
-        self._say(pid, "reading…", C.TEXT_DIM)
+        self._say(pid, "reading…", C.DESKTOP_MUTED)
         QApplication.processEvents()
         try:
             inst = self._registry.build(pid, values)
@@ -2987,7 +2987,7 @@ class ProvidersOverlay(_HudOverlay):
             elif hasattr(inst, "voices"):
                 items, key = list(inst.voices()), "voice_id"
             else:
-                self._say(pid, "Nothing to list for this one.", C.TEXT_DIM)
+                self._say(pid, "Nothing to list for this one.", C.DESKTOP_MUTED)
                 return
         except Exception as e:
             self._say(pid, f"✕  {type(e).__name__}: {str(e)[:150]}", C.RED)
@@ -2996,7 +2996,7 @@ class ProvidersOverlay(_HudOverlay):
         entry = self._edits.get(pid, {}).get(key)
         if entry is None or not items:
             self._say(pid, f"✓  {len(items)} found." if items else "None found.",
-                      C.GREEN if items else C.TEXT_DIM)
+                      C.GREEN if items else C.DESKTOP_MUTED)
             return
         box = entry[0]
         if isinstance(box, QComboBox):

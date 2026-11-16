@@ -1,25 +1,72 @@
 """Native, in-session spatial board; no upstream Barehands code is used."""
+import math
 from pathlib import Path
 
-from PyQt6.QtCore import QRectF, QSize, Qt, QTimer
+from PyQt6.QtCore import QPointF, QRectF, QSize, Qt
 from PyQt6.QtGui import QBrush, QColor, QFont, QImageReader, QPainter, QPen, QPixmap
-from PyQt6.QtWidgets import (QFileDialog, QGraphicsPixmapItem, QGraphicsRectItem,
+from PyQt6.QtWidgets import (QFileDialog, QGraphicsItem, QGraphicsPixmapItem, QGraphicsRectItem,
                              QGraphicsScene, QGraphicsTextItem, QGraphicsView,
-                             QHBoxLayout, QInputDialog, QLabel, QMessageBox, QPushButton, QVBoxLayout, QWidget)
+                             QHBoxLayout, QInputDialog, QLabel, QMessageBox, QPushButton, QSlider, QVBoxLayout, QWidget)
 
 from core.i18n import label as _t
+from core.obj_wireframe import MAX_OBJ_BYTES, component_directions, parse_obj
 from ui.theme import C
 
 _MAX_ITEMS = 30
 
 
+class ModelWireframe(QGraphicsItem):
+    """A bounded CPU-rendered orthographic OBJ preview, without external assets."""
+    def __init__(self, geometry, parent):
+        super().__init__(parent)
+        self.vertices, self.edges = geometry
+        self.directions, self.parts = component_directions(self.vertices, self.edges)
+        self.explode = 0.0
+        self.yaw = -25.0
+        self.pitch = 20.0
+        self.setPos(12, 42)
+        self.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+
+    def boundingRect(self):
+        return QRectF(0, 0, 256, 150)
+
+    def paint(self, painter, option, widget=None):
+        del option, widget
+        yaw, pitch = math.radians(self.yaw), math.radians(self.pitch)
+        cy, sy, cp, sp = math.cos(yaw), math.sin(yaw), math.cos(pitch), math.sin(pitch)
+        projected = []
+        factor = 110 / (1 + self.explode * .65)
+        for (x, y, z), (dx, dy, dz) in zip(self.vertices, self.directions):
+            x += dx * self.explode * .65
+            y += dy * self.explode * .65
+            z += dz * self.explode * .65
+            x2, z2 = x * cy + z * sy, -x * sy + z * cy
+            y2 = y * cp - z2 * sp
+            projected.append(QPointF(128 + x2 * factor, 75 - y2 * factor))
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(QPen(QColor(C.PRI), 1.2))
+        for a, b in self.edges:
+            painter.drawLine(projected[a], projected[b])
+
+    def set_explode(self, value):
+        self.explode = max(0., min(1., value))
+        self.update()
+
+    def set_view(self, yaw, pitch):
+        self.yaw = yaw % 360
+        self.pitch = max(-85, min(85, pitch))
+        self.update()
+
+
 class Card(QGraphicsRectItem):
     """A movable item; child text/image never intercepts a pinch-drag."""
-    def __init__(self, title, text="", pixmap=None):
+    def __init__(self, title, text="", pixmap=None, model=None):
         super().__init__(QRectF(0, 0, 280, 205))
         self.title = title[:120]
         self.text = text[:2000]
-        self.kind = "image" if pixmap is not None else "note"
+        self.kind = "model" if model is not None else "image" if pixmap is not None else "note"
+        self.model_view = None
+        self.setTransformOriginPoint(self.rect().center())
         self.setBrush(QBrush(QColor(C.DESKTOP_DOCK)))
         self.setPen(QPen(QColor(C.DESKTOP_BORDER), 1.5))
         self.setFlag(self.GraphicsItemFlag.ItemClipsChildrenToShape, True)
@@ -32,7 +79,9 @@ class Card(QGraphicsRectItem):
         heading.setTextWidth(258)
         heading.setPos(8, 6)
         heading.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
-        if pixmap is not None:
+        if model is not None:
+            self.model_view = ModelWireframe(model, self)
+        elif pixmap is not None:
             image = QGraphicsPixmapItem(pixmap, self)
             image.setPos(12, 40)
             image.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
@@ -53,11 +102,10 @@ class BoardView(QGraphicsView):
 
 
 class HandBoard(QWidget):
-    """Mouse or existing opt-in Windows hand pointer can move the real items."""
+    """In-session board; cards support mouse and workspace hand gestures."""
     def __init__(self, host):
         super().__init__()
         self._host = host
-        self._owned_control = False
         self._items = []
         self.setObjectName("HandBoard")
         self.setStyleSheet(f"QWidget#HandBoard {{ background: {C.DESKTOP_PANEL}; color: {C.DESKTOP_TEXT}; }} "
@@ -73,13 +121,13 @@ class HandBoard(QWidget):
         image_button = QPushButton(_t("handboard.add_image"))
         image_button.clicked.connect(self._new_image)
         top.addWidget(image_button)
+        model_button = QPushButton(_t("handboard.add_model"))
+        model_button.clicked.connect(self._new_model)
+        top.addWidget(model_button)
         remove_button = QPushButton(_t("handboard.remove"))
         remove_button.clicked.connect(self._remove_selected)
         top.addWidget(remove_button)
         top.addStretch(1)
-        self._hand_button = QPushButton(_t("handboard.start_hand"))
-        self._hand_button.clicked.connect(self._toggle_hand)
-        top.addWidget(self._hand_button)
         layout.addLayout(top)
         self._status = QLabel(_t("handboard.instructions"))
         self._status.setWordWrap(True)
@@ -94,34 +142,32 @@ class HandBoard(QWidget):
         self.view.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.view.setStyleSheet(f"border: 1px solid {C.DESKTOP_BORDER}; border-radius: 8px;")
         layout.addWidget(self.view, 1)
-        self._timer = QTimer(self)
-        self._timer.timeout.connect(self._refresh_hand)
-        self._timer.start(300)
+        explode_row = QHBoxLayout()
+        explode_row.addWidget(QLabel(_t("handboard.explode")))
+        self._explode = QSlider(Qt.Orientation.Horizontal)
+        self._explode.setRange(0, 100)
+        self._explode.setEnabled(False)
+        self._explode.setToolTip(_t("handboard.explode_help"))
+        self._explode.valueChanged.connect(self._set_explode)
+        explode_row.addWidget(self._explode, 1)
+        layout.addLayout(explode_row)
+        self.scene.selectionChanged.connect(self._sync_explode)
 
-    def _refresh_hand(self):
-        ctl = getattr(self._host, "_hand_controller", None)
-        active = bool(ctl and ctl.thread and ctl.thread.is_alive() and not ctl._stop.is_set())
-        if not active and (not ctl or not ctl.thread or not ctl.thread.is_alive()):
-            self._owned_control = False
-        self._hand_button.setText(_t("handboard.stop_hand" if active else "handboard.start_hand"))
-        self._status.setText(_t("handboard.instructions") + "\n" +
-                             (getattr(self._host, "_hand_status", None).text()
-                              if getattr(self._host, "_hand_status", None) else _t("gesture.off")))
+    def _selected_model(self):
+        selected = [item for item in self.scene.selectedItems() if item in self._items]
+        return selected[0].model_view if len(selected) == 1 else None
 
-    def _toggle_hand(self):
-        ctl = self._host._hand_controller
-        was_running = bool(ctl.thread and ctl.thread.is_alive() and not ctl._stop.is_set())
-        self._host._hand_toggle()
-        if was_running:
-            self._owned_control = False
-        elif ctl.thread and ctl.thread.is_alive() and not ctl._stop.is_set():
-            self._owned_control = True
-        self._refresh_hand()
+    def _sync_explode(self):
+        model = self._selected_model()
+        self._explode.setEnabled(model is not None and model.parts > 1)
+        self._explode.blockSignals(True)
+        self._explode.setValue(round(model.explode * 100) if model is not None else 0)
+        self._explode.blockSignals(False)
 
-    def stop_owned_control(self):
-        if self._owned_control:
-            self._host._hand_controller.stop()
-            self._owned_control = False
+    def _set_explode(self, value):
+        model = self._selected_model()
+        if model is not None and model.parts > 1:
+            model.set_explode(value / 100)
 
     def _put(self, item):
         if len(self._items) >= _MAX_ITEMS:
@@ -139,15 +185,26 @@ class HandBoard(QWidget):
             return False
         return self._put(Card(title.strip(), text))
 
+    def add_model(self, title, geometry):
+        if not isinstance(title, str) or not title.strip() or len(title) > 120:
+            return False
+        return self._put(Card(title.strip(), model=geometry))
+
     def items_snapshot(self):
-        return [{"kind": item.kind, "title": item.title, "text": item.text,
-                 "x": round(item.pos().x()), "y": round(item.pos().y())} for item in self._items]
+        result = []
+        for item in self._items:
+            entry = {"kind": item.kind, "title": item.title, "text": item.text,
+                     "x": round(item.pos().x()), "y": round(item.pos().y()),
+                     "scale": round(item.scale(), 2), "rotation": round(item.rotation(), 1)}
+            if item.model_view is not None:
+                entry.update(yaw=round(item.model_view.yaw, 1), pitch=round(item.model_view.pitch, 1),
+                             explode=round(item.model_view.explode, 2), parts=item.model_view.parts)
+            result.append(entry)
+        return result
 
     def _pause_for_dialog(self):
         # File and text dialogs require physical confirmation, not gestures.
         self._host._hand_controller.stop()
-        self._owned_control = False
-        self._refresh_hand()
 
     def _new_note(self):
         self._pause_for_dialog()
@@ -173,6 +230,23 @@ class HandBoard(QWidget):
             self.scene.removeItem(item)
             self._items.remove(item)
         self._feedback.setText("")
+
+    def _new_model(self):
+        self._pause_for_dialog()
+        path, _ = QFileDialog.getOpenFileName(self, _t("handboard.add_model"), "", "Wavefront OBJ (*.obj)")
+        if not path:
+            return
+        try:
+            source = Path(path)
+            if not source.is_file():
+                raise ValueError("not a file")
+            with source.open("rb") as stream:
+                geometry = parse_obj(stream.read(MAX_OBJ_BYTES + 1))
+            if not self.add_model(source.name, geometry):
+                raise ValueError("board is full")
+            self._feedback.setText("")
+        except (OSError, ValueError):
+            self._feedback.setText(_t("handboard.model_error"))
 
     def _new_image(self):
         self._pause_for_dialog()
