@@ -265,4 +265,4 @@ def open_terminal(window, request):
     window._trading_dialogs.add(dialog)
     dialog.destroyed.connect(lambda: window._trading_dialogs.discard(dialog))
     from ui.desktop_workspace import show_document
-    show_document(window, dialog)
+    show_document(window, dialog, "trading")

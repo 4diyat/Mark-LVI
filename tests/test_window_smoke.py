@@ -547,12 +547,13 @@ def _install_qt() -> dict[str, types.ModuleType]:
 
     gui = types.ModuleType("PyQt6.QtGui")
     for name in ("QBrush", "QColor", "QCursor", "QFont", "QKeySequence",
-                 "QPainter", "QPen", "QPixmap", "QRadialGradient", "QShortcut"):
+                 "QPainter", "QPen", "QPixmap", "QIcon", "QLinearGradient", "QRadialGradient", "QShortcut"):
         setattr(gui, name, type(name, (_Object,), {}))
     # Qt 6 exposes QFileSystemModel from QtGui, not QtWidgets.
     gui.QFileSystemModel = type("QFileSystemModel", (_Object,), {})
     gui.QColor.Weight = None
     gui.QFont.Weight = _Enum()
+    gui.QPainter.RenderHint = _Enum()
     gui.QDragEnterEvent = gui.QDropEvent = type("_Event", (_Object,), {})
 
     widgets = types.ModuleType("PyQt6.QtWidgets")
@@ -572,6 +573,9 @@ def _install_qt() -> dict[str, types.ModuleType]:
     widgets.QMainWindow = _stub_class("QMainWindow")
     class _MdiArea(_Object):
         ViewMode = _Enum()
+        subWindowActivated = _Signal()
+        def viewport(self):
+            return self
         def addSubWindow(self, sub):
             _reparent(sub, self)
     class _MdiSubWindow(_Object):
@@ -912,8 +916,8 @@ def test_desktop_shell_hosts_the_original_panels_and_dock(window):
     assert set(windows) == {"chat", "assistant", "navigation", "video", "camera", "files"}
     assert windows["chat"] is windows["assistant"]
     assert window._right_panel.parentWidget() is window._assistant_panel
-    assert window._assistant_panel.parentWidget() is windows["assistant"]
-    assert window._left_panel.parentWidget() is windows["navigation"]
+    assert window._assistant_panel.parentWidget().parentWidget() is windows["assistant"]
+    assert window._left_panel.parentWidget().parentWidget() is windows["navigation"]
     assert windows["chat"].parentWidget() is window._desktop_mdi
     keys = {key for _, key in window._workspace_dock}
     assert {"workspace.files", "workspace.code", "workspace.image", "workspace.trading",
@@ -927,13 +931,13 @@ def test_video_is_independent_from_camera_and_close_stops_it(window, monkeypatch
     monkeypatch.setattr(window._hud_cam_stack, "setCurrentIndex", camera_indices.append)
     window._on_cam_stream(True)
     assert camera_indices == []
-    assert window._camera_cont.parentWidget() is window._desktop_windows["camera"]
+    assert window._camera_cont.parentWidget().parentWidget() is window._desktop_windows["camera"]
     window._cam_stop.clear()
     window._on_video_open("https://example.com/video.mp4", "Video", True)
     assert not window._cam_stop.is_set()
     assert window._video_on
     assert camera_indices == []
-    assert window._video_cont.parentWidget() is window._desktop_windows["video"]
+    assert window._video_cont.parentWidget().parentWidget() is window._desktop_windows["video"]
     window._swap_video_stream("https://example.com/fallback.mp4")
     assert camera_indices == [] and not window._cam_stop.is_set()
     window._on_video_close()
@@ -1108,3 +1112,78 @@ def test_jarvis_state_is_forwarded_to_optional_barehands_bridge(monkeypatch, win
     ui = types.SimpleNamespace(_win=window)
     JarvisUI.set_state(ui, "THINKING")
     assert observed == ["THINKING"]
+
+
+def test_attachment_panel_can_be_opened_without_replacing_session(window):
+    drop = window._drop_zone
+    log = window._log
+    assert drop._visible is False
+    window._attachment_toggle.toggled.emit(True)
+    assert drop._visible is True
+    assert window._log is log
+    window._attachment_toggle.toggled.emit(False)
+    assert drop._visible is False
+
+
+def test_initial_desktop_geometry_keeps_panels_above_dock(window):
+    from ui.desktop_workspace import initial_window_geometry
+    for width, height in ((1366, 738), (820, 550)):
+        for x, y, w, h in initial_window_geometry(width, height):
+            assert x >= 0 and y >= 0
+            assert x + w <= width
+            assert y + h <= height - 90
+
+
+def test_initialising_does_not_claim_microphone_is_active(window):
+    from core.i18n import label
+    window.hud.state = "INITIALISING"
+    window._muted = False
+    window._deaf = False
+    window._style_mute_btn()
+    assert window._mute_btn.text() == label("ui.mic.initialising")
+    window.hud.state = "LISTENING"
+    window._style_mute_btn()
+    assert window._mute_btn.text() == label("ui.mic.active")
+
+
+def test_workspace_commands_use_original_windows_and_refuse_document_close(window, monkeypatch):
+    from ui.workspace_commands import execute
+    files = window._desktop_windows["files"]
+    assert execute(window, {"action": "close", "target": "files"})["ok"]
+    assert files._visible is False
+    document = _Object()
+    from ui.desktop_workspace import show_document
+    sub = show_document(window, document, "code_editor")
+    assert window._workspace_documents["doc-1"] == ("code_editor", sub)
+    result = execute(window, {"action": "close", "target": "doc-1"})
+    assert not result["ok"] and "unsaved" in result["message"]
+    assert sub._visible is True
+    monkeypatch.setattr(window._workspace_file_browser, "navigate", lambda path: False)
+    assert not execute(window, {"action": "navigate", "text": "/missing"})["ok"]
+
+
+def test_workspace_camera_start_and_stop_are_reported_as_requests(window, monkeypatch):
+    from ui.workspace_commands import execute
+    calls = []
+    monkeypatch.setattr(window, "start_camera_stream", lambda: calls.append("start"))
+    monkeypatch.setattr(window, "stop_camera_stream", lambda: calls.append("stop"))
+    window._camera_active = False
+    assert "requested" in execute(window, {"action": "open", "target": "camera"})["message"]
+    assert "requested" in execute(window, {"action": "close", "target": "camera"})["message"]
+    assert calls == ["start", "stop"]
+
+
+def test_hand_board_commands_do_not_start_camera(window, monkeypatch):
+    from ui.workspace_commands import execute
+    items = []
+    board = types.SimpleNamespace(add_note=lambda title, text: (items.append((title, text)) or True),
+                                  items_snapshot=lambda: list(items))
+    opened = []
+    def open_board():
+        opened.append(True)
+        window._hand_board = board
+    monkeypatch.setattr(window, "_open_handboard", open_board)
+    monkeypatch.setattr(window, "start_camera_stream", lambda: pytest.fail("camera started"))
+    assert execute(window, {"action": "board_add", "title": "Plan", "text": "Test"})["ok"]
+    assert execute(window, {"action": "board_list"})["items"] == [("Plan", "Test")]
+    assert len(opened) == 1

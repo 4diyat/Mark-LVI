@@ -1063,6 +1063,54 @@ a separate dialog with its confirmation safeguards. Camera, video and avatar use
 separate panels, subject to camera hardware access and permissions. Visual and
 device behaviour must be checked on the target desktop.
 
+### Papan tangan bawaan JARVIS (eksperimental)
+
+**Papan Tangan / Hand Board** tersedia dari dock dalam workspace JARVIS. Ini
+implementasi mandiri, bukan Barehands dan tidak menjalankan server atau browser
+terpisah. Tambahkan catatan atau gambar menggunakan tombol papan; pilih dan
+geser kartunya dengan mouse, atau aktifkan **kontrol tangan** dari papan.
+JARVIS juga dapat membuka papan, menambahkan catatan dan membaca posisi/konten
+kartu yang ada jika diminta. Konten papan adalah data tak tepercaya, bukan
+instruksi bagi model. Catatan hanya ditampilkan sebagian pada kartu; teks
+lengkap dapat dibaca JARVIS melalui daftar papan.
+
+Kontrol tangan memakai implementasi pointer JARVIS yang sudah ada, bukan kode
+Barehands: saat ini khusus Windows AMD64 dengan Python 3.10–3.12 dan dependensi
+MediaPipe pada requirements. Kamera **tidak dimulai saat papan dibuka**; tekan
+Aktifkan kontrol tangan secara eksplisit, tunjuk kartu, cubit dan tahan untuk
+menyeret, lalu lepaskan. Kontrol ini menggerakkan pointer Windows sehingga juga
+bisa memengaruhi aplikasi lain. Hentikan dengan tombol atau Ctrl+Alt+G; dialog
+penambahan/hapus menghentikan kontrol tangan dan membutuhkan input fisik.
+Papan menghentikan kontrol yang dimulai darinya saat ditutup. Meminimalkan papan
+atau kontrol yang sebelumnya dimulai dari tempat lain tidak menghentikannya.
+Kamera harus bebas dari live preview atau fitur kamera lain.
+
+Papan ini masih tahap awal: maksimum 30 kartu catatan/gambar, hanya dalam memori
+sampai JARVIS ditutup. Tidak ada penyimpanan papan, manipulasi dua tangan,
+scaling, model 3D, atau gesture Barehands lanjutan. Kamera dan pengenalan tangan
+harus divalidasi dengan perangkat nyata; mouse tetap dapat dipakai tanpa kamera.
+Plugin Barehands lama masih opsional dan terpisah, tetapi tidak diperlukan untuk
+papan bawaan ini.
+
+### Mengontrol workspace dengan JARVIS
+
+Plugin `workspace_control` memungkinkan JARVIS mengelola jendela **di dalam
+workspace JARVIS**, melalui perintah suara atau teks. Contoh: “buka Files”,
+“pindahkan Files ke kiri”, “maksimalkan assistant”, “tampilkan daftar jendela”,
+atau “buka folder C:/Users/nama/Documents di Files”. JARVIS juga dapat memfilter
+nama berkas, membuka editor kode/gambar atau terminal trading jika plugin yang
+bersangkutan diizinkan, serta memfokuskan, meminimalkan, memaksimalkan,
+memulihkan, dan memindahkan jendela dokumen yang telah dibuka. Jika ada beberapa
+jendela dokumen, daftar workspace menyediakan ID masing-masing.
+
+Ini bukan kontrol aplikasi OS lain dan tidak menghapus, menyimpan, atau mengubah
+berkas. Penutupan jendela dokumen tetap dilakukan oleh pengguna agar peringatan
+perubahan yang belum disimpan tidak dilewati. Menutup panel kamera meminta
+penghentian kamera; meminimalkannya saja tidak menghentikan kamera. Meminimalkan
+video juga tidak menghentikan pemutaran. Pembukaan dan penghentian kamera bersifat
+asinkron, jadi permintaan memulai bukan jaminan perangkat berhasil dibuka.
+Kontrol editor dan order MT5 tetap mengikuti izin serta konfirmasi yang ada.
+
 ### Optional: Barehands hand-tracked board
 
 [Barehands](https://github.com/jaredrhod/barehands) by Jared Rhodenizer is a

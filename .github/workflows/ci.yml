@@ -197,6 +197,11 @@ jobs:
                   print(f"::error title=Desktop import failed::{details}", flush=True)
                   raise
               print(f"{name}: imported")
+      - name: Exercise desktop with real Qt offscreen
+        if: runner.os == 'Linux'
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python tools/check_desktop_qt.py
       - name: Load every action the way main.py does
         # actions/*.py self-describe through a TOOL dict and are discovered at
         # startup. A rejection does not stop the app — the loader is built to

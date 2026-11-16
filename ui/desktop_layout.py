@@ -81,19 +81,40 @@ def build_conversation(window, log_cls, drop_cls):
     layout.setSpacing(5)
     window._conversation_heading = _label(_t("desktop.conversation"), 15, bold=True, color=C.WHITE)
     window._conversation_subtitle = _label(_t("desktop.conversation_hint"), 8)
+    # The window title already identifies this panel; keep labels for locale
+    # updates but give the real conversation the available vertical space.
     layout.addWidget(window._conversation_heading)
     layout.addWidget(window._conversation_subtitle)
+    window._conversation_heading.hide()
+    window._conversation_subtitle.hide()
     window._log = log_cls()
     window._log._ai_name_lc = window._assistant_name.lower()
+    window._log.setFont(QFont("Arial", 10))
+    window._log.setMinimumHeight(48)
+    window._log.setStyleSheet(f"QTextEdit {{ background: {C.DESKTOP_DOCK}; color: {C.DESKTOP_TEXT}; "
+                              f"border: none; border-radius: 10px; padding: 10px; }}")
     layout.addWidget(window._log, stretch=1)
     window._file_heading = _label(_t("desktop.files"), 8, bold=True)
     layout.addWidget(window._file_heading)
+    window._file_heading.hide()
+    window._attachment_toggle = QPushButton(_t("desktop.attach"))
+    window._attachment_toggle.setCheckable(True)
+    window._attachment_toggle.setStyleSheet(f"QPushButton {{ color: {C.DESKTOP_MUTED}; background: transparent; "
+                                             "border: none; text-align: left; padding: 4px; }")
+    layout.addWidget(window._attachment_toggle)
     window._drop_zone = drop_cls()
     window._drop_zone.file_selected.connect(window._on_file_selected)
     layout.addWidget(window._drop_zone)
     window._file_hint = _label(_t("ui.drop.empty"), 8)
     window._file_hint.setWordWrap(True)
     layout.addWidget(window._file_hint)
+    window._drop_zone.hide()
+    window._file_hint.hide()
+    def toggle_attachment(checked):
+        window._drop_zone.setVisible(checked)
+        window._file_hint.setVisible(checked)
+        window._attachment_toggle.setText(_t("desktop.hide_attach" if checked else "desktop.attach"))
+    window._attachment_toggle.toggled.connect(toggle_attachment)
     layout.addLayout(window._build_input_row())
     return panel
 
@@ -115,7 +136,7 @@ def build_assistant_panel(window):
     header.addStretch()
     header.addWidget(window._desktop_state)
     layout.addLayout(header)
-    window.hud.setMinimumSize(180, 180)
+    window.hud.setMinimumSize(110, 110)
     layout.addWidget(window._center_split, stretch=2)
     # Keep the real conversation and input in the assistant window, not a mock.
     layout.addWidget(window._right_panel, stretch=3)
@@ -123,17 +144,17 @@ def build_assistant_panel(window):
     window._voice_hint.setWordWrap(True)
     layout.addWidget(window._voice_hint)
     window._mute_btn = QPushButton(_t("ui.mic.active"))
-    window._mute_btn.setFixedHeight(34)
+    window._mute_btn.setFixedHeight(28)
     window._mute_btn.setCursor(Qt.CursorShape.PointingHandCursor)
     window._mute_btn.clicked.connect(window._toggle_mute)
     window._style_mute_btn()
     layout.addWidget(window._mute_btn)
     window._interrupt_btn = QPushButton(_t("ui.interrupt"))
-    window._interrupt_btn.setFixedHeight(34)
+    window._interrupt_btn.setFixedHeight(28)
     window._interrupt_btn.setCursor(Qt.CursorShape.PointingHandCursor)
     window._interrupt_btn.setStyleSheet(f"""
-        QPushButton {{ background: {C.PANEL2}; color: {C.MUTED_C};
-                       border: 1px solid {C.BORDER}; border-radius: 5px; }}
+        QPushButton {{ background: {C.DESKTOP_DOCK}; color: {C.DESKTOP_TEXT};
+                       border: 1px solid {C.DESKTOP_BORDER}; border-radius: 6px; }}
         QPushButton:hover {{ border-color: {C.MUTED_C}; }}
     """)
     window._interrupt_btn.clicked.connect(window._do_interrupt)
@@ -150,6 +171,7 @@ def retranslate(window):
                       ("_file_heading", "desktop.files"),
                       ("_voice_hint", "desktop.voice_hint"), ("_interrupt_btn", "ui.interrupt")):
         getattr(window, attr).setText(_t(key))
+    window._attachment_toggle.setText(_t("desktop.hide_attach" if window._attachment_toggle.isChecked() else "desktop.attach"))
     window._ctrl_btn.setText(_t("desktop.controls"))
     window._drawer_btn.setText(_t("desktop.settings"))
     update_state(window, window.hud.state)
