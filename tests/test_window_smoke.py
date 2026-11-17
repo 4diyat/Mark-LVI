@@ -938,7 +938,7 @@ def test_desktop_shell_hosts_the_original_panels_and_dock(window):
     assert window._left_panel.parentWidget().parentWidget() is windows["navigation"]
     assert windows["chat"].parentWidget() is window._desktop_mdi
     keys = {key for _, key in window._workspace_dock}
-    assert keys == {"workspace.chat", "workspace.files", "workspace.editors", "workspace.media",
+    assert keys == {"workspace.chat", "workspace.files", "browser.title", "workspace.editors", "workspace.media",
                     "workspace.trading", "workspace.apps", "desktop.settings"}
     actions = {key for _, key in window._workspace_dock_actions}
     assert {"workspace.code", "workspace.image", "workspace.video", "workspace.camera",
@@ -1292,3 +1292,67 @@ def test_mt5_emergency_stop_and_confirmed_resume_controls(window, monkeypatch):
         assert dialog.gate_status.text() == label("trade.stop_ready")
     finally:
         trade_gate.resume()
+
+
+def test_graphite_desktop_layout_uses_new_wallpaper_and_conversation_is_primary(window):
+    from ui.desktop_workspace import initial_window_geometry
+    from ui.theme import C
+    assert C.DESKTOP_PANEL == '#262628'
+    assert C.DESKTOP_TEXT == '#f2f2f5'
+    files, assistant = initial_window_geometry(1366, 738)
+    assert assistant[0] < files[0]
+    assert assistant[2] > files[2]
+    assert (ROOT / 'assets/workspace/graphite-wallpaper.jpg').is_file()
+
+
+def test_app_shutdown_confirms_ssh_before_disconnecting_any_session(window):
+    from ui.desktop_workspace import confirm_shutdown
+    events = []
+    class Panel:
+        def disconnect_session(self): events.append('disconnected')
+    class Manager:
+        def __init__(self, answer): self.answer, self.panel = answer, Panel()
+        def shutdown_panels(self): return [self.panel]
+        def _confirm_close(self, panels):
+            events.append('asked')
+            return self.answer
+    first, second = Manager(True), Manager(False)
+    window._creative_dialogs = set()
+    window._image_editors = set()
+    window._workspace_documents = {
+        'one': ('ssh_manager', types.SimpleNamespace(_document=first)),
+        'two': ('ssh_manager', types.SimpleNamespace(_document=second)),
+    }
+    assert not confirm_shutdown(window)
+    assert events == ['asked', 'asked']
+    events.clear()
+    second.answer = True
+    assert confirm_shutdown(window)
+    assert events == ['asked', 'asked', 'disconnected', 'disconnected']
+
+
+def test_workspace_theme_has_shared_focus_and_menu_states(window):
+    from ui.theme import workspace_stylesheet
+    style = workspace_stylesheet()
+    assert 'QPushButton#WorkspacePrimary' in style
+    assert 'QLineEdit:focus' in style and 'QTabBar::tab:selected' in style
+    assert 'QMenu::item:selected' in style
+    assert window._workspace_file_browser is not None
+
+
+def test_retranslate_workspace_updates_open_browser_and_ssh_without_rebuilding(window):
+    from ui.desktop_workspace import retranslate
+    events = []
+    class Document:
+        def __init__(self, name): self.name = name
+        def retranslate(self): events.append(('translate', self.name))
+        def windowTitle(self): return self.name
+    class Sub:
+        def __init__(self, name): self._document = Document(name)
+        def setWindowTitle(self, value): events.append(('title', value))
+    browser, ssh = Sub('browser'), Sub('ssh')
+    window._workspace_documents = {'1': ('workspace_browser', browser), '2': ('ssh_manager', ssh)}
+    retranslate(window)
+    assert events == [('translate', 'browser'), ('title', 'browser'), ('translate', 'ssh'), ('title', 'ssh')]
+    assert window._workspace_documents['1'][1] is browser
+    assert window._workspace_documents['2'][1] is ssh

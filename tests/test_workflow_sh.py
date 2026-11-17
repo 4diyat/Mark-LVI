@@ -132,3 +132,10 @@ def test_real_qt_security_controls_run_on_linux_and_windows(workflow):
     assert step["env"]["QT_QPA_PLATFORM"] == "offscreen"
     assert "tools/check_security_qt.py" in step["run"]
     assert (ROOT / "tools/check_security_qt.py").is_file()
+
+
+def test_browser_and_ssh_smoke_scripts_are_wired_to_ci():
+    text = WORKFLOW.read_text(encoding='utf-8')
+    for name in ('check_browser_qt.py', 'check_ssh_qt.py'):
+        assert f'python tools/run_qt_smoke.py tools/{name}' in text
+        assert (ROOT / 'tools' / name).is_file()

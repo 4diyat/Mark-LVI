@@ -30,6 +30,8 @@ class ImageEditor(QDialog):
                               ("image_editor.flip", self.flip), ("image_editor.grayscale", self.grayscale),
                               ("image_editor.crop", self.crop)):
             button = QPushButton(_t(key))
+            if key == "image_editor.save_as":
+                button.setObjectName("WorkspacePrimary")
             button.clicked.connect(callback)
             toolbar.addWidget(button)
         toolbar.addStretch()

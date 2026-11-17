@@ -35,6 +35,9 @@ def main():
         app.processEvents()
         mdi = window._desktop_mdi
         dock = mdi._dock
+        from ui.theme import C
+        assert C.DESKTOP_PANEL in window._workspace_file_browser.styleSheet()
+        assert 'QMenu::item:selected' in window._workspace_file_browser.styleSheet()
         assert dock.parentWidget() is mdi.viewport()
         assert 500 <= dock.width() <= mdi.viewport().width()
         assert all(button.isVisible() for button, _ in window._workspace_dock)
@@ -358,6 +361,11 @@ def main():
         assert triggered == [True] and not menu.isVisible()
         window.activateWindow()
         board_sub.raise_()
+        mdi.position_dock()
+        app.processEvents()
+        # The dock can scroll at small/offscreen resolutions. Put Apps in its
+        # visible viewport before exercising the same click a user can make.
+        dock.ensureWidgetVisible(dock_button)
         app.processEvents()
         # Exercise the actual dock-button press -> popup -> gesture selection.
         actual = []
@@ -371,6 +379,9 @@ def main():
         dock_pos = dock_button.mapTo(viewport, dock_button.rect().center())
         begin((sample(dock_pos),))
         assert gestures.mode == "click"
+        assert gestures.target is dock_button, (f"Unexpected dock hit: {gestures.target!r}; "
+                                                f"dock={dock.geometry()!r}, button={dock_button.geometry()!r}, "
+                                                f"point={dock_pos!r}")
         QTimer.singleShot(50, choose_popup)
         QTimer.singleShot(500, menu.close)  # avoid hanging if popup selection regresses
         gestures.update(((sample(dock_pos)[0], sample(dock_pos)[1], False),))
@@ -454,6 +465,10 @@ def main():
         window._hand_timer.stop()
         mdi.setActiveSubWindow(board_sub)
         board_sub.raise_()
+        # A dock overlays the bottom of the desktop; keep the board controls
+        # visible above it rather than testing a point covered by the dock.
+        board_sub.setGeometry(10, 10, min(900, viewport.width() - 20), max(1, viewport.height() - 100))
+        mdi.position_dock()
         window.activateWindow()
         app.processEvents()
         center = board.view.viewport().mapTo(viewport, board.view.mapFromScene(model_card.mapToScene(model_card.rect().center())))

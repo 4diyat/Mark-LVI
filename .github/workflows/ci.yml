@@ -201,13 +201,23 @@ jobs:
         if: runner.os == 'Linux'
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python tools/check_desktop_qt.py
+        run: python tools/run_qt_smoke.py tools/check_desktop_qt.py
+      - name: Exercise browser tabs with real Qt offscreen
+        if: always() && runner.os == 'Linux'
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python tools/run_qt_smoke.py tools/check_browser_qt.py
+      - name: Exercise SSH tabs with real Qt offscreen
+        if: always() && (runner.os == 'Linux' || runner.os == 'Windows')
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python tools/run_qt_smoke.py tools/check_ssh_qt.py
       - name: Exercise security controls with real Qt offscreen
         if: runner.os == 'Linux' || runner.os == 'Windows'
         env:
           QT_QPA_PLATFORM: offscreen
           PYTHONUTF8: "1"
-        run: python tools/check_security_qt.py
+        run: python tools/run_qt_smoke.py tools/check_security_qt.py
       - name: Load every action the way main.py does
         # actions/*.py self-describe through a TOOL dict and are discovered at
         # startup. A rejection does not stop the app — the loader is built to

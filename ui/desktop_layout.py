@@ -137,9 +137,10 @@ def build_assistant_panel(window):
     header.addWidget(window._desktop_state)
     layout.addLayout(header)
     window.hud.setMinimumSize(110, 110)
-    layout.addWidget(window._center_split, stretch=2)
-    # Keep the real conversation and input in the assistant window, not a mock.
-    layout.addWidget(window._right_panel, stretch=3)
+    layout.addWidget(window._center_split, stretch=1)
+    # Keep the real conversation and input as the primary surface. The HUD and
+    # existing tool/media panes remain available in the splitter above it.
+    layout.addWidget(window._right_panel, stretch=4)
     window._voice_hint = _label(_t("desktop.voice_hint"), 8)
     window._voice_hint.setWordWrap(True)
     layout.addWidget(window._voice_hint)
@@ -148,7 +149,8 @@ def build_assistant_panel(window):
     window._mute_btn.setCursor(Qt.CursorShape.PointingHandCursor)
     window._mute_btn.clicked.connect(window._toggle_mute)
     window._style_mute_btn()
-    layout.addWidget(window._mute_btn)
+    voice_controls = QHBoxLayout()
+    voice_controls.addWidget(window._mute_btn)
     window._interrupt_btn = QPushButton(_t("ui.interrupt"))
     window._interrupt_btn.setFixedHeight(28)
     window._interrupt_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -158,7 +160,8 @@ def build_assistant_panel(window):
         QPushButton:hover {{ border-color: {C.MUTED_C}; }}
     """)
     window._interrupt_btn.clicked.connect(window._do_interrupt)
-    layout.addWidget(window._interrupt_btn)
+    voice_controls.addWidget(window._interrupt_btn)
+    layout.addLayout(voice_controls)
     return panel
 
 

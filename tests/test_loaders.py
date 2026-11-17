@@ -451,10 +451,12 @@ def test_the_repository_own_plugins_all_reach_the_panel(isolated_config):
     sections = {s["plugin"]: s for s in reg.settings_schemas()}
     managed = {row["name"] for row in reg.list_for_ui()}
     assert managed == {"code_editor", "currency_rates", "gmail_inbox", "image_canvas", "image_editor", "market_price",
-                       "morning_brief", "mt5_orb", "mt5_trade", "prayer_times", "quick_notes", "trading_terminal", "workspace_control"}
+                       "morning_brief", "mt5_orb", "mt5_trade", "prayer_times", "quick_notes", "trading_terminal", "workspace_browser", "workspace_control", "ssh_manager"}
     assert "barehands" not in sections  # legacy external server requires no installation path
     assert set(sections) == managed                # the panel lists them all
 
+    assert sections["workspace_browser"]["enabled"] is False
+    assert sections["ssh_manager"]["enabled"] is False
     prayer = sections["prayer_times"]
     assert prayer["schema"] is True and prayer["enabled"] is False
     assert {f["key"] for f in prayer["fields"]} == {"city", "country", "method", "school"}

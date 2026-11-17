@@ -379,9 +379,17 @@ def test_malformed_inputs_and_callback_errors_do_not_return_500(server, tmp_path
 
 
 
-def test_phone_audio_requires_command_permission_and_rechecks_revocation(server):
+def test_phone_audio_requires_command_permission_and_rechecks_revocation(server, monkeypatch):
+    import threading
     from starlette.websockets import WebSocketDisconnect
     srv, client, token, _ = server
+    received = threading.Event()
+    original_put = srv._phone_audio_queue.put_nowait
+    def observe_put(item):
+        original_put(item)
+        if item.get('data') == b'\x01\x00':
+            received.set()
+    monkeypatch.setattr(srv._phone_audio_queue, 'put_nowait', observe_put)
     read_tok = f"read-{uuid.uuid4().hex}"
     now = time.time()
     with srv._token_lock:
@@ -393,6 +401,9 @@ def test_phone_audio_requires_command_permission_and_rechecks_revocation(server)
     with client.websocket_connect("/ws/phone-audio") as ws:
         _ws_auth(ws, token)
         ws.send_bytes(b"\x01\x00")
+        # TestClient and the server use different threads: wait until this
+        # frame was accepted before testing revocation of the next frame.
+        assert received.wait(3)
         with srv._token_lock:
             srv._tokens.pop(token)
         ws.send_bytes(b"\x02\x00")
