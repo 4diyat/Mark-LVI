@@ -104,13 +104,18 @@ const URL = {createObjectURL: () => 'blob:test', revokeObjectURL: () => {}};
 class FakeNode { constructor(name) {this.name=name;} connect(other) {connections.push([this.name, other.name]);} disconnect() {} }
 class AudioWorkletNode extends FakeNode { constructor() {super('worklet'); this.port={}; nodes.push(this);} }
 class AudioContext { constructor() {this.sampleRate=16000; this.state='running'; this.destination=new FakeNode('destination'); this.audioWorklet={addModule: async () => {}};} createMediaStreamSource() {return new FakeNode('source');} createGain() {const n=new FakeNode('gain'); n.gain={value: 1}; return n;} close() {} }
-class WebSocket { static OPEN = 1; constructor(url) {this.url=url; this.readyState=1; this.bufferedAmount=0; globalThis.testSocket=this;} send(data) {sent.push(data.byteLength);} close() {this.readyState=3;} }
+class WebSocket { static OPEN = 1; constructor(url) {this.url=url; this.readyState=1; this.bufferedAmount=0; globalThis.testSocket=this;} send(data) {sent.push(typeof data === 'string' ? data : data.byteLength);} close() {this.readyState=3;} }
 '''
     test = r'''
 (async () => {
  _pttHeld = true;
  await doMic();
- await globalThis.testSocket.onopen();
+ globalThis.testSocket.onopen();
+ if (sent.length !== 1 || JSON.parse(sent[0]).type !== 'auth' || JSON.parse(sent[0]).token !== 'fake') throw Error('auth not sent first');
+ if (globalThis.testSocket.url.includes('fake') || globalThis.testSocket.url.includes('?')) throw Error('token in URL');
+ if (connections.length) throw Error('audio started before authentication');
+ sent = [];
+ await globalThis.testSocket.onmessage({data:JSON.stringify({type:'auth_ok'})});
  if (!connections.some(x => x[0] === 'worklet' && x[1] === 'gain')) throw Error('not connected');
  if (!connections.some(x => x[0] === 'gain' && x[1] === 'destination')) throw Error('no destination');
  for (let i=0; i<9; i++) nodes[0].port.onmessage({data:new Float32Array(128)});
@@ -142,7 +147,7 @@ class AudioContext {
  createBufferSource(){return {connect(){},start(t){schedules.push(t)}};}
  close(){return Promise.resolve();}
 }
-class WebSocket {static OPEN=1; constructor(url){this.url=url;this.readyState=1;sockets.push(this);} close(){this.readyState=3;}}
+class WebSocket {static OPEN=1; constructor(url){this.url=url;this.readyState=1;sockets.push(this);} send(data){this.sent=data;} close(){this.readyState=3;}}
 '''
     run = r'''
 (async()=>{
@@ -154,6 +159,8 @@ class WebSocket {static OPEN=1; constructor(url){this.url=url;this.readyState=1;
  await buttons['speaker-btn'].events.click();
  if(sockets.length!==1 || !sockets[0].url.includes('/ws/phone-playback')) throw Error('no opt-in socket');
  sockets[0].onopen();
+ if (JSON.parse(sockets[0].sent).type !== 'auth') throw Error('missing auth');
+ sockets[0].onmessage({data:JSON.stringify({type:'auth_ok'})});
  sockets[0].onmessage({data:new Int16Array([0,100,-100]).buffer});
  if(schedules.length!==1) throw Error('audio not scheduled');
  toggleRemotePlayback();
@@ -191,3 +198,32 @@ def test_remote_playback_continues_when_no_local_speakers():
         with pytest.raises(asyncio.CancelledError):
             await task
     asyncio.run(check())
+
+
+def test_feed_socket_sends_auth_first_and_shows_connected_only_after_ack():
+    import shutil
+    if not shutil.which("node"):
+        pytest.skip("node not available")
+    html = (ROOT / "dashboard/static/app.html").read_text(encoding="utf-8")
+    source = html[html.index('    const feed  ='):html.index('    function setStatus(s)')]
+    setup = r'''
+let calls=[];
+const nodes={};
+const document={getElementById(id){return nodes[id] ||= {textContent:'',
+  classList:{add(x){calls.push(['class',id,x]);},remove(){} }};}};
+const location={protocol:'https:',host:'test.local'}; const _authToken='SECRET';
+const sys=()=>{}; const toast=()=>{}; const append=()=>{}; const setStatus=()=>{}; const _onFileReceived=()=>{};
+class WebSocket {constructor(url){this.url=url;globalThis.socket=this;} send(m){calls.push(['send',m]);}}
+'''
+    run = r'''
+socket.onopen();
+if(socket.url !== 'wss://test.local/ws') throw Error('credential in url');
+if(calls.length!==1) throw Error('connected before ack');
+const auth=JSON.parse(calls[0][1]);
+if(auth.type !== 'auth' || auth.token !== 'SECRET') throw Error('bad auth');
+socket.onmessage({data:JSON.stringify({type:'auth_ok'})});
+if(nodes['connection-text'].textContent !== 'Connected') throw Error('not connected after ack');
+'''
+    subprocess.run(["node", "-e", setup + source + run], check=True, timeout=10)
+    for endpoint in ("/ws?token=", "/ws/phone-audio?token=", "/ws/phone-playback?token="):
+        assert endpoint not in html

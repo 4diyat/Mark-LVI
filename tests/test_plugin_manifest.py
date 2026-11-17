@@ -343,3 +343,50 @@ def test_the_consent_sentences_exist_in_every_locale():
     for key in ("ui.plugins.consent", "ui.plugins.ask", "ui.plugins.permissions"):
         for locale in _i18n.available():
             assert _i18n._read(locale).get(key), f"{key} missing in {locale}"
+
+
+def test_invalid_manifest_is_rejected_before_module_level_code_runs(tmp_path):
+    from core.plugin_loader import discover_plugins
+    marker = tmp_path / "imported.txt"
+    py = tmp_path / "unsafe.py"
+    py.write_text(
+        f"open({str(marker)!r}, 'w').write('executed')\n"
+        'PLUGIN = {"name": "unsafe", "description": "d"}\n'
+        "def run(parameters): return 'ok'\n", encoding="utf-8")
+    (tmp_path / "unsafe.json").write_text(json.dumps({
+        "name": "unsafe", "permissions": ["files"], "sha256": "0" * 64
+    }), encoding="utf-8")
+    registry = discover_plugins(tmp_path, set(), lambda _: None)
+    assert not marker.exists()
+    assert not registry.has("unsafe")
+    assert "sha256 does not match" in registry.list_for_ui()[0]["error"]
+
+
+def test_manifest_checker_error_does_not_import_plugin(tmp_path, monkeypatch):
+    from core.plugin_loader import discover_plugins
+    marker = tmp_path / "imported.txt"
+    (tmp_path / "broken.py").write_text(
+        f"open({str(marker)!r}, 'w').write('executed')\n"
+        'PLUGIN = {"name": "broken", "description": "d"}\n'
+        "def run(parameters): return 'ok'\n", encoding="utf-8")
+    def fail(*args):
+        raise OSError("cannot read manifest")
+    monkeypatch.setattr(pm, "verify", fail)
+    registry = discover_plugins(tmp_path, set(), lambda _: None)
+    assert not marker.exists()
+    assert "could not verify" in registry.list_for_ui()[0]["error"]
+
+
+def test_literal_manifest_name_mismatch_is_rejected_before_import(tmp_path):
+    from core.plugin_loader import discover_plugins
+    marker = tmp_path / "imported.txt"
+    (tmp_path / "named.py").write_text(
+        f"open({str(marker)!r}, 'w').write('executed')\n"
+        'PLUGIN = {"name": "actual", "description": "d"}\n'
+        "def run(parameters): return 'ok'\n", encoding="utf-8")
+    (tmp_path / "named.json").write_text(json.dumps({
+        "name": "different", "permissions": ["files"]
+    }), encoding="utf-8")
+    registry = discover_plugins(tmp_path, set(), lambda _: None)
+    assert not marker.exists()
+    assert "does not match" in registry.list_for_ui()[0]["error"]

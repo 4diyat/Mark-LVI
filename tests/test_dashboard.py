@@ -44,6 +44,11 @@ def _h(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
+def _ws_auth(ws, token):
+    ws.send_json({"type": "auth", "token": token})
+    assert ws.receive_json() == {"type": "auth_ok"}
+
+
 # ── headers ──────────────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("path", ["/login", "/"])
@@ -203,7 +208,19 @@ def test_download_needs_a_token(server, tmp_path):
     (tmp_path / "a.txt").write_text("secret", encoding="utf-8")
     _, client, token, _ = server
     assert client.get("/uploads/a.txt").status_code == 401
-    assert client.get(f"/uploads/a.txt?token={token}").status_code == 200
+    assert client.get(f"/uploads/a.txt?token={token}").status_code == 401
+    response = client.get("/uploads/a.txt", headers=_h(token))
+    assert response.status_code == 200 and response.text == "secret"
+    assert response.headers["cache-control"] == "no-store"
+    assert client.get("/uploads/a.txt", headers=_h("invalid")).status_code == 401
+    srv = server[0]
+    read_token = f"read-{uuid.uuid4().hex}"
+    with srv._token_lock:
+        srv._tokens[read_token] = [time.time(), time.time(), ds._SCOPE_READ]
+    assert client.get("/uploads/a.txt", headers=_h(read_token)).status_code == 200
+    with srv._token_lock:
+        srv._tokens[read_token][0] = time.time() - ds._TOKEN_TTL_SECONDS - 1
+    assert client.get("/uploads/a.txt", headers=_h(read_token)).status_code == 401
 
 
 def test_old_uploads_are_swept(tmp_path):
@@ -371,9 +388,10 @@ def test_phone_audio_requires_command_permission_and_rechecks_revocation(server)
         srv._tokens[read_tok] = [now, now, ds._SCOPE_READ]
     for bad in ("invalid", read_tok):
         with pytest.raises(WebSocketDisconnect):
-            with client.websocket_connect(f"/ws/phone-audio?token={bad}"):
-                pass
-    with client.websocket_connect(f"/ws/phone-audio?token={token}") as ws:
+            with client.websocket_connect("/ws/phone-audio") as ws:
+                _ws_auth(ws, bad)
+    with client.websocket_connect("/ws/phone-audio") as ws:
+        _ws_auth(ws, token)
         ws.send_bytes(b"\x01\x00")
         with srv._token_lock:
             srv._tokens.pop(token)
@@ -389,10 +407,11 @@ def test_phone_audio_requires_command_permission_and_rechecks_revocation(server)
 def test_phone_audio_rejects_invalid_frame_and_limits_concurrent_streams(server):
     from starlette.websockets import WebSocketDisconnect
     srv, client, token, _ = server
-    with client.websocket_connect(f"/ws/phone-audio?token={token}") as first:
+    with client.websocket_connect("/ws/phone-audio") as first:
+        _ws_auth(first, token)
         with pytest.raises(WebSocketDisconnect) as exc:
-            with client.websocket_connect(f"/ws/phone-audio?token={token}"):
-                pass
+            with client.websocket_connect("/ws/phone-audio") as second:
+                _ws_auth(second, token)
         assert exc.value.code == 4009
         first.send_bytes(b"x")
         with pytest.raises(WebSocketDisconnect) as exc:
@@ -403,7 +422,8 @@ def test_phone_audio_rejects_invalid_frame_and_limits_concurrent_streams(server)
 
 def test_phone_audio_disconnect_preserves_end_when_queue_is_full(server):
     srv, client, token, _ = server
-    with client.websocket_connect(f"/ws/phone-audio?token={token}") as ws:
+    with client.websocket_connect("/ws/phone-audio") as ws:
+        _ws_auth(ws, token)
         ws.send_bytes(b"\x00\x00")
         # Synchronize by sending an invalid frame and awaiting the server close.
         for _ in range(250):
@@ -424,10 +444,11 @@ def test_remote_playback_is_opt_in_and_live_only(server):
     srv.publish_audio(b"\x01\x00")
     assert not srv._playback_clients and not any("data" in x for x in srv._history)
     with pytest.raises(WebSocketDisconnect):
-        with client.websocket_connect('/ws/phone-playback?token=invalid'):
-            pass
+        with client.websocket_connect('/ws/phone-playback') as ws:
+            _ws_auth(ws, 'invalid')
     with client:
-        with client.websocket_connect(f'/ws/phone-playback?token={token}') as ws:
+        with client.websocket_connect('/ws/phone-playback') as ws:
+            _ws_auth(ws, token)
             assert len(srv._playback_clients) == 1
             client.portal.call(srv.publish_audio, b"\x01\x00\x02\x00")
             assert ws.receive_bytes() == b"\x01\x00\x02\x00"
@@ -486,3 +507,117 @@ def test_configured_name_is_rendered_safely_and_updates(server, monkeypatch, pat
     assert '__ASSISTANT_NAME__' not in response.text
     monkeypatch.setattr(config, "get_assistant_name", lambda: "Friday")
     assert "Friday" in client.get(path).text
+
+
+def test_qr_pairing_uses_fragment_and_post_and_remembers_device(server):
+    from urllib.parse import urlsplit
+    srv, client, _, _ = server
+    key = srv.new_key()
+    url = urlsplit(srv.get_pairing_url(key))
+    assert url.path == "/login" and url.query == "" and url.fragment == f"key={key}"
+    page = client.get(url.path)
+    assert "URLSearchParams(location.hash.slice(1))" in page.text
+    assert "history.replaceState" in page.text
+    result = client.post("/api/qr-login", json={"key": key.lower()})
+    assert result.status_code == 200 and result.headers["cache-control"] == "no-store"
+    data = result.json()
+    assert data["token"] and data["device_token"]
+    assert client.post("/api/qr-login", json={"key": key}).status_code == 401
+    reconnect = client.post("/api/device-login", json={"device_token": data["device_token"]})
+    assert reconnect.status_code == 200 and reconnect.json()["key"] == key
+    assert client.post("/api/command", headers=_h(data["token"]), json={"text": "ping"}).status_code == 200
+
+
+def test_qr_pairing_and_legacy_share_manual_login_throttle(server):
+    srv, client, _, _ = server
+    key = srv.new_key()
+    for i in range(ds._LOGIN_MAX_TRIES):
+        if i % 2:
+            assert client.post("/api/qr-login", json={"key": "INVALID"}).status_code == 401
+        else:
+            assert client.get("/auto-login?key=INVALID").status_code == 200
+    assert client.post("/api/qr-login", json={"key": key}).status_code == 429
+    assert client.get(f"/auto-login?key={key}").status_code == 429
+    assert client.post("/login", json={"pin": key}).status_code == 429
+    assert key in srv._pending_keys
+
+
+def test_qr_login_rejects_malformed_body(server):
+    _, client, _, _ = server
+    for body in ([], None, {"key": 123}, {}):
+        assert client.post("/api/qr-login", json=body).status_code == 400
+    assert client.post("/api/qr-login", content="not json").status_code == 400
+
+
+@pytest.mark.parametrize("path", ["/ws", "/ws/phone-audio", "/ws/phone-playback"])
+def test_websocket_rejects_query_token_and_times_out_without_first_message(server, monkeypatch, path):
+    from starlette.websockets import WebSocketDisconnect
+    srv, client, token, _ = server
+    monkeypatch.setattr(ds, "_WS_AUTH_TIMEOUT", 0.05)
+    # Reject the old credential-bearing URL rather than authenticating it.
+    with pytest.raises(WebSocketDisconnect):
+        with client.websocket_connect(f"{path}?token={token}"):
+            pass
+    # With no first message the server closes on timeout, without history/audio.
+    with client.websocket_connect(path) as ws:
+        with pytest.raises(WebSocketDisconnect) as exc:
+            ws.receive_json()
+        assert exc.value.code == 4001
+    assert srv._pending_ws_auth == 0
+    assert not srv._clients and not srv._playback_clients and not srv._phone_audio_active
+
+
+@pytest.mark.parametrize("path", ["/ws", "/ws/phone-audio", "/ws/phone-playback"])
+@pytest.mark.parametrize("payload", ["not-json", '{"type":"auth","token":"' + 'x' * 600 + '"}',
+                                    '{"type":"command","text":"bad"}', '[]'])
+def test_websocket_rejects_malformed_auth_without_disclosing_data(server, path, payload):
+    from starlette.websockets import WebSocketDisconnect
+    srv, client, _, _ = server
+    with client.websocket_connect(path) as ws:
+        ws.send_text(payload)
+        with pytest.raises(WebSocketDisconnect) as exc:
+            ws.receive_json()
+        assert exc.value.code == 4001
+    assert srv._pending_ws_auth == 0
+    assert not srv._clients and not srv._playback_clients and not srv._phone_audio_active
+
+
+def test_unauthenticated_socket_capacity_is_bounded(server):
+    from starlette.websockets import WebSocketDisconnect
+    srv, client, _, _ = server
+    srv._pending_ws_auth = ds._MAX_PENDING_WS_AUTH
+    try:
+        with pytest.raises(WebSocketDisconnect):
+            with client.websocket_connect("/ws"):
+                pass
+    finally:
+        srv._pending_ws_auth = 0
+
+
+def test_feed_rechecks_revocation_before_broadcast(server):
+    from starlette.websockets import WebSocketDisconnect
+    srv, client, token, _ = server
+    srv._history.clear()
+    with client:
+        with client.websocket_connect("/ws") as ws:
+            _ws_auth(ws, token)
+            with srv._token_lock:
+                srv._tokens.pop(token)
+            client.portal.call(srv.broadcast, {"type": "log", "text": "private"})
+            with pytest.raises(WebSocketDisconnect) as exc:
+                ws.receive_json()
+            assert exc.value.code == 4001
+        assert not srv._clients
+
+
+def test_feed_read_scope_cannot_send_command(server):
+    srv, client, _, _ = server
+    srv._history.clear()
+    token = f"read-{uuid.uuid4().hex}"
+    with srv._token_lock:
+        srv._tokens[token] = [time.time(), time.time(), ds._SCOPE_READ]
+    with client.websocket_connect("/ws") as ws:
+        _ws_auth(ws, token)
+        ws.send_json({"type": "command", "text": "should not run"})
+        assert "watch, not command" in ws.receive_json()["text"]
+    assert srv._command_queue.empty()

@@ -91,14 +91,13 @@ def test_https_tls_handshake_checks_ca_and_ip(tmp_path):
         connect("192.168.1.17")
 
 
-def test_dashboard_uses_issued_pair_and_https_url(tmp_path, monkeypatch):
+def test_dashboard_uses_issued_pair_and_https_url(tmp_path, monkeypatch, isolated_config):
     pytest.importorskip("fastapi")
-    import json
     from dashboard import server
     monkeypatch.setattr(server, "BASE_DIR", tmp_path)
     config = tmp_path / "config"
     config.mkdir()
-    (config / "api_keys.json").write_text(json.dumps({"dashboard_https": True}), encoding="utf-8")
+    isolated_config.set_config_values(dashboard_https=True)
     tls.setup(config / "certs", "192.168.1.17")
     assert server.DashboardServer._ssl_enabled()
     srv = server.DashboardServer()
@@ -124,3 +123,75 @@ def test_server_certificate_replacement_rolls_back_on_second_rename_failure(tmp_
     assert (tmp_path / "jarvis.key").read_bytes() == previous_key
     assert (tmp_path / "jarvis.crt").read_bytes() == previous_cert
     assert not list(tmp_path.glob(".tls-*"))
+
+
+def test_tls_fails_closed_and_url_does_not_change(tmp_path, monkeypatch, isolated_config):
+    import asyncio
+    from dashboard import server
+    isolated_config.set_config_values(dashboard_https=True)
+    monkeypatch.setattr(server, "BASE_DIR", tmp_path)
+    monkeypatch.setattr(server, "report_network_access", lambda *args: None)
+    monkeypatch.setattr(server, "_local_ip", lambda: "192.168.1.17")
+    monkeypatch.setattr(server, "_ensure_certs", lambda ip: False)
+    monkeypatch.setattr(server.uvicorn, "Server", lambda cfg: pytest.fail("listener must not start"))
+    srv = server.DashboardServer()
+    isolated_config.set_config_values(dashboard_https=False)
+    asyncio.run(srv.serve())
+    assert srv.get_url() == srv.get_manual_url() == "https://192.168.1.17:8001"
+    assert "HTTPS unavailable" in srv._bind_error
+
+
+def test_generated_certificate_validation_and_partial_pair(tmp_path, monkeypatch):
+    from dashboard import server
+    monkeypatch.setattr(server, "BASE_DIR", tmp_path)
+    assert server._ensure_certs("192.168.1.17")
+    key = tmp_path / "config/certs/jarvis.key"
+    cert = tmp_path / "config/certs/jarvis.crt"
+    server._validate_certs(key, cert, "192.168.1.17")
+    with pytest.raises(ValueError, match="LAN IP"):
+        server._validate_certs(key, cert, "192.168.1.18")
+    key.unlink()
+    assert not server._ensure_certs("192.168.1.17")
+
+
+def test_http_redirect_does_not_forward_pairing_query(monkeypatch, isolated_config):
+    import asyncio
+    from fastapi.testclient import TestClient
+    from dashboard import server
+    isolated_config.set_config_values(dashboard_https=True)
+    monkeypatch.setattr(server, "_local_ip", lambda: "192.168.1.17")
+    srv = server.DashboardServer()
+    apps = []
+    class FakeServer:
+        def __init__(self, cfg):
+            assert cfg.access_log is False
+            apps.append(cfg.app)
+        async def serve(self):
+            pass
+    monkeypatch.setattr(server.uvicorn, "Server", FakeServer)
+    asyncio.run(srv._serve_redirector())
+    with TestClient(apps[0]) as client:
+        response = client.get("/login", follow_redirects=False)
+        assert response.headers["location"] == "https://192.168.1.17:8001/login"
+        response = client.get("/auto-login?key=SECRET", follow_redirects=False)
+        assert response.status_code == 400
+        assert "location" not in response.headers
+        assert "SECRET" not in response.text
+
+
+def test_dashboard_disables_access_log_for_query_credentials(monkeypatch, isolated_config):
+    import asyncio
+    from dashboard import server
+    isolated_config.set_config_values(dashboard_https=False)
+    monkeypatch.setattr(server, "PORT", 0)
+    monkeypatch.setattr(server, "report_network_access", lambda *args: None)
+    monkeypatch.setattr(server, "_sweep_uploads", lambda *args: None)
+    seen = []
+    class FakeServer:
+        def __init__(self, cfg):
+            seen.append(cfg.access_log)
+        async def serve(self):
+            pass
+    monkeypatch.setattr(server.uvicorn, "Server", FakeServer)
+    asyncio.run(server.DashboardServer().serve())
+    assert seen == [False]

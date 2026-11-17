@@ -309,6 +309,25 @@ There is also an **output volume slider**, and it belongs to the device chosen t
 
 ### 📱 The phone dashboard
 
+#### Mengaktifkan HTTPS remote control
+
+Buka **Remote Control**, klik **Aktifkan HTTPS**, lalu mulai ulang JARVIS.
+Sampai dimulai ulang, koneksi masih menggunakan HTTP. Alternatifnya, hentikan
+JARVIS dan tambahkan `"dashboard_https": true` ke objek JSON di
+`config/api_keys.json` tanpa menghapus pengaturan lain. Setelah mulai ulang,
+buka **Remote Control** dan gunakan QR atau alamat `https://IP-LAN:8001`.
+Pastikan ponsel dapat mencapai komputer dan firewall privat mengizinkan port
+8001. HTTP tetap default untuk kompatibilitas; jangan gunakan di jaringan yang
+tidak tepercaya dan jangan mengekspos dashboard langsung ke internet.
+
+Sertifikat otomatis bersifat **self-signed**, sehingga tidak otomatis dipercaya
+ponsel dan mikrofon mungkin tidak tersedia. Untuk browser yang benar-benar
+mempercayainya, ikuti langkah CA lokal di bawah dan jangan bagikan file `.key`.
+Jika sertifikat gagal, kedaluwarsa, atau IP berubah, dashboard tidak akan turun
+ke HTTP; periksa pesan Remote Control dan terbitkan ulang sertifikat sesuai
+panduan di bawah. Perubahan mode berlaku setelah JARVIS dimulai ulang.
+
+
 **It is plain HTTP on your local network, and that is a decision rather than an
 oversight.** This release tried making TLS mandatory and it was a mistake worth
 writing down: the certificate has to be self-signed, because no certificate
@@ -338,6 +357,26 @@ door stayed:
   the same network could flip bits and the assistant would act on whatever fell
   out. Over plain HTTP there is no `crypto.subtle` and so no encryption at all —
   the page says `NO ENC` on its own badge rather than pretending otherwise.
+
+#### Privasi kode pairing dan log
+
+QR baru menyimpan kode sekali pakai dalam fragmen URL (`#key=…`) yang tidak
+dikirim sebagai bagian URL HTTP. Halaman login menghapus fragmen dari alamat,
+kemudian mengirim kode dalam body POST; login QR dan manual berbagi pembatas
+percobaan. Link QR lama `auto-login?key=…` masih didukung dan dibatasi, tetapi
+membawa kode dalam URL: buat QR baru bila memungkinkan. Access log Uvicorn
+untuk kedua listener dimatikan sebagai perlindungan tambahan. WebSocket baru
+mengirim token dalam pesan autentikasi pertama, bukan URL; koneksi lama dengan
+`?token=` ditolak. Unduhan sekarang mengirim token lewat header, bukan URL; link unduhan lama dengan
+`?token=` tidak lagi berfungsi. Unduhan menggunakan Blob di ponsel dan dapat
+menghabiskan banyak memori untuk file besar; gunakan cara lain bila perangkat
+tidak mampu. Kompatibilitas unduhan Android/iOS perlu diuji pada perangkat nyata. Ini tidak menghapus log lama atau mencegah proxy,
+scanner QR pihak ketiga, browser, aplikasi lain atau ekstensi mencatat rahasia.
+
+Fragmen bukan enkripsi: **gunakan HTTPS dengan sertifikat yang dipercaya**,
+karena POST dan semua perintah pada HTTP dapat disadap di jaringan. Jangan bagikan
+QR, kode pairing, token, screenshot, atau log sebelum memeriksa isinya; cabut
+perangkat/sesi jika rahasia terpapar. Proteksi ini bukan audit semua log aplikasi.
 
 #### Remote voice commands
 
@@ -728,6 +767,11 @@ python main.py
 
 ## 🧪 Tests & Contributing
 
+**Status fitur dan checklist uji nyata:** lihat [docs/verification.md](docs/verification.md).
+Pengujian otomatis dan Qt offscreen bukan pengganti verifikasi webcam, ponsel,
+perangkat audio, atau MT5/broker yang sebenarnya.
+
+
 ```bash
 pip install -r requirements-dev.txt
 ruff check .                 # F + E9 only — the rules whose violations are bugs
@@ -976,6 +1020,26 @@ estimated loss limit in account currency, and use **Check and review order**.
 Review and confirm every request; LIVE also requires typing `LIVE`. JARVIS can
 fill a draft, but the plugin itself does not approve or submit it.
 
+The order dialog has **EMERGENCY STOP — JARVIS MT5**. It blocks new JARVIS
+reviewed submissions and invalidates existing reviews for this running JARVIS
+session. To resume, confirm **Allow new reviews**, then prepare and approve a new
+order; the mode returns to OFF. Restarting JARVIS clears the session stop, but
+trading still starts in OFF mode and requires a fresh review and approval.
+During a modal approval, dismiss the modal before using the stop button. The
+stop does **not** revoke a request that has already entered the submission stage,
+cancel pending broker orders, close positions, disable MT5 or affect other apps
+or plugins; inspect the MT5 terminal and use its own controls if needed.
+
+Di dialog order tersedia tombol **HENTIKAN DARURAT — MT5 JARVIS**. Tombol ini
+memblokir pengiriman baru dari alur order JARVIS dan membatalkan tinjauan lama
+selama sesi JARVIS berjalan. Untuk melanjutkan, konfirmasi **Izinkan peninjauan
+baru**, lalu siapkan dan setujui order baru; mode kembali MATI. Status stop tidak
+bertahan setelah JARVIS dimulai ulang, tetapi mode tetap dimulai MATI. Tutup
+dialog konfirmasi yang terbuka sebelum menekan tombol stop. Permintaan yang
+sudah masuk tahap kirim mungkin tetap diproses; tombol ini tidak membatalkan
+order broker, menutup posisi, atau menghentikan aplikasi/plugin lain. Periksa
+terminal MT5 dan gunakan kontrol MT5 sendiri jika diperlukan.
+
 Supported actions are market buy/sell and changes to an existing pending order's
 price, stop loss and take profit (limit and stop orders only; stop-limit orders
 are not supported). Closing positions, creating/cancelling pending orders and
@@ -1040,7 +1104,11 @@ device behaviour must be checked on the target desktop.
    terbatas pada workspace JARVIS; konfirmasi sensitif memerlukan input fisik.
 
 Model pengenalan tangan dan webcam belum diuji pada perangkat Windows nyata.
-Pencahayaan, posisi tangan, dan spesifikasi perangkat dapat memengaruhi hasil.
+Gunakan pencahayaan merata, letakkan tangan sepenuhnya di bidang kamera dan
+hindari latar yang terlalu ramai. Jika gerakan terlambat, tutup aplikasi berat
+atau aplikasi kamera lain. JARVIS meminta frame 640×480 dan buffer satu frame,
+tetapi dukungan serta hasilnya bergantung pada driver webcam; jeda aktivasi
+0,35 detik tetap disengaja untuk mengurangi aksi tidak sengaja.
 
 ### Papan tangan bawaan JARVIS (eksperimental)
 
@@ -1069,6 +1137,18 @@ mengurai/menyatukan secara perkiraan; mesh yang tersambung tidak dapat diurai.
 Pengatur tersebut dapat digeser dengan gesture, tetapi bukan gesture exploded
 view di udara. Gesture melempar, tepuk, dan cakar belum tersedia. Papan hanya menyimpan maksimal 30 kartu selama sesi. Pengenalan tangan
 belum diuji pada kamera Windows nyata.
+
+### Keamanan plugin pihak ketiga
+
+Manifest yang ada diperiksa sebelum plugin diimpor: hash yang salah, manifest
+rusak, dan izin yang jelas tidak dideklarasikan ditolak sebelum kode berjalan.
+Nama `PLUGIN` yang berupa literal juga dibandingkan sebelumnya; nama dinamis
+baru dapat dibandingkan setelah import. Pemeriksaan ini **bukan sandbox** dan
+bukan verifikasi identitas penulis. Plugin tanpa manifest tetap dimuat untuk
+kompatibilitas; plugin yang lolos dapat menjalankan kode saat import, bahkan
+sebelum diaktifkan untuk pemanggilan tool, dengan akses proses JARVIS. Instal
+hanya plugin yang dipercaya. Jangan menganggap hash yang disediakan oleh sumber
+yang sama sebagai bukti asal tepercaya.
 
 ### Mengontrol workspace dengan JARVIS
 

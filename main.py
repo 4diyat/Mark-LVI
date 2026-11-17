@@ -1048,7 +1048,7 @@ class JarvisLive:
         manual = self._dashboard.get_manual_url()
         # The bind error travels with the URL because the UI has no reference to
         # this object — it only ever sees what this callback returns.
-        return (url, key, f"{url}/auto-login?key={key}", manual,
+        return (url, key, self._dashboard.get_pairing_url(key), manual,
                 getattr(self._dashboard, "_bind_error", "") or "")
 
     def _on_text_command(self, text: str):

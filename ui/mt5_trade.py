@@ -3,10 +3,11 @@ from __future__ import annotations
 
 import threading
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (QComboBox, QDialog, QGridLayout, QInputDialog, QLabel, QLineEdit,
                              QMessageBox, QPushButton, QVBoxLayout)
 
+from core import trade_gate
 from core.i18n import label as _t
 from plugins import _mt5_trade as trade
 from ui.theme import C, workspace_stylesheet
@@ -28,6 +29,15 @@ class OrderDialog(QDialog):
         warning = QLabel(_t("trade.warning"))
         warning.setWordWrap(True)
         layout.addWidget(warning)
+        self.gate_status = QLabel()
+        self.gate_status.setWordWrap(True)
+        layout.addWidget(self.gate_status)
+        self.stop_button = QPushButton(_t("trade.stop"))
+        self.stop_button.clicked.connect(self._emergency_stop)
+        layout.addWidget(self.stop_button)
+        self.resume_button = QPushButton(_t("trade.resume"))
+        self.resume_button.clicked.connect(self._resume_trading)
+        layout.addWidget(self.resume_button)
         grid = QGridLayout()
         self.mode = QComboBox()
         for label, value in (("trade.off", "OFF"), ("trade.demo", "DEMO"), ("trade.live", "LIVE")):
@@ -70,6 +80,34 @@ class OrderDialog(QDialog):
         layout.addWidget(self.review)
         self._prepared.connect(self._on_prepared)
         self._finished.connect(self._on_finished)
+        self._gate_timer = QTimer(self)
+        self._gate_timer.timeout.connect(self._refresh_gate)
+        self._gate_timer.start(250)
+        self._refresh_gate()
+
+    def _refresh_gate(self):
+        stopped = trade_gate.stopped()
+        self.gate_status.setText(_t("trade.stopped" if stopped else "trade.stop_ready"))
+        self.stop_button.setEnabled(not stopped)
+        self.resume_button.setEnabled(stopped)
+        self.review.setEnabled(not self._busy and not stopped)
+        if stopped and self.mode.currentData() != "OFF":
+            self.mode.setCurrentIndex(0)
+
+    def _emergency_stop(self):
+        trade_gate.stop()
+        self._refresh_gate()
+
+    def _resume_trading(self):
+        if not trade_gate.stopped():
+            return
+        answer = QMessageBox.question(
+            self, _t("trade.resume_title"), _t("trade.resume_detail"),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if answer == QMessageBox.StandardButton.Yes:
+            trade_gate.resume()
+            self._refresh_gate()
 
     def _allowed(self):
         try:
@@ -80,7 +118,7 @@ class OrderDialog(QDialog):
 
     def _set_busy(self, value):
         self._busy = value
-        self.review.setEnabled(not value)
+        self.review.setEnabled(not value and not trade_gate.stopped())
         self.mode.setEnabled(not value)
         self.kind.setEnabled(not value)
         self.side.setEnabled(not value)
@@ -88,8 +126,8 @@ class OrderDialog(QDialog):
             widget.setEnabled(not value)
 
     def _prepare(self):
-        if self._busy or not self._allowed():
-            self.status.setText(_t("trade.disabled"))
+        if self._busy or not self._allowed() or trade_gate.stopped():
+            self.status.setText(_t("trade.stopped" if trade_gate.stopped() else "trade.disabled"))
             return
         mode = self.mode.currentData()
         draft = {k: w.text().strip() for k, w in self.fields.items() if k not in ("max_volume", "max_loss")}
@@ -110,9 +148,10 @@ class OrderDialog(QDialog):
         threading.Thread(target=worker, name="mt5-order-review", daemon=True).start()
 
     def _on_prepared(self, prepared, error):
-        if error or not self._allowed():
+        if error or not self._allowed() or not prepared or not trade_gate.valid(prepared.generation):
             self._set_busy(False)
-            self.status.setText(_t("trade.error", error=error[:400] if error else _t("trade.disabled")))
+            reason = error[:400] if error else _t("trade.stopped" if trade_gate.stopped() else "trade.cancelled")
+            self.status.setText(_t("trade.error", error=reason))
             return
         # Disarm hand input before showing a local approval dialog. The order
         # cannot be approved by a tool argument or a remote dashboard request.

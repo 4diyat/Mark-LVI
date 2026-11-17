@@ -32,8 +32,32 @@
   </div>
 
   <script nonce="__NONCE__">
-    // Try auto-reconnect with stored device token (set on first QR login)
+    // URL fragments never reach the HTTP server. Clear it before making any
+    // request so a one-time key is not left in the browser's current address.
+    const fragmentKey = new URLSearchParams(location.hash.slice(1)).get('key');
+    if (location.hash) history.replaceState(null, '', location.pathname);
     (async function() {
+      if (fragmentKey !== null) {
+        try {
+          const r = await fetch('/api/qr-login', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key: fragmentKey }),
+          });
+          const d = await r.json();
+          if (d.ok && d.token && d.device_token) {
+            sessionStorage.setItem('jarvis_key', fragmentKey.trim().toUpperCase());
+            sessionStorage.setItem('jarvis_token', d.token);
+            localStorage.setItem('jarvis_device_token', d.device_token);
+            location.replace('/');
+            return;
+          }
+          document.getElementById('err').textContent = d.error || 'Invalid or expired key';
+        } catch (_) {
+          document.getElementById('err').textContent = 'Connection error';
+        }
+        return;
+      }
+      // Reconnect only when no new QR pairing was attempted.
       const devTok = localStorage.getItem('jarvis_device_token');
       if (!devTok) return;
       document.getElementById('reconnecting').style.display = 'block';
@@ -51,7 +75,6 @@
           return;
         }
       } catch (_) {}
-      // Device token rejected (server restarted) — clear it and show normal form
       localStorage.removeItem('jarvis_device_token');
       document.getElementById('reconnecting').style.display = 'none';
     })();
