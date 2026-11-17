@@ -361,6 +361,7 @@ def main():
         assert triggered == [True] and not menu.isVisible()
         window.activateWindow()
         board_sub.raise_()
+        mdi.position_dock()
         app.processEvents()
         # The dock can scroll at small/offscreen resolutions. Put Apps in its
         # visible viewport before exercising the same click a user can make.

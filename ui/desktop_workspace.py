@@ -422,6 +422,7 @@ def build(window):
             sub.showNormal()
             mdi.setActiveSubWindow(sub)
             sub.raise_()
+            mdi.position_dock()
             if name == "chat":
                 window._input.setFocus()
 
@@ -560,6 +561,7 @@ def show_video(window):
     sub.showNormal()
     window._desktop_mdi.setActiveSubWindow(sub)
     sub.raise_()
+    window._desktop_mdi.position_dock()
 
 
 def hide_video(window):
@@ -586,6 +588,7 @@ def show_document(window, document, kind="document"):
     sub.show()
     window._desktop_mdi.setActiveSubWindow(sub)
     document.show()
+    window._desktop_mdi.position_dock()
     return sub
 
 
@@ -595,6 +598,7 @@ def show_camera(window):
     sub.showNormal()
     window._desktop_mdi.setActiveSubWindow(sub)
     sub.raise_()
+    window._desktop_mdi.position_dock()
 
 
 def hide_camera(window):
