@@ -51,7 +51,7 @@ def main():
     def confirm():
         active = QApplication.activeModalWidget()
         assert isinstance(active, QMessageBox)
-        active.done(int(QMessageBox.StandardButton.Yes))
+        active.button(QMessageBox.StandardButton.Yes).click()
     second.command.setText('echo hello')
     QTimer.singleShot(0, confirm)
     second.send_command()

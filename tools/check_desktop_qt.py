@@ -362,6 +362,10 @@ def main():
         window.activateWindow()
         board_sub.raise_()
         app.processEvents()
+        # The dock can scroll at small/offscreen resolutions. Put Apps in its
+        # visible viewport before exercising the same click a user can make.
+        dock.ensureWidgetVisible(dock_button)
+        app.processEvents()
         # Exercise the actual dock-button press -> popup -> gesture selection.
         actual = []
         action.triggered.connect(lambda: actual.append(True))
