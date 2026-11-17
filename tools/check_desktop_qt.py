@@ -465,6 +465,10 @@ def main():
         window._hand_timer.stop()
         mdi.setActiveSubWindow(board_sub)
         board_sub.raise_()
+        # A dock overlays the bottom of the desktop; keep the board controls
+        # visible above it rather than testing a point covered by the dock.
+        board_sub.setGeometry(10, 10, min(900, viewport.width() - 20), max(1, viewport.height() - 100))
+        mdi.position_dock()
         window.activateWindow()
         app.processEvents()
         center = board.view.viewport().mapTo(viewport, board.view.mapFromScene(model_card.mapToScene(model_card.rect().center())))

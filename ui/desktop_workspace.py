@@ -397,7 +397,10 @@ def build(window):
             sub.setWidget(board)
             sub.setWindowTitle(_t("handboard.title"))
             mdi.addSubWindow(sub)
-            sub.resize(900, 600)
+            width = min(900, max(1, mdi.viewport().width()))
+            height = min(600, max(1, mdi.viewport().height() - 90))
+            sub.setGeometry(max(0, (mdi.viewport().width() - width) // 2),
+                            max(0, (mdi.viewport().height() - 90 - height) // 2), width, height)
             window._hand_board = board
             window._desktop_windows["handboard"] = sub
         sub = window._desktop_windows["handboard"]
