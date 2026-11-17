@@ -29,6 +29,10 @@ psutil>=5.9,<8
 numpy>=1.24,<3
 cryptography>=42,<50  # browser vault tests
 paramiko>=3.4,<5  # local SSH protocol tests
+fastapi>=0.110,<1  # dashboard and HTTPS tests
+uvicorn>=0.27,<1
+httpx>=0.27,<1
+python-multipart>=0.0.9,<1
 tzdata>=2024.1  # time-zone tests on Windows
 
 # ── For the CI job that imports everything ──────────────────────────────────
