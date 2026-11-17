@@ -253,3 +253,86 @@ def test_review_can_expire_while_broker_checks(mt5, monkeypatch):
     with pytest.raises(trade.TradeError, match="expired before submission"):
         trade.execute(preview)
     assert not mt5.sent
+
+
+def test_emergency_stop_invalidates_prepared_review_even_after_resume(mt5):
+    from core import trade_gate
+    trade_gate.resume()
+    try:
+        preview = trade.prepare(market(), "DEMO", .01, 20)
+        trade_gate.stop()
+        with pytest.raises(trade.TradeError, match="Emergency stop"):
+            trade.prepare(market(), "DEMO", .01, 20)
+        with pytest.raises(trade.TradeError, match="Emergency stop"):
+            trade.execute(preview)
+        trade_gate.resume()
+        with pytest.raises(trade.TradeError, match="Emergency stop"):
+            trade.execute(preview)
+        assert not mt5.sent
+        fresh = trade.prepare(market(), "DEMO", .01, 20)
+        assert "accepted" in trade.execute(fresh)
+        assert len(mt5.sent) == 1
+    finally:
+        trade_gate.resume()
+
+
+def test_emergency_stop_during_broker_check_prevents_submission(mt5):
+    from core import trade_gate
+    trade_gate.resume()
+    try:
+        preview = trade.prepare(market(), "DEMO", .01, 20)
+        original = mt5.order_check
+        def stop_during_check(request):
+            trade_gate.stop()
+            trade_gate.resume()  # Even a quick resume cannot revive the review.
+            return original(request)
+        mt5.order_check = stop_during_check
+        with pytest.raises(trade.TradeError, match="Emergency stop"):
+            trade.execute(preview)
+        assert not mt5.sent
+    finally:
+        trade_gate.resume()
+
+
+def test_emergency_stop_during_preparation_refuses_review(mt5):
+    from core import trade_gate
+    trade_gate.resume()
+    try:
+        original = mt5.order_check
+        def stop_during_check(request):
+            trade_gate.stop()
+            return original(request)
+        mt5.order_check = stop_during_check
+        with pytest.raises(trade.TradeError, match="Emergency stop"):
+            trade.prepare(market(), "DEMO", .01, 20)
+        assert not mt5.sent
+    finally:
+        trade_gate.resume()
+
+
+def test_emergency_stop_is_session_local_and_does_not_cancel_inflight_call(mt5):
+    import threading
+    from core import trade_gate
+    trade_gate.resume()
+    entered, release = threading.Event(), threading.Event()
+    results = []
+    try:
+        preview = trade.prepare(market(), "DEMO", .01, 20)
+        def sending(request):
+            entered.set()
+            assert release.wait(timeout=3)
+            mt5.sent.append(dict(request))
+            return mt5.send_result
+        mt5.order_send = sending
+        worker = threading.Thread(target=lambda: results.append(trade.execute(preview)))
+        worker.start()
+        assert entered.wait(timeout=3)
+        trade_gate.stop()  # Must return without waiting for the broker.
+        assert trade_gate.stopped()
+        release.set()
+        worker.join(timeout=3)
+        assert not worker.is_alive() and "accepted" in results[0]
+        assert len(mt5.sent) == 1  # An in-flight request cannot be revoked.
+    finally:
+        release.set()
+        trade_gate.resume()

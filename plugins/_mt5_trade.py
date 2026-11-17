@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Mapping
 
+from core import trade_gate
 from plugins import _mt5
 
 
@@ -28,6 +29,7 @@ class TradeError(RuntimeError):
 @dataclass(frozen=True)
 class Prepared:
     token: str
+    generation: int
     expires: float
     mode: str
     login: int
@@ -138,6 +140,9 @@ def _checked(mt5, request):
 
 def prepare(draft: Mapping, mode: str, max_volume: float, max_loss: float) -> Prepared:
     """Build and check a new market order or modify a pending order; never send."""
+    generation = trade_gate.snapshot()
+    if generation is None:
+        raise TradeError("Emergency stop is active; no order can be reviewed or sent.")
     if mode not in {"DEMO", "LIVE"}:
         raise TradeError("Trading is off. Choose DEMO or LIVE in the desktop dialog.")
     max_volume = _number(max_volume, "maximum volume")
@@ -217,7 +222,9 @@ def prepare(draft: Mapping, mode: str, max_volume: float, max_loss: float) -> Pr
                    + (f"Existing order: price {old[4]:g}, SL {old[5]:g}, TP {old[6]:g}, type {old[2]}, "
                       f"time type {old[7]}, expiration {old[8]}, stop-limit {old[9]:g}\n" if old else "")
                    + "Review expires in 45 seconds. LIVE accounts risk real funds.")
-        return Prepared(secrets.token_hex(16), time.monotonic() + 45, actual_mode, login, server, kind, symbol, volume, side, price, sl, tp,
+        if not trade_gate.valid(generation):
+            raise TradeError("Emergency stop invalidated this review; no order was sent.")
+        return Prepared(secrets.token_hex(16), generation, time.monotonic() + 45, actual_mode, login, server, kind, symbol, volume, side, price, sl, tp,
                         ticket, old, max_volume, max_loss, estimated_loss, currency, tuple(request.items()), summary)
 
 
@@ -225,6 +232,8 @@ def execute(prepared: Prepared):
     """Send the reviewed immutable request once, after desktop approval only."""
     if not isinstance(prepared, Prepared):
         raise TradeError("A reviewed order is required.")
+    if not trade_gate.valid(prepared.generation):
+        raise TradeError("Emergency stop invalidated this review; no order was sent.")
     with _claim_lock:
         now = time.monotonic()
         for token, expiry in list(_claimed.items()):
@@ -272,6 +281,10 @@ def execute(prepared: Prepared):
             current = _number(tick.ask if prepared.side == "buy" else tick.bid, "quote")
             if abs(current - prepared.price) > 10 * point:
                 raise TradeError("Price moved beyond 10 points before submission; no order was sent.")
+        # This is the final local gate. Once admitted, stop cannot revoke an
+        # in-flight API call or cancel an order already at the broker.
+        if not trade_gate.admit_submission(prepared.generation):
+            raise TradeError("Emergency stop invalidated this review; no order was sent.")
         try:
             result = mt5.order_send(request)  # exactly one attempt; never retry an unknown result
         except Exception as exc:

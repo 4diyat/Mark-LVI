@@ -1,4 +1,5 @@
 """Local camera tracking for the JARVIS workspace; never generates OS input."""
+import itertools
 import math
 import platform
 import threading
@@ -7,8 +8,8 @@ import time
 from core import camera_lease
 
 
-def hand_sample(points):
-    """Convert MediaPipe landmarks into a mirrored, normalized pointer and pinch."""
+def _hand_measurement(points):
+    """Convert landmarks to pointer, pose and pinch distance relative to the palm."""
     if len(points) != 21:
         return None
     palm = math.hypot(points[5].x - points[17].x, points[5].y - points[17].y)
@@ -19,7 +20,13 @@ def hand_sample(points):
     pinch = distance < palm * .38
     scroll = (not pinch and points[8].y < points[6].y and points[12].y < points[10].y
               and points[16].y > points[14].y and points[20].y > points[18].y)
-    return (max(0., min(1., 1 - x)), max(0., min(1., y)), pinch, scroll)
+    return (max(0., min(1., 1 - x)), max(0., min(1., y)), pinch, scroll, distance / palm)
+
+
+def hand_sample(points):
+    """Public four-field sample; the worker also uses the raw pinch ratio."""
+    measured = _hand_measurement(points)
+    return measured[:4] if measured is not None else None
 
 
 class HandStabilizer:
@@ -33,27 +40,54 @@ class HandStabilizer:
         self._tracks = []
 
     def update(self, samples):
+        samples = list(samples)
+        if len(samples) > 2:
+            self._tracks = []
+            return ()
         previous = list(self._tracks)
-        tracks = []
-        for x, y, pinch, scroll in samples:
-            candidates = [(math.hypot(x - track[0], y - track[1]), i, track)
-                          for i, track in enumerate(previous) if track is not None]
-            nearest = min(candidates, default=None, key=lambda c: c[0])
-            if nearest is None or nearest[0] > .18:
-                tracks.append((x, y, pinch, scroll, 0))
+        # A remaining hand must not inherit a disappeared pinching hand's
+        # state. Cancel first; a fresh frame can establish new tracks.
+        if len(samples) < len(previous) and any(track[2] for track in previous):
+            self._tracks = []
+            return ()
+        # At most two hands: choose the globally closest one-to-one assignment.
+        # Greedy matching can swap identities when the detector changes order.
+        possibilities = []
+        for assignment in itertools.product(range(-1, len(previous)), repeat=len(samples)):
+            matched = [i for i in assignment if i >= 0]
+            if len(set(matched)) != len(matched):
                 continue
-            _, index, old = nearest
+            distances = [math.hypot(sample[0] - previous[i][5], sample[1] - previous[i][6])
+                         for sample, i in zip(samples, assignment) if i >= 0]
+            if any(distance > .18 for distance in distances):
+                continue
+            possibilities.append((-len(matched), sum(distances), assignment))
+        assignment = min(possibilities)[2]
+        tracks = []
+        for sample, index in zip(samples, assignment):
+            x, y, pinch, scroll = sample[:4]
+            ratio = sample[4] if len(sample) > 4 else None
+            if index < 0:
+                tracks.append((x, y, pinch, scroll and not pinch, 0, x, y))
+                continue
+            old = previous[index]
             previous[index] = None
-            sx = .55 * x + .45 * old[0]
-            sy = .55 * y + .45 * old[1]
-            open_frames = old[4] + 1 if old[2] and not pinch else 0
-            held = pinch or (old[2] and open_frames < 2)
-            tracks.append((sx, sy, held, scroll and not held, open_frames))
+            # Adaptive smoothing: fine hand jitter is damped, deliberate fast
+            # movement follows more closely than a fixed low-pass filter.
+            delta = math.hypot(x - old[0], y - old[1])
+            alpha = max(.30, min(.85, .30 + delta * 7))
+            sx = old[0] + alpha * (x - old[0])
+            sy = old[1] + alpha * (y - old[1])
+            # A larger release threshold prevents a pinched gesture oscillating
+            # at the boundary. It still needs two consecutive open frames.
+            closed = ratio < .50 if old[2] and ratio is not None else pinch
+            open_frames = old[4] + 1 if old[2] and not closed else 0
+            held = closed or (old[2] and open_frames < 2)
+            tracks.append((sx, sy, held, scroll and not held, open_frames, x, y))
         self._tracks = tracks
-        # If a pinching hand disappears or jumps out of the match radius,
-        # explicitly cancel the whole frame. A different, open hand must not
-        # be misinterpreted by the UI as that pinch being released.
+        # Tracking loss cancels rather than synthesizing a release/click.
         if any(track is not None and track[2] for track in previous):
+            self._tracks = []
             return ()
         return tuple(track[:4] for track in tracks)
 
@@ -115,6 +149,18 @@ class WorkspaceHandController:
             cap = cv2.VideoCapture(camera_index, cv2.CAP_DSHOW)
             if not cap.isOpened():
                 raise RuntimeError('Camera could not be opened')
+            # Drivers may ignore these hints. A modest capture size and a
+            # one-frame buffer reduce processing and stale frames when supported.
+            for prop, value in (("CAP_PROP_FRAME_WIDTH", 640),
+                                ("CAP_PROP_FRAME_HEIGHT", 480),
+                                ("CAP_PROP_BUFFERSIZE", 1)):
+                code = getattr(cv2, prop, None)
+                if code is not None and hasattr(cap, "set"):
+                    try:
+                        cap.set(code, value)
+                    except Exception:
+                        # Some camera backends do not support property hints.
+                        pass
             hands = mp.solutions.hands.Hands(max_num_hands=2, min_detection_confidence=.75,
                                             min_tracking_confidence=.75)
             with self._lock:
@@ -135,8 +181,10 @@ class WorkspaceHandController:
                     self._stop.wait(.05)
                     continue
                 failures = 0
-                result = hands.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-                values = [hand_sample(hand.landmark) for hand in (result.multi_hand_landmarks or [])]
+                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                rgb.flags.writeable = False
+                result = hands.process(rgb)
+                values = [_hand_measurement(hand.landmark) for hand in (result.multi_hand_landmarks or [])]
                 values = stabilizer.update(v for v in values if v is not None)
                 with self._lock:
                     if not self._stop.is_set():

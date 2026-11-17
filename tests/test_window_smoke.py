@@ -1230,3 +1230,65 @@ def test_hand_board_commands_do_not_start_camera(window, monkeypatch):
     assert execute(window, {"action": "board_add", "title": "Plan", "text": "Test"})["ok"]
     assert execute(window, {"action": "board_list"})["items"] == [("Plan", "Test")]
     assert len(opened) == 1
+
+
+def test_remote_https_button_saves_setting_and_says_restart(window, isolated_config):
+    from core.i18n import label
+    isolated_config.set_config_values(dashboard_https=False, assistant_name="keep")
+    window.on_remote_clicked = lambda: ("http://192.168.1.5:8000", "ABCDEFGH", "", "", "")
+    window._open_remote()
+    overlay = window._remote_overlay
+    assert overlay._https_status.text() == label("remote.http.warning")
+    overlay._enable_https()
+    assert isolated_config.load_api_keys()["dashboard_https"] is True
+    assert isolated_config.load_api_keys()["assistant_name"] == "keep"
+    assert overlay._https_status.text() == label("remote.https.restart")
+    assert overlay._manual_url.startswith("http://")
+
+
+def test_remote_https_save_failure_is_visible(window, isolated_config, monkeypatch):
+    from core.i18n import label
+    monkeypatch.setattr(isolated_config, "set_config_values", lambda **_: False)
+    window.on_remote_clicked = lambda: ("http://192.168.1.5:8000", "ABCDEFGH", "", "", "")
+    window._open_remote()
+    window._remote_overlay._enable_https()
+    assert window._remote_overlay._https_status.text() == label("remote.https.save_failed")
+
+
+def test_remote_security_status_reports_running_protocol(window, isolated_config):
+    from core.i18n import label
+    isolated_config.set_config_values(dashboard_https=True)
+    window.on_remote_clicked = lambda: ("http://192.168.1.5:8000", "ABCDEFGH", "", "", "")
+    window._open_remote()
+    assert window._remote_overlay._https_status.text() == label("remote.https.restart")
+    window.on_remote_clicked = lambda: ("https://192.168.1.5:8001", "ABCDEFGH", "", "", "")
+    window._open_remote()
+    assert window._remote_overlay._https_status.text() == label("remote.https.active")
+
+
+def test_mt5_emergency_stop_and_confirmed_resume_controls(window, monkeypatch):
+    from core import trade_gate
+    from core.i18n import label
+    from ui import mt5_trade as view
+    trade_gate.resume()
+    dialog = view.OrderDialog.__new__(view.OrderDialog)
+    dialog.gate_status = _Object()
+    dialog.stop_button = _Object()
+    dialog.resume_button = _Object()
+    dialog.review = _Object()
+    dialog.mode = types.SimpleNamespace(currentData=lambda: "OFF", setCurrentIndex=lambda _: None)
+    dialog._busy = False
+    answers = types.SimpleNamespace(Yes=1, No=2)
+    monkeypatch.setattr(view, "QMessageBox", types.SimpleNamespace(
+        StandardButton=answers, question=lambda *args: answers.No))
+    try:
+        dialog._emergency_stop()
+        assert trade_gate.stopped() and dialog.gate_status.text() == label("trade.stopped")
+        dialog._resume_trading()
+        assert trade_gate.stopped()
+        monkeypatch.setattr(view.QMessageBox, "question", lambda *args: answers.Yes)
+        dialog._resume_trading()
+        assert not trade_gate.stopped()
+        assert dialog.gate_status.text() == label("trade.stop_ready")
+    finally:
+        trade_gate.resume()

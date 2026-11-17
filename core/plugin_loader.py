@@ -8,7 +8,9 @@ toggling a plugin does not require restarting the app or re-importing anything.
 """
 from __future__ import annotations
 
+import ast
 import importlib.util
+import tokenize
 import inspect
 import re
 import sys
@@ -338,6 +340,39 @@ def _load_error(path: Path, plugins_dir: Path, exc: Exception) -> str:
     return f"Failed to load: {exc}"
 
 
+
+def _literal_plugin_name(path: Path) -> str:
+    """Read an unambiguous literal PLUGIN name without executing the module.
+
+    Dynamic declarations are still supported; they are compared after import.
+    This inspection is not a security sandbox and does not prove what code does.
+    """
+    try:
+        with tokenize.open(path) as stream:
+            tree = ast.parse(stream.read(), filename=str(path))
+    except (OSError, SyntaxError, UnicodeError):
+        return ""
+    declarations = []
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(
+                isinstance(target, ast.Name) and target.id == "PLUGIN" for target in node.targets):
+            declarations.append(node.value)
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == "PLUGIN":
+            declarations.append(node.value)
+    if len(declarations) != 1 or not isinstance(declarations[0], ast.Dict):
+        return ""
+    pairs = zip(declarations[0].keys, declarations[0].values)
+    names = [v.value for k, v in pairs if isinstance(k, ast.Constant) and k.value == "name"
+             and isinstance(v, ast.Constant) and isinstance(v.value, str)]
+    return names[0] if len(names) == 1 else ""
+
+
+class _ManifestRejected(Exception):
+    """Carry a refused manifest record without importing its plugin."""
+    def __init__(self, record: PluginRecord):
+        self.record = record
+
+
 def discover_plugins(plugins_dir: Path, core_tool_names: set[str],
                       logger: Callable[[str], None] = print,
                       notify: Callable[[str], None] | None = None) -> PluginRegistry:
@@ -357,6 +392,22 @@ def discover_plugins(plugins_dir: Path, core_tool_names: set[str],
         if path.name.startswith("_"):
             continue
         try:
+            # Reject a malformed manifest, hash mismatch or undeclared obvious
+            # permissions *before* executing module-level code. This is not a
+            # sandbox or a trust decision; legacy files without a manifest still
+            # load, and valid plugins still execute with JARVIS's authority.
+            from core.plugin_manifest import verify as _verify_manifest
+            try:
+                manifest = _verify_manifest(path, _literal_plugin_name(path))
+            except Exception as exc:
+                raise _ManifestRejected(PluginRecord(
+                    name=path.stem, file=path.name,
+                    error=f"Manifest check failed — could not verify: {exc}")) from exc
+            if manifest is not None and not manifest.ok:
+                raise _ManifestRejected(PluginRecord(
+                    name=manifest.name, file=path.name, manifest=manifest,
+                    error="Manifest check failed — " + "; ".join(manifest.problems)))
+
             module_name = f"plugins.{path.stem}"
             spec = importlib.util.spec_from_file_location(module_name, path)
             if spec is None or spec.loader is None:
@@ -371,35 +422,26 @@ def discover_plugins(plugins_dir: Path, core_tool_names: set[str],
 
             rec = _validate(module, path.name)
 
-            # ── A manifest, when there is one, is a gate ────────────────────
-            # Checked AFTER the module is imported, because PLUGIN["name"] is
-            # inside it and the manifest has to agree with that name. That
-            # ordering is a compromise and worth naming: a plugin with a bad
-            # manifest has already run its module-level code by the time it is
-            # refused. Module-level code is not where a tool lives (run() is),
-            # and checking before import would mean parsing the file twice for
-            # a name that is only a dict key — but it means a manifest is a
-            # gate against RUNNING the plugin, not against IMPORTING it.
-            #
-            # No manifest is fine and stays fine: every plugin in this folder
-            # predates the idea. A manifest that exists and does not verify is
-            # refused loudly, with the reason, because silence is what makes a
-            # "checked" plugin indistinguishable from an unchecked one.
-            if rec.valid:
+            if rec.valid and manifest is not None:
+                # PLUGIN may be computed dynamically, so this particular name
+                # comparison is only possible after import. Verify again to
+                # detect a file changed since preflight, without claiming this
+                # removes all races or isolates arbitrary plugin code.
                 try:
-                    from core.plugin_manifest import verify as _verify_manifest
                     manifest = _verify_manifest(path, rec.name)
-                except Exception as e:      # noqa: BLE001 — explained below
-                    manifest = None
-                    logger(f"⚠ {path.name}: manifest could not be checked ({e})")
-                if manifest is not None:
-                    rec.manifest = manifest
-                    if not manifest.ok:
-                        rec = PluginRecord(
-                            name=rec.name, file=path.name, manifest=manifest,
-                            error="Manifest check failed — " + "; ".join(manifest.problems))
-                    for warning in manifest.warnings:
-                        logger(f"⚠ {path.name}: {warning}")
+                    if manifest is None:
+                        raise ValueError("manifest disappeared during loading")
+                except Exception as exc:
+                    raise _ManifestRejected(PluginRecord(
+                        name=rec.name, file=path.name,
+                        error=f"Manifest check failed — could not verify: {exc}")) from exc
+                rec.manifest = manifest
+                if not manifest.ok:
+                    rec = PluginRecord(
+                        name=rec.name, file=path.name, manifest=manifest,
+                        error="Manifest check failed — " + "; ".join(manifest.problems))
+                for warning in manifest.warnings:
+                    logger(f"⚠ {path.name}: {warning}")
 
             if rec.valid and rec.name in core_tool_names:
                 rec = PluginRecord(name=rec.name, file=path.name,
@@ -409,6 +451,8 @@ def discover_plugins(plugins_dir: Path, core_tool_names: set[str],
                 rec = PluginRecord(name=rec.name, file=path.name,
                                     error=f"Name '{rec.name}' already used by plugin '{other}' — rejected.")
 
+        except _ManifestRejected as e:
+            rec = e.record
         except Exception as e:
             rec = PluginRecord(name=path.stem, file=path.name,
                                 error=_load_error(path, plugins_dir, e))

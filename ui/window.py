@@ -3182,7 +3182,7 @@ class RemoteKeyOverlay(QWidget):
 
     closed = pyqtSignal()
 
-    _OW, _OH = 400, 465
+    _OW, _OH = 400, 545
 
     def __init__(self, url: str, key: str, auto_login_url: str = "",
                  manual_url: str = "", expiry_secs: int = 600, parent=None,
@@ -3217,6 +3217,25 @@ class RemoteKeyOverlay(QWidget):
             return w
 
         lay.addWidget(_lbl(_t("remote.heading"), 12, True))
+        self._https_status = _lbl("", 8, color=C.TEXT_MED)
+        lay.addWidget(self._https_status)
+        self._https_button = QPushButton(_t("remote.https.enable"))
+        self._https_button.setFixedHeight(28)
+        self._https_button.setStyleSheet(
+            f"QPushButton {{ background: {C.PANEL}; color: {C.PRI}; "
+            f"border: 1px solid {C.PRI_DIM}; border-radius: 5px; }}")
+        self._https_button.clicked.connect(self._enable_https)
+        lay.addWidget(self._https_button)
+        from memory.config_manager import load_api_keys
+        requested = load_api_keys().get("dashboard_https") is True
+        if url.startswith("https://"):
+            self._https_status.setText(_t("remote.https.active"))
+            self._https_button.hide()
+        elif requested:
+            self._https_status.setText(_t("remote.https.restart"))
+            self._https_button.hide()
+        else:
+            self._https_status.setText(_t("remote.http.warning"))
         sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
         sep.setStyleSheet(f"color: {C.BORDER}; margin: 1px 0;")
         lay.addWidget(sep)
@@ -3254,8 +3273,9 @@ class RemoteKeyOverlay(QWidget):
         # code, where the person about to scan it is looking. A dashboard that
         # cannot be reached and does not explain why is the single most
         # frustrating failure this app has.
-        if bind_error:
-            lay.addWidget(_lbl("⚠  " + bind_error, 8, color="#f4b942"))
+        self._bind_error_lbl = _lbl("⚠  " + bind_error if bind_error else "", 8, color="#f4b942")
+        lay.addWidget(self._bind_error_lbl)
+        self._bind_error_lbl.setVisible(bool(bind_error))
 
         try:
             from dashboard.server import blocking_firewall_rules
@@ -3341,6 +3361,15 @@ class RemoteKeyOverlay(QWidget):
         self._ctimer.start(1000)
         self._tick()
 
+    def _enable_https(self):
+        # The running server keeps its original listener until restart.
+        from memory.config_manager import set_config_values
+        if set_config_values(dashboard_https=True):
+            self._https_status.setText(_t("remote.https.restart"))
+            self._https_button.hide()
+        else:
+            self._https_status.setText(_t("remote.https.save_failed"))
+
     def set_new_key_callback(self, fn) -> None:
         self._on_new_key = fn
 
@@ -3416,6 +3445,9 @@ class RemoteKeyOverlay(QWidget):
                 key    = result[1]
                 auto   = result[2] if len(result) >= 3 else ""
                 manual = result[3] if len(result) >= 4 else url
+                error = result[4] if len(result) >= 5 else ""
+                self._bind_error_lbl.setText("⚠  " + error if error else "")
+                self._bind_error_lbl.setVisible(bool(error))
                 self._manual_url     = manual or url
                 self._url_lbl.setText(self._manual_url)
                 self._key_lbl.setText(key)

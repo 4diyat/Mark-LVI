@@ -119,3 +119,83 @@ def test_one_lost_pinching_hand_cancels_even_if_other_hand_is_visible():
     tracker.update([(.2, .5, True, False), (.8, .5, False, False)])
     assert tracker.update([(.8, .5, False, False)]) == ()
     assert tracker.update([(.8, .5, False, False)])[0][2] is False
+
+
+def test_pinch_hysteresis_requires_a_clear_release():
+    from core.workspace_gesture import HandStabilizer
+    tracker = HandStabilizer()
+    assert tracker.update([(.5, .5, True, False, .30)])[0][2]
+    # In the gap between pinch and release thresholds, keep holding even when
+    # the instantaneous binary classification flickers open.
+    for ratio in (.40, .46, .49, .41):
+        assert tracker.update([(.5, .5, False, True, ratio)])[0][2:] == (True, False)
+    assert tracker.update([(.5, .5, False, False, .55)])[0][2]
+    assert not tracker.update([(.5, .5, False, False, .55)])[0][2]
+
+
+def test_pointer_smoothing_dampens_jitter_and_follows_fast_motion():
+    from core.workspace_gesture import HandStabilizer
+    tracker = HandStabilizer()
+    tracker.update([(.5, .5, False, False)])
+    fine = tracker.update([(.502, .5, False, False)])[0][0]
+    assert .5 < fine < .501
+    fast = tracker.update([(.60, .5, False, False)])[0][0]
+    assert fast > fine + .8 * (.60 - fine)
+
+
+def test_disappearing_pinching_hand_cancels_even_when_hands_are_close():
+    from core.workspace_gesture import HandStabilizer
+    tracker = HandStabilizer()
+    tracker.update([(.50, .5, True, False), (.54, .5, False, False)])
+    # The remaining open hand is nearest the old pinching hand. Do not let it
+    # inherit that state and create a click on its next frame.
+    assert tracker.update([(.51, .5, False, False)]) == ()
+    assert not tracker.update([(.51, .5, False, False)])[0][2]
+
+
+def test_camera_low_latency_hints_are_best_effort(monkeypatch):
+    import sys
+    from core import camera_lease
+
+    properties = []
+    class Capture:
+        def isOpened(self):
+            return True
+        def set(self, prop, value):
+            properties.append((prop, value))
+            if prop == 3:
+                raise RuntimeError('unsupported buffer')
+            return False  # A driver can refuse a hint without failing startup.
+        def read(self):
+            return False, None
+        def release(self):
+            pass
+    class Hands:
+        def __init__(self, **kwargs):
+            pass
+        def close(self):
+            pass
+    cv2 = SimpleNamespace(VideoCapture=lambda *_: Capture(), CAP_DSHOW=0,
+                          CAP_PROP_FRAME_WIDTH=1, CAP_PROP_FRAME_HEIGHT=2, CAP_PROP_BUFFERSIZE=3)
+    mp = SimpleNamespace(solutions=SimpleNamespace(hands=SimpleNamespace(Hands=Hands)))
+    monkeypatch.setitem(sys.modules, 'cv2', cv2)
+    monkeypatch.setitem(sys.modules, 'mediapipe', mp)
+    monkeypatch.setattr('core.workspace_gesture.platform.system', lambda: 'Windows')
+    controller = WorkspaceHandController()
+    assert controller.start()
+    controller.thread.join(timeout=3)
+    assert not controller.thread.is_alive()
+    assert properties == [(1, 640), (2, 480), (3, 1)]
+    assert controller.error == 'Camera stopped returning frames'
+    assert camera_lease.acquire()
+    camera_lease.release()
+
+
+def test_two_hand_matching_uses_best_overall_assignment():
+    from core.workspace_gesture import HandStabilizer
+    tracker = HandStabilizer()
+    tracker.update([(.40, .5, True, False), (.50, .5, False, False)])
+    # Greedy nearest-neighbour would assign .46 to .50 and transfer the
+    # pinch to .51, despite the lower overall cost of the other assignment.
+    left, right = tracker.update([(.46, .5, False, False), (.51, .5, False, False)])
+    assert left[2] and not right[2]

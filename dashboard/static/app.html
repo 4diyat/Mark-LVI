@@ -32,7 +32,7 @@
     .conversation { display:flex; flex-direction:column; overflow:hidden; } .chat-head { padding:20px 24px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; } .chat-head h1 { font-size:15px; margin:0; } .chat-head p { margin:4px 0 0; font-size:11px; color:var(--muted); } .chat-icon { display:grid; place-items:center; width:36px; height:36px; border-radius:10px; background:#17303c; color:var(--accent); font-size:18px; }
     #feed { flex:1; min-height:0; overflow-y:auto; padding:24px; display:flex; flex-direction:column; gap:12px; scrollbar-color:#35505d transparent; } .welcome { border:1px solid #284453; background:#10222e; border-radius:13px; padding:18px 20px; max-width:520px; } .welcome .eyebrow { color:#7ad9cd; } .welcome h2 { margin:8px 0 5px; font-size:17px; } .welcome p { margin:0; color:#a8bfca; font-size:12px; line-height:1.55; }
     .msg { max-width:min(82%,650px); padding:12px 15px; border-radius:13px; font-size:13px; line-height:1.55; overflow-wrap:anywhere; } .msg-j { align-self:flex-start; background:#152a37; border:1px solid #2b4957; border-bottom-left-radius:4px; } .msg-u { align-self:flex-end; background:#225050; border:1px solid #3d7775; border-bottom-right-radius:4px; } .msg-sys { align-self:center; text-align:center; font-size:11px; color:#a8bac6; line-height:1.5; padding:3px 10px; overflow-wrap:anywhere; } .lbl { font-size:9px; font-weight:800; letter-spacing:.13em; text-transform:uppercase; color:#86d9cd; margin-bottom:5px; } .msg-u .lbl { color:#c3e3d9; }
-    .msg-file { align-self:flex-end; background:#152a37; border:1px solid #2b4957; border-radius:12px; padding:12px; display:flex; align-items:center; gap:12px; max-width:85%; } .fc-icon { font-size:22px; } .fc-meta { min-width:0; flex:1; } .fc-lbl,.fc-size,.fc-status { color:var(--muted); font-size:10px; } .fc-name { font-size:12px; overflow-wrap:anywhere; } .fc-bar-wrap { height:3px; background:#314b55; margin-top:7px; } .fc-bar { height:100%; background:var(--accent); } .fc-dl { color:var(--accent); font-size:11px; display:block; margin-top:5px; } .fc-status.err { color:#ff9e9e; }
+    .msg-file { align-self:flex-end; background:#152a37; border:1px solid #2b4957; border-radius:12px; padding:12px; display:flex; align-items:center; gap:12px; max-width:85%; } .fc-icon { font-size:22px; } .fc-meta { min-width:0; flex:1; } .fc-lbl,.fc-size,.fc-status { color:var(--muted); font-size:10px; } .fc-name { font-size:12px; overflow-wrap:anywhere; } .fc-bar-wrap { height:3px; background:#314b55; margin-top:7px; } .fc-bar { height:100%; background:var(--accent); } .fc-dl { color:var(--accent); font-size:11px; display:block; margin-top:5px; padding:0; border:0; background:transparent; text-align:left; } .fc-status.err { color:#ff9e9e; }
     .composer { padding:14px 18px 18px; border-top:1px solid var(--border); } .composer-row { display:flex; align-items:center; gap:8px; padding:5px; border:1px solid #304b5c; border-radius:12px; background:#09151f; } #inp { flex:1; min-width:0; padding:12px; border:0; color:var(--text); background:transparent; outline:none; font-size:16px; } #inp::placeholder { color:#829aa9; } .btn-attach { border:0; background:transparent; font-size:21px; display:grid; place-items:center; width:40px; height:40px; flex:none; border-radius:9px; color:#a4bbc7; cursor:pointer; } .btn-attach:hover { background:#1c3441; } .btn-send { border:0; background:var(--accent); color:#092427; border-radius:9px; padding:12px 17px; font-size:11px; font-weight:800; letter-spacing:.08em; } .composer-note { margin:9px 4px 0; color:#829aa9; font-size:10px; }
     #toast { position:fixed; z-index:5; top:82px; left:50%; transform:translate(-50%,-8px); background:#174138; border:1px solid #3d8b79; color:#b6ffe1; font-size:12px; font-weight:700; padding:9px 16px; border-radius:99px; opacity:0; transition:.2s; pointer-events:none; max-width:90vw; text-align:center; } #toast.show { opacity:1; transform:translate(-50%,0); }
     @media(max-width:760px) { .topbar { min-height:62px; padding:10px 16px; gap:10px; } .top-label,.top-divider,.url { display:none; } .workspace { padding:12px; display:flex; flex-direction:column; gap:10px; } .side { flex:none; padding:14px 16px; display:grid; grid-template-columns:74px 1fr; gap:0 15px; overflow:visible; } .section-top,.side-foot { display:none; } .orb-area { grid-row:1 / 4; min-height:80px; } .orb { width:56px; height:56px; } .orb::before { inset:-6px; } .orb::after { inset:-11px; } .assistant-heading { text-align:left; font-size:16px; margin:0; } .assistant-caption { text-align:left; margin:2px 0 5px; font-size:11px; } .pill-wrap { text-align:left; margin:0; } .pill { padding:4px 8px; } .controls { grid-column:1 / -1; padding-top:12px; margin-top:12px; } .control-title { margin-bottom:8px; } .voice-actions { grid-template-columns:1fr 1fr; } #mic-btn,#speaker-btn { min-height:44px; } .voice-help { margin-top:7px; } .conversation { flex:1; } .chat-head { padding:14px 16px; } #feed { padding:16px; } .composer { padding:10px 12px max(12px,env(safe-area-inset-bottom)); } .connection { font-size:0; gap:0; } .connection i { width:8px; height:8px; } }
@@ -168,14 +168,20 @@
     const wake  = document.getElementById('wake');
 
     const _wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
-    const _wsUrl   = `${_wsProto}://${location.host}/ws?token=${encodeURIComponent(_authToken)}`;
+    const _wsUrl   = `${_wsProto}://${location.host}/ws`;
     const ws       = new WebSocket(_wsUrl);
 
-    ws.onopen    = () => { document.getElementById('connection').classList.add('online'); document.getElementById('connection-text').textContent = 'Connected'; sys('Remote session active.'); toast('Connected to ' + document.getElementById('assistant-name').textContent); };
+    ws.onopen = () => ws.send(JSON.stringify({type: 'auth', token: _authToken}));
     ws.onclose   = () => { document.getElementById('connection').classList.remove('online'); document.getElementById('connection-text').textContent = 'Disconnected'; pill.className = 'pill'; stTxt.textContent = 'Disconnected'; sys('Connection lost — refresh to reconnect.'); };
     ws.onerror   = () => sys('Connection error.');
     ws.onmessage = (e) => {
       const m = JSON.parse(e.data);
+      if (m.type === 'auth_ok') {
+        document.getElementById('connection').classList.add('online');
+        document.getElementById('connection-text').textContent = 'Connected';
+        sys('Remote session active.');
+        toast('Connected to ' + document.getElementById('assistant-name').textContent);
+      }
       if (m.type === 'log')           append(m.speaker, m.text);
       if (m.type === 'status')        setStatus(m.state);
       if (m.type === 'wake')          sys('Wake word detected — connecting…');
@@ -236,6 +242,43 @@
       return (bytes / 1024 ** 3).toFixed(2) + ' GB';
     }
 
+    // A normal navigation cannot attach Authorization. Fetch with a header and
+    // hand the browser a temporary Blob URL instead of putting the session token
+    // in a URL. Large files can consume substantial device memory.
+    async function _downloadFile(name) {
+      let objectUrl = null;
+      let link = null;
+      try {
+        const response = await _authFetch(`/uploads/${encodeURIComponent(name)}`);
+        if (!response.ok) {
+          toast(response.status === 401 ? 'Session expired; reconnect to download.' : 'Download failed.');
+          return;
+        }
+        const blob = await response.blob();
+        objectUrl = URL.createObjectURL(blob);
+        link = document.createElement('a');
+        link.href = objectUrl;
+        link.download = name;
+        document.body.appendChild(link);
+        link.click();
+      } catch (_) {
+        toast('Download failed. Check the connection and available device memory.');
+      } finally {
+        if (link) link.remove();
+        // Give the browser time to initiate its download before releasing it.
+        if (objectUrl) setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+      }
+    }
+
+    function _downloadButton(container, name, text) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'fc-dl';
+      button.textContent = text;
+      button.addEventListener('click', () => _downloadFile(name));
+      container.appendChild(button);
+    }
+
     // ── File upload (phone → computer) ────────────────────────────────────────
     function _uploadFile(file) {
       const id = 'fc_' + Date.now() + '_' + Math.random().toString(36).slice(2);
@@ -278,12 +321,10 @@
         if (xhr.status === 200) {
           let savedName = file.name;
           try { savedName = JSON.parse(xhr.responseText).name || file.name; } catch {}
-          const dlUrl = `/uploads/${encodeURIComponent(savedName)}?token=${encodeURIComponent(_authToken)}`;
           if (bar)  { bar.style.width = '100%'; bar.style.background = 'var(--green)'; }
           if (st)   { st.textContent = '✓'; st.className = 'fc-status done'; }
           if (lbl)  lbl.textContent = 'Sent';
-          if (meta) meta.insertAdjacentHTML('beforeend',
-            `<a class="fc-dl" href="${dlUrl}" download="${esc(savedName)}">⬇ Download back</a>`);
+          if (meta) _downloadButton(meta, savedName, '⬇ Download back');
           toast('File sent!');
         } else {
           let errMsg = 'Upload failed';
@@ -308,7 +349,6 @@
 
     // File received by another WebSocket client (e.g., second open tab)
     function _onFileReceived(m) {
-      const dlUrl = `/uploads/${encodeURIComponent(m.name)}?token=${encodeURIComponent(_authToken)}`;
       const card  = document.createElement('div');
       card.className = 'msg-file';
       card.innerHTML = `
@@ -317,10 +357,11 @@
           <div class="fc-lbl">Received</div>
           <div class="fc-name">${esc(m.name)}</div>
           <div class="fc-size">${_fmtSize(m.size)}</div>
-          <a class="fc-dl" href="${dlUrl}" download="${esc(m.name)}">⬇ Download</a>
         </div>
         <div class="fc-status done">✓</div>
       `;
+      const meta = card.querySelector('.fc-meta');
+      if (meta) _downloadButton(meta, m.name, '⬇ Download');
       feed.appendChild(card);
       feed.scrollTop = feed.scrollHeight;
       toast('File received on computer!');
@@ -391,17 +432,25 @@
         if (_playCtx !== ctx) return;
         if (ctx.state !== 'running') throw new Error('Browser audio could not start');
         const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-        const ws = new WebSocket(`${proto}://${location.host}/ws/phone-playback?token=${encodeURIComponent(_authToken)}`);
+        const ws = new WebSocket(`${proto}://${location.host}/ws/phone-playback`);
         _playWs = ws;
         ws.binaryType = 'arraybuffer';
         ws.onopen = () => {
-          if (_playWs !== ws) return;
-          speakerBtn.textContent = '◖  Sound on';
-          speakerBtn.setAttribute('aria-pressed', 'true');
-          sys('Remote sound on. Use headphones to avoid echo.');
+          if (_playWs === ws) ws.send(JSON.stringify({type: 'auth', token: _authToken}));
         };
         ws.onmessage = e => {
-          if (_playWs !== ws || typeof e.data === 'string' || !(e.data instanceof ArrayBuffer)) return;
+          if (_playWs !== ws) return;
+          if (typeof e.data === 'string') {
+            let message;
+            try { message = JSON.parse(e.data); } catch (_) { return; }
+            if (message.type === 'auth_ok') {
+              speakerBtn.textContent = '◖  Sound on';
+              speakerBtn.setAttribute('aria-pressed', 'true');
+              sys('Remote sound on. Use headphones to avoid echo.');
+            }
+            return;
+          }
+          if (!(e.data instanceof ArrayBuffer)) return;
           if (ctx.state !== 'running' || e.data.byteLength % 2) return;
           // Do not accumulate seconds of delayed output on an overloaded phone.
           if (_playCursor > ctx.currentTime + 1.5) return;
@@ -494,10 +543,19 @@
         if (resumeError) throw resumeError;
         if (ctx.state !== 'running') throw new Error('Audio context could not start');
         const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
-        ws = new WebSocket(`${wsProto}://${location.host}/ws/phone-audio?token=${encodeURIComponent(_authToken)}`);
+        ws = new WebSocket(`${wsProto}://${location.host}/ws/phone-audio`);
         _voiceWs = ws;
         ws.binaryType = 'arraybuffer';
-        ws.onopen = async () => {
+        ws.onopen = () => {
+          if (_voiceWs === ws) ws.send(JSON.stringify({type: 'auth', token: _authToken}));
+        };
+        let audioStarted = false;
+        ws.onmessage = async e => {
+          let message;
+          try { message = JSON.parse(e.data); } catch (_) { return; }
+          if (message.type !== 'auth_ok' || audioStarted || _voiceWs !== ws ||
+              generation !== _voiceGeneration || !_pttHeld) return;
+          audioStarted = true;
           try {
             const src = ctx.createMediaStreamSource(stream);
             const resample = _pcmResampler(ctx.sampleRate);

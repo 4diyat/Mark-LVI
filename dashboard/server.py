@@ -1,10 +1,8 @@
 """
 dashboard/server.py — JARVIS Local HTTP Dashboard
 
-HTTPS on port 8000 with a self-signed certificate generated on first run, plus
-a second layer inside it: commands are encrypted with AES-256-GCM under a key
-derived from the pairing code with PBKDF2. Both layers are required — the
-server refuses to start without TLS rather than quietly serving in clear.
+HTTP on port 8000 by default, or opt-in HTTPS on port 8001. When HTTPS is
+requested, the server refuses to fall back to cleartext on TLS failure.
 
 Install deps:  pip install fastapi "uvicorn[standard]" cryptography
 """
@@ -651,7 +649,7 @@ def _local_ip() -> str:
     return "127.0.0.1"
 
 
-def _ensure_certs() -> bool:
+def _ensure_certs(address: str | None = None) -> bool:
     """
     Make sure config/certs holds a TLS key pair, generating a self-signed one the
     first time the dashboard runs.
@@ -661,14 +659,16 @@ def _ensure_certs() -> bool:
     present a certificate that matches it. Generating locally gives each install
     its own key, costs about a second, and happens exactly once.
 
-    Returns True when a usable pair exists afterwards; False leaves the caller on
-    plain HTTP, which still works — the QR code simply encodes http:// instead.
+    Returns False on failure; a requested HTTPS listener must not downgrade.
     """
     certs = BASE_DIR / "config" / "certs"
     key_p = certs / "jarvis.key"
     crt_p = certs / "jarvis.crt"
     if key_p.exists() and crt_p.exists():
         return True
+    if key_p.exists() or crt_p.exists():
+        print("[Dashboard] Incomplete TLS pair; existing files will not be overwritten.")
+        return False
 
     try:
         import datetime
@@ -678,7 +678,7 @@ def _ensure_certs() -> bool:
         from cryptography.hazmat.primitives.asymmetric import rsa
         from cryptography.x509.oid import NameOID
     except ImportError:
-        print("[Dashboard] cryptography not installed — serving over plain HTTP.")
+        print("[Dashboard] cryptography not installed — HTTPS unavailable.")
         print("[Dashboard] For HTTPS run:  pip install cryptography")
         return False
 
@@ -696,7 +696,7 @@ def _ensure_certs() -> bool:
         alt = [x509.DNSName("localhost"),
                x509.IPAddress(ipaddress.IPv4Address("127.0.0.1"))]
         try:
-            lan = _local_ip()
+            lan = address or _local_ip()
             if not lan.startswith("127."):
                 alt.append(x509.IPAddress(ipaddress.IPv4Address(lan)))
         except Exception as e:
@@ -721,24 +721,40 @@ def _ensure_certs() -> bool:
             .sign(key, hashes.SHA256())
         )
 
-        key_p.write_bytes(key.private_bytes(
+        from tools.setup_local_https import _install_pair
+        _install_pair(key_p, key.private_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PrivateFormat.TraditionalOpenSSL,
-            encryption_algorithm=serialization.NoEncryption(),
-        ))
-        crt_p.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
-
-        try:
-            import os as _os
-            _os.chmod(key_p, 0o600)   # best effort — largely a no-op on Windows
-        except Exception as e:
-            _dlog.warning("could not restrict the TLS key's permissions: %s", e)
+            encryption_algorithm=serialization.NoEncryption()),
+            crt_p, cert.public_bytes(serialization.Encoding.PEM), replace=False)
 
         print(f"[Dashboard] Generated a self-signed certificate for this machine: {certs}")
         return True
     except Exception as e:
-        print(f"[Dashboard] Certificate generation failed ({e}) — serving over plain HTTP.")
+        print(f"[Dashboard] Certificate generation failed ({e}) — HTTPS unavailable.")
         return False
+
+
+def _validate_certs(key_path: Path, cert_path: Path, address: str) -> None:
+    """Check the key pair, validity period, and the advertised IP address."""
+    import datetime
+    import ipaddress
+    import ssl
+    from cryptography import x509
+
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain(str(cert_path), str(key_path))
+    cert = x509.load_pem_x509_certificate(cert_path.read_bytes())
+    now = datetime.datetime.now(datetime.timezone.utc)
+    if not cert.not_valid_before_utc <= now <= cert.not_valid_after_utc:
+        raise ValueError("server certificate is expired or not yet valid")
+    try:
+        sans = cert.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
+        addresses = sans.get_values_for_type(x509.IPAddress)
+    except x509.ExtensionNotFound as exc:
+        raise ValueError("server certificate has no IP subject alternative name") from exc
+    if ipaddress.ip_address(address) not in addresses:
+        raise ValueError(f"server certificate does not cover the current LAN IP {address}")
 
 
 def _read(name: str) -> str:
@@ -833,15 +849,17 @@ _SCOPE_READ    = "read"         # watch the feed and the status only
 #     * `frame-ancestors 'none'` / X-Frame-Options: the dashboard cannot be
 #       framed, so a page on another origin cannot overlay invisible controls
 #       over it and collect taps.
-#     * `Referrer-Policy: no-referrer` — the download URL carries the auth token
-#       in its query string (a browser <a download> cannot send a header), and a
-#       Referer header would hand that token to whoever the page linked to.
+#     * `Referrer-Policy: no-referrer` — do not disclose dashboard paths or
+#       other potentially sensitive URLs to sites the page links to.
 #     * `X-Content-Type-Options: nosniff` — a file uploaded from the phone is
 #       served back under its own name; without this a browser may sniff an
 #       uploaded .html or .js and run it on this origin.
 #     * A Permissions-Policy that switches off everything the page does not use.
 _DEVICE_TOKEN_IDLE_SECONDS = 30 * 86400   # a remembered phone, unused for a month
 _MAX_LOGIN_BODY = 4096          # /login carries a key and nothing else
+_WS_AUTH_TIMEOUT = 5.0
+_MAX_PENDING_WS_AUTH = 32
+_MAX_WS_AUTH_CHARS = 512
 _MAX_COMMAND_BODY = 64 * 1024   # a command is one sentence; 64 KB is generous
 _MAX_KEY_BYTES = 1024           # an encrypted command is small
 _UPLOAD_QUOTA_MB = 2000         # total, across the uploads folder
@@ -884,6 +902,7 @@ class DashboardServer:
 
     def __init__(self):
         self._ip                          = _local_ip()
+        self._use_ssl                     = self._ssl_enabled()
         # token -> issued-at. A set had no way to expire anything; this does,
         # and `_auth` sweeps as it reads so nothing has to run a timer.
         # auth_token → [issued_at, last_seen, scope]. A bare issued-at could
@@ -892,7 +911,8 @@ class DashboardServer:
         self._tokens: dict[str, list]     = {}
         self._token_keys: dict[str, str]  = {}   # auth_token → session_key
         self._aes_cache:  dict[str, bytes]= {}   # session_key → AES bytes
-        self._clients: set[WebSocket]     = set()
+        self._clients: dict[WebSocket, str] = {}
+        self._pending_ws_auth             = 0
         self._history: list[dict]         = []
         self._command_queue               = asyncio.Queue()
         self._wake_callback               = None
@@ -940,58 +960,25 @@ class DashboardServer:
 
     @staticmethod
     def _ssl_enabled() -> bool:
-        """Is HTTPS switched on? Off unless the user asked for it.
-
-        WHY THE DEFAULT IS PLAIN HTTP, AFTER A RELEASE THAT MADE TLS MANDATORY
-            The certificate has to be self-signed — there is no certificate
-            authority on earth that will vouch for 192.168.1.108 — and a phone
-            treats a self-signed certificate as an attack. Chrome shows a
-            full-page interstitial; a QR scanner that opens links in its own
-            in-app browser often shows nothing at all and offers no way to
-            proceed, because those views deliberately have no "Advanced" button.
-
-            So the practical result of requiring TLS was a dashboard nobody
-            could reach, which is not a more secure product than one they can.
-            The pairing key, the rate limit, the token expiry and the
-            revoke-all-devices fix are all unaffected and all still apply.
-
-            What IS lost over plain HTTP is the AES-GCM layer, because
-            `crypto.subtle` does not exist outside a secure context. The page
-            says so on its own badge rather than pretending, and commands then
-            travel the local network in clear — which is what this dashboard
-            did for every release before this one.
-
-            Turn it on with "dashboard_https": true in config/api_keys.json if
-            the network is one where that matters; the certificate is generated
-            automatically and you will have to accept it once per device.
-        """
-        try:
-            import json as _json
-            with open(BASE_DIR / "config" / "api_keys.json", "r",
-                      encoding="utf-8") as f:
-                if not _json.load(f).get("dashboard_https"):
-                    return False
-        except Exception:
-            return False
-        certs = BASE_DIR / "config" / "certs"
-        return (certs / "jarvis.key").exists() and (certs / "jarvis.crt").exists()
+        """HTTPS is opt-in; keep the selected protocol fixed until restart."""
+        from memory.config_manager import load_api_keys
+        return load_api_keys().get("dashboard_https", False) is True
 
     def get_url(self) -> str:
         """The full URL the QR code carries — always with its scheme, so a
         scanner never has to guess."""
-        if self._ssl_enabled():
+        if self._use_ssl:
             return f"https://{self._ip}:{SECURE_PORT}"
         return f"http://{self._ip}:{PORT}"
 
     def get_manual_url(self) -> str:
-        """What to type into a phone browser by hand.
+        """Show the actual listener address including its scheme."""
+        return self.get_url()
 
-        Points at the redirect port when TLS is on, because a bare `ip:port`
-        typed into a browser is tried over HTTP — and HTTP against the TLS port
-        looks exactly like the server being switched off. The redirector speaks
-        HTTP, so it answers, and sends the browser on to the secure page.
-        """
-        return f"{self._ip}:{PORT}"
+    def get_pairing_url(self, key: str) -> str:
+        """Place the one-time key in a fragment, which is not sent in HTTP URLs."""
+        from urllib.parse import quote
+        return f"{self.get_url()}/login#key={quote(key, safe='')}"
 
     def _sweep_tokens(self) -> None:
         """Drop expired sessions and forgotten devices. Called at startup.
@@ -1051,13 +1038,38 @@ class DashboardServer:
 
     # ── broadcast ────────────────────────────────────────────────────────
 
+    def _valid_token(self, tok: str, need: str = _SCOPE_READ, *, refresh: bool = True) -> bool:
+        """Check expiry/scope; outgoing broadcasts do not refresh idle time."""
+        if not tok:
+            return False
+        now = time.time()
+        with self._token_lock:
+            rec = self._tokens.get(tok)
+            if rec is None:
+                return False
+            issued, last_seen, scope = rec
+            if (now - issued > _TOKEN_TTL_SECONDS
+                    or now - last_seen > _TOKEN_IDLE_SECONDS):
+                self._tokens.pop(tok, None)
+                self._token_keys.pop(tok, None)
+                return False
+            if need == _SCOPE_COMMAND and scope != _SCOPE_COMMAND:
+                return False
+            if refresh:
+                rec[1] = now
+        return True
+
     async def broadcast(self, msg: dict) -> None:
         self._history.append(msg)
         if len(self._history) > 300:
             self._history = self._history[-300:]
         dead: set[WebSocket] = set()
-        for ws in list(self._clients):
+        for ws, token in list(self._clients.items()):
             try:
+                if not self._valid_token(token, refresh=False):
+                    await ws.close(code=4001)
+                    dead.add(ws)
+                    continue
                 await ws.send_json(msg)
             except Exception as e:
                 # Expected when a phone sleeps or walks out of Wi-Fi range; the
@@ -1065,7 +1077,8 @@ class DashboardServer:
                 # a different problem from one that closed.
                 _dlog.debug("dropped a client: %s", e)
                 dead.add(ws)
-        self._clients -= dead
+        for ws in dead:
+            self._clients.pop(ws, None)
 
     def publish_audio(self, pcm: bytes) -> None:
         """Fan out live PCM only to opted-in playback sockets, never to history.
@@ -1088,39 +1101,54 @@ class DashboardServer:
     def _build_app(self) -> "FastAPI":
         app = FastAPI(docs_url=None, redoc_url=None)
 
-        def _valid(tok: str, need: str = _SCOPE_READ) -> bool:
-            """Is this token live, and may it do `need`?
-
-            Two clocks, not one. The absolute TTL stops a token lasting forever;
-            the idle window stops one nobody is using from still working
-            because it happens to be inside the 12 hours. Every check refreshes
-            last_seen, so a page that is open keeps working and a page that was
-            abandoned stops.
-
-            Expired tokens are dropped as they are found, which keeps the sweep
-            free and needs no background timer.
-            """
-            if not tok:
-                return False
-            now = time.time()
-            with self._token_lock:
-                rec = self._tokens.get(tok)
-                if rec is None:
-                    return False
-                issued, last_seen, scope = rec
-                if (now - issued > _TOKEN_TTL_SECONDS
-                        or now - last_seen > _TOKEN_IDLE_SECONDS):
-                    self._tokens.pop(tok, None)
-                    self._token_keys.pop(tok, None)
-                    return False
-                if need == _SCOPE_COMMAND and scope != _SCOPE_COMMAND:
-                    return False
-                rec[1] = now
-            return True
+        _valid = self._valid_token
 
         def _auth(req: Request, need: str = _SCOPE_COMMAND) -> bool:
             return _valid(req.headers.get("authorization", "")
                           .removeprefix("Bearer ").strip(), need)
+
+        async def _ws_authenticate(websocket: WebSocket, need: str) -> str | None:
+            """Authenticate first message before sending data or reserving audio.
+
+            Browser WebSocket cannot set Authorization headers. No token is taken
+            from the URL; bound pending handshakes and their time and message size.
+            """
+            # Never accept a legacy credential in the request URL.
+            if "token" in websocket.query_params:
+                await websocket.close(code=4001)
+                return None
+            if self._pending_ws_auth >= _MAX_PENDING_WS_AUTH:
+                await websocket.close(code=4009)
+                return None
+            self._pending_ws_auth += 1
+            accepted = False
+            try:
+                await websocket.accept()
+                accepted = True
+                raw = await asyncio.wait_for(websocket.receive_text(), timeout=_WS_AUTH_TIMEOUT)
+                if len(raw) > _MAX_WS_AUTH_CHARS:
+                    await websocket.close(code=4001)
+                    return None
+                try:
+                    data = json.loads(raw)
+                except (ValueError, TypeError):
+                    data = None
+                token = data.get("token") if isinstance(data, dict) and data.get("type") == "auth" else None
+                if not isinstance(token, str) or not token or not _valid(token, need):
+                    await websocket.close(code=4001)
+                    return None
+                return token
+            except (asyncio.TimeoutError, KeyError, TypeError, ValueError):
+                if accepted:
+                    try:
+                        await websocket.close(code=4001)
+                    except (RuntimeError, WebSocketDisconnect):
+                        pass
+                return None
+            except (WebSocketDisconnect, RuntimeError):
+                return None
+            finally:
+                self._pending_ws_auth -= 1
 
         def _issue_token(session_key: str, scope: str = _SCOPE_COMMAND) -> str:
             tok = secrets.token_urlsafe(32)
@@ -1199,7 +1227,7 @@ class DashboardServer:
                 "camera=(), geolocation=(), payment=(), usb=(), "
                 "microphone=(self)")       # the phone mic is a deliberate feature
             response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
-            # The download route puts the auth token in the URL; no cache keeps it.
+            # Do not cache authenticated responses or downloaded files.
             response.headers.setdefault("Cache-Control", "no-store")
             return response
 
@@ -1241,7 +1269,7 @@ class DashboardServer:
             # don't send custom headers (location.href doesn't carry Authorization).
             html = (self._app_html
                     .replace("__IP__", self._ip)
-                    .replace("__PORT__", str(SECURE_PORT if self._ssl_enabled() else PORT)))
+                    .replace("__PORT__", str(SECURE_PORT if self._use_ssl else PORT)))
             return _page(html)
 
         @app.post("/login")
@@ -1268,6 +1296,10 @@ class DashboardServer:
             if not isinstance(body, dict):
                 return JSONResponse({"ok": False, "error": "Bad request"}, status_code=400)
             entered = str(body.get("pin", ""))[:64].strip().upper()
+            # Another request may have exhausted the limit during body parsing.
+            if self._throttle.blocked_for(who) > 0:
+                return JSONResponse({"ok": False, "error": "Too many attempts. Try again later."},
+                                    status_code=429)
             now     = time.time()
             if entered in self._pending_keys and self._pending_keys[entered] > now:
                 self._throttle.clear(who)
@@ -1284,12 +1316,54 @@ class DashboardServer:
             return JSONResponse({"ok": False, "error": "Invalid or expired key"},
                                 status_code=401)
 
+        @app.post("/api/qr-login")
+        async def qr_login(req: Request):
+            """Pair with a QR fragment sent in the request body, not the URL."""
+            who = _who(req)
+            if self._throttle.blocked_for(who) > 0:
+                return JSONResponse({"ok": False, "error": "Too many attempts. Try again later."},
+                                    status_code=429)
+            clen = _content_length(req)
+            if clen is None or clen > _MAX_LOGIN_BODY:
+                return JSONResponse({"ok": False, "error": "Bad request"}, status_code=400)
+            try:
+                body = await req.json()
+            except Exception:
+                return JSONResponse({"ok": False, "error": "Bad request"}, status_code=400)
+            if not isinstance(body, dict) or not isinstance(body.get("key"), str):
+                return JSONResponse({"ok": False, "error": "Bad request"}, status_code=400)
+            key = body["key"][:64].strip().upper()
+            # Body parsing may yield to another request which fills the limit.
+            if self._throttle.blocked_for(who) > 0:
+                return JSONResponse({"ok": False, "error": "Too many attempts. Try again later."},
+                                    status_code=429)
+            if not key or key not in self._pending_keys or self._pending_keys[key] <= time.time():
+                self._throttle.record_failure(who)
+                return JSONResponse({"ok": False, "error": "Invalid or expired key"}, status_code=401)
+            self._throttle.clear(who)
+            del self._pending_keys[key]
+            tok = _issue_token(key, _SCOPE_COMMAND)
+            dev_tok = secrets.token_urlsafe(32)
+            self._aes_key(key)
+            with self._token_lock:
+                self._device_sessions[dev_tok] = {
+                    "session_key": key, "scope": _SCOPE_COMMAND, "last_seen": time.time(),
+                }
+            _fire_connect()
+            asyncio.create_task(self.broadcast(
+                {"type": "sys", "text": "Remote connection established via QR code."}))
+            return JSONResponse({"ok": True, "token": tok, "device_token": dev_tok})
+
         @app.get("/auto-login")
-        async def auto_login(key: str = ""):
-            """QR code target — validates one-time key, creates session, redirects phone."""
-            key = (key or "").strip().upper()
+        async def auto_login(req: Request, key: str = ""):
+            """Legacy QR links; new links use a fragment and POST instead."""
+            who = _who(req)
+            if self._throttle.blocked_for(who) > 0:
+                return HTMLResponse("Too many attempts. Try again later.", status_code=429)
+            key = (key or "")[:64].strip().upper()
             now = time.time()
             if not key or key not in self._pending_keys or self._pending_keys[key] <= now:
+                self._throttle.record_failure(who)
                 return HTMLResponse("""<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width">
 <style>
@@ -1301,6 +1375,7 @@ class DashboardServer:
 <p>Press <strong style="color:#dde3ed">Remote Control</strong> in JARVIS to get a new QR code.</p>
 </div></body></html>""")
 
+            self._throttle.clear(who)
             del self._pending_keys[key]
             tok     = _issue_token(key, _SCOPE_COMMAND)
             dev_tok = secrets.token_urlsafe(32)
@@ -1436,10 +1511,9 @@ class DashboardServer:
         # ── Phone mic real-time audio → Gemini Live ──────────────────────────
 
         @app.websocket("/ws/phone-audio")
-        async def phone_audio_ws(websocket: WebSocket, token: str = ""):
-            tok = token.strip()
-            if not _valid(tok, _SCOPE_COMMAND):
-                await websocket.close(code=4001)
+        async def phone_audio_ws(websocket: WebSocket):
+            tok = await _ws_authenticate(websocket, _SCOPE_COMMAND)
+            if tok is None:
                 return
             # Mixing two PCM streams would corrupt both utterances and make a
             # disconnect from one phone end the other phone's turn.
@@ -1447,11 +1521,9 @@ class DashboardServer:
                 await websocket.close(code=4009)
                 return
             self._phone_audio_active = True
-            accepted = False
             received = False
             try:
-                await websocket.accept()
-                accepted = True
+                await websocket.send_json({"type": "auth_ok"})
                 message = ("Phone microphone live." if self._phone_relay_ready else
                            "JARVIS is not connected yet. Wait for an active session before speaking.")
                 asyncio.create_task(self.broadcast({"type": "sys", "text": message}))
@@ -1486,21 +1558,19 @@ class DashboardServer:
                         except asyncio.QueueEmpty:
                             pass
                     self._phone_audio_queue.put_nowait({"phone_audio_end": True})
-                if accepted:
-                    asyncio.create_task(self.broadcast(
-                        {"type": "sys", "text": "Phone microphone stopped."}
-                    ))
+                asyncio.create_task(self.broadcast(
+                    {"type": "sys", "text": "Phone microphone stopped."}
+                ))
 
         @app.websocket("/ws/phone-playback")
-        async def phone_playback_ws(websocket: WebSocket, token: str = ""):
-            tok = token.strip()
-            if not _valid(tok, _SCOPE_COMMAND):
-                await websocket.close(code=4001)
+        async def phone_playback_ws(websocket: WebSocket):
+            tok = await _ws_authenticate(websocket, _SCOPE_COMMAND)
+            if tok is None:
                 return
-            await websocket.accept()
             queue: asyncio.Queue = asyncio.Queue(maxsize=12)
             self._playback_clients.add(queue)
             try:
+                await websocket.send_json({"type": "auth_ok"})
                 while True:
                     # Heartbeat checks disconnection and revocation even in silence.
                     try:
@@ -1637,10 +1707,9 @@ class DashboardServer:
                 return JSONResponse({"ok": True, "entries": list(self._audit[-200:])})
 
         @app.get("/uploads/{filename}")
-        async def download_file(filename: str, token: str = ""):
-            # Auth via query param — browser <a download> can't send custom headers
-            tok = token.strip()
-            if not _valid(tok, _SCOPE_READ):
+        async def download_file(filename: str, req: Request):
+            # Bearer tokens must stay out of download URLs and browser history.
+            if not _auth(req, _SCOPE_READ):
                 return JSONResponse({"error": "Unauthorized"}, status_code=401)
             safe = Path(re.sub(r'[/\\]', '', filename)).name
             if not safe or safe in (".", ".."):
@@ -1651,28 +1720,25 @@ class DashboardServer:
             return FileResponse(str(path), filename=safe)
 
         @app.websocket("/ws")
-        async def ws_ep(websocket: WebSocket, token: str = ""):
-            tok = token.strip()
-            # Reading the feed needs read scope; sending a command over this
-            # socket is checked again below, because one connection can be
-            # opened with a read-only token and then try to type into JARVIS.
-            if not _valid(tok, _SCOPE_READ):
-                await websocket.close(code=4001)
+        async def ws_ep(websocket: WebSocket):
+            # Read and command permissions are checked separately.
+            tok = await _ws_authenticate(websocket, _SCOPE_READ)
+            if tok is None:
                 return
-            await websocket.accept()
-            self._clients.add(websocket)
-            for entry in self._history[-50:]:
-                try:
-                    await websocket.send_json(entry)
-                except Exception:
-                    break
+            self._clients[websocket] = tok
             try:
+                await websocket.send_json({"type": "auth_ok"})
+                for entry in self._history[-50:]:
+                    if not _valid(tok, refresh=False):
+                        await websocket.close(code=4001)
+                        return
+                    await websocket.send_json(entry)
                 while True:
                     try:
                         data = await websocket.receive_json()
                     except WebSocketDisconnect:
                         raise
-                    except Exception:
+                    except (ValueError, TypeError, KeyError):
                         continue
                     if not isinstance(data, dict):
                         continue
@@ -1687,10 +1753,10 @@ class DashboardServer:
                         if t:
                             await self._command_queue.put(t)
                             _fire_wake()
-            except WebSocketDisconnect:
+            except (WebSocketDisconnect, RuntimeError, OSError):
                 pass
             finally:
-                self._clients.discard(websocket)
+                self._clients.pop(websocket, None)
 
         return app
 
@@ -1721,20 +1787,26 @@ class DashboardServer:
 
         @bounce.get("/{path:path}")
         async def _to_https(path: str, request: Request):
-            query = f"?{request.url.query}" if request.url.query else ""
+            if request.url.query:
+                from fastapi.responses import PlainTextResponse
+                return PlainTextResponse("Open the HTTPS address directly to pair.", status_code=400)
             return RedirectResponse(
-                f"https://{self._ip}:{SECURE_PORT}/{path}{query}",
+                f"https://{self._ip}:{SECURE_PORT}/{path}",
                 status_code=307)
 
         cfg = uvicorn.Config(bounce, host="0.0.0.0", port=PORT,
-                             log_level="warning")
+                             log_level="warning", access_log=False)
         print(f"[Dashboard] Type by hand:  {self._ip}:{PORT}  "
               f"(sends you to the secure page)")
-        await uvicorn.Server(cfg).serve()
+        try:
+            await uvicorn.Server(cfg).serve()
+        except (Exception, SystemExit) as exc:
+            print(f"[Dashboard] HTTP redirect unavailable ({exc}); use {self.get_url()} directly.")
 
     async def serve(self) -> None:
         if not _DEPS_OK:
-            print("[Dashboard] fastapi/uvicorn not installed — dashboard disabled.")
+            self._bind_error = "fastapi/uvicorn not installed — dashboard disabled."
+            print("[Dashboard] " + self._bind_error)
             print("[Dashboard] Run:  pip install fastapi 'uvicorn[standard]' cryptography")
             return
 
@@ -1744,49 +1816,26 @@ class DashboardServer:
         asyncio.get_running_loop().run_in_executor(
             None, report_network_access, PORT, SECURE_PORT)
 
-        # Only make a certificate if HTTPS was actually asked for. Generating
-        # one nobody uses just leaves a private key on disk.
-        try:
-            import json as _json
-            with open(BASE_DIR / "config" / "api_keys.json", "r",
-                      encoding="utf-8") as f:
-                if _json.load(f).get("dashboard_https"):
-                    _ensure_certs()
-        except Exception as e:
-            # A missing or corrupt config means HTTPS was not asked for. When
-            # it WAS asked for and this failed, the server below starts on
-            # plain HTTP — worth knowing before blaming the phone.
-            _dlog.debug("could not read dashboard_https: %s", e)
-
-        use_ssl  = self._ssl_enabled()
-        ssl_key  = BASE_DIR / "config" / "certs" / "jarvis.key"
+        use_ssl = self._use_ssl
+        ssl_key = BASE_DIR / "config" / "certs" / "jarvis.key"
         ssl_cert = BASE_DIR / "config" / "certs" / "jarvis.crt"
-
-        # TLS IS WANTED, BUT NOT AT THE COST OF NOT STARTING.
-        #
-        # An earlier version returned here when certificates could not be made,
-        # on the argument that serving a remote-control channel in clear is a
-        # different product. The argument is right and the behaviour was wrong:
-        # a dashboard that does not start is not more secure, it is absent, and
-        # the user is left with "refused to connect" and nothing to act on.
-        #
-        # So: HTTPS whenever it can be had — which is almost always, since the
-        # certificate is generated locally on first run — and plain HTTP with a
-        # loud, repeated warning when it cannot. The page keeps working either
-        # way; without a secure context it simply cannot encrypt, and it says
-        # so on screen rather than pretending.
         if use_ssl:
-            asyncio.create_task(self._serve_redirector())
+            try:
+                if not await asyncio.to_thread(_ensure_certs, self._ip):
+                    raise ValueError("could not create certificate; check cryptography and file permissions")
+                await asyncio.to_thread(_validate_certs, ssl_key, ssl_cert, self._ip)
+            except Exception as exc:
+                self._bind_error = (f"HTTPS unavailable: {exc}. Dashboard not started; "
+                                    "check certificate and LAN IP, then restart. See local HTTPS setup.")
+                print(f"[Dashboard] {self._bind_error}")
+                return
         else:
-            print("[Dashboard] Plain HTTP on your local network. Commands are "
-                  "not encrypted; the pairing key still gates access.")
-            print('[Dashboard] For HTTPS set "dashboard_https": true in '
-                  'config/api_keys.json (your phone will ask you to trust the '
-                  'certificate once).')
+            print("[Dashboard] WARNING: HTTP does not protect pairing and commands from the network.")
 
         cfg = uvicorn.Config(
             self.app, host="0.0.0.0",
-            port=SECURE_PORT if use_ssl else PORT, log_level="warning",
+            port=SECURE_PORT if use_ssl else PORT, log_level="warning", access_log=False,
+            ws_max_size=64 * 1024,
             **({"ssl_keyfile": str(ssl_key), "ssl_certfile": str(ssl_cert)}
                if use_ssl else {}),
         )
@@ -1828,4 +1877,16 @@ class DashboardServer:
 
         print(f"[Dashboard] {self.get_url()}")
         print("[Dashboard] Press 'Remote Control' in JARVIS UI to get the QR code.")
-        await uvicorn.Server(cfg).serve()
+        redirect = asyncio.create_task(self._serve_redirector()) if use_ssl else None
+        try:
+            await uvicorn.Server(cfg).serve()
+        except (Exception, SystemExit) as exc:
+            self._bind_error = f"Dashboard failed to start ({exc}); check the port and certificate."
+            print(f"[Dashboard] {self._bind_error}")
+        finally:
+            if redirect is not None:
+                redirect.cancel()
+                try:
+                    await redirect
+                except (asyncio.CancelledError, Exception):
+                    pass

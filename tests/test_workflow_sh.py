@@ -122,3 +122,13 @@ def test_pytest_writes_the_junit_file_the_reporter_reads(workflow):
     assert "runner.temp" in run_suite["run"]
     assert "runner.temp" in reporter["run"]
     assert "junit.xml" in run_suite["run"] and "junit.xml" in reporter["run"]
+
+
+def test_real_qt_security_controls_run_on_linux_and_windows(workflow):
+    job = workflow["jobs"]["install"]
+    step = next(s for s in job["steps"]
+                if s.get("name") == "Exercise security controls with real Qt offscreen")
+    assert "Linux" in step["if"] and "Windows" in step["if"]
+    assert step["env"]["QT_QPA_PLATFORM"] == "offscreen"
+    assert "tools/check_security_qt.py" in step["run"]
+    assert (ROOT / "tools/check_security_qt.py").is_file()
