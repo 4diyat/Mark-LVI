@@ -1,5 +1,6 @@
 """Exercise browser tabs and WebEngine policies offscreen, without network."""
 import os
+import sys
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from PyQt6.QtCore import QCoreApplication, Qt, QUrl  # noqa: E402
@@ -9,7 +10,7 @@ from ui.workspace_browser import BrowserWindow  # noqa: E402
 
 
 def main():
-    app = QApplication([])
+    app = QApplication([sys.argv[0]])
     class Host:
         enabled = True
         def get_plugins(self):

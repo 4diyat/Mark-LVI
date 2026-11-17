@@ -378,6 +378,9 @@ def main():
         dock_pos = dock_button.mapTo(viewport, dock_button.rect().center())
         begin((sample(dock_pos),))
         assert gestures.mode == "click"
+        assert gestures.target is dock_button, (f"Unexpected dock hit: {gestures.target!r}; "
+                                                f"dock={dock.geometry()!r}, button={dock_button.geometry()!r}, "
+                                                f"point={dock_pos!r}")
         QTimer.singleShot(50, choose_popup)
         QTimer.singleShot(500, menu.close)  # avoid hanging if popup selection regresses
         gestures.update(((sample(dock_pos)[0], sample(dock_pos)[1], False),))
