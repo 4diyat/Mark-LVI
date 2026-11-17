@@ -1168,3 +1168,37 @@ penghentian kamera; meminimalkannya saja tidak menghentikan kamera. Meminimalkan
 video juga tidak menghentikan pemutaran. Pembukaan dan penghentian kamera bersifat
 asinkron, jadi permintaan memulai bukan jaminan perangkat berhasil dibuka.
 Kontrol editor dan order MT5 tetap mengikuti izin serta konfirmasi yang ada.
+
+### Workspace browser and manual SSH
+
+The workspace uses a graphite desktop, with the conversation and file browser
+as its initial windows. The selected visual references are in `design/` as
+`proposed-graphite-desktop.png`, `proposed-graphite-browser.png`, and
+`proposed-graphite-ssh.png`; their illustrated content is not live application
+data. The workspace dock includes an embedded browser and an SSH manager under
+Apps. Their plugins request network permission and must be enabled in the plugin manager
+before use. The browser accepts explicit HTTP(S) URLs; each of its up to ten tabs
+uses an off-the-record profile. Downloads, file selection, pop-ups and web
+permission requests are blocked. Existing legacy browser automation actions are
+separate and can still launch an external browser; use `workspace_browser` for
+an internal window.
+
+For HTTPS pages, enter credentials explicitly via Save. The local SQLite vault
+stores encrypted records with a Fernet key held by the OS keychain (Windows
+Credential Manager, macOS Keychain, or Linux Secret Service). If a supported
+keychain is unavailable, saving fails rather than storing a plaintext key. The
+vault key is bound to the database's absolute path: moving the database or losing
+the keychain key makes it inaccessible. A leftover `.lock` file after a crash
+may need manual removal after ensuring no instance is using the vault. Select a
+saved username and confirm Fill; it is offered only for the exact HTTPS origin
+and does not submit the form. Only a single visible same-origin POST login form
+is supported. The page can read filled values, so this does not protect against
+malicious sites or malware running as the same user.
+
+SSH supports up to ten independent tabs, key/agent or locally entered session
+passwords, and user-confirmed commands. Host keys must already exist in the
+system/user OpenSSH known_hosts file; unknown or changed keys are rejected.
+Verify fingerprints independently and configure known_hosts before connecting.
+This is a bounded, non-interactive command runner, not a full terminal: output
+is capped and commands time out; disconnecting does not guarantee a remote
+process stops. JARVIS only opens the panel, not connections or commands.

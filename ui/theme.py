@@ -20,58 +20,75 @@ from PyQt6.QtWidgets import QApplication
 
 
 class C:
-    BG        = "#00060a"
-    PANEL     = "#010d14"
-    PANEL2    = "#010f18"
-    BORDER    = "#0d3347"
-    BORDER_B  = "#1a5c7a"
-    BORDER_A  = "#0f4060"
-    PRI       = "#00d4ff"
-    PRI_DIM   = "#007a99"
-    PRI_GHO   = "#001f2e"
+    BG        = "#171719"
+    PANEL     = "#222224"
+    PANEL2    = "#28282b"
+    BORDER    = "#414146"
+    BORDER_B  = "#6b6b72"
+    BORDER_A  = "#55555c"
+    PRI       = "#4b9fff"
+    PRI_DIM   = "#3675bd"
+    PRI_GHO   = "#24364c"
     ACC       = "#ff6b00"
     ACC2      = "#ffcc00"
     GREEN     = "#00ff88"
     GREEN_D   = "#00aa55"
     RED       = "#ff3355"
     MUTED_C   = "#ff3366"
-    TEXT      = "#8ffcff"
-    TEXT_DIM  = "#3a8a9a"
-    TEXT_MED  = "#5ab8cc"
-    WHITE     = "#d8f8ff"
-    DARK      = "#000d14"
-    BAR_BG    = "#011520"
+    TEXT      = "#ededf2"
+    TEXT_DIM  = "#9b9ba4"
+    TEXT_MED  = "#b8b8c0"
+    WHITE     = "#f5f5f7"
+    DARK      = "#1d1d1f"
+    BAR_BG    = "#252529"
     # Neutral desktop chrome is independent of the customizable HUD accent.
-    DESKTOP_PANEL = "#202a35"
-    DESKTOP_SIDEBAR = "#273240"
-    DESKTOP_BAR = "#172334"
-    DESKTOP_BORDER = "#54616f"
-    DESKTOP_TEXT = "#eef3f8"
-    DESKTOP_MUTED = "#aeb9c7"
-    DESKTOP_DOCK = "#354252"
-    DOCK_BLUE = "#347bac"
-    DOCK_TEAL = "#27687c"
-    DOCK_PURPLE = "#61598a"
-    DOCK_CHARCOAL = "#505a69"
-    DOCK_GREEN = "#4d806d"
-    DOCK_ORANGE = "#9a704e"
+    DESKTOP_PANEL = "#262628"
+    DESKTOP_SIDEBAR = "#303033"
+    DESKTOP_BAR = "#1c1c1e"
+    DESKTOP_BORDER = "#505053"
+    DESKTOP_TEXT = "#f2f2f5"
+    DESKTOP_MUTED = "#b1b1b8"
+    DESKTOP_DOCK = "#3a3a3e"
+    DOCK_BLUE = "#397dd1"
+    DOCK_TEAL = "#607b99"
+    DOCK_PURPLE = "#736886"
+    DOCK_CHARCOAL = "#5a5a60"
+    DOCK_GREEN = "#658273"
+    DOCK_ORANGE = "#987359"
 
 
 def workspace_stylesheet() -> str:
     """Shared, accessible workspace controls; HUD accent remains independent."""
     return f"""
         QDialog, QWidget {{ background: {C.DESKTOP_PANEL}; color: {C.DESKTOP_TEXT}; }}
+        QLabel, QCheckBox, QRadioButton {{ background: transparent; color: {C.DESKTOP_TEXT}; }}
         QPushButton, QToolButton {{ background: {C.DESKTOP_DOCK}; color: {C.DESKTOP_TEXT};
             border: 1px solid {C.DESKTOP_BORDER}; border-radius: 6px; padding: 6px; }}
         QPushButton:hover, QToolButton:hover {{ background: {C.DESKTOP_SIDEBAR}; }}
+        QPushButton:focus, QToolButton:focus {{ border: 1px solid #4b9fff; }}
         QPushButton:disabled, QToolButton:disabled {{ color: {C.DESKTOP_MUTED}; }}
+        QPushButton#WorkspacePrimary {{ background: #286dcc; color: #ffffff;
+            border: 1px solid #4089e8; font-weight: bold; }}
+        QPushButton#WorkspacePrimary:hover {{ background: #347fdf; }}
+        QPushButton#WorkspacePrimary:disabled {{ background: {C.DESKTOP_DOCK};
+            color: {C.DESKTOP_MUTED}; border-color: {C.DESKTOP_BORDER}; }}
+        QWidget#WorkspaceSection {{ background: {C.DESKTOP_SIDEBAR};
+            border: 1px solid {C.DESKTOP_BORDER}; border-radius: 7px; }}
         QLineEdit, QPlainTextEdit, QTextEdit, QListWidget, QSpinBox, QComboBox {{
             background: {C.DESKTOP_BAR}; color: {C.DESKTOP_TEXT};
-            border: 1px solid {C.DESKTOP_BORDER}; border-radius: 5px; padding: 5px; }}
-        QTabWidget::pane {{ border: 1px solid {C.DESKTOP_BORDER}; }}
+            border: 1px solid {C.DESKTOP_BORDER}; border-radius: 5px; padding: 5px;
+            selection-background-color: #286dcc; selection-color: #ffffff; }}
+        QLineEdit:focus, QPlainTextEdit:focus, QTextEdit:focus, QListWidget:focus,
+        QSpinBox:focus, QComboBox:focus {{ border: 1px solid #4b9fff; }}
+        QMenu {{ background: {C.DESKTOP_SIDEBAR}; color: {C.DESKTOP_TEXT};
+            border: 1px solid {C.DESKTOP_BORDER}; padding: 4px; }}
+        QMenu::item {{ padding: 6px 20px; border-radius: 4px; }}
+        QMenu::item:selected {{ background: #286dcc; color: #ffffff; }}
+        QTabWidget::pane {{ border: 1px solid {C.DESKTOP_BORDER}; border-radius: 5px; }}
         QTabBar::tab {{ background: {C.DESKTOP_SIDEBAR}; color: {C.DESKTOP_TEXT};
-            padding: 7px 12px; border: 1px solid {C.DESKTOP_BORDER}; }}
-        QTabBar::tab:selected {{ background: {C.DESKTOP_DOCK}; }}
+            padding: 8px 14px; margin-right: 3px; border: 1px solid {C.DESKTOP_BORDER};
+            border-top-left-radius: 6px; border-top-right-radius: 6px; }}
+        QTabBar::tab:selected {{ background: {C.DESKTOP_DOCK}; border-bottom: 2px solid #4b9fff; }}
     """
 
 
@@ -88,7 +105,7 @@ DEFAULT_UI_COLOR = _PALETTE_DEFAULTS["PRI"]
 
 def apply_ui_accent(accent_hex: str) -> bool:
     """
-    Re-derives the whole teal-family palette from the chosen accent colour
+    Re-derives the accent-linked palette from the chosen accent colour
     (hue shift — brightness/saturation ratios are preserved, design stays intact).
     Painted elements (HUD, waveform, metrics) pick up the new colour on the next
     frame; stylesheet-based panels pick it up when they are rebuilt.

@@ -92,3 +92,30 @@ lengkap, audio atau kredensial dalam laporan.
 - [ ] Jika sengaja melakukan uji order demo, gunakan ukuran minimal yang broker
       izinkan dan verifikasi order, posisi, riwayat dan jurnal MT5 sesudahnya.
       Uji ini tidak membuktikan keselamatan atau perilaku akun LIVE.
+
+### Workspace browser and SSH additions
+
+`tests/test_workspace_browser.py`, `tests/test_browser_autofill.py`,
+`tests/test_browser_ui_logic.py`, `tests/test_ssh_manager.py`, and
+`tests/test_ssh_tabs.py` cover vault/origin handling, isolated autofill logic,
+tab lifecycle, and fake SSH transports. `tests/test_ssh_protocol.py` exercises
+Paramiko over a local socketpair with a generated host key, including rejection
+of an unknown key; no external server is involved. CI also runs
+`tools/check_browser_qt.py` (Linux) and `tools/check_ssh_qt.py` (Linux and
+Windows) with real Qt offscreen; SSH uses a fake transport and the browser test
+does not contact a site. These checks do not establish visual fidelity, real
+keychain availability, SSH interoperability, Windows camera behavior, or
+security against a malicious same-origin page. Exercise those separately on the
+target machine. Selected visual references are `design/proposed-graphite-desktop.png`,
+`design/proposed-graphite-browser.png`, and `design/proposed-graphite-ssh.png`.
+The Qt interface adapts those concepts to real controls rather than reproducing
+fictitious system indicators or page contents. Workspace documents share the
+same palette, tab, primary-action, menu and keyboard-focus styling; SSH key
+controls follow the selected authentication mode. Browser and SSH tab labels,
+status and controls, as well as the main file navigator, are retranslated in
+place without resetting the selected account or session. Other existing tool
+windows may need to be reopened after a language change. Shutdown first checks unsaved
+edits and asks about active SSH sessions before disconnecting them. It has not yet been visually
+compared with screenshots from a real target machine. The SSH mockup's simultaneous
+connected and unknown-host state is deliberately not implemented: unknown host
+keys must be rejected.

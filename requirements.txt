@@ -11,6 +11,8 @@
 # software with QPainter and posed with numpy, so the face costs no extra
 # package, no OpenGL and no GPU. Nothing below was added for it.
 PyQt6>=6.6,<7
+PyQt6-WebEngine>=6.6,<7  # embedded workspace browser
+paramiko>=3.4,<5  # manual SSH manager
 sounddevice>=0.4,<1
 # MT5 builds can use the NumPy 1.x C ABI. NumPy 1.26 has wheels through
 # Python 3.12; Python 3.13+ users of such MT5 builds should use Python 3.12.

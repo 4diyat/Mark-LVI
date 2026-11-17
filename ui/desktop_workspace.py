@@ -13,14 +13,14 @@ from PyQt6.QtWidgets import (QHBoxLayout, QLabel, QLineEdit, QMdiArea,
                              QTreeView, QVBoxLayout, QWidget)
 
 from core.i18n import label as _t
-from ui.theme import C
+from ui.theme import C, workspace_stylesheet
 
 
 class WallpaperArea(QMdiArea):
     """Scale the original wallpaper to cover the desktop, not the app windows."""
     def __init__(self):
         super().__init__()
-        self._wallpaper = QPixmap(str(Path(__file__).resolve().parent.parent / "assets/workspace/aurora.png"))
+        self._wallpaper = QPixmap(str(Path(__file__).resolve().parent.parent / "assets/workspace/graphite-wallpaper.jpg"))
         self._dock = None
 
     def position_dock(self):
@@ -188,7 +188,7 @@ class FileBrowser(QWidget):
     def __init__(self):
         super().__init__()
         self.setObjectName("WorkspaceFiles")
-        self.setStyleSheet(f"""
+        self.setStyleSheet(workspace_stylesheet() + f"""
             QWidget#WorkspaceFiles {{ background: {C.DESKTOP_PANEL}; color: {C.DESKTOP_TEXT}; }}
             QLabel {{ color: {C.DESKTOP_MUTED}; }}
             QTreeView {{ background: {C.DESKTOP_PANEL}; color: {C.DESKTOP_TEXT}; border: none;
@@ -210,7 +210,9 @@ class FileBrowser(QWidget):
         sidebar.setStyleSheet(f"background: {C.DESKTOP_SIDEBAR};")
         favorites = QVBoxLayout(sidebar)
         favorites.setContentsMargins(10, 12, 10, 10)
-        favorites.addWidget(QLabel(_t("workspace.favorites")))
+        self.favorites_heading = QLabel(_t("workspace.favorites"))
+        favorites.addWidget(self.favorites_heading)
+        self._favorite_buttons = []
         home = Path.home()
         for key, folder in (("workspace.home", home), ("workspace.desktop", home / "Desktop"),
                             ("workspace.documents", home / "Documents"), ("workspace.downloads", home / "Downloads")):
@@ -218,15 +220,16 @@ class FileBrowser(QWidget):
             button.setEnabled(folder.is_dir())
             button.clicked.connect(lambda checked=False, target=folder: self.navigate(str(target)))
             favorites.addWidget(button)
+            self._favorite_buttons.append((button, key))
         favorites.addStretch(1)
         root.addWidget(sidebar)
         content = QWidget()
         layout = QVBoxLayout(content)
         layout.setContentsMargins(12, 10, 12, 10)
         header = QHBoxLayout()
-        up = QPushButton(_t("workspace.up"))
-        up.clicked.connect(self._up)
-        header.addWidget(up)
+        self.up = QPushButton(_t("workspace.up"))
+        self.up.clicked.connect(self._up)
+        header.addWidget(self.up)
         self.path = QLineEdit(str(home))
         self.path.returnPressed.connect(lambda: self.navigate(self.path.text()))
         header.addWidget(self.path, 1)
@@ -247,11 +250,24 @@ class FileBrowser(QWidget):
         self.view.setSortingEnabled(True)
         self.view.doubleClicked.connect(self._open)
         layout.addWidget(self.view, 1)
-        self.status = QLabel(_t("workspace.files_hint"))
+        self._status_key = "workspace.files_hint"
+        self.status = QLabel(_t(self._status_key))
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
         root.addWidget(content, 1)
         self.navigate(str(home))
+
+    def _set_status(self, key):
+        self._status_key = key
+        self.status.setText(_t(key))
+
+    def retranslate(self):
+        self.favorites_heading.setText(_t("workspace.favorites"))
+        for button, key in self._favorite_buttons:
+            button.setText(_t(key))
+        self.up.setText(_t("workspace.up"))
+        self.search.setPlaceholderText(_t("workspace.search"))
+        self.status.setText(_t(self._status_key))
 
     def _filter(self, text):
         # QFileSystemModel applies these patterns to files; directories remain
@@ -262,12 +278,12 @@ class FileBrowser(QWidget):
     def navigate(self, path):
         target = Path(path).expanduser()
         if not target.is_dir():
-            self.status.setText(_t("workspace.bad_folder"))
+            self._set_status("workspace.bad_folder")
             return False
         path = str(target.resolve())
         self.view.setRootIndex(self.model.setRootPath(path))
         self.path.setText(path)
-        self.status.setText(_t("workspace.files_hint"))
+        self._set_status("workspace.files_hint")
         return True
 
     def _up(self):
@@ -278,7 +294,7 @@ class FileBrowser(QWidget):
         if self.model.isDir(index):
             self.navigate(path)
         elif not QDesktopServices.openUrl(QUrl.fromLocalFile(path)):
-            self.status.setText(_t("workspace.open_failed"))
+            self._set_status("workspace.open_failed")
 
 
 def dock_icon(style, icon_name, color):
@@ -303,14 +319,14 @@ def initial_window_geometry(width, height):
     """Keep both initial panels within the desktop above the floating dock."""
     width, height = max(1, width), max(1, height)
     floor = max(1, height - 90)
-    file_x = max(0, int(width * .045))
+    assistant_x = max(0, int(width * .045))
+    assistant_y = max(0, int(height * .10))
+    assistant_w = max(1, min(int(width * .47), width - assistant_x))
+    assistant_h = max(1, min(int(height * .72), floor - assistant_y))
+    file_x = max(0, min(int(width * .55), width - 1))
     file_y = max(0, int(height * .10))
-    file_w = max(1, int(width * (.45 if width >= 1100 else .48)))
-    file_h = max(1, min(int(height * .66), floor - file_y))
-    assistant_w = max(1, min(max(320, int(width * .29)), width))
-    assistant_x = min(int(width * .65), width - assistant_w)
-    assistant_y = max(0, int(height * .12))
-    assistant_h = max(1, min(max(400, int(height * .72)), floor - assistant_y))
+    file_w = max(1, min(int(width * .4), width - file_x))
+    file_h = max(1, min(int(height * .52), floor - file_y))
     return (file_x, file_y, file_w, file_h), (assistant_x, assistant_y, assistant_w, assistant_h)
 
 
@@ -319,12 +335,12 @@ def build(window):
     shell.setObjectName("WorkspaceShell")
     shell.setStyleSheet(f"""
         QWidget#WorkspaceShell {{ background: qlineargradient(x1:0,y1:0,x2:1,y2:1,
-            stop:0 #06142c, stop:0.55 #073847, stop:1 #071127); }}
+            stop:0 #22262d, stop:0.55 #333941, stop:1 #171a21); }}
         QMdiArea {{ border: none; }}
         QMdiSubWindow {{ background: {C.DESKTOP_PANEL}; border: 1px solid {C.DESKTOP_BORDER}; }}
         QMdiSubWindow::title {{ background: {C.DESKTOP_SIDEBAR}; color: {C.DESKTOP_TEXT};
                                padding: 5px; }}
-        QWidget#DesktopDock {{ background: {C.DESKTOP_DOCK}; border: 1px solid {C.DESKTOP_BORDER};
+        QWidget#DesktopDock {{ background: rgba(54, 54, 58, 238); border: 1px solid {C.DESKTOP_BORDER};
                                border-radius: 15px; }}
         QToolButton#DockButton {{ color: {C.DESKTOP_TEXT}; background: transparent;
             border: none; border-radius: 8px; padding: 4px; }}
@@ -421,6 +437,14 @@ def build(window):
         from ui.image_editor import open_editor
         open_editor(window, {})
 
+    def browser():
+        from ui.workspace_router import open_workspace
+        open_workspace(window, {"kind": "workspace_browser"})
+
+    def ssh_manager():
+        from ui.workspace_router import open_workspace
+        open_workspace(window, {"kind": "ssh_manager"})
+
     def order():
         from ui.mt5_trade import open_trade
         open_trade(window, {"kind": "mt5_trade", "draft": {}})
@@ -434,6 +458,7 @@ def build(window):
     buttons = (
         ("workspace.chat", "SP_MessageBoxInformation", lambda: focus("chat")),
         ("workspace.files", "SP_DirIcon", lambda: focus("files")),
+        ("browser.title", "SP_ComputerIcon", browser),
         ("workspace.editors", "SP_FileIcon", (("workspace.code", lambda: creative("editor")),
                                                 ("workspace.image", image_editor),
                                                 ("workspace.ai_image", lambda: creative("canvas")))),
@@ -443,16 +468,18 @@ def build(window):
                                                            ("workspace.order", order))),
         ("workspace.apps", "SP_TitleBarMenuButton", (("handboard.title", open_handboard),
                                                          ("workspace.navigation", lambda: focus("navigation")),
+                                                         ("ssh.title", ssh_manager),
                                                          ("desktop.plugins", window._open_plugin_manager))),
         ("desktop.settings", "SP_FileDialogListView", lambda: window._drawer_btn.click()),
     )
     window._workspace_dock = []
     window._workspace_dock_actions = []
-    colors = (C.DOCK_BLUE, C.DOCK_TEAL, C.DOCK_GREEN, C.DOCK_PURPLE,
+    colors = (C.DOCK_BLUE, C.DOCK_TEAL, C.DOCK_BLUE, C.DOCK_GREEN, C.DOCK_PURPLE,
               C.DOCK_ORANGE, C.DOCK_CHARCOAL, C.DOCK_CHARCOAL)
     for (key, icon, action), color in zip(buttons, colors):
         button = QToolButton()
         button.setText(_t(key))
+        button.setToolTip(_t(key))
         button.setObjectName("DockButton")
         button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
         button.setIcon(dock_icon(window.style(), icon, color))
@@ -461,6 +488,7 @@ def build(window):
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         if isinstance(action, tuple):
             menu = QMenu(button)
+            menu.setStyleSheet(workspace_stylesheet())
             for label, callback in action:
                 entry = menu.addAction(_t(label))
                 entry.triggered.connect(lambda checked=False, fn=callback: fn())
@@ -504,6 +532,7 @@ def build(window):
 def retranslate(window):
     for button, key in getattr(window, "_workspace_dock", ()):
         button.setText(_t(key))
+        button.setToolTip(_t(key))
     for action, key in getattr(window, "_workspace_dock_actions", ()):
         action.setText(_t(key))
     for name, key in (("assistant", "workspace.assistant"),
@@ -512,6 +541,17 @@ def retranslate(window):
         sub = getattr(window, "_desktop_windows", {}).get(name)
         if sub:
             sub.setWindowTitle(_t(key))
+    window._workspace_file_browser.retranslate()
+    # Repaint active tool windows without rebuilding them or dropping state.
+    for kind, sub in tuple(getattr(window, "_workspace_documents", {}).values()):
+        if kind not in ("workspace_browser", "ssh_manager"):
+            continue
+        try:
+            document = sub._document
+            document.retranslate()
+            sub.setWindowTitle(document.windowTitle())
+        except RuntimeError:
+            continue  # The Qt wrapper was deleted during shutdown.
 
 
 def show_video(window):
@@ -562,7 +602,7 @@ def hide_camera(window):
 
 
 def confirm_shutdown(window):
-    """Ask before losing unsaved editor contents when the main window closes."""
+    """Preflight all unsaved work and SSH sessions before stopping any of them."""
     for attr in ("_creative_dialogs", "_image_editors"):
         for document in tuple(getattr(window, attr, ())):
             try:
@@ -571,4 +611,21 @@ def confirm_shutdown(window):
             except RuntimeError:
                 # A deleted Qt wrapper is not an unsaved document.
                 continue
+    sessions = []
+    for kind, sub in tuple(getattr(window, "_workspace_documents", {}).values()):
+        if kind != "ssh_manager":
+            continue
+        try:
+            manager = sub._document
+            panels = manager.shutdown_panels()
+            if not manager._confirm_close(panels):
+                return False
+            sessions.extend(panels)
+        except RuntimeError:
+            continue  # Already deleted by Qt.
+    for panel in sessions:
+        try:
+            panel.disconnect_session()
+        except RuntimeError:
+            continue
     return True

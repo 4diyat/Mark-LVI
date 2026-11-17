@@ -1,0 +1,10 @@
+{
+  "name": "workspace_browser",
+  "version": "1.0.0",
+  "author": "MARK-LVI",
+  "description": "Open URLs in an internal browser.",
+  "permissions": [
+    "network"
+  ],
+  "sha256": "0dca9f95a77379c9ca19f9428d2eb4200a9568380244e0cbfb1b1eceb6a1246b"
+}

@@ -5189,7 +5189,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         import time as _time
         if not job:
             return
-        if job.get("kind") in ("creative_workspace", "trading_terminal", "mt5_trade", "image_editor"):
+        if job.get("kind") in ("creative_workspace", "trading_terminal", "mt5_trade", "image_editor", "workspace_browser", "ssh_manager"):
             from ui.workspace_router import open_workspace
             open_workspace(self, job); return
         e = self._esc
@@ -6568,6 +6568,8 @@ def _apply_ui_scale() -> None:
 class JarvisUI:
     def __init__(self, face_path: str, size=None):
         _apply_ui_scale()
+        if QApplication.instance() is None:
+            QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
         self._app = QApplication.instance() or QApplication(sys.argv)
         self._app.setStyle("Fusion")
         self._win = MainWindow(face_path)

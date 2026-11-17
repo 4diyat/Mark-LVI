@@ -2,7 +2,18 @@
 
 
 def open_workspace(window, job):
-    if job.get("kind") == "image_editor":
+    if job.get("kind") == "ssh_manager":
+        from ui.ssh_manager import open_ssh_manager
+        open_ssh_manager(window, job)
+    elif job.get("kind") == "workspace_browser":
+        try:
+            from ui.workspace_browser import open_browser
+        except ImportError:
+            from core.i18n import label
+            window.write_log(label("browser.unavailable"))
+            return
+        open_browser(window, job)
+    elif job.get("kind") == "image_editor":
         from ui.image_editor import open_editor
         try:
             allowed = any(r.get("name") == "image_editor" and r.get("valid") and r.get("enabled")

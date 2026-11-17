@@ -58,6 +58,8 @@ TESTED = {
     "core/hotkey.py":         "tests/test_hotkey.py",
     "core/hand_gesture.py":   "tests/test_hand_gesture.py",
     "core/workspace_gesture.py": "tests/test_workspace_gesture.py",
+    "core/browser_vault.py": "tests/test_workspace_browser.py",
+    "core/ssh_session.py": "tests/test_ssh_manager.py",
     "core/obj_wireframe.py":   "tests/test_obj_wireframe.py",
     "core/i18n.py":           "tests/test_i18n.py",
     "core/keychain.py":       "tests/test_keychain.py",

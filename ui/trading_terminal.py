@@ -116,6 +116,7 @@ class TradingTerminal(QDialog):
         layout.addLayout(form)
         row = QHBoxLayout()
         self._refresh = QPushButton(_t("trading.refresh"))
+        self._refresh.setObjectName("WorkspacePrimary")
         self._refresh.clicked.connect(self._request)
         row.addWidget(self._refresh)
         self._auto = QCheckBox(_t("trading.auto_refresh"))

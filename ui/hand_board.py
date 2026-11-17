@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (QFileDialog, QGraphicsItem, QGraphicsPixmapItem, QG
 
 from core.i18n import label as _t
 from core.obj_wireframe import MAX_OBJ_BYTES, component_directions, parse_obj
-from ui.theme import C
+from ui.theme import C, workspace_stylesheet
 
 _MAX_ITEMS = 30
 
@@ -108,10 +108,8 @@ class HandBoard(QWidget):
         self._host = host
         self._items = []
         self.setObjectName("HandBoard")
-        self.setStyleSheet(f"QWidget#HandBoard {{ background: {C.DESKTOP_PANEL}; color: {C.DESKTOP_TEXT}; }} "
-                           f"QLabel {{ color: {C.DESKTOP_TEXT}; }} "
-                           f"QPushButton {{ background: {C.DESKTOP_DOCK}; color: {C.DESKTOP_TEXT}; "
-                           f"border: 1px solid {C.DESKTOP_BORDER}; border-radius: 6px; padding: 6px; }}")
+        self.setStyleSheet(workspace_stylesheet() +
+                           f"QWidget#HandBoard {{ background: {C.DESKTOP_PANEL}; color: {C.DESKTOP_TEXT}; }}")
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 8, 10, 8)
         top = QHBoxLayout()
