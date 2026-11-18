@@ -139,3 +139,12 @@ def test_browser_and_ssh_smoke_scripts_are_wired_to_ci():
     for name in ('check_browser_qt.py', 'check_ssh_qt.py'):
         assert f'python tools/run_qt_smoke.py tools/{name}' in text
         assert (ROOT / 'tools' / name).is_file()
+
+
+def test_plugin_discovery_ci_step_matches_shipped_permissions(workflow, isolated_config, monkeypatch):
+    """Execute CI's plugin assertions against isolated, default-off settings."""
+    monkeypatch.chdir(ROOT)
+    step = next(step for job, step in steps(workflow)
+                if job == 'install' and step.get('name') == 'Load every plugin through the real loader')
+    assert step['shell'] == 'python'
+    exec(compile(step['run'], str(WORKFLOW), 'exec'), {})
