@@ -112,7 +112,14 @@ class _Color:
 
 class _Pen:
     def __init__(self, *a, **k):
+        # PyQt's QColor/width constructor only accepts an integer width.
+        if len(a) > 1 and isinstance(a[1], float):
+            raise TypeError("Qt pen constructor requires an integer width")
         self.args = a
+        self.width = None
+
+    def setWidthF(self, width):
+        self.width = float(width)
 
 
 class _Brush:

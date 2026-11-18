@@ -2,9 +2,9 @@
   "name": "ssh_manager",
   "version": "1.0.0",
   "author": "MARK-LVI",
-  "description": "Manual SSH with known-host verification.",
+  "description": "SSH with verified hosts and locally approved assistant requests.",
   "permissions": [
     "network"
   ],
-  "sha256": "e3f61d40e2d795a11b92131f5cbd44a9d4a0dab771619fd6f74ccbd30822d8ab"
+  "sha256": "a52ccae792beb86e4d0239cb9dcf5676c5c3f27c87c9463a84e0fd0f42703040"
 }

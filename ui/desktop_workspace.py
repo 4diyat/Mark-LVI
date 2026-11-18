@@ -51,6 +51,52 @@ class WorkspaceEmblem(QWidget):
         painter.end()
 
 
+class WorkspaceAvatar(QWidget):
+    """A transparent central view of the existing live HUD face animation."""
+    def __init__(self, hud, parent):
+        super().__init__(parent)
+        self.hud = hud
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
+        self.hide()
+
+    def paintEvent(self, event):
+        from PyQt6.QtGui import QFont, QRadialGradient
+        from ui.desktop_layout import state_label
+        from ui.theme import qcol
+        del event
+        avatar = self.hud._avatar
+        if avatar is None or self.hud.hud_style != 'face':
+            return
+        painter = QPainter(self)
+        if not painter.isActive():
+            return
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        width, height = self.width(), self.height()
+        radius = max(1., min(width * .33, (height - 75) / (avatar.SPAN + .2)))
+        cx = width / 2
+        cy = max(radius + 5, (height - 75 - avatar.SPAN * radius) / 2 + radius)
+        aura = QRadialGradient(cx, cy, radius * 1.7)
+        aura.setColorAt(0., QColor(36, 112, 176, 75))
+        aura.setColorAt(.65, QColor(35, 136, 213, 55))
+        aura.setColorAt(1., QColor(11, 26, 42, 0))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(aura))
+        painter.drawEllipse(QRectF(cx - radius * 1.7, cy - radius * 1.7, radius * 3.4, radius * 3.4))
+        color = qcol(C.MUTED_C if self.hud.muted else C.PRI)
+        avatar.paint(painter, cx, cy, radius, color, color, qcol(C.DESKTOP_BAR))
+        bottom = min(height - 58, cy + (avatar.SPAN - 1) * radius + 5)
+        painter.setPen(qcol(C.DESKTOP_TEXT))
+        painter.setFont(QFont("Courier New", 14, QFont.Weight.Bold))
+        painter.drawText(QRectF(0, bottom, width, 28), Qt.AlignmentFlag.AlignCenter,
+                         (self.hud._assistant_name or 'JARVIS').upper())
+        painter.setFont(QFont("Courier New", 9, QFont.Weight.Bold))
+        painter.setPen(qcol(C.MUTED_C if self.hud.muted else C.PRI))
+        painter.drawText(QRectF(0, bottom + 29, width, 24), Qt.AlignmentFlag.AlignCenter,
+                         state_label('MUTED' if self.hud.muted else self.hud.state))
+        painter.end()
+
+
 class WallpaperArea(QMdiArea):
     """Scale the original wallpaper to cover the desktop, not the app windows."""
     def __init__(self):
@@ -58,13 +104,42 @@ class WallpaperArea(QMdiArea):
         self._wallpaper = QPixmap(str(Path(__file__).resolve().parent.parent / "assets/workspace/jarvis-blue-wallpaper.jpg"))
         self._dock = None
         self._emblem = None
+        self._avatar_stage = None
+        self._clap_windows = []
+
+    def minimize_for_clap(self):
+        # Preserve windows already minimized and hidden; restore only this batch.
+        for sub in self.subWindowList():
+            if sub.isVisible() and not sub.isMinimized():
+                self._clap_windows = [(old, maximized) for old, maximized in self._clap_windows
+                                      if old is not sub]
+                self._clap_windows.append((sub, sub.isMaximized()))
+                sub.showMinimized()
+        self.position_dock()
+
+    def restore_clap_windows(self):
+        windows, self._clap_windows = self._clap_windows, []
+        for sub, maximized in windows:
+            try:
+                # Do not reopen windows the user closed or already restored.
+                if sub in self.subWindowList() and sub.isVisible() and sub.isMinimized():
+                    sub.showMaximized() if maximized else sub.showNormal()
+            except RuntimeError:
+                pass
+        self.position_dock()
 
     def position_emblem(self):
         if self._emblem is not None:
             width, height = self.viewport().width(), self.viewport().height()
-            self._emblem.setVisible(width >= 1100 and height >= 400)
-            self._emblem.setGeometry(max(0, (width - 260) // 2),
-                                     max(0, int(height * .20)), 260, min(300, height))
+            wide = width >= 1100 and height >= 400
+            stage = self._avatar_stage
+            face = bool(stage is not None and stage.hud.hud_style == 'face' and stage.hud._avatar is not None)
+            self._emblem.setVisible(wide and not face)
+            geometry = (max(0, (width - 260) // 2), max(0, int(height * .20)), 260, min(300, height))
+            self._emblem.setGeometry(*geometry)
+            if stage is not None:
+                stage.setGeometry(*geometry)
+                stage.setVisible(wide and face)
 
     def position_dock(self):
         if self._dock is not None:
@@ -404,7 +479,10 @@ def build(window):
     layout.addWidget(mdi, 1)
     window._desktop_mdi = mdi
     mdi._emblem = WorkspaceEmblem(window._assistant_name, mdi.viewport())
+    mdi._avatar_stage = WorkspaceAvatar(window.hud, mdi.viewport())
+    window.hud._desktop_stage = mdi._avatar_stage
     mdi.position_emblem()
+    mdi._avatar_stage.lower()
     mdi._emblem.lower()
     window._desktop_windows = {}
     window._workspace_documents = {}
@@ -440,28 +518,25 @@ def build(window):
     camera.hide()
     window._desktop_windows["camera"] = camera
 
-    def open_handboard():
-        if "handboard" not in window._desktop_windows:
-            from ui.hand_board import HandBoard
-            board = HandBoard(window)
+    def open_model_viewer():
+        if "model_viewer" not in window._desktop_windows:
+            from ui.model_viewer import ModelViewer
             sub = PersistentWindow()
-            sub.setWidget(board)
-            sub.setWindowTitle(_t("handboard.title"))
+            window._model_viewer = ModelViewer(window)
+            sub.setWidget(window._model_viewer)
+            sub.setWindowTitle(_t("model.title"))
             mdi.addSubWindow(sub)
-            width = min(900, max(1, mdi.viewport().width()))
-            height = min(600, max(1, mdi.viewport().height() - 90))
-            sub.setGeometry(max(0, (mdi.viewport().width() - width) // 2),
-                            max(0, (mdi.viewport().height() - 90 - height) // 2), width, height)
-            window._hand_board = board
-            window._desktop_windows["handboard"] = sub
-        sub = window._desktop_windows["handboard"]
+            sub.resize(min(720, max(1, mdi.viewport().width())),
+                       min(540, max(1, mdi.viewport().height() - 90)))
+            window._desktop_windows["model_viewer"] = sub
+        sub = window._desktop_windows["model_viewer"]
         sub.showNormal()
         mdi.setActiveSubWindow(sub)
         sub.raise_()
         mdi.position_dock()
         return sub
 
-    window._open_handboard = open_handboard
+    window._open_model_viewer = open_model_viewer
 
     def focus(name):
         if name == "camera" and not window._camera_active:
@@ -480,9 +555,9 @@ def build(window):
             if name == "chat":
                 window._input.setFocus()
 
-    def creative(tab):
+    def creative():
         from ui.creative import open_workspace
-        open_workspace(window, {"kind": "creative_workspace", "tab": tab})
+        open_workspace(window, {"kind": "creative_workspace", "tab": "editor"})
 
     def trading():
         from ui.trading_terminal import open_terminal
@@ -514,14 +589,14 @@ def build(window):
         ("workspace.chat", "SP_MessageBoxInformation", lambda: focus("chat")),
         ("workspace.files", "SP_DirIcon", lambda: focus("files")),
         ("browser.title", "SP_ComputerIcon", browser),
-        ("workspace.editors", "SP_FileIcon", (("workspace.code", lambda: creative("editor")),
-                                                ("workspace.image", image_editor),
-                                                ("workspace.ai_image", lambda: creative("canvas")))),
+        ("workspace.editors", "SP_FileIcon", (("workspace.code", creative),
+                                                ("workspace.image", image_editor))),
         ("workspace.media", "SP_MediaPlay", (("workspace.video", lambda: focus("video")),
                                                  ("workspace.camera", lambda: focus("camera")))),
         ("workspace.trading", "SP_FileDialogInfoView", (("workspace.trading", trading),
                                                            ("workspace.order", order))),
-        ("workspace.apps", "SP_TitleBarMenuButton", (("handboard.title", open_handboard),
+        ("workspace.apps", "SP_TitleBarMenuButton", (("workspace.restore_clap", mdi.restore_clap_windows),
+                                                         ("model.title", open_model_viewer),
                                                          ("workspace.navigation", lambda: focus("navigation")),
                                                          ("ssh.title", ssh_manager),
                                                          ("desktop.plugins", window._open_plugin_manager))),
@@ -592,11 +667,14 @@ def retranslate(window):
         action.setText(_t(key))
     for name, key in (("assistant", "workspace.assistant"),
                       ("navigation", "workspace.navigation"), ("files", "workspace.files"),
-                      ("video", "workspace.video"), ("camera", "workspace.camera"), ("handboard", "handboard.title")):
+                      ("video", "workspace.video"), ("camera", "workspace.camera"), ("model_viewer", "model.title")):
         sub = getattr(window, "_desktop_windows", {}).get(name)
         if sub:
             sub.setWindowTitle(_t(key))
     window._workspace_file_browser.retranslate()
+    model_viewer = getattr(window, "_model_viewer", None)
+    if model_viewer:
+        model_viewer.retranslate()
     # Repaint active tool windows without rebuilding them or dropping state.
     for kind, sub in tuple(getattr(window, "_workspace_documents", {}).values()):
         try:

@@ -20,7 +20,18 @@ def _hand_measurement(points):
     pinch = distance < palm * .38
     scroll = (not pinch and points[8].y < points[6].y and points[12].y < points[10].y
               and points[16].y > points[14].y and points[20].y > points[18].y)
-    return (max(0., min(1., 1 - x)), max(0., min(1., y)), pinch, scroll, distance / palm)
+    # A bent-finger pose, deliberately distinct from pinch and two-finger scroll.
+    # Compare each fingertip's distance to the wrist against its middle joint;
+    # require three curled fingers and finite landmarks before recognising it.
+    wrist = points[0]
+    fingers = ((8, 6), (12, 10), (16, 14), (20, 18))
+    coords = [(points[i].x, points[i].y) for pair in fingers for i in pair]
+    valid = all(math.isfinite(v) for pt in coords + [(wrist.x, wrist.y)] for v in pt)
+    curled = sum(math.hypot(points[tip].x - wrist.x, points[tip].y - wrist.y)
+                 < math.hypot(points[joint].x - wrist.x, points[joint].y - wrist.y) * .92
+                 for tip, joint in fingers) if valid else 0
+    claw = valid and not pinch and not scroll and curled >= 3
+    return (max(0., min(1., 1 - x)), max(0., min(1., y)), pinch, scroll, distance / palm, claw)
 
 
 def hand_sample(points):
@@ -68,7 +79,8 @@ class HandStabilizer:
             x, y, pinch, scroll = sample[:4]
             ratio = sample[4] if len(sample) > 4 else None
             if index < 0:
-                tracks.append((x, y, pinch, scroll and not pinch, 0, x, y))
+                tracks.append((x, y, pinch, scroll and not pinch, 0, x, y,
+                               bool(sample[5]) if len(sample) > 5 else None))
                 continue
             old = previous[index]
             previous[index] = None
@@ -83,13 +95,14 @@ class HandStabilizer:
             closed = ratio < .50 if old[2] and ratio is not None else pinch
             open_frames = old[4] + 1 if old[2] and not closed else 0
             held = closed or (old[2] and open_frames < 2)
-            tracks.append((sx, sy, held, scroll and not held, open_frames, x, y))
+            tracks.append((sx, sy, held, scroll and not held, open_frames, x, y,
+                           bool(sample[5]) and not held if len(sample) > 5 else None))
         self._tracks = tracks
         # Tracking loss cancels rather than synthesizing a release/click.
         if any(track is not None and track[2] for track in previous):
             self._tracks = []
             return ()
-        return tuple(track[:4] for track in tracks)
+        return tuple(track[:4] + ((track[7],) if track[7] is not None else ()) for track in tracks)
 
 
 def dwell_matches(pending, count, identity, coords, radius=25):
@@ -151,7 +164,8 @@ class WorkspaceHandController:
                 # Ignore detector ordering, but do not let multiple pose/count
                 # changes disappear between UI reads. In particular an unseen
                 # release/re-pinch/release must not act as the original release.
-                signature = lambda hands: (len(hands), sum(bool(hand[2]) for hand in hands))
+                signature = lambda hands: (len(hands), sum(bool(hand[2]) for hand in hands),
+                                           sum(bool(hand[4]) for hand in hands if len(hand) > 4))
                 if signature(values) != signature(self._sample[1]):
                     self._unseen_transitions += 1
                     if self._unseen_transitions > 1:
@@ -173,7 +187,7 @@ class WorkspaceHandController:
             if self._await_open:
                 # A re-detected closed hand must not start a new interaction
                 # until all visible hands have been deliberately opened.
-                if not sample[1] or any(hand[2] for hand in sample[1]):
+                if not sample[1] or any(hand[2] or (len(hand) > 4 and hand[4]) for hand in sample[1]):
                     return ()
                 self._await_open = False
             return sample[1]
@@ -246,3 +260,50 @@ class WorkspaceHandController:
                 finally:
                     if leased:
                         camera_lease.release()
+
+
+class ClapTracker:
+    """Recognize a deliberate two-hand approach, never a tracking disappearance.
+
+    Both hands must be visible, open, and separated first. The index fingertips
+    must approach quickly to a close but still observable distance. A loss,
+    pinched hand, stale frame, or backward clock cancels the attempt.
+    """
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.start = None
+        self.last_time = None
+        self.fired = False
+
+    def update(self, samples, timestamp):
+        try:
+            if (len(samples) != 2 or not math.isfinite(timestamp)
+                    or any(len(s) < 4 or s[2] or s[3] or (len(s) > 4 and s[4]) for s in samples)):
+                self.reset()
+                return False
+            x1, y1 = samples[0][:2]
+            x2, y2 = samples[1][:2]
+            if not all(math.isfinite(v) and 0 <= v <= 1 for v in (x1, y1, x2, y2)):
+                self.reset()
+                return False
+            if self.last_time is not None and not 0 <= timestamp - self.last_time <= .2:
+                self.reset()
+            self.last_time = timestamp
+            distance = math.hypot(x1 - x2, y1 - y2)
+            if distance >= .32:
+                self.start = (timestamp, distance)
+                self.fired = False
+            elif (not self.fired and self.start is not None and distance <= .12
+                  and .06 <= timestamp - self.start[0] <= .65
+                  and self.start[1] - distance >= .20):
+                self.start = None
+                self.fired = True
+                return True
+            elif self.start and timestamp - self.start[0] > .65:
+                self.start = None
+            return False
+        except (TypeError, ValueError, OverflowError):
+            self.reset()
+            return False

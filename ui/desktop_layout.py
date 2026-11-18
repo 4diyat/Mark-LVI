@@ -115,6 +115,24 @@ def build_conversation(window, log_cls, drop_cls):
         window._file_hint.setVisible(checked)
         window._attachment_toggle.setText(_t("desktop.hide_attach" if checked else "desktop.attach"))
     window._attachment_toggle.toggled.connect(toggle_attachment)
+    # Suggestions are optional drafts, never commands sent on the user's behalf.
+    window._suggestions_heading = _label(_t("desktop.suggestions"), 8, bold=True, color=C.DESKTOP_MUTED)
+    layout.addWidget(window._suggestions_heading)
+    window._suggestion_buttons = []
+    for key in ("desktop.suggest_tasks", "desktop.suggest_timeline", "desktop.suggest_release"):
+        button = QPushButton(_t(key))
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setStyleSheet(f"QPushButton {{ text-align: left; padding: 5px 9px; color: {C.DESKTOP_TEXT}; "
+                             f"background: {C.DESKTOP_DOCK}; border: 1px solid {C.DESKTOP_BORDER}; "
+                             "border-radius: 8px; } QPushButton:hover { border-color: #69c8f4; }")
+        def draft(_checked=False, prompt_key=key):
+            # Do not destroy an unsent draft, and never submit automatically.
+            if not window._input.text().strip():
+                window._input.setText(_t(prompt_key))
+            window._input.setFocus()
+        button.clicked.connect(draft)
+        layout.addWidget(button)
+        window._suggestion_buttons.append((button, key))
     layout.addLayout(window._build_input_row())
     return panel
 
@@ -132,6 +150,9 @@ def build_assistant_panel(window):
     header = QHBoxLayout()
     window._assistant_heading = _label(window._assistant_name, 13, bold=True, color=C.WHITE)
     window._desktop_state = _label(_t("desktop.initialising"), 8, color=C.PRI)
+    window._assistant_mark = _label("◉", 20, bold=True, color=C.PRI)
+    window._assistant_mark.setAccessibleName(window._assistant_name)
+    header.addWidget(window._assistant_mark)
     header.addWidget(window._assistant_heading)
     header.addStretch()
     header.addWidget(window._desktop_state)
@@ -175,19 +196,25 @@ def retranslate(window):
                       ("_voice_hint", "desktop.voice_hint"), ("_interrupt_btn", "ui.interrupt")):
         getattr(window, attr).setText(_t(key))
     window._attachment_toggle.setText(_t("desktop.hide_attach" if window._attachment_toggle.isChecked() else "desktop.attach"))
+    window._suggestions_heading.setText(_t("desktop.suggestions"))
+    for button, key in window._suggestion_buttons:
+        button.setText(_t(key))
     window._ctrl_btn.setText(_t("desktop.controls"))
     window._drawer_btn.setText(_t("desktop.settings"))
     update_state(window, window.hud.state)
 
 
-def update_state(window, state):
-    # The HUD remains authoritative; never infer that a microphone or service is
-    # connected from a decorative badge.
+def state_label(state):
+    """Translate only the authoritative HUD state, not a decorative guess."""
     key = {"LISTENING": "desktop.state_listening", "SPEAKING": "desktop.state_speaking",
            "SLEEPING": "desktop.state_sleeping", "MUTED": "desktop.state_muted",
            "NO MIC": "desktop.state_no_mic", "THINKING": "desktop.state_thinking",
            "PROCESSING": "desktop.state_processing", "IDLE": "desktop.state_idle"}.get(state, "desktop.initialising")
-    window._desktop_state.setText(_t(key))
+    return _t(key)
+
+
+def update_state(window, state):
+    window._desktop_state.setText(state_label(state))
 
 
 def build_menu_bar(window):

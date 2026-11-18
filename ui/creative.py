@@ -1,24 +1,26 @@
-"""Interactive code editor and AI image canvas, owned by the Qt thread."""
+"""Interactive, multi-file code editor owned by the Qt thread."""
 from __future__ import annotations
 
+import secrets
 import threading
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QFont, QPixmap
+from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (QDialog, QFileDialog, QHBoxLayout, QLabel,
-                             QMessageBox, QPlainTextEdit, QPushButton, QTabWidget,
-                             QVBoxLayout, QWidget)
+                             QMessageBox, QPlainTextEdit, QTabWidget,
+                             QToolButton, QVBoxLayout, QWidget)
 
 from core.i18n import label as _t
 from plugins import _creative
 from ui.theme import workspace_stylesheet
 from ui.localization import TranslationBindings
+from ui.code_editor import CodeEditor
+from core.code_syntax import language_for_path
 
 
 class CreativeWorkspace(QDialog):
     _run_done = pyqtSignal(object, str)
-    _image_done = pyqtSignal(object, str)
 
     def __init__(self, parent, request):
         super().__init__(parent)
@@ -29,28 +31,24 @@ class CreativeWorkspace(QDialog):
         self.setStyleSheet(workspace_stylesheet())
         self._host = parent
         self._path = None
-        self._image = None
+        self._paths = {}
         self._run_done.connect(self._on_run_done)
-        self._image_done.connect(self._on_image_done)
         layout = QVBoxLayout(self)
-        self._tabs = QTabWidget()
-        layout.addWidget(self._tabs)
-        self._build_editor()
-        self._build_canvas()
-        self._tabs.setTabEnabled(0, self._allowed("code_editor"))
-        self._tabs.setTabEnabled(1, self._allowed("image_canvas"))
-        if request.get("tab") == "canvas":
-            self._tabs.setCurrentIndex(1)
-            self._prompt.setPlainText(str(request.get("prompt") or "")[:5000])
-        else:
-            code = str(request.get("code") or "")[:100000]
-            self._code.setPlainText(code)
-            self._code.document().setModified(bool(code))
+        self._build_editor(layout)
+        code = str(request.get("code") or "")[:100000]
+        self._code.setPlainText(code)
+        self._code.document().setModified(bool(code))
 
     def retranslate(self):
         self._translations.refresh()
-        self._code.setAccessibleName(_t("creative.editor"))
-        self._prompt.setAccessibleName(_t("creative.prompt"))
+        for code in self._paths:
+            code.setAccessibleName(_t("creative.editor"))
+            code.setPlaceholderText(_t("creative.code_placeholder"))
+        for button, key in self._editor_tools:
+            button.setToolTip(_t(key))
+            button.setAccessibleName(_t(key))
+        self._refresh_file_tabs()
+        self._update_editor_status()
 
     def _allowed(self, name):
         try:
@@ -65,88 +63,151 @@ class CreativeWorkspace(QDialog):
         QMessageBox.warning(self, _t("creative.title"), _t("creative.plugin_disabled"))
         return False
 
-    def _button(self, label, slot, row):
-        btn = self._translations.text(QPushButton(), label)
-        btn.clicked.connect(slot)
-        row.addWidget(btn)
-        return btn
-
-    def _build_editor(self):
+    def _build_editor(self, parent_layout):
         page = QWidget()
-        layout = QVBoxLayout(page)
+        outer = QHBoxLayout(page)
+        sidebar = QVBoxLayout()
+        self._editor_tools = []
+        for symbol, key, callback in (("+", "editor.new", self._new_file),
+                                      ("↥", "creative.open", self._open_file),
+                                      ("▣", "creative.save", self._save_file),
+                                      ("⇩", "creative.save_as", self._save_as),
+                                      ("▶", "creative.run", self._run_file)):
+            button = QToolButton()
+            button.setText(symbol)
+            button.setToolTip(_t(key))
+            button.setAccessibleName(_t(key))
+            button.setFixedSize(36, 34)
+            button.clicked.connect(lambda _checked=False, fn=callback: fn())
+            sidebar.addWidget(button)
+            self._editor_tools.append((button, key))
+            if key == "creative.run":
+                self._run_btn = button
+        sidebar.addStretch()
+        outer.addLayout(sidebar)
+        layout = QVBoxLayout()
+        outer.addLayout(layout, 1)
         self._file_label = self._translations.text(QLabel(), "creative.unsaved", conditional=True)
         layout.addWidget(self._file_label)
-        self._code = QPlainTextEdit()
-        self._code.setAccessibleName(_t("creative.editor"))
-        self._code.setFont(QFont("Courier New", 10))
-        self._translations.placeholder(self._code, "creative.code_placeholder")
-        layout.addWidget(self._code, 1)
-        row = QHBoxLayout()
-        self._button("creative.open", self._open_file, row)
-        self._button("creative.save", self._save_file, row)
-        self._button("creative.save_as", self._save_as, row)
-        self._run_btn = self._button("creative.run", self._run_file, row)
-        self._run_btn.setObjectName("WorkspacePrimary")
-        layout.addLayout(row)
+        self._file_tabs = QTabWidget()
+        self._file_tabs.setTabsClosable(True)
+        self._file_tabs.setMovable(True)
+        self._file_tabs.currentChanged.connect(self._select_file_tab)
+        self._file_tabs.tabCloseRequested.connect(self._close_file_tab)
+        layout.addWidget(self._file_tabs, 1)
+        self._editor_status = QLabel()
+        layout.addWidget(self._editor_status)
+        self._add_code_tab()
         layout.addWidget(self._translations.text(QLabel(), "creative.output"))
         self._output = QPlainTextEdit()
         self._output.setReadOnly(True)
         self._output.setMaximumHeight(160)
         layout.addWidget(self._output)
-        self._tabs.addTab(page, _t("creative.editor"))
-        self._translations.tab(self._tabs, 0, "creative.editor")
+        parent_layout.addWidget(page)
 
-    def _build_canvas(self):
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.addWidget(self._translations.text(QLabel(), "creative.prompt"))
-        self._prompt = QPlainTextEdit()
-        self._prompt.setAccessibleName(_t("creative.prompt"))
-        self._prompt.setMaximumHeight(100)
-        self._translations.placeholder(self._prompt, "creative.prompt_placeholder")
-        layout.addWidget(self._prompt)
-        row = QHBoxLayout()
-        self._generate_btn = self._button("creative.generate", self._generate, row)
-        self._generate_btn.setObjectName("WorkspacePrimary")
-        self._save_image_btn = self._button("creative.save_image", self._save_image, row)
-        self._save_image_btn.setEnabled(False)
-        layout.addLayout(row)
-        self._image_label = self._translations.text(QLabel(), "creative.image_empty", conditional=True)
-        self._image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._image_label.setMinimumSize(250, 200)
-        layout.addWidget(self._image_label, 1)
-        self._image_status = self._translations.text(QLabel(), "creative.image_notice", conditional=True)
-        self._image_status.setWordWrap(True)
-        layout.addWidget(self._image_status)
-        self._tabs.addTab(page, _t("creative.canvas"))
-        self._translations.tab(self._tabs, 1, "creative.canvas")
+    def _add_code_tab(self, text='', path=None, dirty=False):
+        code = CodeEditor()
+        code._assist_token = secrets.token_hex(16)
+        code.setAccessibleName(_t("creative.editor"))
+        code.setFont(QFont("Courier New", 10))
+        code._update_gutter_width()
+        code.setPlaceholderText(_t("creative.code_placeholder"))
+        code.setPlainText(text)
+        code.document().setModified(dirty)
+        self._paths[code] = path
+        code.cursorPositionChanged.connect(lambda: self._update_editor_status() if self._code is code else None)
+        code.document().modificationChanged.connect(lambda _changed: self._refresh_file_tabs())
+        index = self._file_tabs.addTab(code, '')
+        self._file_tabs.setCurrentIndex(index)
+        self._select_file_tab(index)
+        self._refresh_file_tabs()
+        return code
 
-    def _may_discard(self):
-        if not self._code.document().isModified():
+    def _select_file_tab(self, index):
+        code = self._file_tabs.widget(index) if index >= 0 else None
+        if code not in self._paths:
+            return
+        self._code = code
+        self._path = self._paths[code]
+        self._file_label.setText(self._path or _t("creative.unsaved"))
+        self._update_editor_status()
+
+    def _refresh_file_tabs(self):
+        for index in range(self._file_tabs.count()):
+            code = self._file_tabs.widget(index)
+            path = self._paths.get(code)
+            title = Path(path).name if path else _t("creative.unsaved")
+            self._file_tabs.setTabText(index, title + (" •" if code.document().isModified() else ""))
+            self._file_tabs.setTabToolTip(index, path or _t("creative.unsaved"))
+
+    def _new_file(self):
+        if self._require("code_editor"):
+            self._add_code_tab()
+
+    def _confirm_discard(self, code):
+        if not code.document().isModified():
             return True
-        answer = QMessageBox.question(self, _t("creative.unsaved"), _t("creative.discard"),
+        path = self._paths.get(code)
+        name = Path(path).name if path else _t("creative.unsaved")
+        answer = QMessageBox.question(self, _t("creative.unsaved"),
+                                      _t("editor.discard_file", name=name),
                                       QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                                       QMessageBox.StandardButton.No)
         return answer == QMessageBox.StandardButton.Yes
 
+    def _close_file_tab(self, index):
+        code = self._file_tabs.widget(index)
+        if code not in self._paths or not self._confirm_discard(code):
+            return
+        # Add the replacement before removing the final tab so there is always
+        # a current editor, including while Qt emits currentChanged.
+        if self._file_tabs.count() == 1:
+            self._add_code_tab()
+        self._file_tabs.removeTab(self._file_tabs.indexOf(code))
+        self._paths.pop(code, None)
+        code.deleteLater()
+        self._select_file_tab(self._file_tabs.currentIndex())
+
+    def _update_editor_status(self):
+        language = language_for_path(self._path)
+        self._code.highlighter.set_language(language)
+        cursor = self._code.textCursor()
+        self._editor_status.setText(_t('editor.status', language=language.upper(),
+                                       line=cursor.blockNumber() + 1,
+                                       column=cursor.positionInBlock() + 1))
+
+    def _may_discard(self):
+        # All tabs must be confirmed before the window/application is closed.
+        return all(self._confirm_discard(code) for code in tuple(self._paths))
+
     def _open_file(self):
         if not self._require("code_editor"):
             return False
-        if not self._may_discard():
-            return
         path, _ = QFileDialog.getOpenFileName(self, _t("creative.open"), "",
                                               "Code (*.py *.js *.mjs *.cjs *.txt);;All files (*)")
         if not path:
             return
+        resolved = str(Path(path).resolve())
+        for code, existing in self._paths.items():
+            if existing and str(Path(existing).resolve()) == resolved:
+                self._file_tabs.setCurrentWidget(code)
+                return
         try:
             text = _creative.read_code(path)
         except (OSError, ValueError, UnicodeError) as exc:
             self._output.setPlainText(str(exc))
             return
-        self._path = path
-        self._code.setPlainText(text)
-        self._code.document().setModified(False)
-        self._file_label.setText(path)
+        if not self._path and not self._code.document().isModified() and not self._code.toPlainText():
+            self._path = path
+            self._paths[self._code] = path
+            self._code._assist_token = secrets.token_hex(16)
+            self._code.setPlainText(text)
+            self._code.document().setModified(False)
+            self._file_label.setText(path)
+            self._update_editor_status()
+            self._refresh_file_tabs()
+        else:
+            self._add_code_tab(text, path)
 
     def _save_as(self):
         if not self._require("code_editor"):
@@ -163,14 +224,24 @@ class CreativeWorkspace(QDialog):
         return self._write(self._path) if self._path else self._save_as()
 
     def _write(self, path):
+        resolved = str(Path(path).resolve())
+        if any(code is not self._code and existing and str(Path(existing).resolve()) == resolved
+               for code, existing in self._paths.items()):
+            self._output.setPlainText(_t("editor.already_open"))
+            return False
         try:
             _creative.write_code(path, self._code.toPlainText())
         except (OSError, ValueError, UnicodeError) as exc:
             self._output.setPlainText(str(exc))
             return False
+        if self._path != path:
+            self._code._assist_token = secrets.token_hex(16)
         self._path = path
+        self._paths[self._code] = path
         self._file_label.setText(path)
         self._code.document().setModified(False)
+        self._refresh_file_tabs()
+        self._update_editor_status()
         return True
 
     def _run_file(self):
@@ -205,70 +276,6 @@ class CreativeWorkspace(QDialog):
         self._run_btn.setEnabled(True)
         self._output.setPlainText(f"{summary}\n{output}")
 
-    def _generate(self):
-        if not self._require("image_canvas"):
-            return False
-        prompt = self._prompt.toPlainText().strip()
-        if not prompt or len(prompt) > 5000:
-            self._image_status.setText(_t("creative.prompt_invalid"))
-            return
-        self._generate_btn.setEnabled(False)
-        self._image_status.setText(_t("creative.generating"))
-
-        def worker():
-            try:
-                from memory.config_manager import get_gemini_key
-                data, _mime = _creative.generate_image(prompt, get_gemini_key() or "")
-                error = ""
-            except Exception as exc:
-                data, error = None, str(exc)
-            try:
-                self._image_done.emit(data, error)
-            except RuntimeError:
-                pass
-        threading.Thread(target=worker, daemon=True, name="creative-image").start()
-
-    def _on_image_done(self, data, error):
-        self._generate_btn.setEnabled(True)
-        if error:
-            self._image_status.setText(_t("creative.image_error", error=error[:500]))
-            return
-        image = QPixmap()
-        if not image.loadFromData(data):
-            self._image_status.setText(_t("creative.invalid_image"))
-            return
-        self._image = image
-        self._save_image_btn.setEnabled(True)
-        self._image_status.setText(_t("creative.image_ready"))
-        self._redraw_image()
-
-    def _redraw_image(self):
-        if self._image is not None:
-            self._image_label.setPixmap(self._image.scaled(
-                self._image_label.size(), Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation))
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        if hasattr(self, "_image_label"):
-            self._redraw_image()
-
-    def _save_image(self):
-        if not self._require("image_canvas"):
-            return False
-        if self._image is None:
-            return
-        path, _ = QFileDialog.getSaveFileName(self, _t("creative.save_image"), "image.png",
-                                              "PNG (*.png);;JPEG (*.jpg *.jpeg)")
-        if not path:
-            return
-        if not Path(path).suffix:
-            path += ".png"
-        if not self._image.save(path):
-            self._image_status.setText(_t("creative.image_save_error"))
-        else:
-            self._image_status.setText(_t("creative.image_saved", path=path))
-
     def closeEvent(self, event):
         if self._may_discard():
             event.accept()
@@ -278,9 +285,11 @@ class CreativeWorkspace(QDialog):
 
 def open_workspace(window, request):
     """Called only on the main thread by MainWindow's existing code-job signal."""
-    name = "image_canvas" if request.get("tab") == "canvas" else "code_editor"
+    if request.get("tab", "editor") != "editor":
+        window.write_log(_t("editor.unsupported_workspace"))
+        return
     try:
-        allowed = any(row.get("name") == name and row.get("valid") and row.get("enabled")
+        allowed = any(row.get("name") == "code_editor" and row.get("valid") and row.get("enabled")
                       for row in window.get_plugins())
     except Exception:
         allowed = False
@@ -294,4 +303,4 @@ def open_workspace(window, request):
     window._creative_dialogs.add(dialog)
     dialog.destroyed.connect(lambda: window._creative_dialogs.discard(dialog))
     from ui.desktop_workspace import show_document
-    show_document(window, dialog, "ai_image" if request.get("tab") == "canvas" else "code_editor")
+    show_document(window, dialog, "code_editor")

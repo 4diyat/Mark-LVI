@@ -138,13 +138,17 @@ def test_ssh_retranslation_preserves_authentication_and_status():
         def setText(self, text): self.text = text
         def setPlaceholderText(self, text): self.placeholder = text
         def setAccessibleName(self, text): self.accessible_name = text
+        def setToolTip(self, text): self.tooltip = text
+        def setEnabled(self, value): self.enabled = value
     class Combo:
         def __init__(self): self.items = ['', '']; self.selected = 1
         def setItemText(self, i, text): self.items[i] = text
     for name in ('heading', 'known_hosts', 'output_heading', 'pick_key', 'clear_key_btn', 'connect_btn',
-                 'disconnect_btn', 'send_btn', 'secret', 'command', 'status'):
+                 'disconnect_btn', 'send_btn', 'secret', 'command', 'status', 'sharing_btn',
+                 'copy_output_btn', 'clear_output_btn'):
         setattr(tab, name, Text())
     tab._form_labels, tab.auth, tab._status_key = [(Text(), 'ssh.host')], Combo(), 'ssh.connected'
+    tab._share_output, tab.connected, tab.session = False, True, object()
     tab.retranslate()
     assert tab._form_labels[0][0].text == 'id:ssh.host'
     assert tab.auth.items == ['id:ssh.key_agent', 'id:ssh.password_method'] and tab.auth.selected == 1

@@ -1,8 +1,9 @@
 """Manual multi-tab SSH manager. Workers never touch Qt widgets."""
+import secrets
 import threading
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import (QComboBox, QFileDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
+from PyQt6.QtWidgets import (QApplication, QComboBox, QFileDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
                              QMessageBox, QPlainTextEdit, QPushButton, QSpinBox, QTabWidget, QVBoxLayout, QWidget)
 
 from core.i18n import label as _t
@@ -27,6 +28,9 @@ class SSHTab(QWidget):
         super().__init__()
         self.host_app, self.session = host, None
         self.generation, self.busy, self.connected = 0, False, False
+        self._assist_session = ''
+        self._share_output = False
+        self._shared_output = ''
         outer = QVBoxLayout(self)
         body = QHBoxLayout()
         outer.addLayout(body, 1)
@@ -81,8 +85,17 @@ class SSHTab(QWidget):
         output_panel = QWidget()
         output_panel.setObjectName('WorkspaceSection')
         output = QVBoxLayout(output_panel)
+        header = QHBoxLayout()
         self.output_heading = QLabel(_t('ssh.output_hint'))
-        output.addWidget(self.output_heading)
+        self.output_heading.setWordWrap(True)
+        header.addWidget(self.output_heading, 1)
+        self.copy_output_btn = QPushButton(_t('ssh.copy_output'))
+        self.clear_output_btn = QPushButton(_t('ssh.clear_output'))
+        self.copy_output_btn.clicked.connect(self.copy_output)
+        self.clear_output_btn.clicked.connect(self.clear_output)
+        header.addWidget(self.copy_output_btn)
+        header.addWidget(self.clear_output_btn)
+        output.addLayout(header)
         self.output = QPlainTextEdit()
         self.output.setReadOnly(True)
         self.output.document().setMaximumBlockCount(1500)
@@ -97,8 +110,15 @@ class SSHTab(QWidget):
         self.command.returnPressed.connect(self.send_command)
         cmdrow.addWidget(self.command, 1)
         cmdrow.addWidget(self.send_btn)
-        output.addLayout(cmdrow)
+        self.output.setStyleSheet('QPlainTextEdit { background: #091522; color: #d9e9f5; '
+                                  'border: 1px solid #294157; border-radius: 6px; }')
+        from PyQt6.QtGui import QFont
+        self.output.setFont(QFont('Consolas', 10))
         output.addWidget(self.output, 1)
+        self.sharing_btn = QPushButton(_t('ssh.share_enable'))
+        self.sharing_btn.clicked.connect(self.toggle_sharing)
+        output.addWidget(self.sharing_btn)
+        output.addLayout(cmdrow)
         body.addWidget(output_panel, 2)
         self.connect_result.connect(self._on_connect)
         self.command_result.connect(self._on_command)
@@ -122,6 +142,42 @@ class SSHTab(QWidget):
         self.command.setPlaceholderText(_t('ssh.command_hint'))
         self.command.setAccessibleName(_t('ssh.command_hint'))
         self.status.setText(_t(self._status_key))
+        self.copy_output_btn.setText(_t('ssh.copy_output'))
+        self.clear_output_btn.setText(_t('ssh.clear_output'))
+        self._update_sharing()
+
+    def copy_output(self):
+        QApplication.clipboard().setText(self.output.toPlainText())
+
+    def clear_output(self):
+        # Clearing the local history must also clear what the assistant can read.
+        self.output.clear()
+        self._shared_output = ''
+
+    def _update_sharing(self):
+        self.sharing_btn.setText(_t('ssh.share_revoke' if self._share_output else 'ssh.share_enable'))
+        self.sharing_btn.setToolTip(_t('ssh.share_hint'))
+        self.sharing_btn.setAccessibleName(_t('ssh.share_revoke' if self._share_output else 'ssh.share_enable'))
+        self.sharing_btn.setEnabled(self.connected and self.session is not None)
+
+    def toggle_sharing(self):
+        if self._share_output:
+            self._share_output = False
+            self._shared_output = ''
+            self._update_sharing()
+            return
+        if not self.connected or self.session is None or not allowed(self.host_app):
+            return
+        session, generation = self.session, self.generation
+        if (QMessageBox.question(self, _t('ssh.share_title'), _t('ssh.share_confirm'),
+                                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                                 QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes):
+            return
+        if (self.connected and self.session is session and self.generation == generation
+                and allowed(self.host_app)):
+            self._shared_output = ''
+            self._share_output = True
+            self._update_sharing()
 
     def _sync(self, *_args):
         editable = not self.busy and not self.connected
@@ -134,6 +190,8 @@ class SSHTab(QWidget):
         key_enabled = editable and self.auth.currentData() == 'key'
         for field in (self.key, self.pick_key, self.clear_key_btn):
             field.setEnabled(key_enabled)
+        if hasattr(self, 'sharing_btn'):
+            self._update_sharing()
 
     def choose_key(self):
         if self.busy or self.connected: return
@@ -160,6 +218,7 @@ class SSHTab(QWidget):
             self._set_status('ssh.invalid_fields')
             return
         self.secret.clear()
+        self._share_output, self._shared_output, self._assist_session = False, '', ''
         self.generation += 1
         generation = self.generation
         session = self.session = SSHSession()
@@ -177,6 +236,7 @@ class SSHTab(QWidget):
         if generation != self.generation: return
         self.busy = False
         self.connected = result == 'connected'
+        self._assist_session = secrets.token_hex(16) if self.connected else ''
         if not self.connected:
             if self.session: self.session.request_close()
             self.session = None
@@ -189,6 +249,7 @@ class SSHTab(QWidget):
         was_running = self.busy and self.connected
         session, self.session = self.session, None
         self.busy = self.connected = False
+        self._share_output, self._shared_output, self._assist_session = False, '', ''
         self.secret.clear()
         if session: session.request_close()
         self._set_status('ssh.disconnect_busy' if was_running else 'ssh.disconnected')
@@ -218,6 +279,10 @@ class SSHTab(QWidget):
                 or self.generation != generation or not allowed(self.host_app)):
             return
         self.command.clear()
+        self._start_approved_command(command, session, generation)
+
+    def _start_approved_command(self, command, session, generation):
+        """Only called on the Qt thread after confirmation and session checks."""
         self.busy = True
         self._set_status('ssh.running')
         self._sync()
@@ -225,7 +290,14 @@ class SSHTab(QWidget):
             try: result = session.execute(command)
             except Exception: result = (b'', None, 'command_failed')
             self._emit(self, 'command_result', generation, result)
-        threading.Thread(target=worker, daemon=True, name='ssh-command').start()
+        try:
+            self.output.appendPlainText(_t('ssh.command_log').format(command=command))
+            threading.Thread(target=worker, daemon=True, name='ssh-command').start()
+        except Exception:
+            self.busy = False
+            self._set_status('ssh.command_failed')
+            self._sync()
+            raise
 
     def _on_command(self, generation, result):
         if generation != self.generation: return
@@ -235,6 +307,10 @@ class SSHTab(QWidget):
         text = ''.join(c for c in text if c in '\n\t' or c.isprintable())
         if text: self.output.appendPlainText(text)
         if code is not None: self.output.appendPlainText(_t('ssh.exit_status').format(code=code))
+        if self._share_output:
+            from core.ssh_assist import MAX_SHARED_OUTPUT
+            result_text = text + ('\n' + _t('ssh.exit_status').format(code=code) if code is not None else '')
+            self._shared_output = (self._shared_output + '\n' + result_text)[-MAX_SHARED_OUTPUT:]
         visible = self.output.toPlainText()
         if len(visible) > 262144: self.output.setPlainText(visible[-262144:])
         self._set_status('ssh.' + state)

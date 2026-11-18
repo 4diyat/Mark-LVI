@@ -284,8 +284,8 @@ def test_config_module_still_answers_when_there_is_no_file(tmp_path, monkeypatch
     assert config.get_os() in {"windows", "mac", "linux"}
 
 
-def test_desktop_orb_default_preserves_explicit_hud_choices(isolated_config):
-    assert isolated_config.get_hud_style() == "orb"
+def test_desktop_face_default_preserves_explicit_hud_choices(isolated_config):
+    assert isolated_config.get_hud_style() == "face"
     for style in ("face", "core", "orb"):
         isolated_config.save_hud_style(style)
         assert isolated_config.get_hud_style() == style

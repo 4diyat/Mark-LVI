@@ -37,7 +37,7 @@ from PyQt6.QtCore import (
 )
 from PyQt6.QtGui import (
     QBrush, QColor, QCursor, QDragEnterEvent, QDropEvent, QFont,
-    QKeySequence, QPainter, QPen, QPixmap, QRadialGradient, QShortcut,
+    QKeySequence, QPainter, QPen, QPixmap, QRadialGradient, QShortcut, QTextBlockFormat,
 )
 # Video playback for the HUD. Part of PyQt6, so it costs no new dependency —
 # but the multimedia plugins are a separate piece of the Qt install and can be
@@ -414,6 +414,13 @@ class HudCanvas(QWidget):
             # so it picks up mid-motion instead of snapping when you come back.
             if self._on_screen():
                 self.update()
+            # The central desktop face shares this same animated avatar and
+            # audio timing, even when the assistant panel itself is hidden.
+            stage = getattr(self, "_desktop_stage", None)
+            if stage is not None and stage.isVisible():
+                top = stage.window()
+                if not top.isMinimized() and not top.isHidden():
+                    stage.update()
 
     def _on_screen(self) -> bool:
         """True only when this canvas can actually be seen by the user."""
@@ -825,10 +832,29 @@ class LogWidget(QTextEdit):
         if self._pos < len(self._text):
             ch  = self._text[self._pos]
             cur = self.textCursor()
+            if self._pos == 0:
+                # Use native text blocks rather than inserting HTML: text from a model
+                # or user remains inert and selectable, while chat messages get the
+                # alignment and restrained blue surface of the desktop concept.
+                cur.movePosition(cur.MoveOperation.End)
+                block = QTextBlockFormat()
+                block.setTopMargin(4)
+                block.setBottomMargin(4)
+                if self._tag in ("you", "ai"):
+                    block.setAlignment(Qt.AlignmentFlag.AlignRight if self._tag == "you"
+                                       else Qt.AlignmentFlag.AlignLeft)
+                    block.setLeftMargin(38 if self._tag == "you" else 8)
+                    block.setRightMargin(8 if self._tag == "you" else 38)
+                    block.setBackground(QBrush(QColor("#1c3a59" if self._tag == "you" else "#192d41")))
+                else:
+                    block.setLeftMargin(8)
+                    block.setRightMargin(8)
+                cur.setBlockFormat(block)
+                self.setTextCursor(cur)
             fmt = cur.charFormat()
             col = {
                 "you":  qcol(C.WHITE),
-                "ai":   qcol(C.PRI),
+                "ai":   qcol(C.DESKTOP_TEXT),
                 "err":  qcol(C.RED),
                 "file": qcol(C.GREEN),
                 # SYS lines are the bulk of the log. Amber fought the cyan HUD
@@ -3480,6 +3506,8 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
     _state_sig      = pyqtSignal(str)
     _content_sig    = pyqtSignal(str, str)   # (title, text) — thread-safe content display
     _codejob_sig    = pyqtSignal(object)     # dev_agent job state — live coding panel
+    _ssh_assist_sig = pyqtSignal(object)
+    _editor_assist_sig = pyqtSignal(object)
     _workspace_command_sig = pyqtSignal(object)  # worker request, completed on Qt thread
     _browser_read_sig = pyqtSignal(object)
     _reconfig_sig   = pyqtSignal()           # trigger setup overlay from any thread
@@ -3849,6 +3877,8 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         self._content_sig.connect(self._show_content)
         self._codejob_sig.connect(self._show_code_job)
         self._workspace_command_sig.connect(self._execute_workspace_command)
+        self._editor_assist_sig.connect(self._execute_editor_assist)
+        self._ssh_assist_sig.connect(self._execute_ssh_assist)
         self._browser_read_sig.connect(self._execute_browser_read)
         self._reconfig_sig.connect(self._show_setup)
         self._camera_sig.connect(self._show_camera_frame)
@@ -3897,6 +3927,14 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         sc_full.activated.connect(self._toggle_fullscreen)
         sc_intr = QShortcut(QKeySequence("Escape"), self)
         sc_intr.activated.connect(self._do_interrupt)
+
+    def _execute_ssh_assist(self, request):
+        from ui.ssh_assist import execute
+        execute(self, request)
+
+    def _execute_editor_assist(self, request):
+        from ui.editor_assist import execute
+        execute(self, request)
 
     def _execute_browser_read(self, request):
         from ui.browser_read import execute
@@ -5920,6 +5958,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         try:
             self.hud.hud_style = want
             self.hud.update()
+            self._desktop_mdi.position_emblem()
         except Exception:
             pass
         self._refresh_hud_btn()
@@ -6101,6 +6140,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
             self._sub_lbl.setText(_t("app.title"))
         self._log._ai_name_lc = self._assistant_name.lower()
         self._assistant_heading.setText(self._assistant_name)
+        self._assistant_mark.setAccessibleName(self._assistant_name)
         self.hud._assistant_name = display
 
         color_changed = False
@@ -6417,6 +6457,9 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         if hasattr(self, "_desktop_state"):
             from ui.desktop_layout import update_state
             update_state(self, state)
+        stage = getattr(self.hud, "_desktop_stage", None)
+        if stage is not None:
+            stage.update()
         # The microphone button is the only control on this window that claims
         # something about the hardware, so it has to admit when there is none.
         # `NO MIC` comes from main.py when the stream could not be opened; the
@@ -6766,6 +6809,30 @@ class JarvisUI:
             return {"ok": False, "message": str(exc)}
         self._win._workspace_command_sig.emit(request)
         return request.wait(3.0)
+
+    def assist_ssh(self, command: dict) -> dict:
+        """Worker-only request; Qt performs session checks and local approval."""
+        from core.ssh_assist import SSHAssistRequest
+        if threading.get_ident() == self._win._ui_thread_id:
+            return {"ok": False, "message": "SSH assistance must run on a worker thread."}
+        try:
+            request = SSHAssistRequest(command)
+        except (TypeError, ValueError) as exc:
+            return {"ok": False, "message": str(exc)}
+        self._win._ssh_assist_sig.emit(request)
+        return request.wait(60.0)
+
+    def assist_editor(self, command: dict) -> dict:
+        """Worker-only, locally approved access to an exact editor document."""
+        from core.editor_assist import EditorRequest
+        if threading.get_ident() == self._win._ui_thread_id:
+            return {"ok": False, "message": "Editor assistance must run on a worker thread."}
+        try:
+            request = EditorRequest(command)
+        except (TypeError, ValueError) as exc:
+            return {"ok": False, "message": str(exc)}
+        self._win._editor_assist_sig.emit(request)
+        return request.wait(60.0)
 
     def read_browser(self, scope="any") -> dict:
         """Request a locally approved read of the active browser, from a worker."""

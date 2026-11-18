@@ -110,23 +110,16 @@ The older `mt5_orb` plugin is a separate legacy M30 strategy with different
 session and broker-offset assumptions; do not compare its output as if the two
 strategies were identical.
 
-### Code editor and AI image canvas
+### Code editor
 
-Enable `code_editor` and/or `image_canvas` in Plugin Manager and approve each
-plugin's permissions. Ask the assistant to open the code editor, or to open the
-image canvas with a description. Each workspace also has tabs for the other
-feature when its plugin is enabled.
-
-* **Editor:** open, edit and save UTF-8 files; run saved Python files or
-  JavaScript files (Node.js must be on PATH). Each run requires a confirmation.
-  **Execution is not sandboxed:** code runs with your account's permissions,
-  including access to files, network and credentials. Only run trusted code.
-  A 15-second timeout stops the direct process, not necessarily its children.
-* **Canvas:** type a prompt and press Generate. The prompt is sent to Gemini's
-  `gemini-2.5-flash-image` using your configured Gemini API key; model access,
-  network access, quota and possible usage charges apply. Preview the result
-  and use Save Image to keep it. Image generation does not start automatically
-  when the assistant opens the canvas.
+Enable `code_editor` in Plugin Manager and approve its permissions. The editor
+supports multiple files, syntax highlighting, and JARVIS assistance with local
+consent before sharing code or applying a proposed change. It opens, edits and
+saves UTF-8 files and runs saved Python or JavaScript files (Node.js must be on
+PATH). Each run requires confirmation. **Execution is not sandboxed:** code
+runs with your account's permissions, including access to files, network and
+credentials. Only run trusted code. A 15-second timeout stops the direct
+process, not necessarily its children.
 
 ### Core Features
 | Feature | Description |
@@ -843,7 +836,6 @@ Mark LVI/
 │   ├── excel_writer.py       # Spreadsheet output
 │   ├── code_helper.py        # Write and run small programs
 │   ├── dev_agent.py          # Multi-file project work
-│   ├── image_generator.py    # Generate images
 │   ├── upload_video.py       # Upload the video on your Desktop to YouTube
 │   ├── youtube_video.py      # Search, summarise and fetch transcripts
 │   ├── printer_control.py    # 3D printers, over MQTT
@@ -1072,8 +1064,7 @@ undo and Save As. Text layers can be hidden or removed, but are editable only
 in the current session. Saving PNG/JPEG/BMP flattens the visible image, and
 image-wide transforms flatten all layers after a warning; undo restores them.
 The separate optional `image_editor` plugin lets JARVIS propose an operation or
-text; a person must choose the image and apply/save the change. The existing `image_canvas` plugin
-is still a separate AI image generator. The code editor and both MT5 tools retain
+text; a person must choose the image and apply/save the change. The code editor and both MT5 tools retain
 their existing plugin permissions and confirmation requirements. Enable each
 permissioned plugin in Plugin Manager before asking JARVIS to use it.
 
@@ -1201,4 +1192,13 @@ system/user OpenSSH known_hosts file; unknown or changed keys are rejected.
 Verify fingerprints independently and configure known_hosts before connecting.
 This is a bounded, non-interactive command runner, not a full terminal: output
 is capped and commands time out; disconnecting does not guarantee a remote
-process stops. JARVIS only opens the panel, not connections or commands.
+process stops. Users connect locally; JARVIS can inspect the focused tab and
+propose a command, but every command requires local confirmation for that exact
+session. Output sharing is off by default and must be enabled locally for each
+session; only new output after permission is granted is shared, capped at 8,000
+characters, and may be sent to the configured model provider. Revoke sharing at
+any time; disconnect clears the permission and shared buffer. Clear also clears
+the shared buffer. Prior disclosures cannot be recalled. Remote output is
+untrusted and may contain secrets or prompt injection; review it before enabling
+sharing. Inspect reports running/completed status rather than guaranteeing remote
+process termination. Credentials and key paths are not returned to the model.

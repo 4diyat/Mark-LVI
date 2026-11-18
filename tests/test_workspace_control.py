@@ -56,14 +56,10 @@ def test_plugin_requires_a_desktop_and_uses_confirmed_result():
     assert len(player.calls) == 1
 
 
-def test_native_hand_board_commands_require_valid_note_content():
-    assert validate({"action": "open", "target": "handboard"})["target"] == "handboard"
-    command = validate({"action": "board_add", "title": "  Plan  ", "text": "Steps"})
-    assert command == {"action": "board_add", "target": "handboard", "text": "Steps", "title": "Plan"}
-    assert validate({"action": "board_list"})["target"] == "handboard"
-    with pytest.raises(ValueError):
-        validate({"action": "board_add", "title": ""})
-    with pytest.raises(ValueError):
-        validate({"action": "board_add", "title": "x" * 121})
-    with pytest.raises(ValueError):
-        validate({"action": "board_list", "target": "camera"})
+def test_model_viewer_replaces_board_commands():
+    assert validate({"action": "open", "target": "model_viewer"})["target"] == "model_viewer"
+    for command in ({"action": "open", "target": "handboard"},
+                    {"action": "board_add", "title": "Plan", "text": "Steps"},
+                    {"action": "board_list"}):
+        with pytest.raises(ValueError):
+            validate(command)
