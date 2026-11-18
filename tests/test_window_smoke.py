@@ -1297,12 +1297,12 @@ def test_mt5_emergency_stop_and_confirmed_resume_controls(window, monkeypatch):
 def test_graphite_desktop_layout_uses_new_wallpaper_and_conversation_is_primary(window):
     from ui.desktop_workspace import initial_window_geometry
     from ui.theme import C
-    assert C.DESKTOP_PANEL == '#262628'
-    assert C.DESKTOP_TEXT == '#f2f2f5'
+    assert C.DESKTOP_PANEL == '#15212f'
+    assert C.DESKTOP_TEXT == '#eef5fd'
     files, assistant = initial_window_geometry(1366, 738)
-    assert assistant[0] < files[0]
-    assert assistant[2] > files[2]
-    assert (ROOT / 'assets/workspace/graphite-wallpaper.jpg').is_file()
+    assert files[0] + files[2] < assistant[0]
+    assert assistant[0] > files[0]
+    assert (ROOT / 'assets/workspace/jarvis-blue-wallpaper.jpg').is_file()
 
 
 def test_app_shutdown_confirms_ssh_before_disconnecting_any_session(window):
@@ -1356,3 +1356,21 @@ def test_retranslate_workspace_updates_open_browser_and_ssh_without_rebuilding(w
     assert events == [('translate', 'browser'), ('title', 'browser'), ('translate', 'ssh'), ('title', 'ssh')]
     assert window._workspace_documents['1'][1] is browser
     assert window._workspace_documents['2'][1] is ssh
+
+
+def test_hand_badge_reflects_real_controller_status(window, monkeypatch):
+    from core.i18n import label
+    controller = window._hand_controller
+    monkeypatch.setattr(window._workspace_gestures, 'update', lambda _samples: None)
+    controller.thread = types.SimpleNamespace(is_alive=lambda: True)
+    controller._stop.clear()
+    controller.status = 'starting'
+    window._hand_refresh()
+    assert window._hand_badge._visible
+    assert window._hand_badge.text() == label('gesture.badge_starting')
+    controller.status = 'active'
+    window._hand_refresh()
+    assert window._hand_badge.text() == label('gesture.badge_active')
+    controller.stop()
+    window._hand_refresh()
+    assert not window._hand_badge._visible

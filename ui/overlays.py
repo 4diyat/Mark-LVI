@@ -474,8 +474,18 @@ class PluginManagerOverlay(QWidget):
             empty.setStyleSheet(f"color: {C.DESKTOP_MUTED}; background: transparent;")
             lay.addWidget(empty)
 
+        scroll = QScrollArea(self)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        contents = QWidget()
+        rows = QVBoxLayout(contents)
+        rows.setContentsMargins(0, 0, 0, 0)
         for p in plugins:
-            lay.addLayout(self._build_row(p))
+            rows.addLayout(self._build_row(p))
+        rows.addStretch(1)
+        scroll.setWidget(contents)
+        lay.addWidget(scroll, 1)
+        self.resize(self._OW, min(600, max(220, 120 + 35 * len(plugins))))
 
         lay.addSpacing(4)
         close_btn = QPushButton(_t("ui.close"))
@@ -508,13 +518,25 @@ class PluginManagerOverlay(QWidget):
         if p["valid"] and perms:
             tip = (tip + "\n\n"
                    + _t("ui.plugins.permissions", list=", ".join(perms)))
-        elif p["valid"] and p.get("manifest_note"):
+        if p["valid"] and p.get("manifest_note"):
             tip = tip + "\n\n" + p["manifest_note"]
         lbl.setToolTip(tip)
         lbl.setWordWrap(False)
         row.addWidget(lbl, stretch=1)
+        details = QPushButton(_t("plugins.details"))
+        details.setAccessibleName(_t("plugins.details") + " — " + p["name"])
+        def show_details():
+            from PyQt6.QtWidgets import QMessageBox
+            box = QMessageBox(self)
+            box.setWindowTitle(p["name"])
+            box.setTextFormat(Qt.TextFormat.PlainText)
+            box.setText(tip)
+            box.exec()
+        details.clicked.connect(show_details)
+        row.addWidget(details)
 
         btn = QPushButton()
+        btn.setAccessibleName(p["name"] + " — " + _t("ui.plugins.heading"))
         btn.setFixedSize(72, 24)
         btn.setFont(QFont("Courier New", 7, QFont.Weight.Bold))
         if not p["valid"]:
@@ -526,16 +548,17 @@ class PluginManagerOverlay(QWidget):
                     border: 1px solid {C.DESKTOP_BORDER}; border-radius: 3px;
                 }}
             """)
-        elif perms and not p["enabled"]:
+        elif perms:
             # CONSENT, ONCE, BEFORE THE PLUGIN RUNS. The button says what it is
             # asking for rather than "OFF", and pressing it opens a question.
             # Only for a plugin that DECLARED a permission: this repository's
             # own plugins mostly have no manifest and keep their plain toggle,
             # so the dialog cannot train people to click through it.
-            btn.setText(_t("ui.plugins.ask"))
             btn.setToolTip(_t("ui.plugins.consent", list=", ".join(perms)))
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            self._style_toggle(btn, False)
+            self._style_toggle(btn, p["enabled"])
+            if not p["enabled"]:
+                btn.setText(_t("ui.plugins.ask"))
             btn.clicked.connect(lambda _, name=p["name"], b=btn,
                                 list_=tuple(perms): self._ask_and_toggle(name, b, list_))
         else:
@@ -794,6 +817,7 @@ class PluginSettingsOverlay(QWidget):
                 if ftype == "password":
                     w.setEchoMode(QLineEdit.EchoMode.Password)
 
+            w.setAccessibleName(label)
             self._widgets[(ns, key)] = w
             self._types[(ns, key)]   = ftype
             form.addWidget(w)

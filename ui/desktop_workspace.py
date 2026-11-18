@@ -16,12 +16,55 @@ from core.i18n import label as _t
 from ui.theme import C, workspace_stylesheet
 
 
+class WorkspaceEmblem(QWidget):
+    """Decorative JARVIS emblem; never claims a live microphone or AI state."""
+    def __init__(self, name, parent):
+        super().__init__(parent)
+        self.name = name
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
+        self.setAccessibleName(name)
+
+    def paintEvent(self, event):
+        from PyQt6.QtGui import QFont, QPen, QRadialGradient
+        del event
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        side = min(self.width() - 20, self.height() - 80, 168)
+        if side <= 0:
+            return
+        x = (self.width() - side) / 2
+        y = max(4, (self.height() - side - 65) / 2)
+        glow = QRadialGradient(x + side * .44, y + side * .37, side * .75)
+        for stop, color in ((0, "#39679c"), (.36, "#102b51"), (.66, "#071729"), (1, "#173f6b")):
+            glow.setColorAt(stop, QColor(color))
+        painter.setPen(QPen(QColor("#70c8ff"), 2))
+        painter.setBrush(QBrush(glow))
+        painter.drawEllipse(QRectF(x, y, side, side))
+        painter.setPen(QPen(QColor("#4b95dd"), 1))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawEllipse(QRectF(x + 7, y + 7, side - 14, side - 14))
+        painter.setPen(QColor(C.DESKTOP_TEXT))
+        painter.setFont(QFont("Arial", 17, QFont.Weight.Bold))
+        painter.drawText(QRectF(0, y + side + 14, self.width(), 32),
+                         Qt.AlignmentFlag.AlignCenter, self.name.upper())
+        painter.end()
+
+
 class WallpaperArea(QMdiArea):
     """Scale the original wallpaper to cover the desktop, not the app windows."""
     def __init__(self):
         super().__init__()
-        self._wallpaper = QPixmap(str(Path(__file__).resolve().parent.parent / "assets/workspace/graphite-wallpaper.jpg"))
+        self._wallpaper = QPixmap(str(Path(__file__).resolve().parent.parent / "assets/workspace/jarvis-blue-wallpaper.jpg"))
         self._dock = None
+        self._emblem = None
+
+    def position_emblem(self):
+        if self._emblem is not None:
+            width, height = self.viewport().width(), self.viewport().height()
+            self._emblem.setVisible(width >= 1100 and height >= 400)
+            self._emblem.setGeometry(max(0, (width - 260) // 2),
+                                     max(0, int(height * .20)), 260, min(300, height))
 
     def position_dock(self):
         if self._dock is not None:
@@ -38,6 +81,7 @@ class WallpaperArea(QMdiArea):
                                            Qt.AspectRatioMode.KeepAspectRatioByExpanding,
                                            Qt.TransformationMode.SmoothTransformation)
             self.setBackground(QBrush(image))
+        self.position_emblem()
         self.position_dock()
 
 
@@ -319,14 +363,18 @@ def initial_window_geometry(width, height):
     """Keep both initial panels within the desktop above the floating dock."""
     width, height = max(1, width), max(1, height)
     floor = max(1, height - 90)
-    assistant_x = max(0, int(width * .045))
-    assistant_y = max(0, int(height * .10))
-    assistant_w = max(1, min(int(width * .47), width - assistant_x))
-    assistant_h = max(1, min(int(height * .72), floor - assistant_y))
-    file_x = max(0, min(int(width * .55), width - 1))
-    file_y = max(0, int(height * .10))
-    file_w = max(1, min(int(width * .4), width - file_x))
-    file_h = max(1, min(int(height * .52), floor - file_y))
+    # Wide layouts leave a breathing space for the JARVIS emblem between
+    # the files on the left and the conversation on the right. Compact layouts
+    # use the space for the real tools instead of overlapping the panels.
+    wide = width >= 1100
+    file_x = max(0, int(width * .02))
+    file_y = max(0, int(height * .07))
+    file_w = max(1, min(int(width * (.37 if wide else .46)), width - file_x))
+    file_h = max(1, min(int(height * .48), floor - file_y))
+    assistant_x = max(0, min(int(width * (.63 if wide else .51)), width - 1))
+    assistant_y = max(0, int(height * .14))
+    assistant_w = max(1, min(int(width * (.35 if wide else .47)), width - assistant_x))
+    assistant_h = max(1, min(int(height * .66), floor - assistant_y))
     return (file_x, file_y, file_w, file_h), (assistant_x, assistant_y, assistant_w, assistant_h)
 
 
@@ -335,12 +383,12 @@ def build(window):
     shell.setObjectName("WorkspaceShell")
     shell.setStyleSheet(f"""
         QWidget#WorkspaceShell {{ background: qlineargradient(x1:0,y1:0,x2:1,y2:1,
-            stop:0 #22262d, stop:0.55 #333941, stop:1 #171a21); }}
+            stop:0 #0b1725, stop:0.55 #192d43, stop:1 #091522); }}
         QMdiArea {{ border: none; }}
         QMdiSubWindow {{ background: {C.DESKTOP_PANEL}; border: 1px solid {C.DESKTOP_BORDER}; }}
         QMdiSubWindow::title {{ background: {C.DESKTOP_SIDEBAR}; color: {C.DESKTOP_TEXT};
                                padding: 5px; }}
-        QWidget#DesktopDock {{ background: rgba(54, 54, 58, 238); border: 1px solid {C.DESKTOP_BORDER};
+        QWidget#DesktopDock {{ background: rgba(21, 34, 49, 242); border: 1px solid {C.DESKTOP_BORDER};
                                border-radius: 15px; }}
         QToolButton#DockButton {{ color: {C.DESKTOP_TEXT}; background: transparent;
             border: none; border-radius: 8px; padding: 4px; }}
@@ -355,6 +403,9 @@ def build(window):
     mdi.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
     layout.addWidget(mdi, 1)
     window._desktop_mdi = mdi
+    mdi._emblem = WorkspaceEmblem(window._assistant_name, mdi.viewport())
+    mdi.position_emblem()
+    mdi._emblem.lower()
     window._desktop_windows = {}
     window._workspace_documents = {}
     window._workspace_document_counter = 0
@@ -438,8 +489,8 @@ def build(window):
         open_terminal(window, {"kind": "trading_terminal"})
 
     def image_editor():
-        from ui.image_editor import open_editor
-        open_editor(window, {})
+        from ui.workspace_router import open_workspace
+        open_workspace(window, {"kind": "image_editor"})
 
     def browser():
         from ui.workspace_router import open_workspace
@@ -548,14 +599,18 @@ def retranslate(window):
     window._workspace_file_browser.retranslate()
     # Repaint active tool windows without rebuilding them or dropping state.
     for kind, sub in tuple(getattr(window, "_workspace_documents", {}).values()):
-        if kind not in ("workspace_browser", "ssh_manager"):
-            continue
         try:
             document = sub._document
-            document.retranslate()
-            sub.setWindowTitle(document.windowTitle())
+            if callable(getattr(document, "retranslate", None)):
+                document.retranslate()
+                sub.setWindowTitle(document.windowTitle())
         except RuntimeError:
             continue  # The Qt wrapper was deleted during shutdown.
+    for dialog in tuple(getattr(window, "_order_dialogs", ())):
+        try:
+            dialog.retranslate()
+        except RuntimeError:
+            continue
 
 
 def show_video(window):

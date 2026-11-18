@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (QDialog, QFileDialog, QHBoxLayout, QLabel,
 from core.i18n import label as _t
 from plugins import _creative
 from ui.theme import workspace_stylesheet
+from ui.localization import TranslationBindings
 
 
 class CreativeWorkspace(QDialog):
@@ -21,7 +22,8 @@ class CreativeWorkspace(QDialog):
 
     def __init__(self, parent, request):
         super().__init__(parent)
-        self.setWindowTitle(_t("creative.title"))
+        self._translations = TranslationBindings()
+        self._translations.title(self, "creative.title")
         self.resize(850, 680)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         self.setStyleSheet(workspace_stylesheet())
@@ -45,6 +47,11 @@ class CreativeWorkspace(QDialog):
             self._code.setPlainText(code)
             self._code.document().setModified(bool(code))
 
+    def retranslate(self):
+        self._translations.refresh()
+        self._code.setAccessibleName(_t("creative.editor"))
+        self._prompt.setAccessibleName(_t("creative.prompt"))
+
     def _allowed(self, name):
         try:
             return any(row.get("name") == name and row.get("valid") and row.get("enabled")
@@ -59,7 +66,7 @@ class CreativeWorkspace(QDialog):
         return False
 
     def _button(self, label, slot, row):
-        btn = QPushButton(_t(label))
+        btn = self._translations.text(QPushButton(), label)
         btn.clicked.connect(slot)
         row.addWidget(btn)
         return btn
@@ -67,11 +74,12 @@ class CreativeWorkspace(QDialog):
     def _build_editor(self):
         page = QWidget()
         layout = QVBoxLayout(page)
-        self._file_label = QLabel(_t("creative.unsaved"))
+        self._file_label = self._translations.text(QLabel(), "creative.unsaved", conditional=True)
         layout.addWidget(self._file_label)
         self._code = QPlainTextEdit()
+        self._code.setAccessibleName(_t("creative.editor"))
         self._code.setFont(QFont("Courier New", 10))
-        self._code.setPlaceholderText(_t("creative.code_placeholder"))
+        self._translations.placeholder(self._code, "creative.code_placeholder")
         layout.addWidget(self._code, 1)
         row = QHBoxLayout()
         self._button("creative.open", self._open_file, row)
@@ -80,20 +88,22 @@ class CreativeWorkspace(QDialog):
         self._run_btn = self._button("creative.run", self._run_file, row)
         self._run_btn.setObjectName("WorkspacePrimary")
         layout.addLayout(row)
-        layout.addWidget(QLabel(_t("creative.output")))
+        layout.addWidget(self._translations.text(QLabel(), "creative.output"))
         self._output = QPlainTextEdit()
         self._output.setReadOnly(True)
         self._output.setMaximumHeight(160)
         layout.addWidget(self._output)
         self._tabs.addTab(page, _t("creative.editor"))
+        self._translations.tab(self._tabs, 0, "creative.editor")
 
     def _build_canvas(self):
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.addWidget(QLabel(_t("creative.prompt")))
+        layout.addWidget(self._translations.text(QLabel(), "creative.prompt"))
         self._prompt = QPlainTextEdit()
+        self._prompt.setAccessibleName(_t("creative.prompt"))
         self._prompt.setMaximumHeight(100)
-        self._prompt.setPlaceholderText(_t("creative.prompt_placeholder"))
+        self._translations.placeholder(self._prompt, "creative.prompt_placeholder")
         layout.addWidget(self._prompt)
         row = QHBoxLayout()
         self._generate_btn = self._button("creative.generate", self._generate, row)
@@ -101,14 +111,15 @@ class CreativeWorkspace(QDialog):
         self._save_image_btn = self._button("creative.save_image", self._save_image, row)
         self._save_image_btn.setEnabled(False)
         layout.addLayout(row)
-        self._image_label = QLabel(_t("creative.image_empty"))
+        self._image_label = self._translations.text(QLabel(), "creative.image_empty", conditional=True)
         self._image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._image_label.setMinimumSize(250, 200)
         layout.addWidget(self._image_label, 1)
-        self._image_status = QLabel(_t("creative.image_notice"))
+        self._image_status = self._translations.text(QLabel(), "creative.image_notice", conditional=True)
         self._image_status.setWordWrap(True)
         layout.addWidget(self._image_status)
         self._tabs.addTab(page, _t("creative.canvas"))
+        self._translations.tab(self._tabs, 1, "creative.canvas")
 
     def _may_discard(self):
         if not self._code.document().isModified():

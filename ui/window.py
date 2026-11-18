@@ -3481,6 +3481,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
     _content_sig    = pyqtSignal(str, str)   # (title, text) — thread-safe content display
     _codejob_sig    = pyqtSignal(object)     # dev_agent job state — live coding panel
     _workspace_command_sig = pyqtSignal(object)  # worker request, completed on Qt thread
+    _browser_read_sig = pyqtSignal(object)
     _reconfig_sig   = pyqtSignal()           # trigger setup overlay from any thread
     _camera_sig     = pyqtSignal(bytes)      # show camera frame preview (small overlay)
     _cam_stream_sig = pyqtSignal(bool)       # True=start live stream, False=stop
@@ -3848,6 +3849,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         self._content_sig.connect(self._show_content)
         self._codejob_sig.connect(self._show_code_job)
         self._workspace_command_sig.connect(self._execute_workspace_command)
+        self._browser_read_sig.connect(self._execute_browser_read)
         self._reconfig_sig.connect(self._show_setup)
         self._camera_sig.connect(self._show_camera_frame)
         self._confirm_sig.connect(self._show_confirm_banner)
@@ -3895,6 +3897,10 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         sc_full.activated.connect(self._toggle_fullscreen)
         sc_intr = QShortcut(QKeySequence("Escape"), self)
         sc_intr.activated.connect(self._do_interrupt)
+
+    def _execute_browser_read(self, request):
+        from ui.browser_read import execute
+        execute(self, request)
 
     def _execute_workspace_command(self, request):
         """Run on the Qt thread and always return an explicit outcome."""
@@ -6291,12 +6297,13 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         plugins = self.get_plugins() if self.get_plugins else []
         cw = self.centralWidget()
         ov = PluginManagerOverlay(plugins, parent=cw)
+        ov.setFixedWidth(max(1, min(PluginManagerOverlay._OW, cw.width() - 16)))
         ov.on_changed = getattr(self, "on_plugins_changed", None)
-        ov.adjustSize()
+        height = max(1, min(600, cw.height() - 16, 120 + 35 * len(plugins)))
         ov.setGeometry(
-            (cw.width()  - ov.width())  // 2,
-            (cw.height() - ov.height()) // 2,
-            ov.width(), ov.height(),
+            max(0, (cw.width() - ov.width()) // 2),
+            max(0, (cw.height() - height) // 2),
+            ov.width(), height,
         )
         ov.show()
         ov.raise_()
@@ -6759,6 +6766,18 @@ class JarvisUI:
             return {"ok": False, "message": str(exc)}
         self._win._workspace_command_sig.emit(request)
         return request.wait(3.0)
+
+    def read_browser(self, scope="any") -> dict:
+        """Request a locally approved read of the active browser, from a worker."""
+        from core.browser_read import BrowserReadRequest
+        if threading.get_ident() == self._win._ui_thread_id:
+            return {"ok": False, "message": "Browser read must run on a worker thread."}
+        try:
+            request = BrowserReadRequest(scope)
+        except ValueError as exc:
+            return {"ok": False, "message": str(exc)}
+        self._win._browser_read_sig.emit(request)
+        return request.wait(60.0)
 
     def show_quiz(self, topic: str, questions, grade=None) -> None:
         """Thread-safe: put an interactive quiz on the board.

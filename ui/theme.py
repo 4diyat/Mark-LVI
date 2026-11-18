@@ -42,19 +42,19 @@ class C:
     DARK      = "#1d1d1f"
     BAR_BG    = "#252529"
     # Neutral desktop chrome is independent of the customizable HUD accent.
-    DESKTOP_PANEL = "#262628"
-    DESKTOP_SIDEBAR = "#303033"
-    DESKTOP_BAR = "#1c1c1e"
-    DESKTOP_BORDER = "#505053"
-    DESKTOP_TEXT = "#f2f2f5"
-    DESKTOP_MUTED = "#b1b1b8"
-    DESKTOP_DOCK = "#3a3a3e"
-    DOCK_BLUE = "#397dd1"
-    DOCK_TEAL = "#607b99"
-    DOCK_PURPLE = "#736886"
-    DOCK_CHARCOAL = "#5a5a60"
-    DOCK_GREEN = "#658273"
-    DOCK_ORANGE = "#987359"
+    DESKTOP_PANEL = "#15212f"
+    DESKTOP_SIDEBAR = "#1b2a3b"
+    DESKTOP_BAR = "#0b1725"
+    DESKTOP_BORDER = "#3b5269"
+    DESKTOP_TEXT = "#eef5fd"
+    DESKTOP_MUTED = "#aabbd0"
+    DESKTOP_DOCK = "#25384d"
+    DOCK_BLUE = "#268ce3"
+    DOCK_TEAL = "#287eac"
+    DOCK_PURPLE = "#646e9a"
+    DOCK_CHARCOAL = "#485e73"
+    DOCK_GREEN = "#417f85"
+    DOCK_ORANGE = "#8b746a"
 
 
 def workspace_stylesheet() -> str:
@@ -63,7 +63,7 @@ def workspace_stylesheet() -> str:
         QDialog, QWidget {{ background: {C.DESKTOP_PANEL}; color: {C.DESKTOP_TEXT}; }}
         QLabel, QCheckBox, QRadioButton {{ background: transparent; color: {C.DESKTOP_TEXT}; }}
         QPushButton, QToolButton {{ background: {C.DESKTOP_DOCK}; color: {C.DESKTOP_TEXT};
-            border: 1px solid {C.DESKTOP_BORDER}; border-radius: 6px; padding: 6px; }}
+            border: 1px solid {C.DESKTOP_BORDER}; border-radius: 9px; padding: 6px; }}
         QPushButton:hover, QToolButton:hover {{ background: {C.DESKTOP_SIDEBAR}; }}
         QPushButton:focus, QToolButton:focus {{ border: 1px solid #4b9fff; }}
         QPushButton:disabled, QToolButton:disabled {{ color: {C.DESKTOP_MUTED}; }}
@@ -73,10 +73,10 @@ def workspace_stylesheet() -> str:
         QPushButton#WorkspacePrimary:disabled {{ background: {C.DESKTOP_DOCK};
             color: {C.DESKTOP_MUTED}; border-color: {C.DESKTOP_BORDER}; }}
         QWidget#WorkspaceSection {{ background: {C.DESKTOP_SIDEBAR};
-            border: 1px solid {C.DESKTOP_BORDER}; border-radius: 7px; }}
+            border: 1px solid {C.DESKTOP_BORDER}; border-radius: 10px; }}
         QLineEdit, QPlainTextEdit, QTextEdit, QListWidget, QSpinBox, QComboBox {{
             background: {C.DESKTOP_BAR}; color: {C.DESKTOP_TEXT};
-            border: 1px solid {C.DESKTOP_BORDER}; border-radius: 5px; padding: 5px;
+            border: 1px solid {C.DESKTOP_BORDER}; border-radius: 8px; padding: 5px;
             selection-background-color: #286dcc; selection-color: #ffffff; }}
         QLineEdit:focus, QPlainTextEdit:focus, QTextEdit:focus, QListWidget:focus,
         QSpinBox:focus, QComboBox:focus {{ border: 1px solid #4b9fff; }}

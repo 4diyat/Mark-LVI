@@ -9,13 +9,15 @@ from core.i18n import label as _t
 from core.image_geometry import valid_crop
 from core.image_layers import make_text_layer, set_visible
 from ui.theme import workspace_stylesheet
+from ui.localization import TranslationBindings
 
 
 class ImageEditor(QDialog):
     def __init__(self, host, request):
         super().__init__(host)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
-        self.setWindowTitle(_t("image_editor.title"))
+        self._translations = TranslationBindings()
+        self._translations.title(self, "image_editor.title")
         self.resize(900, 680)
         self.setStyleSheet(workspace_stylesheet())
         self._image = None
@@ -24,25 +26,35 @@ class ImageEditor(QDialog):
         self._dirty = False
         self._source = ""
         layout = QVBoxLayout(self)
-        toolbar = QHBoxLayout()
+        toolbar_widget = QWidget()
+        toolbar = QHBoxLayout(toolbar_widget)
+        toolbar.setContentsMargins(0, 0, 0, 0)
         for key, callback in (("image_editor.open", self.open_file), ("image_editor.save_as", self.save_as),
                               ("image_editor.undo", self.undo), ("image_editor.rotate", self.rotate),
                               ("image_editor.flip", self.flip), ("image_editor.grayscale", self.grayscale),
                               ("image_editor.crop", self.crop)):
-            button = QPushButton(_t(key))
+            button = self._translations.text(QPushButton(), key)
             if key == "image_editor.save_as":
                 button.setObjectName("WorkspacePrimary")
             button.clicked.connect(callback)
             toolbar.addWidget(button)
         toolbar.addStretch()
-        layout.addLayout(toolbar)
-        self._status = QLabel(_t("image_editor.empty"))
+        toolbar_scroll = QScrollArea()
+        toolbar_scroll.setWidgetResizable(True)
+        toolbar_scroll.setWidget(toolbar_widget)
+        toolbar_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        toolbar_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        toolbar_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        toolbar_scroll.setFixedHeight(58)
+        layout.addWidget(toolbar_scroll)
+        self._status = self._translations.text(QLabel(), "image_editor.empty", conditional=True)
         self._status.setTextFormat(Qt.TextFormat.PlainText)
         self._status.setWordWrap(True)
         layout.addWidget(self._status)
         self._preview = QLabel()
+        self._preview.setAccessibleName(_t("image_editor.title"))
         self._preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._preview.setMinimumSize(400, 300)
+        self._preview.setMinimumSize(200, 150)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setWidget(self._preview)
@@ -51,15 +63,16 @@ class ImageEditor(QDialog):
         layers_panel = QWidget()
         layers_panel.setMaximumWidth(220)
         layers_layout = QVBoxLayout(layers_panel)
-        layers_layout.addWidget(QLabel(_t("image_editor.layers")))
-        layers_layout.addWidget(QLabel(_t("image_editor.background")))
+        layers_layout.addWidget(self._translations.text(QLabel(), "image_editor.layers"))
+        layers_layout.addWidget(self._translations.text(QLabel(), "image_editor.background"))
         self._layer_list = QListWidget()
+        self._layer_list.setAccessibleName(_t("image_editor.layers"))
         self._layer_list.itemChanged.connect(self._toggle_layer)
         layers_layout.addWidget(self._layer_list, 1)
-        add_text = QPushButton(_t("image_editor.add_text"))
+        add_text = self._translations.text(QPushButton(), "image_editor.add_text")
         add_text.clicked.connect(lambda: self.add_text())
         layers_layout.addWidget(add_text)
-        remove = QPushButton(_t("image_editor.remove_layer"))
+        remove = self._translations.text(QPushButton(), "image_editor.remove_layer")
         remove.clicked.connect(self.remove_layer)
         layers_layout.addWidget(remove)
         workspace.addWidget(layers_panel)
@@ -70,12 +83,17 @@ class ImageEditor(QDialog):
             label = QLabel(_t("image_editor.suggestion", operation=_t("image_editor." + suggestion)))
             label.setWordWrap(True)
             row.addWidget(label, 1)
-            apply = QPushButton(_t("image_editor.apply"))
+            apply = self._translations.text(QPushButton(), "image_editor.apply")
             apply.clicked.connect({"rotate": self.rotate, "flip": self.flip,
                                    "grayscale": self.grayscale, "crop": self.crop,
                                    "add_text": lambda: self.add_text(str(request.get("text") or "")[:500])}[suggestion])
             row.addWidget(apply)
             layout.addLayout(row)
+
+    def retranslate(self):
+        self._translations.refresh()
+        self._preview.setAccessibleName(_t("image_editor.title"))
+        self._layer_list.setAccessibleName(_t("image_editor.layers"))
 
     def _may_discard(self):
         return not self._dirty or QMessageBox.question(

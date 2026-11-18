@@ -382,13 +382,7 @@ TOOL = {
         "something without calling this tool. "
         "To CLOSE an application use computer_control with action='close_app', "
         "not this tool. "
-        "DO NOT use this tool to reach a WEB PAGE. 'open Chrome and go to "
-        "YouTube', 'open YouTube', 'search the web' are all browser_control "
-        "alone - it opens the browser itself. Calling open_app for the browser "
-        "first and browser_control after it launches the browser TWICE, the "
-        "second copy on a different profile, which is what puts a 'Who's using "
-        "Chrome?' picker on the screen. Use this tool only when the user wants "
-        "the application and nothing in it."
+        "Use workspace_browser or browser_control to open web pages inside JARVIS."
     ),
     "parameters": {
         "type": "OBJECT",

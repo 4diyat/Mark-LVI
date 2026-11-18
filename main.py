@@ -1293,6 +1293,23 @@ class JarvisLive:
                 print(f"[JARVIS] {len(_blocked)} tool(s) withheld — "
                       f"this engine cannot serve them")
 
+        # Apply the provider's budget before describing capabilities, and while
+        # tier/brief metadata still exists. Otherwise the prompt promises tools
+        # that the pipeline later drops and plugin priorities are lost.
+        if self._engine_caps is not None:
+            from providers import schema as _schema
+            _offered = _schema.budget(_all_decls,
+                                      max_tools=self._engine_caps.get("max_tools"),
+                                      max_chars=self._engine_caps.get("max_tool_chars"))
+            _kept_names = {d.get("name") if isinstance(d, dict) else getattr(d, "name", "")
+                           for d in _offered}
+            _omitted = [d.get("name") if isinstance(d, dict) else getattr(d, "name", "")
+                        for d in _all_decls
+                        if (d.get("name") if isinstance(d, dict) else getattr(d, "name", "")) not in _kept_names]
+            if _omitted:
+                self.ui.write_log("Tool budget omitted: " + ", ".join(_omitted))
+            _all_decls = _offered
+
         _names = {(d.get("name") if isinstance(d, dict) else getattr(d, "name", ""))
                   for d in _all_decls}
         sys_prompt = _render_prompt(sys_prompt, {
@@ -1612,8 +1629,11 @@ class JarvisLive:
         # How long the tool itself took. A long silence after a tool call is
         # either this number or the model's own time before and after it — and
         # without it the two look identical from the outside.
+        # Untrusted results may contain private email or browser text. Do not
+        # copy even a prefix into the persistent console/logbook.
+        _result_log = "[untrusted content omitted]" if "<<<UNTRUSTED source=" in str(result) else str(result)[:80]
         print(f"[JARVIS] 📤 {name} ({(time.monotonic() - _t_tool) * 1000:.0f} ms) "
-              f"→ {str(result)[:80]}")
+              f"→ {_result_log}")
 
         # A tool that declared itself NON_BLOCKING also says when its answer may
         # re-enter the conversation. Without this the model finishes whatever it

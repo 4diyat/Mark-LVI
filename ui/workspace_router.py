@@ -22,6 +22,10 @@ def open_workspace(window, job):
             allowed = False
         if allowed:
             open_editor(window, job)
+        else:
+            from PyQt6.QtWidgets import QMessageBox
+            from core.i18n import label
+            QMessageBox.information(window, label("plugins.manager_title"), label("plugins.disabled_open"))
     elif job.get("kind") == "mt5_trade":
         from ui.mt5_trade import open_trade
         open_trade(window, job)
