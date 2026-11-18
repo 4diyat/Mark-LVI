@@ -115,8 +115,8 @@ class WorkspaceGestures:
             cursor.setStyleSheet("background: rgba(20, 150, 180, 95); border: 3px solid #9afaff; border-radius: 21px;"
                                  if pinched else
                                  "background: rgba(20, 92, 120, 45); border: 2px solid #86eaff; border-radius: 21px;")
-            point = QPoint(int(x * max(0, viewport.width() - 1)),
-                           int(y * max(0, viewport.height() - 1)))
+            point = QPoint(round(x * max(0, viewport.width() - 1)),
+                           round(y * max(0, viewport.height() - 1)))
             point = viewport.mapTo(self.window.centralWidget(), point)
             cursor.move(point.x() - 21, point.y() - 21)
             cursor.show()
@@ -204,8 +204,8 @@ class WorkspaceGestures:
             self.popup_pending = None
             return
         sample = samples[0]
-        point = QPoint(int(sample[0] * max(0, viewport.width() - 1)),
-                       int(sample[1] * max(0, viewport.height() - 1)))
+        point = QPoint(round(sample[0] * max(0, viewport.width() - 1)),
+                       round(sample[1] * max(0, viewport.height() - 1)))
         local = popup.mapFromGlobal(viewport.mapToGlobal(point))
         action = popup.actionAt(local) if popup.rect().contains(local) else None
         if sample[2]:
@@ -234,8 +234,8 @@ class WorkspaceGestures:
             self.popup_pending = None
             return True
         sample = samples[0]
-        p = QPoint(int(sample[0] * max(0, viewport.width() - 1)),
-                   int(sample[1] * max(0, viewport.height() - 1)))
+        p = QPoint(round(sample[0] * max(0, viewport.width() - 1)),
+                   round(sample[1] * max(0, viewport.height() - 1)))
         view = owner.view()
         local = view.viewport().mapFromGlobal(viewport.mapToGlobal(p))
         index = view.indexAt(local) if view.viewport().rect().contains(local) else None
@@ -291,15 +291,15 @@ class WorkspaceGestures:
         self.show_cursors(samples)
         # Never trigger while manipulating a target or through an overlay.
         if self.mode is not None or any(self._hit(QPoint(
-                int(s[0] * max(0, viewport.width() - 1)),
-                int(s[1] * max(0, viewport.height() - 1)))) is None for s in samples):
+                round(s[0] * max(0, viewport.width() - 1)),
+                round(s[1] * max(0, viewport.height() - 1)))) is None for s in samples):
             self.clap.reset()
         elif self.clap.update(samples, time.monotonic()):
             self.reset()
             mdi.minimize_for_clap()
             return
-        coords_all = [QPoint(int(s[0] * max(0, viewport.width() - 1)),
-                             int(s[1] * max(0, viewport.height() - 1))) for s in samples]
+        coords_all = [QPoint(round(s[0] * max(0, viewport.width() - 1)),
+                             round(s[1] * max(0, viewport.height() - 1))) for s in samples]
         claw = len(samples) == 1 and len(samples[0]) > 4 and samples[0][4]
         if claw:
             self.clap.reset()
@@ -366,8 +366,8 @@ class WorkspaceGestures:
         if len(hands) > 2 or len(hands) != len(samples):
             self.reset()
             return
-        coords = [QPoint(int(s[0] * max(0, viewport.width() - 1)),
-                         int(s[1] * max(0, viewport.height() - 1))) for s in hands]
+        coords = [QPoint(round(s[0] * max(0, viewport.width() - 1)),
+                         round(s[1] * max(0, viewport.height() - 1))) for s in hands]
         count = len(coords)
         if any(self._hit(p) is None for p in coords):
             self.reset()
