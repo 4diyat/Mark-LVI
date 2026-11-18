@@ -445,11 +445,11 @@ def initial_window_geometry(width, height):
     file_x = max(0, int(width * .02))
     file_y = max(0, int(height * .07))
     file_w = max(1, min(int(width * (.37 if wide else .46)), width - file_x))
-    file_h = max(1, min(int(height * .48), floor - file_y))
+    file_h = max(1, min(int(height * (.36 if wide else .48)), floor - file_y))
     assistant_x = max(0, min(int(width * (.63 if wide else .51)), width - 1))
-    assistant_y = max(0, int(height * .14))
+    assistant_y = max(0, int(height * (.10 if wide else .14)))
     assistant_w = max(1, min(int(width * (.35 if wide else .47)), width - assistant_x))
-    assistant_h = max(1, min(int(height * .66), floor - assistant_y))
+    assistant_h = max(1, min(int(height * (.80 if wide else .66)), floor - assistant_y))
     return (file_x, file_y, file_w, file_h), (assistant_x, assistant_y, assistant_w, assistant_h)
 
 

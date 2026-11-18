@@ -1177,6 +1177,19 @@ def test_initial_desktop_geometry_keeps_panels_above_dock(window):
             assert y + h <= height - 90
 
 
+def test_wide_desktop_reserves_left_lower_area_for_editor(window):
+    from ui.desktop_workspace import initial_window_geometry
+    width, height = 1366, 738
+    files, assistant = initial_window_geometry(width, height)
+    # Match the approved composition: a shorter file window above an editor,
+    # with a taller assistant beside the central avatar.
+    assert files[3] == int(height * .36)
+    assert files[1] + files[3] < height * .46
+    assert assistant[1] == int(height * .10)
+    assert assistant[3] > files[3]
+    assert assistant[1] + assistant[3] <= height - 90
+
+
 def test_initialising_does_not_claim_microphone_is_active(window):
     from core.i18n import label
     window.hud.state = "INITIALISING"

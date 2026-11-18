@@ -77,6 +77,13 @@ def main():
         app.processEvents()
         mdi = window._desktop_mdi
         dock = mdi._dock
+        # Verify actual Qt geometry, not just the pure geometry calculation.
+        from ui.desktop_workspace import initial_window_geometry
+        expected_files, expected_assistant = initial_window_geometry(mdi.viewport().width(), mdi.viewport().height())
+        for name, expected in (("files", expected_files), ("assistant", expected_assistant)):
+            geometry = window._desktop_windows[name].geometry()
+            actual = (geometry.x(), geometry.y(), geometry.width(), geometry.height())
+            assert actual == expected, f"{name} actual={actual}, expected={expected}"
         from ui.theme import C
         assert C.DESKTOP_PANEL in window._workspace_file_browser.styleSheet()
         assert 'QMenu::item:selected' in window._workspace_file_browser.styleSheet()
