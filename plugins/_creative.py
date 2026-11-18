@@ -1,4 +1,4 @@
-"""Non-Qt helpers for the interactive editor and image canvas."""
+"""Non-Qt helpers for the interactive code editor."""
 from __future__ import annotations
 
 import shutil
@@ -8,7 +8,6 @@ import threading
 from pathlib import Path
 
 MAX_CODE_BYTES = 1_000_000
-MAX_IMAGE_BYTES = 20_000_000
 MAX_OUTPUT_BYTES = 64_000
 RUN_TIMEOUT = 15
 
@@ -79,29 +78,3 @@ def run_code(path: str, timeout: float = RUN_TIMEOUT) -> tuple[int | None, str]:
         text += "\n[Timed out; child processes may still be running]"
         return None, text
     return proc.returncode, text
-
-
-def generate_image(prompt: str, api_key: str, client_factory=None) -> tuple[bytes, str]:
-    """Ask Gemini for one image. Returns verified-size bytes and MIME type."""
-    prompt = (prompt or "").strip()
-    if not prompt or len(prompt) > 5000:
-        raise ValueError("Enter an image prompt of at most 5000 characters.")
-    if not (api_key or "").strip():
-        raise ValueError("A Gemini API key is required.")
-    if client_factory is None:
-        from google import genai
-        client_factory = genai.Client
-    client = client_factory(api_key=api_key, http_options={"timeout": 60000})
-    response = client.models.generate_content(
-        model="gemini-2.5-flash-image", contents=prompt,
-        config={"response_modalities": ["TEXT", "IMAGE"]})
-    for candidate in getattr(response, "candidates", None) or []:
-        for part in getattr(getattr(candidate, "content", None), "parts", None) or []:
-            inline = getattr(part, "inline_data", None)
-            data = getattr(inline, "data", None)
-            mime = str(getattr(inline, "mime_type", "") or "").lower()
-            if isinstance(data, (bytes, bytearray)) and mime in {"image/png", "image/jpeg", "image/webp"}:
-                if not data or len(data) > MAX_IMAGE_BYTES:
-                    raise ValueError("The generated image is empty or too large.")
-                return bytes(data), mime
-    raise ValueError("The image service did not return an image; try another prompt or check model access.")

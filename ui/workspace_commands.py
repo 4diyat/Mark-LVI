@@ -3,7 +3,6 @@ from core.workspace_control import CORE_TARGETS, validate
 
 _OPEN_JOBS = {
     "code_editor": {"kind": "creative_workspace", "tab": "editor"},
-    "ai_image": {"kind": "creative_workspace", "tab": "canvas"},
     "image_editor": {"kind": "image_editor"},
     "trading": {"kind": "trading_terminal"},
 }
@@ -33,31 +32,20 @@ def execute(window, command):
     if action == "list":
         windows = []
         active = window._desktop_mdi.activeSubWindow()
-        for name in ("assistant", "files", "navigation", "video", "camera"):
-            sub = window._desktop_windows[name]
+        for name in ("assistant", "files", "navigation", "video", "camera", "model_viewer"):
+            sub = window._desktop_windows.get(name)
+            if sub is None:
+                continue
             windows.append({"id": name, "kind": name, "state": _state(sub), "active": sub is active})
-        if "handboard" in window._desktop_windows:
-            sub = window._desktop_windows["handboard"]
-            windows.append({"id": "handboard", "kind": "handboard", "state": _state(sub), "active": sub is active})
+        # The model viewer is created lazily when first opened.
         for doc_id, (kind, sub) in window._workspace_documents.items():
             windows.append({"id": doc_id, "kind": kind, "state": _state(sub),
                             "title": str(sub.windowTitle())[:120], "active": sub is active})
         return {"ok": True, "windows": windows}
 
-    if action in ("board_add", "board_list"):
-        if action == "board_list":
-            board = getattr(window, "_hand_board", None)
-            if board is None:
-                return {"ok": False, "message": "The hand board has not been opened yet."}
-            return {"ok": True, "items": board.items_snapshot()}
-        window._open_handboard()
-        if not window._hand_board.add_note(command["title"], text):
-            return {"ok": False, "message": "Could not add the note; the board may be full."}
-        return {"ok": True, "message": "Added the note to the hand board. It stays in this session only."}
-
-    if action == "open" and target == "handboard":
-        window._open_handboard()
-        return {"ok": True, "message": "Opened the hand board. Camera control remains off until the user enables it."}
+    if action == "open" and target == "model_viewer":
+        window._open_model_viewer()
+        return {"ok": True, "message": "Opened the OBJ viewer. Choose a model locally; camera control is unchanged."}
 
     if action == "open" and target in _OPEN_JOBS:
         from ui.workspace_router import open_workspace
@@ -78,7 +66,7 @@ def execute(window, command):
 
     if target == "active":
         active = window._desktop_mdi.activeSubWindow()
-        found = next((name for name in ("assistant", "files", "navigation", "video", "camera", "handboard")
+        found = next((name for name in ("assistant", "files", "navigation", "video", "camera", "model_viewer")
                       if window._desktop_windows.get(name) is active and active is not None), None)
         if found is None:
             found = next((doc_id for doc_id, (_, sub) in window._workspace_documents.items()
@@ -114,9 +102,6 @@ def execute(window, command):
     if action == "close":
         if target not in CORE_TARGETS:
             return {"ok": False, "message": "Document windows must be closed by the user so unsaved changes can be reviewed."}
-        if target == "handboard":
-            sub.close()
-            return {"ok": True, "message": "Hand board hidden; workspace hand control remains unchanged."}
         if target == "camera":
             window.stop_camera_stream()
             sub.hide()

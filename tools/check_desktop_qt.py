@@ -7,18 +7,18 @@ import os
 import tempfile
 import threading
 import time
+from types import SimpleNamespace
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtCore import QCoreApplication, QEvent, QPoint, QPointF, QTimer, Qt  # noqa: E402
-from PyQt6.QtGui import QColor, QImage  # noqa: E402
+from PyQt6.QtCore import QCoreApplication, QEvent, QPoint, QTimer, Qt  # noqa: E402
 from PyQt6.QtTest import QTest  # noqa: E402
-from PyQt6.QtWidgets import QApplication, QComboBox, QFileDialog, QMessageBox, QPushButton, QScrollArea, QSizeGrip, QSlider, QWidget  # noqa: E402
+from PyQt6.QtWidgets import QApplication, QComboBox, QPushButton, QScrollArea, QSizeGrip, QSlider, QWidget  # noqa: E402
 
 import memory.config_manager as config  # noqa: E402
 from core.i18n import label as translate  # noqa: E402
-from ui.window import JarvisUI, MainWindow  # noqa: E402
+from ui.window import JarvisUI, LogWidget, MainWindow  # noqa: E402
 from ui.desktop_workspace import show_document  # noqa: E402
 
 
@@ -28,6 +28,12 @@ def main():
         config.CONFIG_FILE = Path(tmp) / "api_keys.json"
         MainWindow._check_config = lambda self: True
         app = QApplication([])
+        chat = LogWidget()
+        chat._tag, chat._text, chat._pos = 'you', '<', 0
+        chat._step()
+        assert chat.toPlainText() == '<'
+        assert chat.textCursor().blockFormat().alignment() == Qt.AlignmentFlag.AlignRight
+        chat.close()
         window = MainWindow("")
         window.resize(1366, 768)
         window.show()
@@ -39,16 +45,28 @@ def main():
         previous_locale = active_locale()
         window.get_plugins = lambda: [
             {"name": name, "valid": True, "enabled": True}
-            for name in ("code_editor", "image_canvas", "image_editor")]
+            for name in ("code_editor", "image_editor")]
         set_locale("en")
         creative = CreativeWorkspace(window, {"code": "print('unsaved')"})
         image = ImageEditor(window, {})
+        # Real Qt checks for the editor gutter and syntax layout, not Qt stubs.
+        assert creative._code.line_number_width() > 0
+        creative._code.highlighter.set_language('python')
+        creative._code.highlighter.rehighlight()
+        assert creative._code.document().firstBlock().layout().formats()
         set_locale("id")
         creative.retranslate()
         image.retranslate()
         assert creative._code.toPlainText() == "print('unsaved')"
         assert creative._code.document().isModified()
-        assert creative._tabs.tabText(0) == translate("creative.editor")
+        first_file = creative._code
+        second_file = creative._add_code_tab('second file', dirty=True)
+        assert creative._file_tabs.count() == 2 and creative._code is second_file
+        creative._file_tabs.setCurrentIndex(0)
+        assert creative._code is first_file and creative._code.toPlainText() == "print('unsaved')"
+        second_file.document().setModified(False)
+        creative._close_file_tab(1)
+        assert creative._file_tabs.count() == 1
         assert image.windowTitle() == translate("image_editor.title")
         set_locale(previous_locale)
         # Don't close the unsaved editor via a confirmation dialog in smoke CI.
@@ -86,7 +104,23 @@ def main():
         finally:
             window._hand_controller.start = original_start
             navigation.hide()
-        assert window.hud.hud_style == "orb"
+        assert window.hud.hud_style == "face"
+        assert window.hud._avatar is not None
+        assert mdi._avatar_stage.isVisible() and not mdi._emblem.isVisible()
+        assert not window.grab().isNull()  # paints the actual animated face
+        window.hud.hud_style = "orb"
+        mdi.position_emblem()
+        assert not mdi._avatar_stage.isVisible() and mdi._emblem.isVisible()
+        window.hud.hud_style = "face"
+        mdi.position_emblem()
+        files_for_clap = window._desktop_windows["files"]
+        assistant_for_clap = window._desktop_windows["assistant"]
+        mdi.minimize_for_clap()
+        assert files_for_clap.isMinimized() and assistant_for_clap.isMinimized()
+        restore_action = next(action for action, key in window._workspace_dock_actions
+                              if key == "workspace.restore_clap")
+        restore_action.trigger()
+        assert not files_for_clap.isMinimized() and not assistant_for_clap.isMinimized()
         assert window._drop_zone.isHidden()
         QTest.mouseClick(window._attachment_toggle, Qt.MouseButton.LeftButton)
         assert not window._drop_zone.isHidden()
@@ -201,10 +235,32 @@ def main():
             gestures.update(samples)
             gestures.pending = (gestures.pending[0], gestures.pending[1] - 1, *gestures.pending[2:])
             gestures.update(samples)
+        # Claw manipulation is limited to the active multi-part model canvas.
+        model_sub = window._open_model_viewer()
+        model_sub.showNormal()
+        mdi.setActiveSubWindow(model_sub)
+        app.processEvents()
+        viewer = window._model_viewer
+        viewer.explode_slider.setEnabled(True)
+        claw_point = viewer.canvas.mapTo(viewport, viewer.canvas.rect().center())
+        claw = lambda p: (p.x() / (viewport.width() - 1), p.y() / (viewport.height() - 1),
+                          False, False, True)
+        gestures.update((claw(claw_point),))
+        assert gestures.claw_pending is not None
+        gestures.claw_pending = (gestures.claw_pending[0] - 1, gestures.claw_pending[1])
+        gestures.update((claw(claw_point),))
+        assert gestures.mode == 'claw'
+        gestures.update((claw(claw_point - QPoint(0, 30)),))
+        assert viewer.explode_slider.value() > 0
+        gestures.update(())
+        assert gestures.mode is None
+        model_sub.hide()
+        mdi.setActiveSubWindow(files)
+        files.raise_()
+        app.processEvents()
         # A dwell must restart when the pointer changes target or moves too far.
-        original_hit, original_card = gestures._hit, gestures._card_at
+        original_hit = gestures._hit
         first, second = QPushButton(window), QPushButton(window)
-        gestures._card_at = lambda _point: None
         gestures._hit = lambda point: first if point.x() < 150 else second
         gestures.reset()
         gestures.update((sample(QPoint(100, 100)),))
@@ -220,7 +276,7 @@ def main():
         gestures.update((sample(QPoint(100, 100)), open_hand))
         assert gestures.mode is None and gestures.pending is None
         gestures.reset()
-        gestures._hit, gestures._card_at = original_hit, original_card
+        gestures._hit = original_hit
         first.deleteLater()
         second.deleteLater()
         anchor = files._workspace_title.mapTo(viewport, QPoint(160, 15))
@@ -251,6 +307,28 @@ def main():
         assert files.size() == before_size
         gestures.update((sample(left - QPoint(40, 0)), sample(right + QPoint(40, 0))))
         assert files.width() > before_size.width()
+        # Real Qt visual feedback driven by synthetic controller data, not a camera.
+        controller = window._hand_controller
+        original_sample = controller.sample
+        controller.thread = SimpleNamespace(is_alive=lambda: True)
+        controller._stop.clear()
+        controller.status = 'active'
+        controller.sample = lambda: (sample(left - QPoint(40, 0)), sample(right + QPoint(40, 0)))
+        window._hand_refresh()
+        assert window._hand_visual_panel.isVisible()
+        assert gestures.link.isVisible()
+        assert window._hand_visual_mode.text() == translate('gesture.mode_transform')
+        window._hand_closing_confirm = True
+        window._hand_refresh()
+        assert not window._hand_visual_panel.isVisible() and not gestures.link.isVisible()
+        window._hand_closing_confirm = False
+        controller.sample = lambda: ()
+        window._hand_refresh()
+        assert window._hand_visual_panel.isVisible()
+        QTest.mouseClick(window._hand_visual_stop, Qt.MouseButton.LeftButton)
+        assert controller._stop.is_set() and not window._hand_visual_panel.isVisible()
+        controller.sample = original_sample
+        controller.thread = None
         gestures.update(())
         mdi.setActiveSubWindow(sub)
         sub.raise_()
@@ -267,18 +345,24 @@ def main():
         window._hand_closing_confirm = False
         window._hand_timer.start()
 
-        assert command({"action": "open", "target": "handboard"})["ok"]
+        assert command({"action": "open", "target": "model_viewer"})["ok"]
         assert window._hand_controller.thread is None  # opening must not start a camera
-        assert command({"action": "board_add", "title": "Plan", "text": "First task"})["ok"]
-        board = window._hand_board
-        QTest.qWait(50)
-        cards = command({"action": "board_list"})["items"]
-        assert len(cards) == 1 and cards[0]["text"] == "First task"
+        model = window._model_viewer
+        obj_path = Path(tmp) / "parts.obj"
+        obj_path.write_text("v -2 0 0\nv -1 0 0\nv -1 1 0\nv 1 0 0\nv 2 0 0\nv 1 1 0\nf 1 2 3\nf 4 5 6\n", encoding="utf-8")
+        assert model.load_file(str(obj_path)) and model.canvas.parts == 2
+        assert model.explode_slider.isEnabled()
+        model.explode_slider.setValue(60)
+        assert model.canvas.explode == .6
+        assert not model.load_file(str(Path(tmp) / "missing.obj"))
+        assert model.canvas.parts == 2  # failed load leaves the existing model intact
+        assert not window.grab().isNull()
 
         # A confirmed pinch release clicks an internal Qt control; tracking
         # loss and safety confirmation must never generate that click.
         window._hand_timer.stop()
-        board_sub = window._desktop_windows["handboard"]
+        board_sub = files
+        board = files.widget()
         mdi.setActiveSubWindow(board_sub)
         board_sub.raise_()
         app.processEvents()
@@ -419,6 +503,7 @@ def main():
         gestures.update(((sample(menu_point)[0], sample(menu_point)[1], False),))
         assert triggered == [True] and not menu.isVisible()
         window.activateWindow()
+        mdi.setActiveSubWindow(board_sub)
         board_sub.raise_()
         mdi.position_dock()
         app.processEvents()
@@ -447,119 +532,12 @@ def main():
         QTest.qWait(100)
         assert actual == [True]
         window.activateWindow()
-        board_sub.raise_()
-        app.processEvents()
-
-        card = board._items[0]
-        def card_point(x, y):
-            return board.view.viewport().mapTo(viewport, board.view.mapFromScene(QPointF(x, y)))
-        anchor = card_point(120, 110)
-        original_pos = card.pos()
-        begin((sample(anchor),))
-        assert gestures.mode == "card_move"
-        gestures.update((sample(anchor + QPoint(40, 20)),))
-        assert card.pos() != original_pos
-        gestures.update(())
-        center = board.view.viewport().mapTo(viewport, board.view.mapFromScene(card.mapToScene(card.rect().center())))
-        l, r = center - QPoint(60, 0), center + QPoint(60, 0)
-        begin((sample(l), sample(r)))
-        assert gestures.mode == "card_transform"
-        gestures.update((sample(l - QPoint(30, 20)), sample(r + QPoint(30, 20))))
-        assert card.scale() > 1 and abs(card.rotation()) > 1
-        gestures.update(())
-        card.setScale(1)
-        card.setRotation(0)
-        card.setPos(30, 30)
-        window._hand_timer.start()
-
-        start = board.view.mapFromScene(QPointF(100, 90))
-        end = board.view.mapFromScene(QPointF(200, 140))
-        QTest.mousePress(board.view.viewport(), Qt.MouseButton.LeftButton, pos=start)
-        QTest.mouseMove(board.view.viewport(), end, 30)
-        QTest.mouseRelease(board.view.viewport(), Qt.MouseButton.LeftButton, pos=end)
-        moved = command({"action": "board_list"})["items"][0]
-        assert moved["x"] > cards[0]["x"]
-        image_path = str(Path(tmp) / "test.png")
-        image = QImage(32, 32, QImage.Format.Format_ARGB32)
-        image.fill(QColor("blue"))
-        assert image.save(image_path)
-        original_dialog = QFileDialog.getOpenFileName
-        QFileDialog.getOpenFileName = lambda *args: (image_path, "")
-        try:
-            board._new_image()
-        finally:
-            QFileDialog.getOpenFileName = original_dialog
-        assert command({"action": "board_list"})["items"][-1]["kind"] == "image"
-        board.scene.clearSelection()
-        board._items[-1].setSelected(True)
-        original_question = QMessageBox.question
-        stops = []
-        original_stop = window._hand_controller.stop
-        window._hand_controller.stop = lambda: stops.append(True)
-        try:
-            QMessageBox.question = lambda *args: QMessageBox.StandardButton.No
-            board._remove_selected()
-            assert len(board._items) == 2 and stops
-            QMessageBox.question = lambda *args: QMessageBox.StandardButton.Yes
-            board._remove_selected()
-            assert len(board._items) == 1
-            stops.clear()
-            assert command({"action": "close", "target": "handboard"})["ok"]
-            assert not stops and window._desktop_windows["handboard"].isHidden()
-        finally:
-            QMessageBox.question = original_question
-            window._hand_controller.stop = original_stop
-        assert command({"action": "open", "target": "handboard"})["ok"]
-        assert len(command({"action": "board_list"})["items"]) == 1
-        # OBJ is read only from a physical file selection, then rendered locally.
-        obj_path = Path(tmp) / "tetra.obj"
-        obj_path.write_text("v 0 0 0\nv 1 0 0\nv 0 1 0\nv 0 0 1\nf 1 2 3\nf 1 2 4\n", encoding="utf-8")
-        QFileDialog.getOpenFileName = lambda *args: (str(obj_path), "")
-        try:
-            board._new_model()
-        finally:
-            QFileDialog.getOpenFileName = original_dialog
-        assert command({"action": "board_list"})["items"][-1]["kind"] == "model"
-        model_card = board._items[-1]
-        window._hand_timer.stop()
         mdi.setActiveSubWindow(board_sub)
         board_sub.raise_()
-        # A dock overlays the bottom of the desktop; keep the board controls
-        # visible above it rather than testing a point covered by the dock.
-        board_sub.setGeometry(10, 10, min(900, viewport.width() - 20), max(1, viewport.height() - 100))
-        mdi.position_dock()
-        window.activateWindow()
         app.processEvents()
-        center = board.view.viewport().mapTo(viewport, board.view.mapFromScene(model_card.mapToScene(model_card.rect().center())))
-        l, r = center - QPoint(35, 0), center + QPoint(35, 0)
-        before_yaw, before_pitch = model_card.model_view.yaw, model_card.model_view.pitch
-        begin((sample(l), sample(r)))
-        assert gestures.mode == "card_transform"
-        gestures.update((sample(l + QPoint(25, 15)), sample(r + QPoint(25, 15))))
-        assert model_card.model_view.yaw != before_yaw and model_card.model_view.pitch != before_pitch
-        assert not window.grab().isNull()  # exercises the QPainter wireframe path
-        gestures.update(())
-        assert not board._explode.isEnabled()  # a connected mesh has no separable parts
-        from core.obj_wireframe import parse_obj
-        parts = parse_obj(b'v -2 0 0\nv -1 0 0\nv -1 1 0\nv 1 0 0\nv 2 0 0\nv 1 1 0\nf 1 2 3\nf 4 5 6\n')
-        assert board.add_model("two parts", parts)
-        board.scene.clearSelection()
-        separated = board._items[-1]
-        separated.setSelected(True)
-        app.processEvents()
-        assert board._explode.isEnabled() and separated.model_view.parts == 2
-        slider = board._explode
-        start = slider.mapTo(viewport, QPoint(slider.width() // 4, slider.height() // 2))
-        begin((sample(start),))
-        assert gestures.mode == "slider"
-        gestures.update((sample(start + QPoint(60, 0)),))
-        assert separated.model_view.explode > 0
-        assert command({"action": "board_list"})["items"][-1]["explode"] > 0
-        gestures.update(())
-        slider.setValue(0)
-        assert separated.model_view.explode == 0
+
         window._hand_timer.start()
-        print("Real Qt desktop, workspace and native hand board passed.")
+        print("Real Qt desktop, workspace and local OBJ viewer passed.")
 
 
 if __name__ == "__main__":

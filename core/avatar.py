@@ -105,6 +105,13 @@ def _c(col: QColor, a: float) -> QColor:
     return q
 
 
+def _pen(color: QColor, width: float) -> QPen:
+    """Use Qt's floating-width setter; its QColor constructor takes an int width."""
+    pen = QPen(color)
+    pen.setWidthF(width)
+    return pen
+
+
 def _blend(bg: QColor, col: QColor, a: float) -> QColor:
     """`col` at alpha `a` pre-mixed onto `bg`, returned fully **opaque**.
 
@@ -716,9 +723,9 @@ class HoloAvatar:
                 # These sit on lit skin, so pre-mix against a representative
                 # *skin* tone rather than the background — same fast opaque
                 # path, and the lines still read as highlights over the face.
-                p.setPen(QPen(_blend(skin, primary, a * 0.75), 1.0))
+                p.setPen(_pen(_blend(skin, primary, a * 0.75), 1.0))
             else:
-                p.setPen(QPen(_blend(bg, primary, a), 1.0))
+                p.setPen(_pen(_blend(bg, primary, a), 1.0))
             p.drawLines(seg)
 
     # ── face ────────────────────────────────────────────────────────────────
@@ -767,7 +774,7 @@ class HoloAvatar:
             p.setBrush(QBrush(_blend(bg, primary, 20)))
             p.drawPolygon(poly)
             p.setBrush(Qt.BrushStyle.NoBrush)
-            p.setPen(QPen(_c(primary, 205 * face), 1.25))      # lid line
+            p.setPen(_pen(_c(primary, 205 * face), 1.25))      # lid line
             p.drawPolygon(poly)
 
             # Lash line: short strokes along the upper lid only, thicker
@@ -777,7 +784,7 @@ class HoloAvatar:
                 upper = [i for i in range(len(idx))
                          if ey[i] < mid_y - br.height() * 0.12]
                 if len(upper) > 2:
-                    p.setPen(QPen(_c(primary, 170 * face * vis), 1.6))
+                    p.setPen(_pen(_c(primary, 170 * face * vis), 1.6))
                     for k, i in enumerate(upper):
                         w = 0.45 + 0.55 * (k / max(1, len(upper) - 1))
                         p.drawLine(QPointF(float(ex[i]), float(ey[i])),
@@ -829,7 +836,7 @@ class HoloAvatar:
             p.setBrush(QBrush(_c(primary, 120 * face)))
             p.drawPolygon(QPolygonF(top + bot[::-1]))
             p.setBrush(Qt.BrushStyle.NoBrush)
-            p.setPen(QPen(_c(primary, 190 * face), 1.1))
+            p.setPen(_pen(_c(primary, 190 * face), 1.1))
             p.drawPolyline(QPolygonF(top))
 
         # ── mouth ───────────────────────────────────────────────────────────
@@ -859,7 +866,7 @@ class HoloAvatar:
             p.drawPolygon(inner)
 
         p.setBrush(Qt.BrushStyle.NoBrush)
-        p.setPen(QPen(_c(primary, (150 + 70 * self._mouth) * face), 1.3))
+        p.setPen(_pen(_c(primary, (150 + 70 * self._mouth) * face), 1.3))
         p.drawPolygon(inner)                       # lip edge
-        p.setPen(QPen(_c(primary, 110 * face), 1.1))
+        p.setPen(_pen(_c(primary, 110 * face), 1.1))
         p.drawPolygon(self._ring(xs, ys, lm["lips_out"]))

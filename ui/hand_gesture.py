@@ -1,14 +1,78 @@
 """Opt-in two-hand tracking, restricted to internal JARVIS window geometry."""
-import math
 import time
 
-from PyQt6.QtCore import QPoint, QTimer, Qt
-from PyQt6.QtWidgets import QAbstractButton, QAbstractScrollArea, QApplication, QComboBox, QLabel, QMdiSubWindow, QPushButton, QSlider
+from PyQt6.QtCore import QPoint, QPointF, QTimer, Qt
+from PyQt6.QtWidgets import (QAbstractButton, QAbstractScrollArea, QApplication, QComboBox, QHBoxLayout,
+                             QLabel, QMdiSubWindow, QPushButton, QSlider, QVBoxLayout, QWidget)
 
 from core.i18n import label as _t
-from core.workspace_gesture import WorkspaceHandController, dwell_matches
+from core.workspace_gesture import ClapTracker, WorkspaceHandController, dwell_matches
 from core.workspace_transform import FlickTracker, bounded_flick, transform_window
 from ui.desktop_workspace import WindowTitleBar
+
+
+class GestureLink(QWidget):
+    """Non-interactive visual link; never generates input or claims tracking."""
+    def __init__(self, viewport):
+        super().__init__(viewport)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
+        self.points = ()
+        self.hide()
+
+    def set_samples(self, samples, enabled):
+        self.points = tuple((s[0], s[1]) for s in samples) if enabled and len(samples) == 2 else ()
+        self.setVisible(bool(self.points))
+        if self.points:
+            parent = self.parentWidget()
+            self.setGeometry(0, 0, parent.width(), parent.height())
+            self.raise_()
+            self.update()
+
+    def paintEvent(self, event):
+        from PyQt6.QtGui import QColor, QPainter, QPen
+        del event
+        if len(self.points) != 2:
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        pen = QPen(QColor('#65dff5'))
+        pen.setWidthF(1.5)
+        pen.setStyle(Qt.PenStyle.DashLine)
+        painter.setPen(pen)
+        a, b = self.points
+        painter.drawLine(QPointF(a[0] * max(0, self.width() - 1), a[1] * max(0, self.height() - 1)),
+                         QPointF(b[0] * max(0, self.width() - 1), b[1] * max(0, self.height() - 1)))
+        painter.end()
+
+
+def build_status_panel(window):
+    """Small local camera indicator and physical or gesture-accessible stop."""
+    panel = QWidget(window._desktop_mdi.viewport())
+    panel.setObjectName('HandStatusPanel')
+    panel.setStyleSheet("""
+        QWidget#HandStatusPanel { background: #142536; border: 1px solid #3b6176; border-radius: 12px; }
+        QLabel { color: #d8edf6; background: transparent; border: none; }
+        QPushButton { background: #233b4f; color: #effbff; border: 1px solid #5799ad;
+                      border-radius: 7px; padding: 5px 10px; }
+        QPushButton:hover, QPushButton:focus { background: #31536a; border-color: #85e6f4; }
+    """)
+    layout = QVBoxLayout(panel)
+    layout.setContentsMargins(12, 8, 12, 8)
+    layout.setSpacing(3)
+    heading = QLabel()
+    heading.setAccessibleName(_t('gesture.badge_accessible'))
+    layout.addWidget(heading)
+    row = QHBoxLayout()
+    mode = QLabel()
+    mode.setWordWrap(True)
+    row.addWidget(mode, 1)
+    stop = QPushButton()
+    stop.setAccessibleName(_t('gesture.visual_stop'))
+    row.addWidget(stop)
+    layout.addLayout(row)
+    panel.hide()
+    return panel, heading, mode, stop
 
 
 class WorkspaceGestures:
@@ -20,12 +84,15 @@ class WorkspaceGestures:
         self.popup_pending = None
         self.popup_owner = None
         self.flick = FlickTracker()
+        self.clap = ClapTracker()
+        self.claw_pending = None
+        self.link = GestureLink(window._desktop_mdi.viewport())
         self.cursors = []
         for _ in range(2):
             cursor = QLabel(window.centralWidget())
-            cursor.setFixedSize(20, 20)
+            cursor.setFixedSize(42, 42)
             cursor.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-            cursor.setStyleSheet("background: rgba(50, 200, 255, 80); border: 2px solid #86eaff; border-radius: 10px;")
+            cursor.setStyleSheet("background: rgba(20, 92, 120, 45); border: 2px solid #86eaff; border-radius: 21px;")
             cursor.hide()
             self.cursors.append(cursor)
 
@@ -35,6 +102,7 @@ class WorkspaceGestures:
         self.popup_pending = None
         self.popup_owner = None
         self.flick.points.clear()
+        self.claw_pending = None
 
     def show_cursors(self, samples):
         viewport = self.window._desktop_mdi.viewport()
@@ -43,10 +111,14 @@ class WorkspaceGestures:
                 cursor.hide()
                 continue
             x, y = samples[i][:2]
+            pinched = bool(samples[i][2])
+            cursor.setStyleSheet("background: rgba(20, 150, 180, 95); border: 3px solid #9afaff; border-radius: 21px;"
+                                 if pinched else
+                                 "background: rgba(20, 92, 120, 45); border: 2px solid #86eaff; border-radius: 21px;")
             point = QPoint(int(x * max(0, viewport.width() - 1)),
                            int(y * max(0, viewport.height() - 1)))
             point = viewport.mapTo(self.window.centralWidget(), point)
-            cursor.move(point.x() - 10, point.y() - 10)
+            cursor.move(point.x() - 21, point.y() - 21)
             cursor.show()
             cursor.raise_()
 
@@ -73,25 +145,6 @@ class WorkspaceGestures:
         viewport = self.window._desktop_mdi.viewport()
         top = self.window.childAt(viewport.mapTo(self.window, point))
         return top if self._is_allowed_widget(top) else None
-
-    def _card_at(self, point):
-        from ui.hand_board import Card
-        board = getattr(self.window, '_hand_board', None)
-        if board is None or not board.isVisible():
-            return None
-        viewport = self.window._desktop_mdi.viewport()
-        view = board.view
-        hit = self._hit(point)
-        if hit is not view.viewport() and not view.viewport().isAncestorOf(hit):
-            return None
-        local = view.viewport().mapFrom(viewport, point)
-        if not view.viewport().rect().contains(local):
-            return None
-        scene_point = view.mapToScene(local)
-        item = view.scene().itemAt(scene_point, view.transform())
-        while item is not None and not isinstance(item, Card):
-            item = item.parentItem()
-        return (board, item, scene_point) if item in board._items else None
 
     def _click(self, point):
         """Click the widget under a confirmed release, never a system window."""
@@ -213,9 +266,15 @@ class WorkspaceGestures:
                 or getattr(window, '_hand_closing_confirm', False)
                 or (banner is not None and banner.isVisible())):
             self.reset()
+            self.clap.reset()
             self.show_cursors(())
             return
         if popup is not None:
+            self.clap.reset()
+            if any(len(s) > 4 and s[4] for s in samples):
+                self.reset()
+                self.show_cursors(())
+                return
             if popup is not self.popup_owner:
                 self.popup_pending = None
                 self.popup_owner = popup
@@ -223,14 +282,58 @@ class WorkspaceGestures:
                 self._dock_popup(popup, samples)
             return
         if not window.isActiveWindow():
+            self.clap.reset()
             self.reset()
             self.show_cursors(())
             return
         self.popup_pending = None
         self.popup_owner = None
         self.show_cursors(samples)
+        # Never trigger while manipulating a target or through an overlay.
+        if self.mode is not None or any(self._hit(QPoint(
+                int(s[0] * max(0, viewport.width() - 1)),
+                int(s[1] * max(0, viewport.height() - 1)))) is None for s in samples):
+            self.clap.reset()
+        elif self.clap.update(samples, time.monotonic()):
+            self.reset()
+            mdi.minimize_for_clap()
+            return
         coords_all = [QPoint(int(s[0] * max(0, viewport.width() - 1)),
                              int(s[1] * max(0, viewport.height() - 1))) for s in samples]
+        claw = len(samples) == 1 and len(samples[0]) > 4 and samples[0][4]
+        if claw:
+            self.clap.reset()
+            viewer = getattr(window, '_model_viewer', None)
+            sub = window._desktop_windows.get('model_viewer')
+            point = coords_all[0]
+            try:
+                valid = (viewer is not None and sub is not None and sub.isVisible()
+                         and mdi.activeSubWindow() is sub and viewer.explode_slider.isEnabled()
+                         and self._hit(point) is viewer.canvas)
+            except RuntimeError:
+                valid = False
+            if not valid:
+                self.reset()
+                return
+            if self.mode == 'claw':
+                start_y, start_value = self.origin
+                viewer.explode_slider.setValue(start_value + round((start_y - point.y()) * 100 /
+                                                                     max(1, viewer.canvas.height())))
+            else:
+                # A new pose cancels any earlier pinch without generating a click.
+                self.mode = self.target = self.origin = self.pending = None
+                now = time.monotonic()
+                if (self.claw_pending is None or
+                        (point - self.claw_pending[1]).manhattanLength() > 25):
+                    self.claw_pending = (now, point)
+                elif now - self.claw_pending[0] >= .4:
+                    self.mode, self.target = 'claw', viewer.canvas
+                    self.origin = (point.y(), viewer.explode_slider.value())
+                    self.claw_pending = None
+            return
+        if self.mode == 'claw' or self.claw_pending is not None:
+            self.reset()
+            return  # release/loss cannot become a click
         hands = sorted((s for s in samples if s[2]), key=lambda s: s[0])
         if not hands:
             # A visible, open hand is an intentional release. Tracking loss,
@@ -269,33 +372,18 @@ class WorkspaceGestures:
         if any(self._hit(p) is None for p in coords):
             self.reset()
             return
-        if self.mode is None or (self.mode in ('move', 'click', 'card_move', 'slider')) != (count == 1):
+        if self.mode is None or (self.mode in ('move', 'click', 'slider')) != (count == 1):
             self.mode = self.target = self.origin = None
             p = coords[0] if count == 1 else (coords[0] + coords[1]) / 2
-            card = self._card_at(p)
             hit = self._hit(p)
-            # The dwell belongs to the original widget/card, not merely the
+            # The dwell belongs to the original widget, not merely the
             # number of hands. Moving to another target starts a fresh dwell.
-            identity = (hit, card[1] if card is not None else None)
+            identity = (hit, None)
             positions = tuple((point.x(), point.y()) for point in coords)
             if not dwell_matches(self.pending, count, identity, positions):
                 self.pending = (count, time.monotonic(), identity, positions)
                 return
             if time.monotonic() - self.pending[1] < .35:
-                return
-            if card is not None:
-                board, item, scene_point = card
-                self.pending = None
-                self.target = (board, item)
-                self.mode = 'card_move' if count == 1 else 'card_transform'
-                if count == 1:
-                    self.origin = (scene_point, item.pos())
-                else:
-                    view = item.model_view
-                    self.origin = (coords, item.scale(), item.rotation(),
-                                   (view.yaw, view.pitch) if view is not None else None)
-                board.scene.clearSelection()
-                item.setSelected(True)
                 return
             widget = self._hit(p)
             hit = widget
@@ -351,30 +439,6 @@ class WorkspaceGestures:
             except RuntimeError:
                 self.reset()
             return
-        if self.mode.startswith('card_'):
-            board, item = self.target
-            if item not in board._items or not board.isVisible():
-                self.reset()
-                return
-            if self.mode == 'card_move':
-                local = board.view.viewport().mapFrom(viewport, coords[0])
-                item.setPos(self.origin[1] + board.view.mapToScene(local) - self.origin[0])
-            else:
-                initial, scale, angle, view_angles = self.origin
-                old = math.hypot(initial[1].x() - initial[0].x(), initial[1].y() - initial[0].y())
-                new = math.hypot(coords[1].x() - coords[0].x(), coords[1].y() - coords[0].y())
-                if old >= 40:
-                    initial_angle = math.atan2(initial[1].y() - initial[0].y(), initial[1].x() - initial[0].x())
-                    new_angle = math.atan2(coords[1].y() - coords[0].y(), coords[1].x() - coords[0].x())
-                    item.setScale(max(.35, min(2.5, scale * new / old)))
-                    item.setRotation(angle + math.degrees(new_angle - initial_angle))
-                    if view_angles is not None:
-                        initial_center = (initial[0] + initial[1]) / 2
-                        current_center = (coords[0] + coords[1]) / 2
-                        delta = current_center - initial_center
-                        item.model_view.set_view(view_angles[0] + delta.x() * .4,
-                                                 view_angles[1] + delta.y() * .4)
-            return
         try:
             available = (self.target and self.target.isVisible() and not self.target.isMaximized()
                          and mdi.activeSubWindow() is self.target)
@@ -414,6 +478,11 @@ def setup(window):
     status.setWordWrap(True)
     window._left_panel.layout().addWidget(status)
     window._left_panel.layout().addWidget(button)
+    panel, panel_heading, panel_mode, panel_stop = build_status_panel(window)
+    window._hand_visual_panel = panel
+    window._hand_visual_heading = panel_heading
+    window._hand_visual_mode = panel_mode
+    window._hand_visual_stop = panel_stop
 
     def refresh():
         key = {'off': 'gesture.off', 'starting': 'gesture.starting', 'active': 'gesture.workspace_active',
@@ -424,13 +493,33 @@ def setup(window):
         message = _t(key)
         if controller.status == 'error' and controller.error:
             message += ' ' + controller.error
-        gestures.update(controller.sample() if running else ())
+        samples = controller.sample() if running else ()
+        gestures.update(samples)
         mode_key = {'move': 'gesture.mode_move', 'resize': 'gesture.mode_transform',
                     'click': 'gesture.mode_click', 'slider': 'gesture.mode_slider',
-                    'card_move': 'gesture.mode_move', 'card_transform': 'gesture.mode_transform'}.get(gestures.mode)
+                    'claw': 'gesture.mode_claw'}.get(gestures.mode)
         if running and controller.status == 'active' and mode_key:
             message += ' · ' + _t(mode_key)
         status.setText(message)
+        banner = getattr(window, '_confirm_overlay', None)
+        unobstructed = (window.isActiveWindow() and QApplication.activeModalWidget() is None
+                        and QApplication.activePopupWidget() is None
+                        and not getattr(window, '_hand_closing_confirm', False)
+                        and not (banner is not None and banner.isVisible()))
+        panel_visible = running and controller.status in ('active', 'starting') and unobstructed
+        viewport = window._desktop_mdi.viewport()
+        panel_width = max(1, min(300, viewport.width() - 20))
+        panel.setGeometry(max(0, viewport.width() - panel_width - 10), 10, panel_width, 80)
+        panel_heading.setText(_t('gesture.visual_active' if controller.status == 'active' else 'gesture.visual_starting'))
+        panel_mode.setText(_t(mode_key) if controller.status == 'active' and mode_key else
+                           _t('gesture.visual_waiting' if controller.status == 'active' else 'gesture.visual_start_wait'))
+        panel_stop.setText(_t('gesture.visual_stop'))
+        panel_stop.setAccessibleName(_t('gesture.visual_stop'))
+        panel.setVisible(panel_visible)
+        gestures.link.set_samples(samples, bool(panel_visible and gestures.mode == 'resize'
+                                                and len(samples) == 2 and all(s[2] for s in samples)))
+        if panel_visible:
+            panel.raise_()
         badge = getattr(window, '_hand_badge', None)
         if badge is not None:
             badge.setVisible(running and controller.status in ('active', 'starting'))
@@ -456,6 +545,15 @@ def setup(window):
             controller.start(index)
         refresh()
 
+    def stop_from_panel():
+        # Never toggle: a worker that just exited must not be restarted by Stop.
+        controller.stop()
+        gestures.reset()
+        gestures.clap.reset()
+        gestures.show_cursors(())
+        refresh()
+
+    panel_stop.clicked.connect(stop_from_panel)
     window._hand_toggle = toggle
     window._hand_status = status
     window._workspace_gestures = gestures

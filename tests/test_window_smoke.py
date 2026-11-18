@@ -942,7 +942,7 @@ def test_desktop_shell_hosts_the_original_panels_and_dock(window):
                     "workspace.trading", "workspace.apps", "desktop.settings"}
     actions = {key for _, key in window._workspace_dock_actions}
     assert {"workspace.code", "workspace.image", "workspace.video", "workspace.camera",
-            "workspace.order", "handboard.title", "desktop.plugins"} <= actions
+            "workspace.order", "model.title", "desktop.plugins"} <= actions
     assert window._center_split.parentWidget() is window._assistant_panel
 
 
@@ -1216,20 +1216,13 @@ def test_workspace_camera_start_and_stop_are_reported_as_requests(window, monkey
     assert calls == ["start", "stop"]
 
 
-def test_hand_board_commands_do_not_start_camera(window, monkeypatch):
+def test_model_viewer_command_does_not_start_camera(window, monkeypatch):
     from ui.workspace_commands import execute
-    items = []
-    board = types.SimpleNamespace(add_note=lambda title, text: (items.append((title, text)) or True),
-                                  items_snapshot=lambda: list(items))
     opened = []
-    def open_board():
-        opened.append(True)
-        window._hand_board = board
-    monkeypatch.setattr(window, "_open_handboard", open_board)
+    monkeypatch.setattr(window, "_open_model_viewer", lambda: opened.append(True))
     monkeypatch.setattr(window, "start_camera_stream", lambda: pytest.fail("camera started"))
-    assert execute(window, {"action": "board_add", "title": "Plan", "text": "Test"})["ok"]
-    assert execute(window, {"action": "board_list"})["items"] == [("Plan", "Test")]
-    assert len(opened) == 1
+    assert execute(window, {"action": "open", "target": "model_viewer"})["ok"]
+    assert opened == [True]
 
 
 def test_remote_https_button_saves_setting_and_says_restart(window, isolated_config):
@@ -1374,3 +1367,515 @@ def test_hand_badge_reflects_real_controller_status(window, monkeypatch):
     controller.stop()
     window._hand_refresh()
     assert not window._hand_badge._visible
+
+
+def test_model_viewer_loads_bounded_obj_and_preserves_model_on_failure(window, tmp_path):
+    from ui.model_viewer import ModelViewer
+    viewer = ModelViewer(window)
+    path = tmp_path / 'model.obj'
+    path.write_text('v -2 0 0\nv -1 0 0\nv -1 1 0\nv 1 0 0\nv 2 0 0\nv 1 1 0\nf 1 2 3\nf 4 5 6\n')
+    assert viewer.load_file(path)
+    assert viewer.canvas.parts == 2
+    viewer._explode(50)
+    assert viewer.canvas.explode == .5
+    assert not viewer.load_file(tmp_path / 'missing.obj')
+    assert viewer.canvas.parts == 2
+
+
+def test_model_file_selection_pauses_hand_control(window, monkeypatch, tmp_path):
+    import ui.model_viewer as model_viewer
+    viewer = model_viewer.ModelViewer(window)
+    model_path = tmp_path / 'connected.obj'
+    model_path.write_text('v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n')
+    calls = []
+    monkeypatch.setattr(window._hand_controller, 'stop', lambda: calls.append('stop'))
+    monkeypatch.setattr(model_viewer.QFileDialog, 'getOpenFileName',
+                        lambda *args: (str(model_path), ''))
+    viewer.open_file()
+    assert calls == ['stop'] and viewer.canvas.parts == 1
+    assert not viewer.explode_slider.isEnabled()
+
+
+def test_hand_visual_panel_tracks_real_status_and_stop_never_restarts(window, monkeypatch):
+    from ui.hand_gesture import QApplication
+    controller = window._hand_controller
+    gestures = window._workspace_gestures
+    monkeypatch.setattr(window, 'isActiveWindow', lambda: True)
+    monkeypatch.setattr(QApplication, 'activeModalWidget', staticmethod(lambda: None), raising=False)
+    monkeypatch.setattr(QApplication, 'activePopupWidget', staticmethod(lambda: None), raising=False)
+    hands = ((.25, .25, True, False), (.5, .25, True, False))
+    monkeypatch.setattr(controller, 'sample', lambda: hands)
+    monkeypatch.setattr(gestures, 'update', lambda _samples: setattr(gestures, 'mode', 'resize'))
+    controller.thread = types.SimpleNamespace(is_alive=lambda: True)
+    controller._stop.clear()
+    controller.status = 'active'
+    window._hand_refresh()
+    assert window._hand_visual_panel._visible
+    assert gestures.link.points == ((.25, .25), (.5, .25))
+    from core.i18n import label
+    assert window._hand_visual_mode.text() == label('gesture.mode_transform')
+    monkeypatch.setattr(QApplication, 'activeModalWidget', staticmethod(lambda: object()), raising=False)
+    window._hand_refresh()
+    assert not window._hand_visual_panel._visible and not gestures.link.points
+    monkeypatch.setattr(QApplication, 'activeModalWidget', staticmethod(lambda: None), raising=False)
+    monkeypatch.setattr(controller, 'start', lambda *_args: pytest.fail('stop restarted camera'))
+    stop_slot = next(slot for slot in reversed(window._hand_visual_stop.clicked.slots)
+                     if getattr(slot, '__name__', '') == 'stop_from_panel')
+    stop_slot()
+    assert controller._stop.is_set() and not window._hand_visual_panel._visible
+    assert not gestures.link.points
+
+
+def test_workspace_avatar_uses_live_face_and_respects_orb_preference(window, monkeypatch):
+    mdi = window._desktop_mdi
+    viewport = mdi.viewport()
+    monkeypatch.setattr(viewport, 'width', lambda: 1366)
+    monkeypatch.setattr(viewport, 'height', lambda: 738)
+    avatar = types.SimpleNamespace(SPAN=2.6)
+    window.hud._avatar = avatar
+    window.hud.hud_style = 'face'
+    mdi.position_emblem()
+    assert mdi._avatar_stage.hud is window.hud
+    assert mdi._avatar_stage._visible and not mdi._emblem._visible
+    window.hud.hud_style = 'orb'
+    mdi.position_emblem()
+    assert not mdi._avatar_stage._visible and mdi._emblem._visible
+    window.hud.hud_style = 'face'
+    monkeypatch.setattr(viewport, 'width', lambda: 820)
+    mdi.position_emblem()
+    assert not mdi._avatar_stage._visible and not mdi._emblem._visible
+
+
+def test_desktop_face_repaints_even_if_assistant_panel_hidden(window, monkeypatch):
+    hud = window.hud
+    calls = []
+    hud._avatar = types.SimpleNamespace(step=lambda *args, **kwargs: calls.append('step'))
+    hud.hud_style = 'face'
+    hud.state = 'IDLE'
+    hud._paint_tick = 2
+    monkeypatch.setattr(hud, '_on_screen', lambda: False)
+    stage = hud._desktop_stage
+    monkeypatch.setattr(stage, 'isVisible', lambda: True)
+    monkeypatch.setattr(stage, 'window', lambda: types.SimpleNamespace(isMinimized=lambda: False,
+                                                                       isHidden=lambda: False))
+    monkeypatch.setattr(stage, 'update', lambda: calls.append('paint'))
+    hud._step()
+    assert calls == ['step', 'paint']
+
+
+def test_clap_batch_restore_preserves_original_window_state(window_module):
+    from ui.desktop_workspace import WallpaperArea
+
+    class Sub:
+        def __init__(self, hidden=False, minimized=False, maximized=False):
+            self.visible, self.minimized, self.maximized = not hidden, minimized, maximized
+        def isVisible(self):
+            return self.visible
+        def isMinimized(self):
+            return self.minimized
+        def isMaximized(self):
+            return self.maximized
+        def showMinimized(self):
+            self.minimized = True
+            self.maximized = False
+        def showNormal(self):
+            self.minimized = self.maximized = False
+        def showMaximized(self):
+            self.minimized, self.maximized = False, True
+
+    normal, maximized, prior, hidden = Sub(), Sub(maximized=True), Sub(minimized=True), Sub(hidden=True)
+    area = types.SimpleNamespace(_clap_windows=[], subWindowList=lambda: [normal, maximized, prior, hidden],
+                                 position_dock=lambda: None)
+    WallpaperArea.minimize_for_clap(area)
+    assert normal.minimized and maximized.minimized and prior.minimized and not hidden.minimized
+    WallpaperArea.restore_clap_windows(area)
+    assert not normal.minimized and maximized.maximized and prior.minimized and not hidden.visible
+    assert area._clap_windows == []
+
+
+def test_suggested_action_drafts_without_sending_or_overwriting(window, monkeypatch):
+    sent = []
+    monkeypatch.setattr(window, '_send', lambda: sent.append(True))
+    button, key = window._suggestion_buttons[0]
+    from core.i18n import label
+    window._input.setText('')
+    draft = next(slot for slot in reversed(button.clicked.slots)
+                 if getattr(slot, '__name__', '') == 'draft' and slot.__defaults__[-1] == key)
+    draft(False)
+    assert window._input.text() == label(key)
+    assert not sent
+    window._input.setText('existing draft')
+    draft(False)
+    assert window._input.text() == 'existing draft'
+    assert not sent
+
+
+def test_conversation_formats_messages_as_plain_selectable_blocks(window_module, monkeypatch):
+    from ui import window as module
+    formats = []
+
+    class Block:
+        def __init__(self):
+            self.values = {}
+        def setTopMargin(self, value):
+            self.values['top'] = value
+        def setBottomMargin(self, value):
+            self.values['bottom'] = value
+        def setAlignment(self, value):
+            self.values['align'] = value
+        def setLeftMargin(self, value):
+            self.values['left'] = value
+        def setRightMargin(self, value):
+            self.values['right'] = value
+        def setBackground(self, value):
+            self.values['background'] = value
+
+    class Cursor:
+        MoveOperation = types.SimpleNamespace(End=1)
+        def movePosition(self, _position):
+            pass
+        def setBlockFormat(self, value):
+            formats.append(value.values)
+        def charFormat(self):
+            return types.SimpleNamespace(setForeground=lambda _value: None)
+        def insertText(self, value, *_args):
+            self.inserted = value
+
+    monkeypatch.setattr(module, 'QTextBlockFormat', Block)
+    log = module.LogWidget()
+    cursor = Cursor()
+    monkeypatch.setattr(log, 'textCursor', lambda: cursor)
+    for tag in ('you', 'ai', 'sys'):
+        log._tag, log._pos, log._text = tag, 0, '<unsafe>'
+        log._step()
+        assert cursor.inserted == '<'  # not interpreted as rich HTML
+    assert formats[0]['left'] > formats[0]['right']
+    assert formats[1]['right'] > formats[1]['left']
+    assert 'background' in formats[0] and 'background' in formats[1]
+    assert 'background' not in formats[2]
+
+
+def test_claw_changes_only_active_model_slider_and_loss_cancels(window, monkeypatch):
+    import ui.hand_gesture as hand
+
+    class Point:
+        def __init__(self, x, y):
+            self._x, self._y = x, y
+        def x(self):
+            return self._x
+        def y(self):
+            return self._y
+        def __sub__(self, other):
+            return Point(self._x - other._x, self._y - other._y)
+        def manhattanLength(self):
+            return abs(self._x) + abs(self._y)
+
+    class Slider:
+        def __init__(self):
+            self.current = 20
+        def isEnabled(self):
+            return True
+        def value(self):
+            return self.current
+        def setValue(self, value):
+            self.current = max(0, min(100, value))
+
+    monkeypatch.setattr(hand, 'QPoint', Point)
+    monkeypatch.setattr(hand.QApplication, 'activeModalWidget', staticmethod(lambda: None), raising=False)
+    monkeypatch.setattr(hand.QApplication, 'activePopupWidget', staticmethod(lambda: None), raising=False)
+    monkeypatch.setattr(window, 'isActiveWindow', lambda: True)
+    gestures = window._workspace_gestures
+    gestures.reset()
+    monkeypatch.setattr(gestures, 'show_cursors', lambda _samples: None)
+    viewport = window._desktop_mdi.viewport()
+    monkeypatch.setattr(viewport, 'width', lambda: 500)
+    monkeypatch.setattr(viewport, 'height', lambda: 500)
+    canvas = types.SimpleNamespace(height=lambda: 200)
+    slider = Slider()
+    viewer = types.SimpleNamespace(canvas=canvas, explode_slider=slider)
+    sub = types.SimpleNamespace(isVisible=lambda: True)
+    window._model_viewer = viewer
+    window._desktop_windows['model_viewer'] = sub
+    monkeypatch.setattr(window._desktop_mdi, 'activeSubWindow', lambda: sub)
+    monkeypatch.setattr(gestures, '_hit', lambda _point: canvas)
+    clock = [1.0]
+    monkeypatch.setattr(hand.time, 'monotonic', lambda: clock[0])
+    sample = lambda y: ((.5, y, False, False, True),)
+    gestures.update(sample(.5))
+    assert gestures.mode is None
+    clock[0] += .41
+    gestures.update(sample(.5))
+    assert gestures.mode == 'claw'
+    gestures.update(sample(.4))
+    assert slider.value() > 20
+    gestures.update(())
+    assert gestures.mode is None
+    previous = slider.value()
+    monkeypatch.setattr(window._desktop_mdi, 'activeSubWindow', lambda: None)
+    gestures.update(sample(.5))
+    clock[0] += 1
+    gestures.update(sample(.4))
+    assert slider.value() == previous and gestures.mode is None
+
+
+def test_editor_assistance_requires_consent_and_checks_revision(window_module, monkeypatch):
+    import ui.editor_assist as assist
+    from core.editor_assist import EditorRequest, revision, validate
+
+    class Code:
+        text = 'old code'
+        _assist_token = 'tab-token'
+        def toPlainText(self):
+            return self.text
+        def textCursor(self):
+            return types.SimpleNamespace(SelectionType=types.SimpleNamespace(Document=1),
+                                         select=lambda _selection: None,
+                                         insertText=lambda value: setattr(self, 'text', value))
+        def setTextCursor(self, _cursor):
+            pass
+    code = Code()
+    editor = types.SimpleNamespace(_code=code, _path=None, _allowed=lambda _name: True,
+                                   _tabs=types.SimpleNamespace(currentIndex=lambda: 0))
+    sub = types.SimpleNamespace(_document=editor, isHidden=lambda: False, isMinimized=lambda: False)
+    window = types.SimpleNamespace(_workspace_documents={'doc-1': ('code_editor', sub)},
+                                   _desktop_mdi=types.SimpleNamespace(activeSubWindow=lambda: sub),
+                                   _confirm_overlay=None, _hand_closing_confirm=False)
+    decisions = {'approved': False, 'changed': False}
+
+    class Box:
+        StandardButton = types.SimpleNamespace(Yes=1, No=2)
+        def __init__(self, _parent):
+            pass
+        def setWindowTitle(self, *_): pass
+        def setTextFormat(self, *_): pass
+        def setText(self, *_): pass
+        def setDetailedText(self, *_): pass
+        def setStandardButtons(self, *_): pass
+        def setDefaultButton(self, *_): pass
+        def reject(self): pass
+        def exec(self):
+            if decisions['changed']:
+                code.text = 'user changed while reviewing'
+            return 1 if decisions['approved'] else 2
+
+    monkeypatch.setattr(assist, 'QMessageBox', Box)
+    req = EditorRequest(validate('read', 'doc-1'))
+    assist.execute(window, req)
+    assert not req.wait(0)['ok']
+    decisions['approved'] = True
+    req = EditorRequest(validate('read', 'doc-1'))
+    assist.execute(window, req)
+    read = req.wait(0)
+    assert read['code'] == 'old code' and read['revision'] == revision('old code', code._assist_token)
+    req = EditorRequest(validate('replace', 'doc-1', 'new code', revision('old code', code._assist_token)))
+    decisions['changed'] = True
+    assist.execute(window, req)
+    assert not req.wait(0)['ok'] and code.text == 'user changed while reviewing'
+    decisions['changed'] = False
+    req = EditorRequest(validate('replace', 'doc-1', 'new code', revision(code.text, code._assist_token)))
+    assist.execute(window, req)
+    assert req.wait(0)['ok'] and code.text == 'new code'
+    req = EditorRequest(validate('replace', 'doc-1', 'other code', revision('stale')))
+    assist.execute(window, req)
+    assert not req.wait(0)['ok'] and code.text == 'new code'
+    # Identical text in another file tab must never reuse a revision.
+    other = Code()
+    other.text, other._assist_token = code.text, 'different-tab'
+    old_revision = revision(code.text, code._assist_token)
+    editor._code = other
+    req = EditorRequest(validate('replace', 'doc-1', 'wrong tab', old_revision))
+    assist.execute(window, req)
+    assert not req.wait(0)['ok'] and other.text == 'new code'
+
+
+def test_multifile_editor_preserves_unsaved_tabs_and_save_targets(window_module, monkeypatch, tmp_path):
+    import ui.creative as creative
+
+    class Doc:
+        def __init__(self):
+            self.modified = False
+            self.modificationChanged = _Signal()
+        def isModified(self):
+            return self.modified
+        def setModified(self, value):
+            self.modified = value
+            self.modificationChanged.emit(value)
+
+    class Code:
+        def __init__(self):
+            self.doc = Doc()
+            self.cursorPositionChanged = _Signal()
+            self.content = ''
+            self.highlighter = types.SimpleNamespace(set_language=lambda _language: None)
+        def document(self): return self.doc
+        def setPlainText(self, value): self.content = value
+        def toPlainText(self): return self.content
+        def setAccessibleName(self, _value): pass
+        def setFont(self, _value): pass
+        def _update_gutter_width(self): pass
+        def setPlaceholderText(self, _value): pass
+        def deleteLater(self): pass
+        def textCursor(self): return types.SimpleNamespace(blockNumber=lambda: 0, positionInBlock=lambda: 0)
+
+    class Tabs:
+        def __init__(self): self.tabs, self.active, self.names = [], -1, {}
+        def addTab(self, code, _name):
+            self.tabs.append(code)
+            return len(self.tabs) - 1
+        def setCurrentIndex(self, index): self.active = index
+        def currentIndex(self): return self.active
+        def widget(self, index): return self.tabs[index] if 0 <= index < len(self.tabs) else None
+        def count(self): return len(self.tabs)
+        def indexOf(self, code): return self.tabs.index(code)
+        def removeTab(self, index):
+            self.tabs.pop(index)
+            self.active = min(self.active, len(self.tabs) - 1)
+        def setTabText(self, index, text): self.names[index] = text
+        def setTabToolTip(self, *_args): pass
+        def setCurrentWidget(self, code): self.active = self.tabs.index(code)
+
+    monkeypatch.setattr(creative, 'CodeEditor', Code)
+    editor = creative.CreativeWorkspace.__new__(creative.CreativeWorkspace)
+    editor._paths = {}
+    editor._file_tabs = Tabs()
+    editor._file_label = types.SimpleNamespace(setText=lambda _value: None)
+    editor._editor_status = types.SimpleNamespace(setText=lambda _value: None)
+    editor._output = types.SimpleNamespace(setPlainText=lambda _value: None)
+    first = editor._add_code_tab('first', dirty=True)
+    second = editor._add_code_tab('second', dirty=True)
+    assert editor._code is second and first.toPlainText() == 'first'
+    first_path, second_path = tmp_path / 'a.py', tmp_path / 'b.py'
+    assert editor._write(str(second_path)) and second_path.read_text() == 'second'
+    editor._file_tabs.setCurrentIndex(0)
+    editor._select_file_tab(0)
+    assert editor._code is first and editor._path is None
+    assert not editor._write(str(second_path))  # cannot alias another tab
+    assert editor._write(str(first_path)) and first_path.read_text() == 'first'
+    first.document().setModified(True)
+    monkeypatch.setattr(editor, '_confirm_discard', lambda code: code is not first)
+    assert not editor._may_discard()
+    editor._close_file_tab(0)
+    assert editor._file_tabs.count() == 2  # declining keeps the tab
+    monkeypatch.setattr(editor, '_confirm_discard', lambda _code: True)
+    editor._close_file_tab(0)
+    assert editor._code is second and editor._path == str(second_path)
+    editor._close_file_tab(0)
+    assert editor._file_tabs.count() == 1 and editor._code.toPlainText() == ''
+
+
+def test_removed_canvas_route_refuses_legacy_requests(window_module):
+    from ui.creative import open_workspace
+    logs = []
+    host = types.SimpleNamespace(write_log=logs.append,
+                                 get_plugins=lambda: pytest.fail('legacy request must not open editor'))
+    open_workspace(host, {'kind': 'creative_workspace', 'tab': 'canvas', 'prompt': 'example'})
+    assert len(logs) == 1
+
+
+def test_editor_dock_keeps_image_editor_but_not_ai_image(window):
+    keys = [key for _, key in window._workspace_dock_actions]
+    assert 'workspace.code' in keys and 'workspace.image' in keys
+    assert 'workspace.ai_image' not in keys
+
+
+def test_ssh_assistant_requires_approval_and_revalidates_session(window_module, monkeypatch):
+    import ui.ssh_assist as assist
+    from core.ssh_assist import SSHAssistRequest
+
+    class Field:
+        def __init__(self, value=''): self.value = value
+        def text(self): return self.value
+        def setText(self, value): self.value = value
+        def clear(self): self.value = ''
+    commands = []
+    tab = types.SimpleNamespace(session=object(), generation=1, _assist_session='a'*32,
+                                _share_output=False, _shared_output='private', _status_key='ssh.connected', connected=True, busy=False,
+                                command=Field(), user=Field('alice'), host=Field('server'),
+                                port=types.SimpleNamespace(value=lambda: 22),
+                                _start_approved_command=lambda *args: commands.append(args))
+    tabs = types.SimpleNamespace(currentWidget=lambda: tab)
+    sub = types.SimpleNamespace(_document=types.SimpleNamespace(tabs=tabs), isHidden=lambda: False,
+                                isMinimized=lambda: False)
+    window = types.SimpleNamespace(_workspace_documents={'doc-1': ('ssh_manager', sub)},
+                                   _desktop_mdi=types.SimpleNamespace(activeSubWindow=lambda: sub),
+                                   _confirm_overlay=None, _hand_closing_confirm=False)
+    decision = {'yes': False, 'change': False}
+    class Box:
+        StandardButton = types.SimpleNamespace(Yes=1, No=2)
+        def __init__(self, _parent): pass
+        def setWindowTitle(self, *_): pass
+        def setTextFormat(self, *_): pass
+        def setText(self, *_): pass
+        def setStandardButtons(self, *_): pass
+        def setDefaultButton(self, *_): pass
+        def reject(self): pass
+        def exec(self):
+            if decision['change']:
+                tab.session = object()
+                tab.generation += 1
+            return 1 if decision['yes'] else 2
+    monkeypatch.setattr(assist, 'QMessageBox', Box)
+    monkeypatch.setattr(assist, 'allowed', lambda _host: True)
+    monkeypatch.setattr(assist.QApplication, 'activeModalWidget', staticmethod(lambda: None), raising=False)
+    monkeypatch.setattr(assist.QApplication, 'activePopupWidget', staticmethod(lambda: None), raising=False)
+    def request(action, **kwargs):
+        req = SSHAssistRequest({'action': action, 'target': 'doc-1', **kwargs})
+        assist.execute(window, req)
+        return req.wait(0)
+    inspect = request('inspect')
+    assert inspect['ok'] and not inspect['sharing'] and 'output' not in inspect
+    tab._share_output = True
+    assert request('inspect')['output'] == 'private'
+    assert not request('execute', session='a'*32, command='pwd')['ok'] and not commands
+    assert tab.command.text() == 'pwd'  # declined draft remains visible, not executed
+    tab.command.clear()
+    decision.update(yes=True, change=True)
+    assert not request('execute', session='a'*32, command='pwd')['ok'] and not commands
+    tab.command.clear()
+    decision['change'] = False
+    assert not request('execute', session='b'*32, command='pwd')['ok'] and not commands
+    result = request('execute', session='a'*32, command='pwd')
+    assert result['ok'] and 'not yet confirmed' in result['message']
+    assert len(commands) == 1 and commands[0][0] == 'pwd'
+    tab.command.setText('my draft')
+    assert not request('execute', session='a'*32, command='pwd')['ok']
+    assert tab.command.text() == 'my draft' and len(commands) == 1
+
+
+def test_ssh_output_sharing_is_explicit_revocable_and_session_scoped(window_module, monkeypatch):
+    import ui.ssh_manager as ssh
+    tab = ssh.SSHTab.__new__(ssh.SSHTab)
+    tab._share_output, tab._shared_output, tab._assist_session = False, 'old data', 'a'*32
+    tab.connected, tab.busy, tab.generation, tab.session = True, False, 1, object()
+    tab.host_app = object()
+    tab._update_sharing = lambda: None
+    tab._set_status = lambda _key: None
+    tab._sync = lambda: None
+    tab.secret = types.SimpleNamespace(clear=lambda: None)
+    tab.state_changed = types.SimpleNamespace(emit=lambda: None)
+    tab.session = types.SimpleNamespace(request_close=lambda: None)
+    monkeypatch.setattr(ssh, 'allowed', lambda _host: True)
+    yes_no = types.SimpleNamespace(Yes=1, No=2)
+    decision = [2]
+    monkeypatch.setattr(ssh, 'QMessageBox', types.SimpleNamespace(StandardButton=yes_no,
+                                                                 question=lambda *_args: decision[0]))
+    tab.toggle_sharing()
+    assert not tab._share_output and tab._shared_output == 'old data'
+    decision[0] = 1
+    tab.toggle_sharing()
+    assert tab._share_output and tab._shared_output == ''
+    class Output:
+        def __init__(self): self.text = ''
+        def appendPlainText(self, text): self.text += text + '\n'
+        def toPlainText(self): return self.text
+        def setPlainText(self, text): self.text = text
+    tab.output = Output()
+    tab._on_command(1, (b'result', 0, 'finished'))
+    assert 'result' in tab._shared_output
+    tab.toggle_sharing()
+    assert not tab._share_output and tab._shared_output == ''
+    tab._on_command(1, (b'private', 0, 'finished'))
+    assert tab._shared_output == ''
+    tab._share_output, tab._shared_output = True, 'secret'
+    tab.disconnect_session()
+    assert not tab._share_output and tab._shared_output == '' and tab._assist_session == ''

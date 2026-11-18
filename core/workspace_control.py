@@ -3,9 +3,9 @@ import re
 import threading
 
 ACTIONS = {"list", "open", "focus", "minimize", "maximize", "restore",
-           "move_left", "move_right", "close", "navigate", "search", "board_add", "board_list"}
-CORE_TARGETS = {"assistant", "chat", "files", "navigation", "video", "camera", "handboard"}
-OPEN_TARGETS = CORE_TARGETS | {"code_editor", "image_editor", "ai_image", "trading"}
+           "move_left", "move_right", "close", "navigate", "search"}
+CORE_TARGETS = {"assistant", "chat", "files", "navigation", "video", "camera", "model_viewer"}
+OPEN_TARGETS = CORE_TARGETS | {"code_editor", "image_editor", "trading"}
 
 
 def validate(parameters):
@@ -18,11 +18,7 @@ def validate(parameters):
     if not isinstance(target, str) or len(target) > 80:
         raise ValueError("Invalid workspace target.")
     target = target.strip().lower()
-    if action in {"board_add", "board_list"}:
-        if target not in ("", "handboard"):
-            raise ValueError("Board actions only apply to the hand board.")
-        target = "handboard"
-    elif action in {"navigate", "search"}:
+    if action in {"navigate", "search"}:
         if target not in ("", "files"):
             raise ValueError("Navigation and search only apply to Files.")
         target = "files"
@@ -39,11 +35,6 @@ def validate(parameters):
     if action == "navigate" and not text.strip():
         raise ValueError("Provide the folder path to navigate to.")
     result = {"action": action, "target": target, "text": text}
-    if action == "board_add":
-        title = parameters.get("title", "")
-        if not isinstance(title, str) or not title.strip() or len(title) > 120:
-            raise ValueError("A board note needs a title of at most 120 characters.")
-        result["title"] = title.strip()
     return result
 
 

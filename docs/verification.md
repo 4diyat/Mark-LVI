@@ -13,7 +13,7 @@ semua komputer. Hasil uji lokal tidak otomatis menjadi hasil CI atau rilis.
 | Kontrol tangan workspace | Sampel landmark sintetis, smoothing, pinch, pelacakan dan pembatalan; gesture UI pada Qt offscreen Linux di CI | Webcam Windows, MediaPipe, latency, presisi, pencahayaan dan penggunaan dua tangan sebenarnya |
 | MT5 ORB/read-only | Perhitungan dan perilaku data dengan fake/fixture | Terminal MT5 Windows, data broker dan zona waktu sesi sebenarnya |
 | Order MT5 dan stop darurat | Validasi, persetujuan/hasil simulasi, race stop memakai fake; smoke kontrol Qt dijadwalkan di CI | Terminal dan akun **demo**, koneksi dan respons broker; LIVE belum diverifikasi |
-| Editor kode/gambar dan papan tangan | Tes logika serta sebagian operasi Qt offscreen | Dialog file, font, gambar, penyimpanan dan penggunaan interaktif pada desktop pengguna |
+| Editor kode/gambar dan penampil OBJ | Tes logika serta sebagian operasi Qt offscreen | Dialog file, font, gambar, penyimpanan dan penggunaan interaktif pada desktop pengguna |
 | Provider suara, mikrofon & speaker | Tes logika dan mock; pilihan perangkat | Perangkat audio, driver, privasi dan koneksi provider yang dipakai |
 | Plugin dan layanan eksternal | Discovery/manifest dan tes plugin menggunakan fixture/mock | Kredensial, perubahan API, izin, kuota, jaringan dan akun yang dipakai |
 
@@ -41,10 +41,20 @@ Satu tangan mencubit sementara tangan lain terlihat terbuka tidak mengaktifkan
 gesture satu tangan. Deteksi tetap dapat keliru pada penggunaan nyata dan
 tidak menjamin keselamatan untuk tindakan sensitif.
 
+Hand Board dan perintah kartunya telah dihapus: kontrol tangan bekerja langsung
+pada jendela JARVIS. Catatan dan gambar menggunakan fitur catatan dan editor
+gambar yang sudah ada; kartu sesi lama tidak dipersistenkan dan tidak dapat
+dipindahkan. Penampil Model 3D dibuka lewat Aplikasi atau workspace_control,
+dan menerima OBJ yang dipilih pengguna secara lokal. Ini hanya wireframe; yaw,
+pitch, dan pemisahan komponen diatur dengan slider; claw satu tangan juga
+mengatur pemisahan pada canvas model dengan beberapa komponen. Ini bukan
+kontrol 3D dua tangan.
+Memilih file menghentikan kontrol tangan sebelum dialog sistem terbuka.
+
 `tests/test_workspace_transform.py` menguji geometri dengan sampel sintetis;
 `tools/check_desktop_qt.py` memiliki smoke dua tangan di Qt offscreen untuk CI.
-Keduanya bukan pengujian dengan webcam. Gesture clap, claw serta
-rotasi bebas jendela tidak diklaim sebagai fitur yang tersedia.
+Keduanya bukan pengujian dengan webcam. Rotasi bebas jendela yang tetap
+interaktif belum tersedia.
 
 ### Pembaruan visual desktop
 
@@ -54,8 +64,12 @@ ornamental, file di kiri dan percakapan di kanan pada layar lebar. Pada layar
 kecil emblem disembunyikan agar ruang tetap untuk aplikasi. Badge kontrol tangan
 hanya muncul saat controller benar-benar mulai atau aktif; bukan gambar status
 kamera statis. Emblem di desktop bersifat dekoratif; HUD dalam panel asisten
-masih menjadi sumber status JARVIS. Tata letak dan widget asli tetap dapat
-dioperasikan; tidak menggunakan gambar mockup sebagai UI.
+masih menjadi sumber status JARVIS. Saat kamera kontrol tangan mulai atau aktif,
+panel di kanan atas menampilkan status controller dan tombol berhenti; penunjuk
+berubah saat mencubit dan garis hanya muncul saat transformasi dua tangan sedang
+berlangsung. Panel disembunyikan saat modal, konfirmasi atau aplikasi tidak fokus.
+Tata letak dan widget asli tetap dapat dioperasikan; tidak menggunakan gambar
+mockup sebagai UI.
 
 Kesesuaian piksel, komposisi pada DPI berbeda, keterbacaan dan responsivitas
 memerlukan pemeriksaan manual dengan Qt nyata di perangkat pengguna. Wallpaper
@@ -212,3 +226,113 @@ penumpang, URL yang di-encode, pembatasan asal dan perlakuan data halaman
 tanpa jaringan atau API model. Ini belum memverifikasi Google Flights nyata,
 kebenaran pengisian formulir, hasil, zona waktu atau harga. JARVIS tidak
 memesan penerbangan; periksa rute, tanggal dan harga langsung pada situs.
+
+### Wajah animasi desktop
+
+Pada desktop lebar, mode `face` menampilkan wajah holografis di tengah dengan
+instance animasi HUD yang sama: kedipan, arah pandang, ekspresi status, serta
+mulut berdasarkan audio/viseme pemutaran. Nama dan status mengikuti keadaan
+aplikasi; panel asisten tidak perlu terbuka agar wajah terus diperbarui. Mode
+baru default `face` hanya jika preferensi belum ada; pilihan `orb` atau `core`
+yang tersimpan tetap dipertahankan. Layar sempit menyembunyikan dekorasi tengah
+agar tidak menutupi jendela. Unit test memeriksa pemilihan mode, visibilitas,
+pembaruan saat panel tersembunyi, rendering dengan stub Qt, serta animasi
+wajah; smoke test Qt nyata juga mencakup pengambilan gambar desktop.
+
+Visual ini adalah implementasi mesh holografis yang sudah ada, bukan model wajah
+fotorealistis seperti gambar konsep. Hasil visual, komposit transparan, kinerja,
+dan sinkronisasi suara masih perlu diperiksa pada Qt dan perangkat Windows
+nyata; lingkungan pengujian lokal tidak memiliki dependensi Qt sistem.
+
+### Gestur mendekatkan kedua tangan
+
+Detektor clap menggunakan pendekatan cepat dua ujung telunjuk yang tetap
+terlihat dan tidak mencubit; ini bukan deteksi suara tepuk atau pengenalan
+telapak tangan secara penuh. Kehilangan tracking, modal, popup, fokus hilang,
+dan cubitan membatalkan pengenalan. Jendela yang terlihat diminimalkan tanpa
+menutup dokumen; menu Aplikasi menyediakan pemulihan batch, mempertahankan
+status maximized sebelumnya dan tidak membuka jendela tersembunyi. Kamera atau
+media dapat tetap aktif saat diminimalkan. Unit test memeriksa detektor dan
+pemulihan; smoke Qt disiapkan, tetapi akurasi gesture, oklusi tangan, dan
+pemulihan pada Windows/webcam nyata belum diverifikasi.
+
+### Panel Asisten dan claw
+
+Panel memiliki penanda asisten dan tombol saran yang mengisi draft kosong tanpa
+mengirim otomatis atau menimpa teks yang belum dikirim. Pesan pengguna dan
+asisten memakai blok berwarna dan alignment berbeda tanpa menafsirkan isi
+sebagai HTML. Blok belum memiliki sudut membulat dan keseluruhan tata letaknya
+belum direplikasi persis dari mockup. Gesture claw memakai
+heuristik jari melengkung, dwell 0,4 detik, dan hanya mengubah slider exploded
+view pada canvas penampil model aktif yang memiliki beberapa komponen. Lepas,
+hilangnya tracking, popup, atau dialog membatalkan aksi tanpa klik. Unit test
+memeriksa klasifikasi pose; smoke Qt dengan sampel sintetis telah ditambahkan
+tetapi belum dijalankan di lingkungan ini karena libGL.so.1 tidak tersedia.
+Heuristik tersebut belum diuji pada webcam dan tidak menjamin bebas salah deteksi.
+
+### Editor kode dan bantuan JARVIS
+
+Editor memakai gutter nomor baris, pewarnaan sintaks ringan per baris untuk
+berkas Python/JavaScript, dan status bahasa serta posisi kursor. Pewarnaan bukan
+parser penuh (misalnya string multibaris); file tanpa ekstensi yang dikenal
+masih teks polos. Setiap jendela editor kini mendukung beberapa tab file dan
+sidebar untuk file baru, buka, simpan, simpan sebagai, serta jalankan. Tampilan
+mendekati konsep, tetapi belum diverifikasi secara visual di Qt nyata.
+
+Plugin `code_editor` dapat membuka editor atau, setelah `workspace_control`
+mencantumkan ID `doc-N`, meminta membaca dokumen editor aktif. Pengguna harus
+menyetujui setiap pembacaan dan memeriksa rahasia karena isinya dapat dikirim
+ke provider model. Hasil ditandai sebagai data tak tepercaya. Penggantian kode
+memerlukan hash revisi yang terikat pada tab aktif, pratinjau diff dan persetujuan lokal;
+perubahan dokumen saat menunggu membatalkan permintaan. Hasilnya dapat di-undo,
+tidak otomatis disimpan maupun dijalankan. Batas bantuan 100 KB UTF-8; untuk
+berkas lebih besar ditolak, bukan dikirim sebagian. Plugin harus diaktifkan
+terlebih dahulu. Eksekusi tetap tidak di-sandbox dan memerlukan persetujuan
+terpisah.
+
+Unit test mencakup validasi, penolakan/persetujuan, perubahan selama dialog,
+revisi kedaluwarsa, penanda data tak tepercaya dan warna sintaks. Smoke real Qt
+untuk gutter/highlighter telah ditambahkan tetapi belum dijalankan di lingkungan
+ini karena pustaka Qt sistem tidak tersedia. Belum diverifikasi dengan provider
+model atau perangkat Windows nyata; pembungkus data tak tepercaya bukan jaminan
+bahwa model akan mengabaikan semua instruksi dalam kode.
+
+Unit test tab editor menggunakan stub Qt: pembukaan beberapa draft, pemisahan
+path, penolakan nama file duplikat, konfirmasi perubahan yang belum disimpan,
+dan perlindungan revisi antar-tab. Smoke test Qt nyata untuk pergantian dan
+penutupan tab sudah ditambahkan; masih perlu dijalankan di Windows/Qt nyata.
+
+### Penghapusan AI Image
+
+Plugin `image_canvas`, generator Gemini-nya, tab AI Canvas, tujuan workspace
+`ai_image`, dan item dock terkait telah dihapus. Permintaan lama untuk membuka
+canvas ditolak, bukan dialihkan diam-diam ke editor kode. Editor gambar biasa
+`image_editor` dan dokumen gambar pengguna tidak dihapus. Tes memeriksa
+penemuan plugin, penolakan rute lama, menu dock, serta editor kode yang tetap
+tersedia; pemeriksaan UI Qt nyata masih memerlukan perangkat dengan Qt sistem.
+
+### Bantuan JARVIS pada SSH Manager
+
+Mockup `design/jarvis-ssh-console-asistensi.png` menjadi acuan tata letak:
+output monospasi lebih luas, input di bawah, kontrol salin/hapus dan izin
+berbagi. Pengguna tetap membuka koneksi secara lokal dengan validasi known_hosts.
+Setelah memilih tab SSH aktif, JARVIS dapat memeriksa status dan mengusulkan
+satu perintah; setiap perintah menampilkan tujuan dan teks persisnya dalam
+konfirmasi lokal default Tidak. Permintaan ditolak bila tab/sesi/draft berubah,
+ada dialog lain, sesi sibuk, plugin dinonaktifkan, atau timeout. Respons saat
+perintah dimulai bukan klaim bahwa eksekusi berhasil atau selesai.
+
+Berbagi output default mati, harus disetujui pada masing-masing sesi dan dapat
+dicabut. Hanya output yang diterima setelah izin diberikan disimpan untuk
+asistensi (8.000 karakter terakhir); hapus output, cabut izin, atau disconnect
+juga mengosongkan buffer. Output dapat memuat rahasia dan dapat dikirim ke
+provider model; data yang sudah terkirim tidak dapat ditarik kembali. Output
+remote dibungkus sebagai data tak tepercaya, bukan jaminan kebal prompt
+injection. Sandi, passphrase dan lokasi kunci tidak dikembalikan ke model.
+Bukan terminal interaktif; timeout/disconnect tidak menjamin proses server
+berhenti.
+
+Tes menggunakan request dan transport palsu memeriksa batas, persetujuan,
+penolakan, sesi yang berganti, draft pengguna, pembatalan timeout, isolasi,
+dan pencabutan. Smoke Qt nyata ditambahkan tetapi belum dijalankan di lingkungan
+ini; tidak ada uji terhadap server SSH nyata, provider model, atau Windows.

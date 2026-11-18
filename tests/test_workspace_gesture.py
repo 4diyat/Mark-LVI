@@ -286,3 +286,41 @@ def test_reacquired_closed_hand_must_open_before_rearming():
     assert controller.sample() == opened
     controller._publish(pinched)
     assert controller.sample() == pinched
+
+
+def test_clap_requires_quick_visible_open_hand_approach_and_rearms():
+    from core.workspace_gesture import ClapTracker
+    tracker = ClapTracker()
+    pair = lambda distance: ((.5 - distance / 2, .5, False, False),
+                             (.5 + distance / 2, .5, False, False))
+    assert not tracker.update(pair(.4), 1.0)
+    assert not tracker.update(pair(.23), 1.1)
+    assert tracker.update(pair(.1), 1.2)
+    assert not tracker.update(pair(.1), 1.3)
+    assert not tracker.update(pair(.4), 1.4)
+    assert not tracker.update((), 1.5)  # loss is not a clap
+    assert not tracker.update(pair(.1), 1.6)
+    assert not tracker.update(pair(.4), 2.0)
+    assert not tracker.update(pair(.1), 2.3)  # stale tracking
+    assert not tracker.update(pair(.4), 3.0)
+    assert not tracker.update(((.45, .5, True, False), (.55, .5, False, False)), 3.1)
+    assert not tracker.update(pair(.1), 3.2)
+
+
+def test_claw_is_distinct_from_pinch_and_survives_stabilizer():
+    from core.workspace_gesture import HandStabilizer, _hand_measurement
+    points = landmarks(False)
+    points[0].x, points[0].y = .5, .9
+    for tip, joint in ((8, 6), (12, 10), (16, 14), (20, 18)):
+        points[tip].x, points[tip].y = .5, .75
+        points[joint].x, points[joint].y = .5, .45
+    points[4].x, points[4].y = .2, .75
+    measurement = _hand_measurement(points)
+    assert measurement[5] and not measurement[2] and not measurement[3]
+    stabilizer = HandStabilizer()
+    assert stabilizer.update([measurement])[0][4] is True
+    points[4].x = .5
+    measurement = _hand_measurement(points)
+    assert measurement[2] and not measurement[5]
+    points[0].x = math.nan
+    assert not _hand_measurement(points)[5]
