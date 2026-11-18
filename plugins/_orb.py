@@ -375,7 +375,7 @@ def render_text(bars, analysis: Analysis, *, width: int = 68, height: int = 16) 
     return "\n".join(out)
 
 
-def render_png(bars, analysis: Analysis, path) -> str:
+def render_png(bars, analysis: Analysis, path, *, caption: str = "") -> str:
     """Draw the same chart as a PNG. Returns the path, or raises ImportError when
     Pillow is not installed — the caller then uses render_text()."""
     from PIL import Image, ImageDraw  # noqa: PLC0415 — optional dependency
@@ -461,8 +461,10 @@ def render_png(bars, analysis: Analysis, path) -> str:
     draw.text((pad_l, 16), title, fill="#e6edf3")
     draw.text((pad_l, 32),
               f"bars: {len(rows)} · broker time UTC{analysis.offset_hours:+d} · "
-              f"levels from closed M30 bars only · no prediction",
+              f"levels from closed {analysis.timeframe} bars only · no prediction",
               fill="#8b98a8")
+    if caption:
+        draw.text((pad_l, h - 16), caption, fill="#f2cc60")
     first, last = rows[0], rows[-1]
     draw.text((pad_l, h - pad_b + 10),
               f"{_utc(first.time, analysis.offset_hours):%Y-%m-%d %H:%M} → "

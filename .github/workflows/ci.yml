@@ -288,10 +288,9 @@ jobs:
                   "consent question is asked after it can already run")
           print("example plugin: manifest verified, declared network, starts off")
 
-          # The MT5 plugin is the second one with a manifest, and it declares
-          # `files` rather than `network` — so this pair of checks proves the
-          # permission actually comes from the manifest, not from a hardcoded
-          # default. It must load on Linux and macOS too: it is offered
+          # ORB reads local configuration and accesses MT5 data; both
+          # permissions must reach the registry before the plugin can be enabled.
+          # It must load on Linux and macOS too: it is offered
           # everywhere and refuses with a reason off Windows, which only works
           # if the module imports without the Windows-only package present.
           mt5 = rows.get("mt5_orb")
@@ -299,31 +298,29 @@ jobs:
               raise SystemExit("mt5_orb did not load — it must import on every OS")
           if not mt5["valid"]:
               raise SystemExit(f"mt5_orb was rejected: {mt5['error']}")
-          if mt5["permissions"] != ["files"]:
+          if mt5["permissions"] != ["network", "files"]:
               raise SystemExit(
                   f"mt5_orb permissions came through as {mt5['permissions']!r}")
           if mt5["enabled"]:
               raise SystemExit("mt5_orb declared a permission but started ENABLED")
-          print("mt5_orb: loaded without MetaTrader5, declared files, starts off")
+          print("mt5_orb: loaded without MetaTrader5, declared network and files, starts off")
 
-          # The third manifest, and the opposite case to the two above: an empty
-          # permission list. A plugin that writes only its own files has nothing
-          # to consent to, so it must keep the opt-out default and stay ON —
-          # otherwise "ships a manifest" silently means "is off until noticed".
+          # Notes access local files, so it requires consent even though its
+          # filesystem operations are implemented in a helper module.
           notes = rows.get("quick_notes")
-          if notes is None:
-              raise SystemExit("quick_notes did not load")
-          if not notes["valid"]:
-              raise SystemExit(f"quick_notes was rejected: {notes['error']}")
-          if notes["permissions"] != []:
-              raise SystemExit(
-                  f"quick_notes permissions came through as {notes['permissions']!r}")
-          if not notes["enabled"]:
-              raise SystemExit(
-                  "a manifest with NO permissions turned the plugin off — the "
-                  "consent rule is about declared access, not about shipping a "
-                  "manifest")
-          print("quick_notes: empty permission list, keeps the opt-out default (on)")
+          if notes is None or not notes["valid"]:
+              raise SystemExit("quick_notes did not load with a valid manifest")
+          if notes["permissions"] != ["files"] or notes["enabled"]:
+              raise SystemExit("quick_notes must declare files and start disabled")
+          print("quick_notes: files permission verified, starts off")
+
+          # A permission-free, manifestless workspace plugin remains opt-out.
+          workspace = rows.get("workspace_control")
+          if workspace is None or not workspace["valid"]:
+              raise SystemExit("workspace_control did not load")
+          if workspace["permissions"] != [] or not workspace["enabled"]:
+              raise SystemExit("workspace_control should start on without permissions")
+          print("workspace_control: no permissions, starts on")
 
           # And the fourth: a plugin whose network access lives in a HELPER
           # module. Its own file has no urllib import, so the static scan cannot

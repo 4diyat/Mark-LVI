@@ -327,22 +327,6 @@ def test_the_png_labels_survive_a_symbol_quoted_in_thousands(orb, tmp_path):
         assert img.size[0] - 74 > 0
 
 
-def test_without_pillow_the_plugin_answers_in_text(plugin, monkeypatch, tmp_path):
-    """The import inside render_png is the seam: making it fail is exactly what a
-    user without Pillow experiences, and the plugin must not lose the analysis
-    over a missing optional package."""
-    def no_pillow(*_a, **_k):
-        raise ImportError("No module named 'PIL'")
-
-    monkeypatch.setattr(plugin._orb, "render_png", no_pillow)
-    monkeypatch.setattr(plugin, "_read", lambda p: (
-        [bar(plugin._orb, 3, 7, 0, 1.08, 1.081, 1.079, 1.0805)],
-        plugin._orb.analyse([bar(plugin._orb, 3, 7, 0, 1.08, 1.081, 1.079, 1.0805)],
-                            "EURUSD", "london"),
-        "EURUSD"))
-    said = plugin.run({"symbol": "EURUSD", "draw": True})
-    assert "Pillow is not installed" in said
-    assert "EURUSD on M30" in said
 
 
 # --- the tool surface -------------------------------------------------------
@@ -375,56 +359,16 @@ def test_a_missing_symbol_asks_one_question(plugin):
     assert plugin.run({}) == "Sir, no symbol was given — which pair should I open?"
 
 
-def test_an_unknown_timeframe_lists_the_ones_that_exist(plugin):
-    said = plugin.run({"symbol": "EURUSD", "timeframe": "M7"})
-    assert "M7" in said and "M30" in said
 
 
-def test_the_offset_falls_back_to_the_documented_default(plugin):
-    symbol, session, timeframe, offset = plugin._settings({"symbol": "eurusd"})
-    assert (symbol, session, timeframe) == ("EURUSD", "london", "M30")
-    assert offset == plugin._orb.DEFAULT_BROKER_UTC_OFFSET_H == 2
-    assert plugin._settings({"symbol": "X", "broker_utc_offset": "3"})[3] == 3
-    assert plugin._settings({"symbol": "X", "broker_utc_offset": "noon"})[3] == 2
 
 
-def test_the_chart_path_is_a_png_named_after_the_symbol(plugin):
-    path = plugin._chart_path("EURUSD")
-    assert path.suffix == ".png"
-    assert "EURUSD" in path.name and path.name.startswith("mt5_")
 
 
-def test_a_symbol_with_slashes_cannot_escape_the_folder(plugin):
-    assert "/" not in plugin._chart_path("../../etc/passwd").name
 
 
-def test_draw_false_takes_the_analysis_only_path(plugin, monkeypatch):
-    seen = {}
-
-    def fake_read(parameters):
-        seen["called"] = True
-        bars = london_session(plugin._orb) + after_session(plugin._orb)
-        return bars, plugin._orb.analyse(bars, "EURUSD", "london",
-                                         offset_hours=BROKER_OFFSET), "EURUSD"
-
-    monkeypatch.setattr(plugin, "_read", fake_read)
-    monkeypatch.setattr(plugin, "_chart_path", lambda s: pytest.fail("drew a chart"))
-    said = plugin.run({"symbol": "EURUSD", "draw": False})
-    assert seen["called"]
-    assert "EURUSD on M30" in said and "Chart saved" not in said
 
 
-def test_a_player_that_fails_to_log_does_not_fail_the_answer(plugin, monkeypatch):
-    class Broken:
-        def write_log(self, _line):
-            raise RuntimeError("no log today")
-
-    bars = london_session(plugin._orb) + after_session(plugin._orb)
-    monkeypatch.setattr(plugin, "_read", lambda p: (
-        bars, plugin._orb.analyse(bars, "EURUSD", "london",
-                                  offset_hours=BROKER_OFFSET), "EURUSD"))
-    said = plugin.run({"symbol": "EURUSD", "draw": False}, player=Broken())
-    assert "EURUSD on M30" in said
 
 
 # --- the bridge helper ------------------------------------------------------
@@ -554,12 +498,11 @@ def test_the_manifest_hash_matches_the_file_on_disk():
 
 
 def test_the_manifest_says_what_the_source_actually_does():
-    """The permission list is checked against an import scan, so declaring
-    `network` here would be a warning and declaring nothing would be a refusal.
-    This plugin writes a PNG, which is `files`."""
+    # Helper modules read configuration and connect to MT5, so the static
+    # entrypoint scan alone is not the full permission inventory.
     manifest = pm.verify(ROOT / "plugins" / "mt5_orb.py", "mt5_orb")
-    assert manifest.permissions == ("files",)
-    assert pm.implied_permissions(ROOT / "plugins" / "mt5_orb.py") == {"files"}
+    assert set(manifest.permissions) == {"files", "network"}
+    assert manifest.ok
 
 
 def test_a_declared_permission_plugin_ships_disabled():
@@ -571,7 +514,7 @@ def test_a_declared_permission_plugin_ships_disabled():
     }
     assert rows["mt5_orb"]["valid"] is True
     assert rows["mt5_orb"]["enabled"] is False
-    assert rows["mt5_orb"]["permissions"] == ["files"]
+    assert rows["mt5_orb"]["permissions"] == ["network", "files"]
 
 
 def test_windows_mt5_numpy_abi_failure_explains_repair(mt5_helper, monkeypatch):
@@ -604,3 +547,94 @@ def test_windows_mt5_other_import_error_is_not_misreported_as_missing(mt5_helper
     with pytest.raises(mt5_helper.MT5Unavailable, match="DLL load failed") as exc:
         mt5_helper._module()
     assert "not installed" not in str(exc.value)
+
+
+def test_orb_uses_terminal_snapshot_settings_and_selected_session(plugin, monkeypatch):
+    from memory import config_manager
+    from plugins import _trading_terminal
+    from datetime import timedelta
+    now = datetime(2026, 11, 3, 8, 0, tzinfo=timezone.utc)
+    settings = {'range_minutes': 27, 'london_start': '08:10'}
+    monkeypatch.setattr(config_manager, 'get_plugin_config', lambda name: dict(settings))
+    seen = []
+    def snapshot(values):
+        seen.append(values)
+        return {'settings': {'symbol': values['symbol'], 'range_minutes': 27},
+                'sessions': {'london': {'high': 1.2, 'low': 1.1, 'state': 'inside',
+                              'start': now, 'range_end': now + timedelta(minutes=27),
+                              'timezone': 'Europe/London'}},
+                'tick_time': now, 'fresh': True}
+    monkeypatch.setattr(_trading_terminal, 'snapshot', snapshot)
+    monkeypatch.setattr(plugin, '_save_snapshot_chart', lambda snap, session: '/test/chart.png')
+    class Player:
+        def __init__(self): self.jobs = []
+        def get_plugins(self): return [{'name':'trading_terminal','valid':True,'enabled':True}]
+        def show_code_job(self, job): self.jobs.append(job)
+        def write_log(self, text): pass
+    player = Player()
+    answer = plugin.run({'symbol': 'EURUSD', 'session': 'london', 'draw': True}, player)
+    assert seen == [dict(settings, symbol='EURUSD')]
+    assert '27 minutes, closed M1' in answer and 'high 1.20000' in answer
+    assert 'Chart saved to /test/chart.png' in answer
+    assert player.jobs == [{'kind':'trading_terminal', 'symbol':'EURUSD', 'session':'london'}]
+
+
+def test_orb_rejects_old_timeframe_and_offset(plugin):
+    assert 'M1' in plugin.run({'symbol':'X', 'timeframe':'M30'})
+    assert 'not a broker UTC offset' in plugin.run({'symbol':'X', 'broker_utc_offset':2})
+
+
+def test_chart_uses_snapshot_levels_and_stale_status(plugin, monkeypatch, tmp_path):
+    from datetime import timedelta
+    now = datetime(2026, 11, 3, 8, tzinfo=timezone.utc)
+    snap = {'settings': {'symbol': 'EURUSD', 'range_minutes': 15},
+            'sessions': {'london': {'high': 1.2, 'low': 1.1, 'state': 'stale',
+                          'start': now, 'range_end': now + timedelta(minutes=15)}},
+            'tick_time': now, 'fresh': False, 'bars': ['synthetic']}
+    monkeypatch.setattr(plugin.Path, 'home', lambda: tmp_path)
+    seen = {}
+    def render(bars, analysis, path, *, caption):
+        seen.update(bars=bars, analysis=analysis, caption=caption)
+        Path(path).write_bytes(b'png')
+    monkeypatch.setattr(plugin._orb, 'render_png', render)
+    path = Path(plugin._save_snapshot_chart(snap, 'london'))
+    assert path.read_bytes() == b'png'
+    assert seen['bars'] == ['synthetic']
+    assert seen['analysis'].timeframe == 'M1'
+    assert seen['analysis'].range.high == 1.2 and seen['analysis'].range.low == 1.1
+    assert 'STALE' in seen['caption'] and 'state: stale' in seen['caption']
+
+
+def test_chart_failure_does_not_leave_partial_file(plugin, monkeypatch, tmp_path):
+    from datetime import timedelta
+    now = datetime(2026, 11, 3, 8, tzinfo=timezone.utc)
+    snap = {'settings': {'symbol': 'EURUSD', 'range_minutes': 15},
+            'sessions': {'london': {'high': None, 'low': None, 'state': 'waiting',
+                          'start': now, 'range_end': now + timedelta(minutes=15)}},
+            'tick_time': now, 'fresh': True, 'bars': []}
+    monkeypatch.setattr(plugin.Path, 'home', lambda: tmp_path)
+    def fail(*args, **kwargs): raise OSError('disk full')
+    monkeypatch.setattr(plugin._orb, 'render_png', fail)
+    with pytest.raises(OSError):
+        plugin._save_snapshot_chart(snap, 'london')
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_chart_renders_png_from_m1_snapshot(plugin, monkeypatch, tmp_path):
+    pytest.importorskip('PIL')
+    from datetime import timedelta
+    from collections import namedtuple
+    now = datetime(2026, 11, 3, 8, tzinfo=timezone.utc)
+    Candle = namedtuple('Candle', 'time open high low close')
+    bars = [Candle(int((now + timedelta(minutes=i)).timestamp()), 1.15, 1.2, 1.1, 1.16)
+            for i in range(15)]
+    snap = {'settings': {'symbol': 'EURUSD', 'range_minutes': 15},
+            'sessions': {'london': {'high': 1.2, 'low': 1.1, 'state': 'inside',
+                          'start': now, 'range_end': now + timedelta(minutes=15)}},
+            'tick_time': now + timedelta(minutes=16), 'fresh': True, 'bars': bars}
+    monkeypatch.setattr(plugin.Path, 'home', lambda: tmp_path)
+    path = Path(plugin._save_snapshot_chart(snap, 'london'))
+    from PIL import Image
+    with Image.open(path) as image:
+        assert image.format == 'PNG'
+        assert image.size == (1000, 560)

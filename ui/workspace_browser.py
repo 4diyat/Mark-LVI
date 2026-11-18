@@ -66,6 +66,7 @@ class BrowserTab(QWidget):
         self.back, self.forward, self.reload_btn = (QPushButton(_t(k)) for k in ('browser.back', 'browser.forward', 'browser.reload'))
         self.address = QLineEdit()
         self.address.setPlaceholderText(_t('browser.address_hint'))
+        self.address.setAccessibleName(_t('browser.address_hint'))
         self.go = QPushButton(_t('browser.go'))
         self.go.setObjectName('WorkspacePrimary')
         for b in (self.back, self.forward, self.reload_btn):
@@ -75,6 +76,7 @@ class BrowserTab(QWidget):
         layout.addLayout(controls)
         row = QHBoxLayout()
         self.offer = QComboBox()
+        self.offer.setAccessibleName(_t('browser.saved_available'))
         self.offer.addItem(_t('browser.no_saved'), '')
         self.fill_btn, self.save_btn, self.delete_btn = (QPushButton(_t(k)) for k in ('browser.fill', 'browser.save', 'browser.delete'))
         self.fill_btn.setObjectName('WorkspacePrimary')
@@ -126,6 +128,7 @@ class BrowserTab(QWidget):
                             (self.delete_btn, 'browser.delete')):
             widget.setText(_t(key))
         self.address.setPlaceholderText(_t('browser.address_hint'))
+        self.address.setAccessibleName(_t('browser.address_hint'))
         self.status.setText(_t(self._status_key))
         # Only the empty sentinel is localized; usernames and selection stay intact.
         for index in range(self.offer.count()):

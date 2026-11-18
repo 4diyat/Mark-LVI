@@ -22,6 +22,7 @@ WHAT IT REFUSES TO DO
 """
 from __future__ import annotations
 
+from core import outcome
 from plugins import _gmail
 
 PLUGIN = {
@@ -216,7 +217,7 @@ def run(parameters: dict, player=None, session_memory=None) -> str:
             spoken, panel = _gmail.format_email_detail(detail)
             _ui_panel(player, f"GMAIL — {detail.subject[:36]}", panel)
             _ui_log(player, f"Email dari {detail.sender}: {detail.subject}")
-            return spoken
+            return outcome.untrusted("gmail", spoken)
 
         if action in ("check", "list", "inbox", "unread", "search"):
             unread = _parse_bool(
@@ -236,7 +237,7 @@ def run(parameters: dict, player=None, session_memory=None) -> str:
             )
             _ui_panel(player, f"GMAIL — {mailbox}", panel)
             _ui_log(player, spoken)
-            return spoken
+            return outcome.untrusted("gmail", spoken)
 
         return (
             f"Sir, aksi '{action}' tidak dikenal untuk gmail_inbox. "

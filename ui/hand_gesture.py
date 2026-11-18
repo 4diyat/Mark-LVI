@@ -6,7 +6,8 @@ from PyQt6.QtCore import QPoint, QTimer, Qt
 from PyQt6.QtWidgets import QAbstractButton, QAbstractScrollArea, QApplication, QComboBox, QLabel, QMdiSubWindow, QPushButton, QSlider
 
 from core.i18n import label as _t
-from core.workspace_gesture import WorkspaceHandController
+from core.workspace_gesture import WorkspaceHandController, dwell_matches
+from core.workspace_transform import FlickTracker, bounded_flick, transform_window
 from ui.desktop_workspace import WindowTitleBar
 
 
@@ -18,6 +19,7 @@ class WorkspaceGestures:
         self.scroll_origin = None
         self.popup_pending = None
         self.popup_owner = None
+        self.flick = FlickTracker()
         self.cursors = []
         for _ in range(2):
             cursor = QLabel(window.centralWidget())
@@ -32,6 +34,7 @@ class WorkspaceGestures:
         self.scroll_origin = None
         self.popup_pending = None
         self.popup_owner = None
+        self.flick.points.clear()
 
     def show_cursors(self, samples):
         viewport = self.window._desktop_mdi.viewport()
@@ -236,6 +239,18 @@ class WorkspaceGestures:
                 p = coords_all[0]
                 if (p - self.origin[0]).manhattanLength() <= 25:
                     self._click(p)
+            if self.mode == 'move' and len(samples) == 1:
+                try:
+                    target = self.target
+                    delta = self.flick.displacement(time.monotonic())
+                    if (delta and target.isVisible() and not target.isMaximized()
+                            and mdi.activeSubWindow() is target):
+                        position = bounded_flick((target.x(), target.y()), delta,
+                                                 (viewport.width(), viewport.height()))
+                        if position is not None:
+                            target.move(*position)
+                except RuntimeError:
+                    pass  # Target was destroyed or detached during the drag.
             if len(samples) == 1 and len(samples[0]) > 3 and samples[0][3]:
                 self.mode = self.target = self.origin = self.pending = None
                 self._scroll(coords_all[0])
@@ -243,7 +258,9 @@ class WorkspaceGestures:
                 self.reset()
             return
         self.scroll_origin = None
-        if len(hands) > 2:
+        # A second visible but open hand is not a one-hand gesture. Reject it
+        # rather than arming an action that could transfer to another hand.
+        if len(hands) > 2 or len(hands) != len(samples):
             self.reset()
             return
         coords = [QPoint(int(s[0] * max(0, viewport.width() - 1)),
@@ -254,13 +271,18 @@ class WorkspaceGestures:
             return
         if self.mode is None or (self.mode in ('move', 'click', 'card_move', 'slider')) != (count == 1):
             self.mode = self.target = self.origin = None
-            if not self.pending or self.pending[0] != count:
-                self.pending = (count, time.monotonic())
+            p = coords[0] if count == 1 else (coords[0] + coords[1]) / 2
+            card = self._card_at(p)
+            hit = self._hit(p)
+            # The dwell belongs to the original widget/card, not merely the
+            # number of hands. Moving to another target starts a fresh dwell.
+            identity = (hit, card[1] if card is not None else None)
+            positions = tuple((point.x(), point.y()) for point in coords)
+            if not dwell_matches(self.pending, count, identity, positions):
+                self.pending = (count, time.monotonic(), identity, positions)
                 return
             if time.monotonic() - self.pending[1] < .35:
                 return
-            p = coords[0] if count == 1 else (coords[0] + coords[1]) / 2
-            card = self._card_at(p)
             if card is not None:
                 board, item, scene_point = card
                 self.pending = None
@@ -293,6 +315,8 @@ class WorkspaceGestures:
                 if is_title and not isinstance(hit, QAbstractButton) and isinstance(widget, QMdiSubWindow) and not widget.isMaximized():
                     self.target, self.mode = widget, 'move'
                     self.origin = (coords, widget.geometry())
+                    self.flick.points.clear()
+                    self.flick.add((coords[0].x(), coords[0].y()), time.monotonic())
                     mdi.setActiveSubWindow(widget)
                 elif isinstance(hit, QSlider) and hit.isEnabled():
                     self.target, self.mode = hit, 'slider'
@@ -352,7 +376,8 @@ class WorkspaceGestures:
                                                  view_angles[1] + delta.y() * .4)
             return
         try:
-            available = self.target and self.target.isVisible() and not self.target.isMaximized()
+            available = (self.target and self.target.isVisible() and not self.target.isMaximized()
+                         and mdi.activeSubWindow() is self.target)
         except RuntimeError:
             available = False
         if not available:
@@ -364,15 +389,16 @@ class WorkspaceGestures:
             x = max(0, min(viewport.width() - 40, geom.x() + delta.x()))
             y = max(0, min(viewport.height() - 33, geom.y() + delta.y()))
             self.target.move(x, y)
+            self.flick.add((coords[0].x(), coords[0].y()), time.monotonic())
         else:
-            old = math.hypot(initial[1].x() - initial[0].x(), initial[1].y() - initial[0].y())
-            new = math.hypot(coords[1].x() - coords[0].x(), coords[1].y() - coords[0].y())
-            if old < 40:
-                return
-            scale = max(.5, min(2., new / old))
-            width = max(self.target.minimumWidth(), min(viewport.width() - geom.x(), round(geom.width() * scale)))
-            height = max(self.target.minimumHeight(), min(viewport.height() - geom.y(), round(geom.height() * scale)))
-            self.target.resize(width, height)
+            geometry = transform_window(
+                [(p.x(), p.y()) for p in initial], [(p.x(), p.y()) for p in coords],
+                (geom.x(), geom.y(), geom.width(), geom.height()),
+                (viewport.width(), viewport.height()),
+                (self.target.minimumWidth(), self.target.minimumHeight()))
+            if geometry is not None:
+                self.target.setGeometry(*geometry)
+
 
 
 def setup(window):
@@ -398,10 +424,21 @@ def setup(window):
         message = _t(key)
         if controller.status == 'error' and controller.error:
             message += ' ' + controller.error
+        gestures.update(controller.sample() if running else ())
+        mode_key = {'move': 'gesture.mode_move', 'resize': 'gesture.mode_transform',
+                    'click': 'gesture.mode_click', 'slider': 'gesture.mode_slider',
+                    'card_move': 'gesture.mode_move', 'card_transform': 'gesture.mode_transform'}.get(gestures.mode)
+        if running and controller.status == 'active' and mode_key:
+            message += ' · ' + _t(mode_key)
         status.setText(message)
+        badge = getattr(window, '_hand_badge', None)
+        if badge is not None:
+            badge.setVisible(running and controller.status in ('active', 'starting'))
+            badge.setText(_t('gesture.badge_active' if controller.status == 'active' else 'gesture.badge_starting'))
+            badge.setToolTip(message)
+            badge.setAccessibleName(_t('gesture.badge_accessible'))
         button.setText(_t('gesture.disable' if running else 'gesture.enable'))
         button.setEnabled(not (controller.thread and controller.thread.is_alive() and controller._stop.is_set()))
-        gestures.update(controller.sample() if running else ())
 
     def toggle():
         if controller.thread and controller.thread.is_alive():

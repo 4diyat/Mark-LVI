@@ -77,8 +77,8 @@ def build_conversation(window, log_cls, drop_cls):
     panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
     panel.setStyleSheet(f"QWidget#DesktopConversation {{ background: {C.DESKTOP_PANEL}; border: none; }}")
     layout = QVBoxLayout(panel)
-    layout.setContentsMargins(8, 6, 8, 8)
-    layout.setSpacing(5)
+    layout.setContentsMargins(12, 10, 12, 12)
+    layout.setSpacing(7)
     window._conversation_heading = _label(_t("desktop.conversation"), 15, bold=True, color=C.WHITE)
     window._conversation_subtitle = _label(_t("desktop.conversation_hint"), 8)
     # The window title already identifies this panel; keep labels for locale
@@ -201,12 +201,23 @@ def build_menu_bar(window):
     row = QHBoxLayout(bar)
     row.setContentsMargins(14, 0, 14, 0)
     row.setSpacing(12)
+    # An original JARVIS mark rather than an operating-system brand.
+    mark = _label("◉", 17, bold=True, color="#6ed8ff")
+    mark.setAccessibleName("JARVIS")
+    row.addWidget(mark)
     window._title_lbl = _label(window._assistant_name.upper(), 9, bold=True, color=C.DESKTOP_TEXT)
     row.addWidget(window._title_lbl)
     window._sub_lbl = _label("", 7, color=C.DESKTOP_MUTED)
     window._sub_lbl.hide()  # retained for existing name/locale updates
     row.addWidget(window._sub_lbl)
     row.addStretch(1)
+    # This badge is driven by the real hand controller, not by the mockup.
+    window._hand_badge = _label("", 8, bold=True, color="#83e4b6")
+    window._hand_badge.setAccessibleName(_t("gesture.badge_accessible"))
+    window._hand_badge.setStyleSheet(f"color: #83e4b6; background: {C.DESKTOP_DOCK}; "
+                                     "border: 1px solid #326b66; border-radius: 8px; padding: 3px 8px;")
+    window._hand_badge.hide()
+    row.addWidget(window._hand_badge)
     window._clock_lbl = _label("00:00", 9, color=C.DESKTOP_TEXT)
     row.addWidget(window._clock_lbl)
     window._date_lbl = _label("", 8, color=C.DESKTOP_MUTED)

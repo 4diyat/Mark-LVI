@@ -137,6 +137,7 @@ def test_ssh_retranslation_preserves_authentication_and_status():
     class Text:
         def setText(self, text): self.text = text
         def setPlaceholderText(self, text): self.placeholder = text
+        def setAccessibleName(self, text): self.accessible_name = text
     class Combo:
         def __init__(self): self.items = ['', '']; self.selected = 1
         def setItemText(self, i, text): self.items[i] = text

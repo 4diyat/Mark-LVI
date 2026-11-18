@@ -199,3 +199,90 @@ def test_two_hand_matching_uses_best_overall_assignment():
     # pinch to .51, despite the lower overall cost of the other assignment.
     left, right = tracker.update([(.46, .5, False, False), (.51, .5, False, False)])
     assert left[2] and not right[2]
+
+
+def test_intermediate_tracking_loss_cannot_be_overwritten():
+    controller = WorkspaceHandController()
+    pinched = ((.5, .5, True, False),)
+    opened = ((.5, .5, False, False),)
+    controller._publish(pinched)
+    assert controller.sample() == pinched
+    controller._publish(())
+    controller._publish(opened)
+    assert controller.sample() == ()
+    assert controller.sample() == opened
+
+
+def test_long_frame_gap_is_reported_even_if_gui_missed_it(monkeypatch):
+    clock = [1.0]
+    monkeypatch.setattr('core.workspace_gesture.time.monotonic', lambda: clock[0])
+    controller = WorkspaceHandController()
+    controller._publish(((.5, .5, True, False),))
+    assert controller.sample()[0][2]
+    clock[0] += .36
+    controller._publish(((.5, .5, False, False),))
+    assert controller.sample() == ()
+    assert not controller.sample()[0][2]
+
+
+def test_dwell_tracks_target_and_hand_positions():
+    from core.workspace_gesture import dwell_matches
+    first, second = object(), object()
+    pending = (1, 0.0, (first, None), ((100, 100),))
+    assert dwell_matches(pending, 1, (first, None), ((110, 110),))
+    assert not dwell_matches(pending, 1, (second, None), ((100, 100),))
+    assert not dwell_matches(pending, 1, (first, None), ((126, 100),))
+    assert not dwell_matches(pending, 2, (first, None), ((100, 100), (110, 100)))
+    card = object()
+    assert not dwell_matches(pending, 1, (first, card), ((100, 100),))
+
+
+def test_multiple_unseen_pinch_transitions_cancel_instead_of_clicking():
+    controller = WorkspaceHandController()
+    pinched = ((.5, .5, True, False),)
+    opened = ((.5, .5, False, False),)
+    controller._publish(pinched)
+    assert controller.sample() == pinched
+    controller._publish(opened)
+    controller._publish(pinched)
+    controller._publish(opened)
+    assert controller.sample() == ()
+    assert controller.sample() == opened
+
+
+def test_single_release_survives_skipped_identical_frames():
+    controller = WorkspaceHandController()
+    pinched = ((.5, .5, True, False),)
+    opened = ((.5, .5, False, False),)
+    controller._publish(pinched)
+    assert controller.sample() == pinched
+    controller._publish(pinched)
+    controller._publish(opened)
+    controller._publish(opened)
+    assert controller.sample() == opened
+
+
+def test_detector_reordering_is_not_a_pinch_transition():
+    controller = WorkspaceHandController()
+    hands = ((.2, .5, True, False), (.8, .5, False, False))
+    controller._publish(hands)
+    assert controller.sample() == hands
+    controller._publish(hands[::-1])
+    controller._publish(hands)
+    assert controller.sample() == hands
+
+
+def test_reacquired_closed_hand_must_open_before_rearming():
+    controller = WorkspaceHandController()
+    pinched = ((.5, .5, True, False),)
+    opened = ((.5, .5, False, False),)
+    controller._publish(pinched)
+    assert controller.sample() == pinched
+    controller._publish(())
+    controller._publish(pinched)
+    assert controller.sample() == ()
+    assert controller.sample() == ()
+    controller._publish(opened)
+    assert controller.sample() == opened
+    controller._publish(pinched)
+    assert controller.sample() == pinched

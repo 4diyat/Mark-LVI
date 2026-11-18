@@ -33,6 +33,10 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+import os
+import tempfile
+import threading
+from functools import wraps
 
 # How much of a note is echoed back. Long enough to recognise, short enough to
 # read aloud without a paragraph of somebody's meeting minutes.
@@ -84,6 +88,31 @@ def _clean(text: str) -> str:
     return collapsed.strip()
 
 
+_LOCK = threading.RLock()
+
+
+def _synchronized(fn):
+    @wraps(fn)
+    def locked(*args, **kwargs):
+        with _LOCK:
+            return fn(*args, **kwargs)
+    return locked
+
+
+def _atomic_write(path: Path, content: str) -> None:
+    fd, tmp = tempfile.mkstemp(prefix=".notes-", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+
+
+@_synchronized
 def append(notebook: str, text: str, *, now: datetime | None = None) -> str:
     """Add one line to a notebook. Returns the text as it was stored."""
     line_text = _clean(text)
@@ -107,6 +136,7 @@ def entries(notebook: str) -> list[str]:
             if line.startswith("- ")]
 
 
+@_synchronized
 def complete(index_text: str, *, now: datetime | None = None) -> tuple[str, int]:
     """Move the matching todo(s) to the archive.
 
@@ -129,17 +159,19 @@ def complete(index_text: str, *, now: datetime | None = None) -> tuple[str, int]
             + "; ".join(_body(line)[:40] for line in hits[:3]))
     hit = hits[0]
     remaining = [line for line in open_lines if line != hit]
-    note_file("todo").write_text(_render("todo", remaining), encoding="utf-8")
     stamp = (now or datetime.now()).strftime("%Y-%m-%d %H:%M")
     archive = note_file("archive")
     # The archive gets the same header as every other notebook the first time a
     # task lands in it; appending to a file that does not exist yet left it
     # looking like a fragment instead of a file a person wrote.
-    fresh = not archive.is_file() or not archive.stat().st_size
-    with archive.open("a", encoding="utf-8") as handle:
-        if fresh:
-            handle.write("# Archive — written by MARK LVI\n\n")
-        handle.write(f"{hit}  (done {stamp})\n")
+    previous = archive.read_text(encoding="utf-8") if archive.is_file() else ""
+    prefix = previous or "# Archive — written by MARK LVI\n\n"
+    if prefix and not prefix.endswith("\n"):
+        prefix += "\n"
+    # Archive first: a failed write or interruption can leave a duplicate, but
+    # must never lose the only copy of a task. Each replacement is atomic.
+    _atomic_write(archive, prefix + f"{hit}  (done {stamp})\n")
+    _atomic_write(note_file("todo"), _render("todo", remaining))
     return _body(hit), len(remaining)
 
 

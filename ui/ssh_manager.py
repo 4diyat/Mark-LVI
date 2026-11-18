@@ -61,6 +61,9 @@ class SSHTab(QWidget):
                            ('ssh.authentication', self.auth), ('ssh.key_file', key_row), ('ssh.secret', self.secret)):
             label = QLabel(_t(key))
             self._form_labels.append((label, key))
+            if isinstance(field, QWidget):
+                label.setBuddy(field)
+                field.setAccessibleName(_t(key))
             form.addRow(label, field)
         buttons = QHBoxLayout()
         self.connect_btn, self.disconnect_btn = QPushButton(_t('ssh.connect')), QPushButton(_t('ssh.disconnect'))
@@ -87,6 +90,7 @@ class SSHTab(QWidget):
         self.command = QLineEdit()
         self.command.setMaxLength(4096)
         self.command.setPlaceholderText(_t('ssh.command_hint'))
+        self.command.setAccessibleName(_t('ssh.command_hint'))
         self.send_btn = QPushButton(_t('ssh.send'))
         self.send_btn.setObjectName('WorkspacePrimary')
         self.send_btn.clicked.connect(self.send_command)
@@ -116,6 +120,7 @@ class SSHTab(QWidget):
         self.auth.setItemText(1, _t('ssh.password_method'))
         self.secret.setPlaceholderText(_t('ssh.secret_hint'))
         self.command.setPlaceholderText(_t('ssh.command_hint'))
+        self.command.setAccessibleName(_t('ssh.command_hint'))
         self.status.setText(_t(self._status_key))
 
     def _sync(self, *_args):

@@ -117,6 +117,7 @@ def test_browser_retranslation_preserves_selected_login_and_current_status():
     class Text:
         def setText(self, text): self.text = text
         def setPlaceholderText(self, text): self.placeholder = text
+        def setAccessibleName(self, text): self.accessible_name = text
     class Combo:
         def __init__(self): self.items = [('', 'old no saved'), ('alice', 'alice')]; self.selected = 1
         def count(self): return len(self.items)

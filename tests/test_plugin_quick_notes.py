@@ -216,27 +216,21 @@ def test_run_works_with_no_parameters_at_all(plugin_unused=None):
 
 # --- the manifest, and the rule it exercises ------------------------------
 
-def test_the_manifest_matches_the_file_and_declares_nothing():
-    """An EMPTY permission list is a real answer: these three Markdown files are
-    the plugin's own folder's contents, so there is nothing to consent to. That
-    is also what keeps it switched on — see the next test."""
+def test_the_manifest_matches_the_file_and_declares_files():
     manifest = pm.verify(ROOT / "plugins" / "quick_notes.py", "quick_notes")
     assert manifest is not None
     assert manifest.problems == []
-    assert manifest.permissions == ()
+    assert manifest.permissions == ("files",)
 
 
-def test_a_manifest_with_no_permissions_keeps_the_opt_out_default():
-    """`_enabled()` treats *declared permissions* as the reason to start off,
-    not the existence of a manifest. If that ever changes, this plugin silently
-    disappears for every user who never opened the plugin manager."""
+def test_notes_requires_consent_by_default():
     from core.plugin_loader import discover_plugins
 
     rows = {r["name"]: r for r in discover_plugins(
         ROOT / "plugins", set(), logger=lambda _m: None).list_for_ui()}
     assert rows["quick_notes"]["valid"] is True
-    assert rows["quick_notes"]["enabled"] is True
-    assert rows["quick_notes"]["permissions"] == []
+    assert rows["quick_notes"]["enabled"] is False
+    assert rows["quick_notes"]["permissions"] == ["files"]
     # ...while the two plugins that DID declare something still start off.
     assert rows["currency_rates"]["enabled"] is False
     assert rows["mt5_orb"]["enabled"] is False
@@ -249,3 +243,33 @@ def test_the_plugin_never_touches_memory_or_the_network():
     assert "import requests" not in source
     tree_imports = pm.implied_permissions(ROOT / "plugins" / "quick_notes.py")
     assert tree_imports == set()
+
+
+def test_complete_keeps_todo_if_archive_write_fails(sandbox, monkeypatch):
+    _, notes, _ = sandbox
+    notes.append('todo', 'bayar listrik')
+    original = notes._atomic_write
+    def fail_archive(path, content):
+        if path.name == 'archive.md':
+            raise OSError('archive unavailable')
+        return original(path, content)
+    monkeypatch.setattr(notes, '_atomic_write', fail_archive)
+    with pytest.raises(OSError):
+        notes.complete('bayar listrik')
+    assert 'bayar listrik' in notes.entries('todo')[0]
+    assert notes.entries('archive') == []
+
+
+def test_complete_keeps_archived_copy_if_todo_write_fails(sandbox, monkeypatch):
+    _, notes, _ = sandbox
+    notes.append('todo', 'bayar listrik')
+    original = notes._atomic_write
+    def fail_todo(path, content):
+        if path.name == 'todo.md':
+            raise OSError('todo unavailable')
+        return original(path, content)
+    monkeypatch.setattr(notes, '_atomic_write', fail_todo)
+    with pytest.raises(OSError):
+        notes.complete('bayar listrik')
+    assert 'bayar listrik' in notes.entries('todo')[0]
+    assert 'bayar listrik' in notes.entries('archive')[0]

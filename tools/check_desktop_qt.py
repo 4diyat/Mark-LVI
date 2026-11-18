@@ -6,6 +6,7 @@ No camera, microphone, network, credentials or user config is required.
 import os
 import tempfile
 import threading
+import time
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -31,6 +32,29 @@ def main():
         window.resize(1366, 768)
         window.show()
         window.move(0, 0)
+        # Live language changes must not discard code/image editor state.
+        from core.i18n import active_locale, set_locale
+        from ui.creative import CreativeWorkspace
+        from ui.image_editor import ImageEditor
+        previous_locale = active_locale()
+        window.get_plugins = lambda: [
+            {"name": name, "valid": True, "enabled": True}
+            for name in ("code_editor", "image_canvas", "image_editor")]
+        set_locale("en")
+        creative = CreativeWorkspace(window, {"code": "print('unsaved')"})
+        image = ImageEditor(window, {})
+        set_locale("id")
+        creative.retranslate()
+        image.retranslate()
+        assert creative._code.toPlainText() == "print('unsaved')"
+        assert creative._code.document().isModified()
+        assert creative._tabs.tabText(0) == translate("creative.editor")
+        assert image.windowTitle() == translate("image_editor.title")
+        set_locale(previous_locale)
+        # Don't close the unsaved editor via a confirmation dialog in smoke CI.
+        creative._code.document().setModified(False)
+        creative.close()
+        image.close()
         QTest.qWait(300)
         app.processEvents()
         mdi = window._desktop_mdi
@@ -175,8 +199,30 @@ def main():
             return (point.x() / (viewport.width() - 1), point.y() / (viewport.height() - 1), True)
         def begin(samples):
             gestures.update(samples)
-            gestures.pending = (gestures.pending[0], gestures.pending[1] - 1)
+            gestures.pending = (gestures.pending[0], gestures.pending[1] - 1, *gestures.pending[2:])
             gestures.update(samples)
+        # A dwell must restart when the pointer changes target or moves too far.
+        original_hit, original_card = gestures._hit, gestures._card_at
+        first, second = QPushButton(window), QPushButton(window)
+        gestures._card_at = lambda _point: None
+        gestures._hit = lambda point: first if point.x() < 150 else second
+        gestures.reset()
+        gestures.update((sample(QPoint(100, 100)),))
+        gestures.pending = (gestures.pending[0], gestures.pending[1] - 1, *gestures.pending[2:])
+        gestures.update((sample(QPoint(160, 100)),))
+        assert gestures.mode is None and gestures.pending[2][0] is second
+        gestures.pending = (gestures.pending[0], gestures.pending[1] - 1, *gestures.pending[2:])
+        gestures.update((sample(QPoint(190, 100)),))
+        assert gestures.mode is None  # same widget, but exceeded the dwell radius
+        gestures.reset()
+        # A closed hand plus another visible open hand must not arm a click.
+        open_hand = (0.3, 0.3, False, False)
+        gestures.update((sample(QPoint(100, 100)), open_hand))
+        assert gestures.mode is None and gestures.pending is None
+        gestures.reset()
+        gestures._hit, gestures._card_at = original_hit, original_card
+        first.deleteLater()
+        second.deleteLater()
         anchor = files._workspace_title.mapTo(viewport, QPoint(160, 15))
         before = files.pos()
         begin((sample(anchor),))
@@ -185,11 +231,24 @@ def main():
         assert files.pos() != before
         gestures.update(())  # loss of tracking releases the target
         assert gestures.mode is None
+        # A deliberate, recent fast title drag throws only the active window.
+        anchor = files._workspace_title.mapTo(viewport, QPoint(160, 15))
+        begin((sample(anchor),))
+        before_flick = files.pos()
+        now = time.monotonic()
+        gestures.flick.points = [(now - .1, 100, 100), (now, 200, 100)]
+        gestures.update(((anchor.x() / (viewport.width() - 1),
+                          anchor.y() / (viewport.height() - 1), False, False),))
+        assert files.x() > before_flick.x()
         center = files.mapTo(viewport, QPoint(files.width() // 2, 100))
         left, right = center - QPoint(80, 0), center + QPoint(80, 0)
         before_size = files.size()
         begin((sample(left), sample(right)))
         assert gestures.mode == "resize"
+        before_position = files.pos()
+        gestures.update((sample(left + QPoint(20, 10)), sample(right + QPoint(20, 10))))
+        assert files.pos() != before_position  # two pinches translate the same JARVIS window
+        assert files.size() == before_size
         gestures.update((sample(left - QPoint(40, 0)), sample(right + QPoint(40, 0))))
         assert files.width() > before_size.width()
         gestures.update(())

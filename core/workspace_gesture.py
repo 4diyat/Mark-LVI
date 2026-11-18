@@ -92,12 +92,23 @@ class HandStabilizer:
         return tuple(track[:4] for track in tracks)
 
 
+def dwell_matches(pending, count, identity, coords, radius=25):
+    """Keep a dwell only while the same target and hand positions remain stable."""
+    return bool(pending and pending[0] == count and pending[2] == identity
+                and len(pending[3]) == len(coords)
+                and all(abs(point[0] - start[0]) + abs(point[1] - start[1]) <= radius
+                        for point, start in zip(coords, pending[3])))
+
+
 class WorkspaceHandController:
     """Camera worker publishes only the newest hand sample for the Qt thread."""
     def __init__(self):
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._sample = None
+        self._cancel_pending = False
+        self._unseen_transitions = 0
+        self._await_open = False
         self.thread = None
         self.status = 'off'
         self.error = ''
@@ -111,6 +122,9 @@ class WorkspaceHandController:
                 self.status = 'windows_only'
                 return False
             self._sample = None
+            self._cancel_pending = False
+            self._unseen_transitions = 0
+            self._await_open = False
             self._stop.clear()
             self.status, self.error = 'starting', ''
             self.thread = threading.Thread(target=self._run, args=(camera_index,), daemon=True,
@@ -125,12 +139,44 @@ class WorkspaceHandController:
             if self.status in ('active', 'starting'):
                 self.status = 'off'
 
+    def _publish(self, values):
+        """Preserve tracking interruptions even when newer frames arrive first."""
+        with self._lock:
+            if self._stop.is_set():
+                return
+            now = time.monotonic()
+            if not values or (self._sample is not None and now - self._sample[0] > .35):
+                self._cancel_pending = True
+            if self._sample is not None:
+                # Ignore detector ordering, but do not let multiple pose/count
+                # changes disappear between UI reads. In particular an unseen
+                # release/re-pinch/release must not act as the original release.
+                signature = lambda hands: (len(hands), sum(bool(hand[2]) for hand in hands))
+                if signature(values) != signature(self._sample[1]):
+                    self._unseen_transitions += 1
+                    if self._unseen_transitions > 1:
+                        self._cancel_pending = True
+            self._sample = (now, values)
+
     def sample(self):
         with self._lock:
             sample = self._sample
-        if self._stop.is_set() or sample is None or time.monotonic() - sample[0] > .35:
-            return ()
-        return sample[1]
+            self._unseen_transitions = 0
+            if self._stop.is_set() or sample is None or time.monotonic() - sample[0] > .35:
+                self._cancel_pending = False
+                self._await_open = True
+                return ()
+            if self._cancel_pending:
+                self._cancel_pending = False
+                self._await_open = True
+                return ()
+            if self._await_open:
+                # A re-detected closed hand must not start a new interaction
+                # until all visible hands have been deliberately opened.
+                if not sample[1] or any(hand[2] for hand in sample[1]):
+                    return ()
+                self._await_open = False
+            return sample[1]
 
     def _run(self, camera_index):
         cap = hands = None
@@ -172,8 +218,7 @@ class WorkspaceHandController:
             while not self._stop.is_set():
                 ok, frame = cap.read()
                 if not ok or frame is None:
-                    with self._lock:
-                        self._sample = None
+                    self._publish(())
                     stabilizer.update(())
                     failures += 1
                     if failures >= 10:
@@ -186,9 +231,7 @@ class WorkspaceHandController:
                 result = hands.process(rgb)
                 values = [_hand_measurement(hand.landmark) for hand in (result.multi_hand_landmarks or [])]
                 values = stabilizer.update(v for v in values if v is not None)
-                with self._lock:
-                    if not self._stop.is_set():
-                        self._sample = (time.monotonic(), values)
+                self._publish(values)
         except Exception as exc:
             self.error, self.status = str(exc), 'error'
         finally:

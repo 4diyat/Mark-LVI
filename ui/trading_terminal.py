@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDialog, QGridLayout, QHBoxLa
 from core.i18n import label as _t
 from memory.config_manager import get_plugin_config, save_plugin_config
 from plugins import _trading_terminal as terminal
+from ui.localization import TranslationBindings
 from ui.theme import C, workspace_stylesheet
 
 
@@ -83,7 +84,8 @@ class TradingTerminal(QDialog):
         self._busy = False
         self._snapshot = None
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
-        self.setWindowTitle(_t("trading.title"))
+        self._translations = TranslationBindings()
+        self._translations.title(self, "trading.title")
         self.resize(1000, 750)
         self.setStyleSheet(workspace_stylesheet())
         self._data_ready.connect(self._on_data)
@@ -92,17 +94,23 @@ class TradingTerminal(QDialog):
         if request.get("symbol"):
             settings["symbol"] = str(request["symbol"])[:80]
         layout = QVBoxLayout(self)
-        warning = QLabel(_t("trading.disclaimer"))
+        warning = self._translations.text(QLabel(), "trading.disclaimer")
         warning.setWordWrap(True)
         layout.addWidget(warning)
         form = QGridLayout()
         self._symbol = QLineEdit(str(settings.get("symbol") or ""))
-        form.addWidget(QLabel(_t("trading.symbol")), 0, 0)
+        symbol_label = self._translations.text(QLabel(), "trading.symbol")
+        symbol_label.setBuddy(self._symbol)
+        self._symbol.setAccessibleName(_t("trading.symbol"))
+        form.addWidget(symbol_label, 0, 0)
         form.addWidget(self._symbol, 0, 1)
         self._inputs = {}
         for i, key in enumerate(("asia", "london", "new_york")):
-            form.addWidget(QLabel(_t(f"trading.{key}_start")), i + 1, 0)
+            label = self._translations.text(QLabel(), f"trading.{key}_start")
+            form.addWidget(label, i + 1, 0)
             inp = QLineEdit(str(settings.get(f"{key}_start") or ""))
+            label.setBuddy(inp)
+            inp.setAccessibleName(_t(f"trading.{key}_start"))
             self._inputs[key] = inp
             form.addWidget(inp, i + 1, 1)
         self._duration = QSpinBox()
@@ -111,21 +119,28 @@ class TradingTerminal(QDialog):
             self._duration.setValue(int(settings.get("range_minutes", 15)))
         except (TypeError, ValueError):
             self._duration.setValue(15)
-        form.addWidget(QLabel(_t("trading.range_minutes")), 0, 2)
+        duration_label = self._translations.text(QLabel(), "trading.range_minutes")
+        duration_label.setBuddy(self._duration)
+        self._duration.setAccessibleName(_t("trading.range_minutes"))
+        form.addWidget(duration_label, 0, 2)
         form.addWidget(self._duration, 0, 3)
         layout.addLayout(form)
         row = QHBoxLayout()
-        self._refresh = QPushButton(_t("trading.refresh"))
+        self._refresh = self._translations.text(QPushButton(), "trading.refresh")
         self._refresh.setObjectName("WorkspacePrimary")
         self._refresh.clicked.connect(self._request)
         row.addWidget(self._refresh)
-        self._auto = QCheckBox(_t("trading.auto_refresh"))
+        self._auto = self._translations.text(QCheckBox(), "trading.auto_refresh")
         self._auto.toggled.connect(self._toggle_auto)
         row.addWidget(self._auto)
-        row.addWidget(QLabel(_t("trading.chart_session")))
+        row.addWidget(self._translations.text(QLabel(), "trading.chart_session"))
         self._session = QComboBox()
         for key in terminal.SESSIONS:
             self._session.addItem(_t(f"trading.session_{key}"), key)
+            self._translations.choice(self._session, self._session.count() - 1, f"trading.session_{key}")
+        selected_session = self._session.findData(request.get("session"))
+        if selected_session >= 0:
+            self._session.setCurrentIndex(selected_session)
         self._session.currentIndexChanged.connect(self._chart_changed)
         row.addWidget(self._session)
         layout.addLayout(row)
@@ -147,6 +162,13 @@ class TradingTerminal(QDialog):
         self._age_timer.timeout.connect(self._mark_stale)
         self._age_timer.start()
         QTimer.singleShot(0, self._request)
+
+    def retranslate(self):
+        self._translations.refresh()
+        self._symbol.setAccessibleName(_t("trading.symbol"))
+        self._duration.setAccessibleName(_t("trading.range_minutes"))
+        for key, widget in self._inputs.items():
+            widget.setAccessibleName(_t(f"trading.{key}_start"))
 
     def _allowed(self):
         try:

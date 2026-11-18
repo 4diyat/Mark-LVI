@@ -11,6 +11,7 @@ from core import trade_gate
 from core.i18n import label as _t
 from plugins import _mt5_trade as trade
 from ui.theme import C, workspace_stylesheet
+from ui.localization import TranslationBindings
 
 
 class OrderDialog(QDialog):
@@ -22,40 +23,52 @@ class OrderDialog(QDialog):
         self._host = host
         self._busy = False
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
-        self.setWindowTitle(_t("trade.title"))
+        self._translations = TranslationBindings()
+        self._translations.title(self, "trade.title")
         self.resize(640, 560)
         self.setStyleSheet(workspace_stylesheet())
         layout = QVBoxLayout(self)
-        warning = QLabel(_t("trade.warning"))
+        warning = self._translations.text(QLabel(), "trade.warning")
         warning.setWordWrap(True)
         layout.addWidget(warning)
         self.gate_status = QLabel()
         self.gate_status.setWordWrap(True)
         layout.addWidget(self.gate_status)
-        self.stop_button = QPushButton(_t("trade.stop"))
+        self.stop_button = self._translations.text(QPushButton(), "trade.stop")
         self.stop_button.clicked.connect(self._emergency_stop)
         layout.addWidget(self.stop_button)
-        self.resume_button = QPushButton(_t("trade.resume"))
+        self.resume_button = self._translations.text(QPushButton(), "trade.resume")
         self.resume_button.clicked.connect(self._resume_trading)
         layout.addWidget(self.resume_button)
         grid = QGridLayout()
         self.mode = QComboBox()
         for label, value in (("trade.off", "OFF"), ("trade.demo", "DEMO"), ("trade.live", "LIVE")):
             self.mode.addItem(_t(label), value)
-        grid.addWidget(QLabel(_t("trade.mode")), 0, 0)
+            self._translations.choice(self.mode, self.mode.count() - 1, label)
+        mode_label = self._translations.text(QLabel(), "trade.mode")
+        mode_label.setBuddy(self.mode)
+        grid.addWidget(mode_label, 0, 0)
         grid.addWidget(self.mode, 0, 1)
         self.kind = QComboBox()
         self.kind.addItem(_t("trade.market"), "market")
         self.kind.addItem(_t("trade.modify"), "modify_pending")
+        self._translations.choice(self.kind, 0, "trade.market")
+        self._translations.choice(self.kind, 1, "trade.modify")
         self.kind.setCurrentIndex(1 if draft.get("kind") == "modify_pending" else 0)
-        grid.addWidget(QLabel(_t("trade.kind")), 1, 0)
+        kind_label = self._translations.text(QLabel(), "trade.kind")
+        kind_label.setBuddy(self.kind)
+        grid.addWidget(kind_label, 1, 0)
         grid.addWidget(self.kind, 1, 1)
         self.side = QComboBox()
         self.side.addItem(_t("trade.choose_side"), "")
         self.side.addItem(_t("trade.buy"), "buy")
         self.side.addItem(_t("trade.sell"), "sell")
+        for index, key in enumerate(("trade.choose_side", "trade.buy", "trade.sell")):
+            self._translations.choice(self.side, index, key)
         self.side.setCurrentIndex({"buy": 1, "sell": 2}.get(draft.get("side"), 0))
-        grid.addWidget(QLabel(_t("trade.side")), 2, 0)
+        side_label = self._translations.text(QLabel(), "trade.side")
+        side_label.setBuddy(self.side)
+        grid.addWidget(side_label, 2, 0)
         grid.addWidget(self.side, 2, 1)
         self.fields = {}
         for row, (key, label, fallback) in enumerate((
@@ -64,18 +77,21 @@ class OrderDialog(QDialog):
             ("sl", "trade.sl", ""), ("tp", "trade.tp", "0"),
             ("max_volume", "trade.max_volume", "0.01"), ("max_loss", "trade.max_loss", ""),
         ), start=3):
-            grid.addWidget(QLabel(_t(label)), row, 0)
+            field_label = self._translations.text(QLabel(), label)
+            grid.addWidget(field_label, row, 0)
             # Maximum is always initialized locally, never taken from an AI draft.
             value = fallback if key in ("max_volume", "max_loss") else str(draft.get(key, fallback) or fallback)
             field = QLineEdit(value[:80])
+            field_label.setBuddy(field)
+            field.setAccessibleName(_t(label))
             self.fields[key] = field
             grid.addWidget(field, row, 1)
         layout.addLayout(grid)
-        self.status = QLabel(_t("trade.not_sent"))
+        self.status = self._translations.text(QLabel(), "trade.not_sent", conditional=True)
         self.status.setWordWrap(True)
         self.status.setTextFormat(Qt.TextFormat.PlainText)
         layout.addWidget(self.status)
-        self.review = QPushButton(_t("trade.review"))
+        self.review = self._translations.text(QPushButton(), "trade.review")
         self.review.clicked.connect(self._prepare)
         layout.addWidget(self.review)
         self._prepared.connect(self._on_prepared)
@@ -83,6 +99,15 @@ class OrderDialog(QDialog):
         self._gate_timer = QTimer(self)
         self._gate_timer.timeout.connect(self._refresh_gate)
         self._gate_timer.start(250)
+        self._refresh_gate()
+
+    def retranslate(self):
+        self._translations.refresh()
+        for key, label in (("symbol", "trade.symbol"), ("volume", "trade.volume"),
+                           ("ticket", "trade.ticket"), ("price", "trade.price"),
+                           ("sl", "trade.sl"), ("tp", "trade.tp"),
+                           ("max_volume", "trade.max_volume"), ("max_loss", "trade.max_loss")):
+            self.fields[key].setAccessibleName(_t(label))
         self._refresh_gate()
 
     def _refresh_gate(self):
