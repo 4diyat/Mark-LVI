@@ -8,13 +8,30 @@ from pathlib import Path
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from PyQt6.QtCore import QBuffer, QByteArray, QIODevice, Qt  # noqa: E402
-from PyQt6.QtGui import QColor, QImage, QPainter  # noqa: E402
+from PyQt6.QtGui import QColor, QImage, QLinearGradient, QPainter  # noqa: E402
 from PyQt6.QtTest import QTest  # noqa: E402
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
 import memory.config_manager as config  # noqa: E402
 from ui.window import MainWindow  # noqa: E402
-from ui.desktop_workspace import open_initial_editor  # noqa: E402
+from ui.desktop_workspace import open_initial_editor, show_document
+from ui.image_editor import ImageEditor
+from core.image_layers import make_text_layer  # noqa: E402
+
+
+def emit_capture(widget, title):
+    image = widget.grab().scaledToWidth(820, Qt.TransformationMode.SmoothTransformation)
+    data = QByteArray()
+    buffer = QBuffer(data)
+    buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+    if not image.save(buffer, 'JPG', 30):
+        raise RuntimeError('Cannot save screenshot')
+    encoded = base64.b64encode(bytes(data)).decode('ascii')
+    parts = [encoded[i:i + 3900] for i in range(0, len(encoded), 3900)]
+    if len(parts) > 9:
+        raise RuntimeError(f'Screenshot too large: {len(parts)} chunks')
+    for i, part in enumerate(parts):
+        print(f'::notice title={title} {i + 1} of {len(parts)}::{part}', flush=True)
 
 
 def main():
@@ -56,19 +73,29 @@ def main():
             window._log._next()
         QTest.qWait(300)
         app.processEvents()
-        image = window.grab().scaledToWidth(820, Qt.TransformationMode.SmoothTransformation)
-        data = QByteArray()
-        buffer = QBuffer(data)
-        buffer.open(QIODevice.OpenModeFlag.WriteOnly)
-        if not image.save(buffer, 'JPG', 30):
-            raise RuntimeError('Cannot save screenshot')
-        encoded = base64.b64encode(bytes(data)).decode('ascii')
-        size = 3900
-        parts = [encoded[i:i + size] for i in range(0, len(encoded), size)]
-        if len(parts) > 9:
-            raise RuntimeError(f'Screenshot too large: {len(parts)} chunks')
-        for i, part in enumerate(parts):
-            print(f'::notice title=Desktop capture {i + 1} of {len(parts)}::{part}', flush=True)
+        emit_capture(window, 'Desktop capture')
+        # A generated in-memory image and fictional text layer reveal the image
+        # editor layout without reading or uploading user documents.
+        picture = QImage(640, 360, QImage.Format.Format_ARGB32)
+        gradient = QLinearGradient(0, 0, 0, 360)
+        gradient.setColorAt(0, QColor('#78aaca'))
+        gradient.setColorAt(1, QColor('#243e58'))
+        painter = QPainter(picture)
+        painter.fillRect(picture.rect(), gradient)
+        painter.setBrush(QColor('#e7c78b'))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawEllipse(430, 50, 80, 80)
+        painter.end()
+        photo = ImageEditor(window, {})
+        photo._image = picture
+        photo._layers = [make_text_layer('Synthetic landscape', 20, 320, 24, 640, 360)]
+        photo._update_layers()
+        sub = show_document(window, photo, 'image_editor')
+        sub.setGeometry(180, 70, 900, 590)
+        photo._render()
+        QTest.qWait(300)
+        app.processEvents()
+        emit_capture(sub, 'Image editor capture')
         # Report actual software-render cost; a visual improvement must not
         # silently consume an entire frame budget on the CI runner.
         avatar = window.hud._avatar
