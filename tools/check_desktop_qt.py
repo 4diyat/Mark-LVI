@@ -617,6 +617,7 @@ def main():
         assert window._suggestions_card.isVisible()
         assert all(button.isVisible() for button, _ in window._suggestion_buttons)
         assert window._log.font().pointSize() == 11 and window._input.font().pointSize() == 11
+        assert 'QScrollBar::handle:vertical' in window._log.styleSheet()
         assert window._suggestions_heading.accessibleName() == translate('desktop.suggestions')
         assert window._suggestions_heading.isChecked()
         previous_log_height = window._log.height()

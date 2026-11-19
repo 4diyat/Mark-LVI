@@ -110,7 +110,15 @@ def build_conversation(window, log_cls, drop_cls):
     window._log.setFont(QFont("Arial", 11))
     window._log.setMinimumHeight(48)
     window._log.setStyleSheet(f"QTextEdit {{ background: {C.DESKTOP_PANEL}; color: {C.DESKTOP_TEXT}; "
-                              f"border: none; border-radius: 10px; padding: 10px; }}")
+                              f"border: none; border-radius: 10px; padding: 10px; }} "
+                              f"QScrollBar:vertical {{ background: {C.DESKTOP_PANEL}; width: 8px; "
+                              "border: none; margin: 0; } "
+                              f"QScrollBar::handle:vertical {{ background: {C.DESKTOP_BORDER}; "
+                              "border-radius: 4px; min-height: 24px; } "
+                              "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical "
+                              "{ height: 0; } "
+                              "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical "
+                              "{ background: transparent; }")
     layout.addWidget(window._log, stretch=1)
     window._file_heading = _label(_t("desktop.files"), 8, bold=True)
     layout.addWidget(window._file_heading)
