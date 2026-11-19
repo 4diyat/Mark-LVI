@@ -5,10 +5,10 @@ thread-safe dispatch are still owned by the existing application.
 """
 from pathlib import Path
 
-from PyQt6.QtCore import QDir, QRectF, QSize, Qt, QTimer, QUrl
+from PyQt6.QtCore import QDir, QFileInfo, QRectF, QSize, Qt, QTimer, QUrl
 from PyQt6.QtGui import (QBrush, QColor, QDesktopServices, QFileSystemModel, QIcon,
                          QLinearGradient, QPainter, QPixmap)
-from PyQt6.QtWidgets import (QHeaderView, QHBoxLayout, QLabel, QLineEdit, QMdiArea,
+from PyQt6.QtWidgets import (QFileIconProvider, QHeaderView, QHBoxLayout, QLabel, QLineEdit, QMdiArea,
                              QMdiSubWindow, QMenu, QPushButton, QScrollArea, QSizeGrip, QStyle, QToolButton,
                              QTreeView, QVBoxLayout, QWidget)
 
@@ -321,6 +321,32 @@ class CameraWindow(PersistentWindow):
         event.ignore()
 
 
+class WorkspaceFileIcons(QFileIconProvider):
+    """Stable folder glyphs; defer files and symlinks to the operating system."""
+    def __init__(self):
+        super().__init__()
+        pixmap = QPixmap(32, 32)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor("#31a2dc"))
+        painter.drawRoundedRect(QRectF(2, 6, 14, 9), 2, 2)
+        gradient = QLinearGradient(0, 10, 0, 27)
+        gradient.setColorAt(0, QColor("#65c6ef"))
+        gradient.setColorAt(1, QColor("#198acb"))
+        painter.setBrush(QBrush(gradient))
+        painter.drawRoundedRect(QRectF(2, 10, 28, 17), 3, 3)
+        painter.end()
+        self._folder = QIcon(pixmap)
+
+    def icon(self, info):
+        # Preserve the platform's symlink badge and all file-type associations.
+        if isinstance(info, QFileInfo) and info.isDir() and not info.isSymLink():
+            return self._folder
+        return super().icon(info)
+
+
 class FileBrowser(QWidget):
     """Read-only navigation; opening files delegates to the user's OS."""
     def __init__(self):
@@ -405,12 +431,15 @@ class FileBrowser(QWidget):
         header.addWidget(self.search)
         layout.addLayout(header)
         self.model = QFileSystemModel(self)
+        self._icon_provider = WorkspaceFileIcons()
+        self.model.setIconProvider(self._icon_provider)
         self.model.setReadOnly(True)
         self.model.setFilter(QDir.Filter.AllDirs | QDir.Filter.Files | QDir.Filter.NoDotAndDotDot)
         self.model.setNameFilterDisables(False)
         self.model.setRootPath(str(home))
         self.view = QTreeView()
         self.view.setModel(self.model)
+        self.view.setIconSize(QSize(20, 20))
         self.view.setAlternatingRowColors(True)
         self.view.setSortingEnabled(True)
         # Finder-style table: keep names readable, omit the redundant type

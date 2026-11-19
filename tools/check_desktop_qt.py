@@ -12,7 +12,7 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtCore import QCoreApplication, QEvent, QPoint, QTimer, Qt  # noqa: E402
+from PyQt6.QtCore import QCoreApplication, QEvent, QFileInfo, QPoint, QTimer, Qt  # noqa: E402
 from PyQt6.QtTest import QTest  # noqa: E402
 from PyQt6.QtWidgets import QApplication, QComboBox, QPushButton, QScrollArea, QSizeGrip, QSlider, QWidget  # noqa: E402
 
@@ -55,6 +55,16 @@ def main():
         first, second, third = (Path(tmp) / name for name in ('first', 'second', 'third'))
         for folder in (first, second, third):
             folder.mkdir()
+        assert not browser._icon_provider.icon(QFileInfo(str(first))).isNull()
+        assert browser.navigate(str(tmp))
+        # QFileSystemModel fills icons on its worker; wait for that real model,
+        # not just the icon provider, while keeping the test bounded.
+        for _ in range(30):
+            if not browser.model.fileIcon(browser.model.index(str(first))).isNull():
+                break
+            QTest.qWait(100)
+        else:
+            raise AssertionError("folder icon was not populated by the filesystem model")
         assert browser.navigate(str(first)) and browser.status.isHidden()
         assert browser.navigate(str(second))
         assert browser.folder_title.text() == 'second' and browser.path.isHidden()
