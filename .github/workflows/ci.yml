@@ -211,6 +211,11 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: python tools/run_qt_smoke.py tools/check_rotation_qt.py
+      - name: Test isolated rotated JARVIS editors
+        if: runner.os == 'Linux'
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python tools/run_qt_smoke.py tools/check_rotation_editors_qt.py
       - name: Capture synthetic desktop for visual review
         if: runner.os == 'Linux'
         env:
