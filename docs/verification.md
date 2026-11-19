@@ -383,5 +383,9 @@ dan undo. Belum mencakup kuas lanjutan atau pengujian manual perangkat.
 
 Tangkapan Qt sintetis editor gambar dibuat terpisah di CI agar dapat ditinjau
 tanpa dokumen pengguna. Hasilnya menunjukkan rail ikon, kanvas, dan layer;
-kontrol atas masih lebih padat dan panel layer lebih sederhana daripada
-mockup. Ini bukan bukti kesetiaan visual penuh ataupun uji pada perangkat.
+panel layer masih lebih sederhana daripada mockup. Kontrol warna dan ukuran
+kuas dipindahkan ke baris kontekstual yang hanya muncul saat kuas aktif;
+zoom dan aksi file tetap di toolbar utama. Ini bukan bukti kesetiaan visual penuh ataupun uji pada perangkat.
+
+Tes Qt juga memeriksa visibilitas kontrol kuas dan bahwa warna serta ukuran
+tetap tersimpan ketika beralih ke mode seleksi.

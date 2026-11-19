@@ -1,5 +1,5 @@
 """A small local image editor; AI suggestions never open or save files."""
-from PyQt6.QtCore import QPointF, QSize, Qt
+from PyQt6.QtCore import QPointF, QSize, QTimer, Qt
 from PyQt6.QtGui import QColor, QFont, QImage, QImageReader, QPainter, QPainterPath, QPen, QPixmap, QTransform
 from PyQt6.QtWidgets import (QColorDialog, QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
                              QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
@@ -45,20 +45,7 @@ class ImageEditor(QDialog):
         self._zoom_value = QLabel()
         self._zoom_value.setText("100%")
         toolbar.addWidget(self._zoom_value)
-        toolbar.addWidget(self._translations.text(QLabel(), "image_editor.brush_size"))
-        self._brush_size = QSpinBox()
-        self._brush_size.setRange(1, 200)
-        self._brush_size.setValue(8)
-        self._brush_size.setAccessibleName(_t("image_editor.brush_size"))
-        toolbar.addWidget(self._brush_size)
-        self._brush_color = QColor("#4b9fff")
-        self._brush_color_button = self._translations.text(QPushButton(), "image_editor.brush_color")
-        self._brush_color_button.clicked.connect(self._choose_brush_color)
-        toolbar.addWidget(self._brush_color_button)
-        self._brush_swatch = QLabel()
-        self._brush_swatch.setFixedSize(20, 20)
-        self._update_brush_swatch()
-        toolbar.addWidget(self._brush_swatch)
+        toolbar.addStretch()
         self._file_tools = {}
         for key, callback in (("image_editor.open", self.open_file),
                               ("image_editor.undo", self.undo),
@@ -69,7 +56,6 @@ class ImageEditor(QDialog):
             button.clicked.connect(callback)
             toolbar.addWidget(button)
             self._file_tools[key] = button
-        toolbar.addStretch()
         toolbar_scroll = QScrollArea()
         toolbar_scroll.setWidgetResizable(True)
         toolbar_scroll.setWidget(toolbar_widget)
@@ -78,6 +64,34 @@ class ImageEditor(QDialog):
         toolbar_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         toolbar_scroll.setFixedHeight(58)
         layout.addWidget(toolbar_scroll)
+        # Brush settings are contextual; keep file/zoom controls uncluttered.
+        brush_widget = QWidget()
+        brush_layout = QHBoxLayout(brush_widget)
+        brush_layout.setContentsMargins(0, 0, 0, 0)
+        brush_layout.addWidget(self._translations.text(QLabel(), "image_editor.brush_size"))
+        self._brush_size = QSpinBox()
+        self._brush_size.setRange(1, 200)
+        self._brush_size.setValue(8)
+        self._brush_size.setAccessibleName(_t("image_editor.brush_size"))
+        brush_layout.addWidget(self._brush_size)
+        self._brush_color = QColor("#4b9fff")
+        self._brush_color_button = self._translations.text(QPushButton(), "image_editor.brush_color")
+        self._brush_color_button.clicked.connect(self._choose_brush_color)
+        brush_layout.addWidget(self._brush_color_button)
+        self._brush_swatch = QLabel()
+        self._brush_swatch.setFixedSize(20, 20)
+        self._update_brush_swatch()
+        brush_layout.addWidget(self._brush_swatch)
+        brush_layout.addStretch()
+        self._brush_options = QScrollArea()
+        self._brush_options.setWidgetResizable(True)
+        self._brush_options.setWidget(brush_widget)
+        self._brush_options.setFrameShape(QScrollArea.Shape.NoFrame)
+        self._brush_options.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._brush_options.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._brush_options.setFixedHeight(58)
+        layout.addWidget(self._brush_options)
+        self._brush_options.hide()
         self._status = self._translations.text(QLabel(), "image_editor.empty", conditional=True)
         self._status.setTextFormat(Qt.TextFormat.PlainText)
         self._status.setWordWrap(True)
@@ -174,6 +188,8 @@ class ImageEditor(QDialog):
         if enabled:
             self._image_tools["image_editor.brush"].setChecked(False)
         self._preview.set_selecting(enabled)
+        self._brush_options.hide()
+        QTimer.singleShot(0, self._render)
         if enabled:
             self._status.setText(_t("image_editor.select_hint") if self._image is not None
                                  else _t("image_editor.empty"))
@@ -183,6 +199,8 @@ class ImageEditor(QDialog):
         if enabled:
             self._image_tools["image_editor.select"].setChecked(False)
         self._preview.set_brushing(enabled)
+        self._brush_options.setVisible(enabled)
+        QTimer.singleShot(0, self._render)
         if enabled:
             self._status.setText(_t("image_editor.brush_hint") if self._image is not None
                                  else _t("image_editor.empty"))

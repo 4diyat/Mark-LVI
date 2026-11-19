@@ -166,6 +166,7 @@ def main():
         app.processEvents()
         assert image._tool_scroll.x() < image._tool_scroll.parentWidget().width() // 2
         assert len(image._image_tools) == 7 and len(image._file_tools) == 3
+        assert image._brush_options.isHidden()
         for key, button in image._image_tools.items():
             assert not button.icon().isNull()
             assert button.toolButtonStyle() == Qt.ToolButtonStyle.ToolButtonIconOnly
@@ -232,6 +233,8 @@ def main():
         image._layers = [layer]
         image._update_layers()
         image._image_tools['image_editor.brush'].click()
+        app.processEvents()
+        assert not image._brush_options.isHidden()
         assert image._preview.brushing and not image._preview.selecting
         assert not image._image_tools['image_editor.select'].isChecked()
         original_picker = QColorDialog.getColor
@@ -257,6 +260,9 @@ def main():
         image._file_tools['image_editor.undo'].click()
         assert image._image.pixelColor(20, 10).red() == 255 and image._layers == [layer]
         image._image_tools['image_editor.select'].click()
+        app.processEvents()
+        assert image._brush_options.isHidden()
+        assert image._brush_size.value() == 4 and image._brush_color.name() == '#00ff00'
         assert image._preview.selecting and not image._preview.brushing
         assert not image._image_tools['image_editor.brush'].isChecked()
         image._layers = []
