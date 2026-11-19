@@ -18,6 +18,12 @@ from ui.desktop_workspace import open_initial_editor  # noqa: E402
 def main():
     with tempfile.TemporaryDirectory() as tmp:
         os.environ['HOME'] = tmp
+        # Fictional contents make the listing and chat inspectable without
+        # uploading any user documents, history, or credentials in CI.
+        home = Path(tmp)
+        for name in ('Projects', 'Documents', 'Downloads', 'Desktop'):
+            (home / name).mkdir()
+        (home / 'readme.txt').write_text('Synthetic desktop preview.\n', encoding='utf-8')
         config.CONFIG_DIR = Path(tmp)
         config.CONFIG_FILE = Path(tmp) / 'api_keys.json'
         MainWindow._check_config = lambda self: True
@@ -28,6 +34,11 @@ def main():
         window.show()
         QTest.qWait(300)
         open_initial_editor(window)
+        for text in ('You: Summarize my latest project.',
+                     'JARVIS: This preview uses fictional data for visual testing.'):
+            window._log._enqueue(text)
+            while window._log._typing:
+                window._log._step()
         QTest.qWait(300)
         app.processEvents()
         image = window.grab().scaledToWidth(820, Qt.TransformationMode.SmoothTransformation)

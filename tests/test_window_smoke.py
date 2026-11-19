@@ -605,6 +605,14 @@ def _install_qt() -> dict[str, types.ModuleType]:
     widgets.QMdiSubWindow = _MdiSubWindow
     widgets.QSizePolicy.Policy = _Enum()
     widgets.QStyle = _stub_class("QStyle")
+    widgets.QHeaderView = _stub_class("QHeaderView")
+    widgets.QHeaderView.ResizeMode = _Enum()
+
+    class _TreeView(_Object):
+        def header(self):
+            return _Object()
+
+    widgets.QTreeView = _TreeView
 
     class _Geometry(_Object):
         def width(self):

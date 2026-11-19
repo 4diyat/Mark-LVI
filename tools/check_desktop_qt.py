@@ -38,10 +38,16 @@ def main():
         # removed after it was visited must not move the current location.
         from ui.desktop_workspace import FileBrowser
         browser = FileBrowser()
+        assert browser.view.isColumnHidden(2)
+        assert browser.view.header().visualIndex(3) < browser.view.header().visualIndex(1)
+        assert browser.status.isHidden()
+        assert not browser.navigate(str(Path(tmp) / 'missing'))
+        assert not browser.status.isHidden()
         first, second, third = (Path(tmp) / name for name in ('first', 'second', 'third'))
         for folder in (first, second, third):
             folder.mkdir()
-        assert browser.navigate(str(first)) and browser.navigate(str(second))
+        assert browser.navigate(str(first)) and browser.status.isHidden()
+        assert browser.navigate(str(second))
         assert browser.folder_title.text() == 'second' and browser.path.isHidden()
         browser._edit_path()
         assert not browser.path.isHidden() and browser.folder_title.isHidden()

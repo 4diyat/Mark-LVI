@@ -8,7 +8,7 @@ from pathlib import Path
 from PyQt6.QtCore import QDir, QRectF, QSize, Qt, QTimer, QUrl
 from PyQt6.QtGui import (QBrush, QColor, QDesktopServices, QFileSystemModel, QIcon,
                          QLinearGradient, QPainter, QPixmap)
-from PyQt6.QtWidgets import (QHBoxLayout, QLabel, QLineEdit, QMdiArea,
+from PyQt6.QtWidgets import (QHeaderView, QHBoxLayout, QLabel, QLineEdit, QMdiArea,
                              QMdiSubWindow, QMenu, QPushButton, QScrollArea, QSizeGrip, QStyle, QToolButton,
                              QTreeView, QVBoxLayout, QWidget)
 
@@ -401,11 +401,23 @@ class FileBrowser(QWidget):
         self.view.setModel(self.model)
         self.view.setAlternatingRowColors(True)
         self.view.setSortingEnabled(True)
+        # Finder-style table: keep names readable, omit the redundant type
+        # column, and put modification time before size. Stretch only the name
+        # so narrow windows can still scroll to the other real metadata.
+        self.view.setColumnHidden(2, True)
+        header_view = self.view.header()
+        header_view.moveSection(header_view.visualIndex(3), 1)
+        header_view.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header_view.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header_view.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         self.view.doubleClicked.connect(self._open)
         layout.addWidget(self.view, 1)
         self._status_key = "workspace.files_hint"
         self.status = QLabel(_t(self._status_key))
         self.status.setWordWrap(True)
+        # Ordinary navigation needs no persistent explanatory banner. Keep the
+        # status widget for translated errors, which must remain visible.
+        self.status.hide()
         layout.addWidget(self.status)
         root.addWidget(content, 1)
         self.navigate(str(home))
@@ -414,6 +426,7 @@ class FileBrowser(QWidget):
     def _set_status(self, key):
         self._status_key = key
         self.status.setText(_t(key))
+        self.status.setVisible(key != "workspace.files_hint")
 
     def retranslate(self):
         self.favorites_heading.setText(_t("workspace.favorites"))
