@@ -437,3 +437,8 @@ Visibilitas dan urutan layer dipertahankan, perubahan dapat di-undo, dan
 dialog yang dibatalkan atau data yang berubah selama dialog tidak menimpa
 layer. Pengujian Qt offscreen menggunakan teks sintetis dan tidak membuktikan
 penggunaan pada perangkat desktop sebenarnya.
+
+Layer teks mendukung warna RGB per layer (default putih), termasuk saat
+diedit ulang dan di-undo. Dialog warna dibatalkan tanpa mengubah pilihan;
+komposisi dan ekspor menggunakan warna yang dipilih. Pemeriksaan Qt offscreen
+mencakup warna pada piksel komposit sintetis, bukan uji perangkat fisik.

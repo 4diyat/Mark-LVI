@@ -431,6 +431,7 @@
   "image_editor.background": "Background (always visible)",
   "image_editor.add_text": "Add text layer",
   "image_editor.remove_layer": "Remove selected layer",
+  "image_editor.text_color": "Text color",
   "image_editor.text": "Text",
   "image_editor.baseline": "Baseline (pixels)",
   "image_editor.font_size": "Font size (pixels)",

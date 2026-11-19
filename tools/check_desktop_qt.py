@@ -315,6 +315,19 @@ def main():
             text = dialog.findChildren(QLineEdit)[0]
             controls = dialog.findChildren(QSpinBox)
             assert text.text() == 'top' and [control.value() for control in controls] == [0, 10, 8]
+            color_button = dialog.findChild(QPushButton, 'TextLayerColor')
+            assert color_button.text() == f"{translate('image_editor.text_color')}: #ffffff"
+            if mode in ('apply', 'cancel'):
+                picker = QColorDialog.getColor
+                try:
+                    QColorDialog.getColor = staticmethod(lambda *_args: QColor())
+                    color_button.click()
+                    assert color_button.text().endswith('#ffffff')
+                    QColorDialog.getColor = staticmethod(lambda *_args: QColor('#ff0000'))
+                    color_button.click()
+                    assert color_button.text().endswith('#ff0000')
+                finally:
+                    QColorDialog.getColor = picker
             if mode in ('apply', 'cancel', 'stale', 'invalid'):
                 text.setText('' if mode == 'invalid' else 'updated')
                 for control, value in zip(controls, (5, 12, 9)):
@@ -331,9 +344,20 @@ def main():
         image._layer_edit.click()
         assert image._layers[:2] == [layer, middle]
         assert (image._layers[-1].text, image._layers[-1].x, image._layers[-1].y,
-                image._layers[-1].size, image._layers[-1].visible) == ('updated', 5, 12, 9, False)
+                image._layers[-1].size, image._layers[-1].visible, image._layers[-1].color) == ('updated', 5, 12, 9, False, '#ff0000')
         assert image._layer_list.currentRow() == 0 and image._layer_list.item(0).text() == 'updated'
         assert image._dirty
+        # Real composite pixels reflect the selected color once visible.
+        old_image, edited_layers = image._image, image._layers
+        canvas = QImage(120, 40, QImage.Format.Format_ARGB32)
+        canvas.fill(QColor('black'))
+        image._image = canvas
+        image._layers = [make_text_layer('Color', 0, 30, 25, 120, 40, '#ff0000')]
+        composite = image._composite()
+        pixels = [composite.pixelColor(x, y) for y in range(40) for x in range(120)]
+        assert any(pixel.red() > 50 and pixel.green() == 0 and pixel.blue() == 0 for pixel in pixels)
+        assert canvas.pixelColor(0, 0) == QColor('black')
+        image._image, image._layers = old_image, edited_layers
         image._file_tools['image_editor.undo'].click()
         assert image._layers == [layer, middle, hidden_top]
         # Adding text uses the same dialog but still creates a new top layer.

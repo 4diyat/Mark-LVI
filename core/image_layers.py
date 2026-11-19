@@ -1,5 +1,6 @@
 """Small immutable text-layer model, independent of GUI and image I/O."""
 from dataclasses import dataclass, replace
+import re
 
 
 @dataclass(frozen=True)
@@ -9,16 +10,19 @@ class TextLayer:
     y: int
     size: int
     visible: bool = True
+    color: str = "#ffffff"
 
 
-def make_text_layer(text, x, y, size, width, height):
+def make_text_layer(text, x, y, size, width, height, color="#ffffff"):
     text = str(text).strip()
     if not text or len(text) > 500 or any(ord(c) < 32 for c in text):
         raise ValueError("Text must contain 1–500 printable characters on one line.")
     if (any(type(v) is not int for v in (x, y, size, width, height)) or width <= 0 or height <= 0
             or not 0 <= x < width or not 0 <= y < height or not 1 <= size <= 500):
         raise ValueError("Invalid layer position or font size.")
-    return TextLayer(text, x, y, size)
+    if not isinstance(color, str) or re.fullmatch(r"#[0-9a-fA-F]{6}", color) is None:
+        raise ValueError("Color must be an RGB hex string.")
+    return TextLayer(text, x, y, size, color=color.lower())
 
 
 def set_visible(layer, visible):

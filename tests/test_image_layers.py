@@ -33,3 +33,13 @@ def test_layer_order_maps_top_row_to_front_without_mutation():
     assert move_layer(layers, -1, 1) is None
     assert move_layer(layers, 1, True) is None
     assert layers == ['bottom', 'middle', 'top']
+
+
+def test_text_layer_color_is_validated_and_survives_visibility_changes():
+    layer = make_text_layer('text', 0, 0, 12, 100, 100, '#A1B2C3')
+    assert layer.color == '#a1b2c3'
+    assert set_visible(layer, False).color == '#a1b2c3'
+    assert make_text_layer('text', 0, 0, 12, 100, 100).color == '#ffffff'
+    for value in ('red', '#abc', '#00000000', '#xyz123', None, 123):
+        with pytest.raises(ValueError):
+            make_text_layer('text', 0, 0, 12, 100, 100, value)

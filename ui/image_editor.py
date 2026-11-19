@@ -392,9 +392,9 @@ class ImageEditor(QDialog):
         self._change(self._composite().copy(x, y, crop_width, crop_height))
 
     def _paint_layers(self, painter):
-        painter.setPen(QColor("white"))
         for layer in self._layers:
             if layer.visible:
+                painter.setPen(QColor(layer.color))
                 font = QFont("Courier New")
                 font.setPixelSize(layer.size)
                 painter.setFont(font)
@@ -467,6 +467,23 @@ class ImageEditor(QDialog):
             control.setValue(value)
             form.addRow(_t(key), control)
             controls.append(control)
+        color = QColor(existing.color if existing else "#ffffff")
+        color_button = QPushButton()
+        color_button.setObjectName("TextLayerColor")
+
+        def update_color_label():
+            color_button.setText(f"{_t('image_editor.text_color')}: {color.name()}")
+
+        def choose_color():
+            nonlocal color
+            chosen = QColorDialog.getColor(color, dialog, _t("image_editor.text_color"))
+            if chosen.isValid():
+                color = chosen
+                update_color_label()
+
+        update_color_label()
+        color_button.clicked.connect(choose_color)
+        form.addRow(_t("image_editor.text_color"), color_button)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
@@ -475,7 +492,7 @@ class ImageEditor(QDialog):
             return None
         try:
             layer = make_text_layer(text.text(), *(control.value() for control in controls),
-                                    image.width(), image.height())
+                                    image.width(), image.height(), color.name())
         except ValueError:
             self._status.setText(_t("image_editor.invalid_text"))
             return None
