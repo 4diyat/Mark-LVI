@@ -206,6 +206,11 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: python tools/run_qt_smoke.py tools/check_desktop_qt.py
+      - name: Capture synthetic desktop for visual review
+        if: runner.os == 'Linux'
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python tools/capture_desktop_qt.py
       - name: Exercise browser tabs with real Qt offscreen
         if: always() && runner.os == 'Linux'
         env:
