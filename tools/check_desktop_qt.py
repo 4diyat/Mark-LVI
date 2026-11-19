@@ -623,10 +623,12 @@ def main():
         window._input.setText('keep this draft')
         window._suggestions_heading.setFocus()
         QTest.keyClick(window._suggestions_heading, Qt.Key.Key_Space)
-        app.processEvents()
+        QTest.qWait(100)
         assert not window._suggestions_heading.isChecked()
         assert all(button.isHidden() for button, _ in window._suggestion_buttons)
-        assert window._input.text() == 'keep this draft' and window._log.height() > previous_log_height
+        assert window._input.text() == 'keep this draft'
+        assert window._log.height() > previous_log_height, (
+            f"log: {previous_log_height} -> {window._log.height()}, card: {window._suggestions_card.height()}")
         QTest.keyClick(window._suggestions_heading, Qt.Key.Key_Space)
         app.processEvents()
         assert all(button.isVisible() for button, _ in window._suggestion_buttons)
