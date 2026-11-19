@@ -408,11 +408,12 @@ seleksi, rotasi gambar dan undo. Ini tidak menguji dialog persetujuan atau menu
 popup yang nyata; tidak ada file pengguna, kode yang dijalankan, atau input OS.
 Rotasi jendela workspace dan kontrol dua tangan tetap belum terintegrasi.
 
-Eksperimen popup dan dialog sintetis terpisah berada di
-`tools/check_rotation_popups_qt.py`. CI Linux offscreen lulus untuk pemilihan
-menu dan penolakan dialog sintetis pada 0° dan 31°. Popup menu dapat diuji
-melalui proxy atau sebagai jendela top-level sesuai perilaku Qt; dialog diuji
-dengan klik langsung pada tombolnya, bukan melalui viewport terputar.
-Percobaan sebelumnya mengirim klik dialog lewat viewport proxy dan event ditolak;
-masalah ini belum terpecahkan. Tes ini bukan dialog persetujuan JARVIS, bukan
-uji gesture dan bukan dasar untuk mengintegrasikan rotasi ke workspace.
+Sesuai keputusan pengguna, dialog **tidak ikut diputar**. Eksperimen
+`tools/check_rotation_popups_qt.py` menempatkan dialog Ya/Tidak sintetis di
+luar scene terputar sebagai dialog modal tegak dan memeriksa penolakan dengan
+input langsung. Menu Qt diuji secara terpisah. Smoke test workspace menguji
+bahwa dialog application-modal membatalkan gesture dan tidak memindahkan
+jendela. Ini bukan uji dialog persetujuan JARVIS di workspace terputar; model
+parenting dan siklus hidup untuk semua dialog nyata masih harus diintegrasikan
+dan diuji. Konfirmasi sensitif tetap memerlukan tindakan pengguna lokal dan
+tidak boleh disetujui dengan gesture. Rotasi workspace belum tersedia.

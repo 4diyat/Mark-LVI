@@ -720,6 +720,20 @@ def main():
         gestures.update((sample(left), sample(right)))
         assert gestures.mode is None
         window._hand_closing_confirm = False
+        # A real application-modal dialog cancels gesture manipulation rather
+        # than allowing synthetic hand samples to reach sensitive controls.
+        modal = QDialog(window)
+        modal.setWindowModality(Qt.WindowModality.ApplicationModal)
+        modal.show()
+        app.processEvents()
+        assert QApplication.activeModalWidget() is modal
+        before_modal = sub.geometry()
+        gestures.mode, gestures.target = 'resize', sub
+        gestures.update((sample(left), sample(right)))
+        assert gestures.mode is None and gestures.target is None
+        assert sub.geometry() == before_modal and modal.isVisible()
+        modal.close()
+        app.processEvents()
         window._hand_timer.start()
 
         assert command({"action": "open", "target": "model_viewer"})["ok"]

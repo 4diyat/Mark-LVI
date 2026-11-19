@@ -35,7 +35,7 @@ def main():
     confirm_button = QPushButton('Synthetic confirmation')
     answers = []
     def ask():
-        answers.append(QMessageBox.question(root, 'Synthetic', 'Allow synthetic action?',
+        answers.append(QMessageBox.question(view, 'Synthetic', 'Allow synthetic action?',
                                             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                                             QMessageBox.StandardButton.No))
     confirm_button.clicked.connect(ask)
@@ -84,17 +84,20 @@ def main():
             outcomes.append('dialog-not-visible')
             return
         box = dialogs[0]
+        # Dialogs are intentionally outside the rotated scene and remain
+        # application-modal. Only the surrounding workspace is transformed.
+        assert box.parentWidget() is view and box.graphicsProxyWidget() is None
+        assert app.activeModalWidget() is box
         button = box.button(QMessageBox.StandardButton.No)
         if button is None:
             outcomes.append('no-button-missing')
             box.reject()
             return
-        # Test the dialog control directly. A viewport-mapped click into this
-        # modal proxy was rejected offscreen; this is not proof that mapped
-        # pointer or gesture input can operate a real approval dialog.
+        # Operate the upright top-level dialog normally, not via gesture or
+        # by injecting a click into the rotated scene.
         QTimer.singleShot(1500, box.reject)
         QTest.mouseClick(button, Qt.MouseButton.LeftButton, pos=button.rect().center())
-        outcomes.append('dialog-direct')
+        outcomes.append('upright-dialog')
 
     for angle in (0, 31):
         proxy.setRotation(angle)
@@ -110,9 +113,9 @@ def main():
         click_root(confirm_button)
         QTest.qWait(250)
         assert answers and answers[-1] == QMessageBox.StandardButton.No, (answers, outcomes)
-    assert all(item in ('proxy', 'top-level', 'dialog-direct') for item in outcomes), outcomes
+    assert all(item in ('proxy', 'top-level', 'upright-dialog') for item in outcomes), outcomes
     assert len(outcomes) == 4
-    print(f'Popup and rejection proof passed; popup routes: {outcomes}', flush=True)
+    print(f'Popup and upright rejection proof passed; popup routes: {outcomes}', flush=True)
     view.close()
     faulthandler.cancel_dump_traceback_later()
 
