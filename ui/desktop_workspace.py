@@ -101,7 +101,7 @@ class WallpaperArea(QMdiArea):
     """Scale the original wallpaper to cover the desktop, not the app windows."""
     def __init__(self):
         super().__init__()
-        self._wallpaper = QPixmap(str(Path(__file__).resolve().parent.parent / "assets/workspace/jarvis-blue-wallpaper.jpg"))
+        self._wallpaper = QPixmap(str(Path(__file__).resolve().parent.parent / "assets/workspace/jarvis-desktop-wave.png"))
         self._dock = None
         self._emblem = None
         self._avatar_stage = None

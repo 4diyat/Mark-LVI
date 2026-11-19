@@ -1324,7 +1324,7 @@ def test_graphite_desktop_layout_uses_new_wallpaper_and_conversation_is_primary(
     files, assistant = initial_window_geometry(1366, 738)
     assert files[0] + files[2] < assistant[0]
     assert assistant[0] > files[0]
-    assert (ROOT / 'assets/workspace/jarvis-blue-wallpaper.jpg').is_file()
+    assert (ROOT / 'assets/workspace/jarvis-desktop-wave.png').is_file()
 
 
 def test_app_shutdown_confirms_ssh_before_disconnecting_any_session(window):
