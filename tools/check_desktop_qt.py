@@ -149,6 +149,7 @@ def main():
         from ui.theme import C
         assert C.DESKTOP_PANEL in window._workspace_file_browser.styleSheet()
         assert 'QMenu::item:selected' in window._workspace_file_browser.styleSheet()
+        assert window._workspace_file_browser.view.header().sectionSize(0) >= 110
         assert dock.parentWidget() is mdi.viewport()
         assert 500 <= dock.width() <= mdi.viewport().width()
         assert all(button.isVisible() for button, _ in window._workspace_dock)

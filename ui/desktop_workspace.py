@@ -443,14 +443,18 @@ class FileBrowser(QWidget):
         self.view.setAlternatingRowColors(True)
         self.view.setSortingEnabled(True)
         # Finder-style table: keep names readable, omit the redundant type
-        # column, and put modification time before size. Stretch only the name
-        # so narrow windows can still scroll to the other real metadata.
+        # column, and put modification time before size. Reserve a usable name
+        # column instead of letting long timestamps consume the whole view;
+        # metadata columns remain resizable and scroll on narrow windows.
         self.view.setColumnHidden(2, True)
         header_view = self.view.header()
         header_view.moveSection(header_view.visualIndex(3), 1)
+        header_view.setStretchLastSection(False)
         header_view.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        header_view.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header_view.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header_view.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
+        header_view.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+        header_view.resizeSection(1, 62)
+        header_view.resizeSection(3, 130)
         self.view.doubleClicked.connect(self._open)
         layout.addWidget(self.view, 1)
         self._status_key = "workspace.files_hint"
