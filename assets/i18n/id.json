@@ -426,6 +426,7 @@
   "image_editor.flattened": "Gambar diubah dan lapisan digabungkan. Undo dapat memulihkannya.",
   "workspace.camera_starting": "SYS: Memulai pratinjau kamera…",
   "video_control.open": "Buka video…",
+  "workspace.edit_path": "Ubah alamat folder",
   "workspace.back": "Kembali",
   "workspace.forward": "Maju",
   "workspace.favorites": "FAVORIT",

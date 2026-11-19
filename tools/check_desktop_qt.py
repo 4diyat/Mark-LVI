@@ -42,6 +42,13 @@ def main():
         for folder in (first, second, third):
             folder.mkdir()
         assert browser.navigate(str(first)) and browser.navigate(str(second))
+        assert browser.folder_title.text() == 'second' and browser.path.isHidden()
+        browser._edit_path()
+        assert not browser.path.isHidden() and browser.folder_title.isHidden()
+        browser.path.setText(str(first))
+        browser._accept_path()
+        assert browser.path.isHidden() and browser.folder_title.text() == 'first'
+        assert browser.navigate(str(second))
         browser._history_step(-1)
         assert Path(browser.path.text()) == first.resolve() and browser.forward.isEnabled()
         browser._history_step(1)

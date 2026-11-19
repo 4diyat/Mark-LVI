@@ -321,6 +321,7 @@ class FileBrowser(QWidget):
                            text-align: left; padding: 8px; border-radius: 6px; }}
             QPushButton:hover, QPushButton:checked {{ background: {C.DESKTOP_DOCK}; }}
             QPushButton#FileNavigation {{ text-align: center; padding: 0; font-size: 18px; }}
+            QPushButton#FileFolderTitle {{ font-weight: bold; color: {C.DESKTOP_TEXT}; padding: 5px; }}
         """)
         root = QHBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -370,9 +371,14 @@ class FileBrowser(QWidget):
         self.up.setFixedSize(26, 30)
         self.up.clicked.connect(self._up)
         header.addWidget(self.up)
+        self.folder_title = QPushButton()
+        self.folder_title.setObjectName("FileFolderTitle")
+        self.folder_title.clicked.connect(self._edit_path)
+        header.addWidget(self.folder_title, 1)
         self.path = QLineEdit(str(home))
-        self.path.returnPressed.connect(lambda: self.navigate(self.path.text()))
+        self.path.returnPressed.connect(self._accept_path)
         header.addWidget(self.path, 1)
+        self.path.hide()
         self.search = QLineEdit()
         self.search.setPlaceholderText(_t("workspace.search"))
         self.search.setMaximumWidth(170)
@@ -411,6 +417,9 @@ class FileBrowser(QWidget):
             button.setToolTip(_t(key))
             button.setAccessibleName(_t(key))
         self.search.setPlaceholderText(_t("workspace.search"))
+        self.folder_title.setAccessibleName(_t("workspace.edit_path"))
+        self.folder_title.setToolTip(_t("workspace.edit_path"))
+        self.path.setAccessibleName(_t("workspace.edit_path"))
         self.status.setText(_t(self._status_key))
 
     def _filter(self, text):
@@ -432,11 +441,23 @@ class FileBrowser(QWidget):
             self._history_index = len(self._history) - 1
         self.view.setRootIndex(self.model.setRootPath(path))
         self.path.setText(path)
+        self.folder_title.setText(Path(path).name or Path(path).anchor)
         for button, folder in self._favorite_paths:
             button.setChecked(folder.resolve() == Path(path))
         self._sync_history()
         self._set_status("workspace.files_hint")
         return True
+
+    def _edit_path(self):
+        self.folder_title.hide()
+        self.path.show()
+        self.path.setFocus()
+        self.path.selectAll()
+
+    def _accept_path(self):
+        if self.navigate(self.path.text()):
+            self.path.hide()
+            self.folder_title.show()
 
     def _sync_history(self):
         self.back.setEnabled(self._history_index > 0)
