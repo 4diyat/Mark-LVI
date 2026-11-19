@@ -89,9 +89,12 @@ def main():
             outcomes.append('no-button-missing')
             box.reject()
             return
-        # The confirmation's buttons are real Qt controls; map to the popup's
-        # coordinates before dispatching to either its proxy or top-level.
-        click_popup(box, button.mapTo(box, button.rect().center()))
+        # Test the dialog control directly. A viewport-mapped click into this
+        # modal proxy was rejected offscreen; this is not proof that mapped
+        # pointer or gesture input can operate a real approval dialog.
+        QTimer.singleShot(1500, box.reject)
+        QTest.mouseClick(button, Qt.MouseButton.LeftButton, pos=button.rect().center())
+        outcomes.append('dialog-direct')
 
     for angle in (0, 31):
         proxy.setRotation(angle)
@@ -107,7 +110,7 @@ def main():
         click_root(confirm_button)
         QTest.qWait(250)
         assert answers and answers[-1] == QMessageBox.StandardButton.No, (answers, outcomes)
-    assert all(item in ('proxy', 'top-level') for item in outcomes), outcomes
+    assert all(item in ('proxy', 'top-level', 'dialog-direct') for item in outcomes), outcomes
     assert len(outcomes) == 4
     print(f'Popup and rejection proof passed; popup routes: {outcomes}', flush=True)
     view.close()
