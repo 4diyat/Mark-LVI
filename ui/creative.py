@@ -98,12 +98,23 @@ class CreativeWorkspace(QDialog):
         self._editor_status = QLabel()
         layout.addWidget(self._editor_status)
         self._add_code_tab()
-        layout.addWidget(self._translations.text(QLabel(), "creative.output"))
+        self._output_heading = self._translations.text(QLabel(), "creative.output")
+        layout.addWidget(self._output_heading)
         self._output = QPlainTextEdit()
         self._output.setReadOnly(True)
         self._output.setMaximumHeight(160)
         layout.addWidget(self._output)
+        # Keep the editor readable in the compact desktop layout. The output
+        # panel appears as soon as a run or error writes to it.
+        self._output_heading.hide()
+        self._output.hide()
+        self._output.textChanged.connect(self._show_output_when_written)
         parent_layout.addWidget(page)
+
+    def _show_output_when_written(self):
+        if self._output.toPlainText():
+            self._output_heading.show()
+            self._output.show()
 
     def _add_code_tab(self, text='', path=None, dirty=False):
         code = CodeEditor()

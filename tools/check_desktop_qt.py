@@ -50,6 +50,9 @@ def main():
         creative = CreativeWorkspace(window, {"code": "print('unsaved')"})
         image = ImageEditor(window, {})
         # Real Qt checks for the editor gutter and syntax layout, not Qt stubs.
+        assert creative._output.isHidden() and creative._output_heading.isHidden()
+        creative._output.setPlainText('Run output')
+        assert not creative._output.isHidden() and not creative._output_heading.isHidden()
         assert creative._code.line_number_width() > 0
         creative._code.highlighter.set_language('python')
         creative._code.highlighter.rehighlight()
