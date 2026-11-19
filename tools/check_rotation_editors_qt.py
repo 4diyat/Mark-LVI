@@ -5,6 +5,7 @@ It must never run user code or open user files.
 """
 import faulthandler
 import os
+from types import SimpleNamespace
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from PyQt6.QtCore import QPoint, QPointF, Qt  # noqa: E402
@@ -53,6 +54,8 @@ def main():
 
     print('rotation-editor: create code editor', flush=True)
     editor = CreativeWorkspace(None, {'code': 'original draft'})
+    editor._host = SimpleNamespace(get_plugins=lambda: [
+        {'name': 'code_editor', 'valid': True, 'enabled': True}])
     proxy = embed(editor, 25)
     print('rotation-editor: type first draft', flush=True)
     click(proxy, editor, editor._code.viewport())
