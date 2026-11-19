@@ -30,14 +30,14 @@ def main():
         open_initial_editor(window)
         QTest.qWait(300)
         app.processEvents()
-        image = window.grab().scaledToWidth(960, Qt.TransformationMode.SmoothTransformation)
+        image = window.grab().scaledToWidth(820, Qt.TransformationMode.SmoothTransformation)
         data = QByteArray()
         buffer = QBuffer(data)
         buffer.open(QIODevice.OpenModeFlag.WriteOnly)
-        if not image.save(buffer, 'JPG', 40):
+        if not image.save(buffer, 'JPG', 30):
             raise RuntimeError('Cannot save screenshot')
         encoded = base64.b64encode(bytes(data)).decode('ascii')
-        size = 12000
+        size = 3900
         parts = [encoded[i:i + size] for i in range(0, len(encoded), size)]
         if len(parts) > 9:
             raise RuntimeError(f'Screenshot too large: {len(parts)} chunks')
