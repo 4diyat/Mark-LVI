@@ -115,3 +115,22 @@ def hand_rotation_delta(initial_hands, current_hands):
         return (math.degrees(after - before) + 180) % 360 - 180
     except (TypeError, ValueError, OverflowError):
         return None
+
+
+# Kinds are the names registered by the workspace, not window titles or URLs.
+# Unknown kinds fail closed until explicitly reviewed. This policy is not yet
+# connected to a rotating workspace implementation.
+_ROTATABLE_KINDS = frozenset({
+    'assistant', 'chat', 'files', 'navigation', 'video', 'camera',
+    'model_viewer', 'code_editor', 'image_editor', 'trading', 'ssh_manager',
+})
+
+
+def rotation_allowed(kind, *, is_dialog):
+    """Policy for future rotation: browser, dialogs and unknown types stay upright.
+
+    ``is_dialog`` describes a separate modal/popup, not the QDialog base class
+    of a document embedded as a workspace widget. Only a trusted UI caller may
+    classify the target; this function does not inspect Qt or enforce access.
+    """
+    return is_dialog is False and isinstance(kind, str) and kind in _ROTATABLE_KINDS

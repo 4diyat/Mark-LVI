@@ -79,3 +79,16 @@ def test_hand_rotation_delta_signed_wrap_and_invalid_samples():
     assert hand_rotation_delta(((0, 0), (100, 0)), ((0, 0), (0, 0))) is None
     assert hand_rotation_delta(((0, 0), (100, 0)), ((0, 0), (float('nan'), 100))) is None
     assert hand_rotation_delta(None, ((0, 0), (100, 0))) is None
+
+
+def test_rotation_policy_excludes_browser_dialogs_and_unknown_targets():
+    from core.workspace_transform import rotation_allowed
+
+    for kind in ('assistant', 'chat', 'files', 'navigation', 'video', 'camera',
+                 'model_viewer', 'code_editor', 'image_editor', 'trading', 'ssh_manager'):
+        assert rotation_allowed(kind, is_dialog=False)
+        assert not rotation_allowed(kind, is_dialog=True)
+    for kind in ('workspace_browser', 'browser', 'document', '', None, [], 'WORKSPACE_BROWSER'):
+        assert not rotation_allowed(kind, is_dialog=False)
+    for invalid in (None, 0, 1, 'false'):
+        assert not rotation_allowed('code_editor', is_dialog=invalid)
