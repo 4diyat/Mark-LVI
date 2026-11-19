@@ -733,7 +733,9 @@ def main():
         assert gestures.mode is None and gestures.target is None
         assert sub.geometry() == before_modal and modal.isVisible()
         modal.close()
+        window.activateWindow()
         app.processEvents()
+        assert QApplication.activeModalWidget() is None and window.isActiveWindow()
         window._hand_timer.start()
 
         assert command({"action": "open", "target": "model_viewer"})["ok"]
