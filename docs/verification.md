@@ -359,8 +359,13 @@ Aksi buka, undo dan simpan berada di atas; operasi gambar dan penambahan teks
 berada pada panel vertikal yang dapat digulir di sebelah kanvas. Panel layer
 masih berada di kanan. Smoke test Qt memeriksa tombol rotasi dan undo pada
 gambar sintetis serta penerjemahan kontrol. Ini baru penataan awal, bukan
-replika penuh mockup: toolbar masih berupa tombol berlabel dan belum ada pengujian manual perangkat.
+replika penuh mockup: toolbar memakai ikon vektor untuk operasi yang tersedia; alat seleksi dan kuas
+pada konsep belum diimplementasikan. Belum ada pengujian manual perangkat.
 Slider zoom mengubah pratinjau dari 25–200% ukuran pas kanvas, dengan scroll
 bila diperbesar; gambar dan layer asli tidak diubah. Ukuran render dibatasi
 untuk mencegah alokasi berlebihan. Tes Qt memeriksa zoom, scroll, rotasi, undo
 dan terjemahan dengan gambar sintetis, bukan pengujian manual perangkat.
+
+Toolbar ikon diuji melalui Qt asli: ikon terisi, nama aksesibel dan tooltip
+diterjemahkan, dan rotasi dapat dijalankan dengan keyboard. Tidak ada tombol
+dekoratif untuk alat yang belum tersedia.

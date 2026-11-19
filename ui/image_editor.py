@@ -1,15 +1,16 @@
 """A small local image editor; AI suggestions never open or save files."""
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtGui import QColor, QFont, QImage, QImageReader, QPainter, QPixmap, QTransform
 from PyQt6.QtWidgets import (QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
                              QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
-                             QMessageBox, QPushButton, QScrollArea, QSlider, QSpinBox, QVBoxLayout, QWidget)
+                             QMessageBox, QPushButton, QScrollArea, QSlider, QSpinBox, QToolButton, QVBoxLayout, QWidget)
 
 from core.i18n import label as _t
 from core.image_geometry import preview_size, valid_crop
 from core.image_layers import make_text_layer, set_visible
 from ui.theme import workspace_stylesheet
 from ui.localization import TranslationBindings
+from ui.image_tool_icons import image_tool_icon
 
 
 class ImageEditor(QDialog):
@@ -79,13 +80,20 @@ class ImageEditor(QDialog):
         tool_layout = QVBoxLayout(tool_panel)
         tool_layout.setContentsMargins(0, 0, 0, 0)
         self._image_tools = {}
-        for key, callback in (("image_editor.rotate", self.rotate),
-                              ("image_editor.flip", self.flip),
-                              ("image_editor.grayscale", self.grayscale),
-                              ("image_editor.crop", self.crop),
-                              ("image_editor.add_text", lambda: self.add_text())):
-            button = self._translations.text(QPushButton(), key)
-            button.clicked.connect(callback)
+        for icon, key, callback in (("rotate", "image_editor.rotate", self.rotate),
+                                    ("flip", "image_editor.flip", self.flip),
+                                    ("grayscale", "image_editor.grayscale", self.grayscale),
+                                    ("crop", "image_editor.crop", self.crop),
+                                    ("text", "image_editor.add_text", self.add_text)):
+            button = QToolButton()
+            button.setIcon(image_tool_icon(icon))
+            button.setIconSize(QSize(22, 22))
+            button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+            button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+            button.setToolTip(_t(key))
+            button.setAccessibleName(_t(key))
+            button.setFixedSize(40, 40)
+            button.clicked.connect(lambda _checked=False, fn=callback: fn())
             tool_layout.addWidget(button)
             self._image_tools[key] = button
         tool_layout.addStretch()
@@ -94,7 +102,7 @@ class ImageEditor(QDialog):
         tool_scroll.setWidget(tool_panel)
         tool_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
         tool_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        tool_scroll.setFixedWidth(150)
+        tool_scroll.setFixedWidth(60)
         self._tool_scroll = tool_scroll
         workspace.addWidget(tool_scroll)
         workspace.addWidget(scroll, 1)
@@ -132,6 +140,9 @@ class ImageEditor(QDialog):
         self._layer_list.setAccessibleName(_t("image_editor.layers"))
         self._zoom.setAccessibleName(_t("image_editor.zoom"))
         self._zoom.setToolTip(_t("image_editor.zoom_hint"))
+        for key, button in self._image_tools.items():
+            button.setToolTip(_t(key))
+            button.setAccessibleName(_t(key))
 
     def _may_discard(self):
         return not self._dirty or QMessageBox.question(

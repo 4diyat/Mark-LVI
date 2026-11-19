@@ -166,6 +166,14 @@ def main():
         app.processEvents()
         assert image._tool_scroll.x() < image._tool_scroll.parentWidget().width() // 2
         assert len(image._image_tools) == 5 and len(image._file_tools) == 3
+        for key, button in image._image_tools.items():
+            assert not button.icon().isNull()
+            assert button.toolButtonStyle() == Qt.ToolButtonStyle.ToolButtonIconOnly
+            assert button.focusPolicy() == Qt.FocusPolicy.StrongFocus
+            assert button.toolTip() == button.accessibleName() == translate(key)
+            icon_image = button.icon().pixmap(22, 22).toImage()
+            assert any(icon_image.pixelColor(x, y).alpha() for x in range(icon_image.width())
+                       for y in range(icon_image.height()))
         original = QImage(40, 20, QImage.Format.Format_ARGB32)
         original.fill(Qt.GlobalColor.red)
         image._image = original
@@ -180,7 +188,8 @@ def main():
         image._zoom.setValue(100)
         app.processEvents()
         assert image._preview.pixmap().width() == fit_width
-        image._image_tools['image_editor.rotate'].click()
+        image._image_tools['image_editor.rotate'].setFocus()
+        QTest.keyClick(image._image_tools['image_editor.rotate'], Qt.Key.Key_Space)
         assert (image._image.width(), image._image.height()) == (20, 40) and image._dirty
         image._file_tools['image_editor.undo'].click()
         assert (image._image.width(), image._image.height()) == (40, 20)
@@ -273,7 +282,8 @@ def main():
         assert image.windowTitle() == translate("image_editor.title")
         assert image._zoom.accessibleName() == translate("image_editor.zoom")
         assert image._zoom.toolTip() == translate("image_editor.zoom_hint")
-        assert all(button.text() == translate(key) for key, button in image._image_tools.items())
+        assert all(button.toolTip() == button.accessibleName() == translate(key)
+                   for key, button in image._image_tools.items())
         assert all(button.text() == translate(key) for key, button in image._file_tools.items())
         set_locale(previous_locale)
         # Don't close the unsaved editor via a confirmation dialog in smoke CI.
