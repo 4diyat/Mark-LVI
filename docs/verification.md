@@ -359,8 +359,9 @@ Aksi buka, undo dan simpan berada di atas; operasi gambar dan penambahan teks
 berada pada panel vertikal yang dapat digulir di sebelah kanvas. Panel layer
 masih berada di kanan. Smoke test Qt memeriksa tombol rotasi dan undo pada
 gambar sintetis serta penerjemahan kontrol. Ini baru penataan awal, bukan
-replika penuh mockup: toolbar memakai ikon vektor untuk operasi yang tersedia; kuas
-pada konsep belum diimplementasikan. Seleksi area dapat ditarik pada gambar
+replika penuh mockup: toolbar memakai ikon vektor untuk operasi yang tersedia. Kuas dasar bekerja
+pada gambar latar dengan ukuran dan warna yang dapat dipilih; layer teks tetap
+terpisah dan satu sapuan dapat di-undo. Seleksi area dapat ditarik pada gambar
 dan dipertahankan saat zoom; Crop membuka dialog dengan koordinat seleksi
 untuk ditinjau sebelum diterapkan. Seleksi saja tidak mengubah gambar. Belum ada pengujian manual perangkat.
 Slider zoom mengubah pratinjau dari 25–200% ukuran pas kanvas, dengan scroll
@@ -375,3 +376,7 @@ dekoratif untuk alat yang belum tersedia.
 Smoke test Qt menggunakan gambar sintetis untuk drag seleksi, perubahan zoom,
 pembatalan dan konfirmasi Crop, serta undo; dialog flatten tetap berlaku untuk
 komposisi ber-layer. Pengujian ini tidak menggantikan uji manual perangkat.
+
+Kuas diuji pada Qt offscreen dengan gambar sintetis: pemilihan warna dan
+pembatalannya, ukuran, sapuan piksel, pemisahan layer teks, pergantian mode,
+dan undo. Belum mencakup kuas lanjutan atau pengujian manual perangkat.

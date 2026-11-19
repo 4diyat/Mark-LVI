@@ -27,6 +27,15 @@ def image_tool_icon(kind):
         path.lineTo(12, 14)
         path.lineTo(18, 14)
         path.closeSubpath()
+    elif kind == "brush":
+        path.moveTo(8, 15)
+        path.lineTo(17, 4)
+        path.lineTo(20, 7)
+        path.lineTo(11, 17)
+        path.closeSubpath()
+        path.moveTo(8, 15)
+        path.cubicTo(4, 15, 7, 19, 3, 20)
+        path.cubicTo(8, 22, 12, 20, 11, 17)
     elif kind == "rotate":
         path.arcMoveTo(QRectF(4, 4, 16, 16), 35)
         path.arcTo(QRectF(4, 4, 16, 16), 35, 260)

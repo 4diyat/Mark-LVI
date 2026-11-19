@@ -13,9 +13,9 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtCore import QCoreApplication, QEvent, QFileInfo, QPoint, QTimer, Qt  # noqa: E402
-from PyQt6.QtGui import QImage, QTextCursor  # noqa: E402
+from PyQt6.QtGui import QColor, QImage, QTextCursor  # noqa: E402
 from PyQt6.QtTest import QTest  # noqa: E402
-from PyQt6.QtWidgets import QApplication, QComboBox, QDialog, QFileDialog, QPushButton, QScrollArea, QSizeGrip, QSlider, QSpinBox, QWidget  # noqa: E402
+from PyQt6.QtWidgets import QApplication, QColorDialog, QComboBox, QDialog, QFileDialog, QPushButton, QScrollArea, QSizeGrip, QSlider, QSpinBox, QWidget  # noqa: E402
 
 import memory.config_manager as config  # noqa: E402
 from core.i18n import label as translate  # noqa: E402
@@ -165,7 +165,7 @@ def main():
         image.show()
         app.processEvents()
         assert image._tool_scroll.x() < image._tool_scroll.parentWidget().width() // 2
-        assert len(image._image_tools) == 6 and len(image._file_tools) == 3
+        assert len(image._image_tools) == 7 and len(image._file_tools) == 3
         for key, button in image._image_tools.items():
             assert not button.icon().isNull()
             assert button.toolButtonStyle() == Qt.ToolButtonStyle.ToolButtonIconOnly
@@ -225,6 +225,42 @@ def main():
         assert image._dirty and image._preview.selection is None
         image._file_tools['image_editor.undo'].click()
         assert (image._image.width(), image._image.height()) == (40, 20)
+        image._dirty = False
+        # Brush edits only the background, retains text layers, and is undoable.
+        from core.image_layers import make_text_layer
+        layer = make_text_layer('sample', 0, 10, 8, 40, 20)
+        image._layers = [layer]
+        image._update_layers()
+        image._image_tools['image_editor.brush'].click()
+        assert image._preview.brushing and not image._preview.selecting
+        assert not image._image_tools['image_editor.select'].isChecked()
+        original_picker = QColorDialog.getColor
+        try:
+            QColorDialog.getColor = staticmethod(lambda *_args: QColor())
+            image._brush_color_button.click()
+            assert image._brush_color.name() == '#4b9fff'
+            QColorDialog.getColor = staticmethod(lambda *_args: QColor('#00ff00'))
+            image._brush_color_button.click()
+        finally:
+            QColorDialog.getColor = original_picker
+        assert image._brush_swatch.accessibleName().endswith('#00ff00')
+        image._brush_size.setValue(4)
+        rect = image._preview._image_rect()
+        start = QPoint(round(rect.left() + rect.width() * .25), round(rect.top() + rect.height() * .5))
+        end = QPoint(round(rect.left() + rect.width() * .75), round(rect.top() + rect.height() * .5))
+        QTest.mousePress(image._preview, Qt.MouseButton.LeftButton, pos=start)
+        QTest.mouseMove(image._preview, end)
+        QTest.mouseRelease(image._preview, Qt.MouseButton.LeftButton, pos=end)
+        assert image._image.pixelColor(20, 10).green() > 200
+        assert image._image.pixelColor(20, 2).red() == 255
+        assert image._dirty and image._layers == [layer]
+        image._file_tools['image_editor.undo'].click()
+        assert image._image.pixelColor(20, 10).red() == 255 and image._layers == [layer]
+        image._image_tools['image_editor.select'].click()
+        assert image._preview.selecting and not image._preview.brushing
+        assert not image._image_tools['image_editor.brush'].isChecked()
+        image._layers = []
+        image._update_layers()
         image._dirty = False
         # Real Qt checks for the editor gutter and syntax layout, not Qt stubs.
         assert creative._output.isHidden() and creative._output_heading.isHidden()
@@ -314,6 +350,8 @@ def main():
         assert image.windowTitle() == translate("image_editor.title")
         assert image._zoom.accessibleName() == translate("image_editor.zoom")
         assert image._zoom.toolTip() == translate("image_editor.zoom_hint")
+        assert image._brush_size.accessibleName() == translate("image_editor.brush_size")
+        assert image._brush_swatch.accessibleName().startswith(translate("image_editor.brush_color"))
         assert all(button.toolTip() == button.accessibleName() == translate(key)
                    for key, button in image._image_tools.items())
         assert all(button.text() == translate(key) for key, button in image._file_tools.items())

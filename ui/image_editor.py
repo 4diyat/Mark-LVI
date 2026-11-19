@@ -1,7 +1,7 @@
 """A small local image editor; AI suggestions never open or save files."""
-from PyQt6.QtCore import QSize, Qt
-from PyQt6.QtGui import QColor, QFont, QImage, QImageReader, QPainter, QPixmap, QTransform
-from PyQt6.QtWidgets import (QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
+from PyQt6.QtCore import QPointF, QSize, Qt
+from PyQt6.QtGui import QColor, QFont, QImage, QImageReader, QPainter, QPainterPath, QPen, QPixmap, QTransform
+from PyQt6.QtWidgets import (QColorDialog, QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
                              QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
                              QMessageBox, QPushButton, QScrollArea, QSlider, QSpinBox, QToolButton, QVBoxLayout, QWidget)
 
@@ -45,6 +45,20 @@ class ImageEditor(QDialog):
         self._zoom_value = QLabel()
         self._zoom_value.setText("100%")
         toolbar.addWidget(self._zoom_value)
+        toolbar.addWidget(self._translations.text(QLabel(), "image_editor.brush_size"))
+        self._brush_size = QSpinBox()
+        self._brush_size.setRange(1, 200)
+        self._brush_size.setValue(8)
+        self._brush_size.setAccessibleName(_t("image_editor.brush_size"))
+        toolbar.addWidget(self._brush_size)
+        self._brush_color = QColor("#4b9fff")
+        self._brush_color_button = self._translations.text(QPushButton(), "image_editor.brush_color")
+        self._brush_color_button.clicked.connect(self._choose_brush_color)
+        toolbar.addWidget(self._brush_color_button)
+        self._brush_swatch = QLabel()
+        self._brush_swatch.setFixedSize(20, 20)
+        self._update_brush_swatch()
+        toolbar.addWidget(self._brush_swatch)
         self._file_tools = {}
         for key, callback in (("image_editor.open", self.open_file),
                               ("image_editor.undo", self.undo),
@@ -70,6 +84,8 @@ class ImageEditor(QDialog):
         layout.addWidget(self._status)
         self._preview = ImageCanvas()
         self._preview.selection_changed.connect(self._selection_changed)
+        self._preview.brush_stroke.connect(self._apply_brush_stroke)
+        self._brush_size.valueChanged.connect(self._set_brush_size)
         self._preview.setAccessibleName(_t("image_editor.title"))
         self._preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._preview.setMinimumSize(200, 150)
@@ -83,6 +99,7 @@ class ImageEditor(QDialog):
         tool_layout.setContentsMargins(0, 0, 0, 0)
         self._image_tools = {}
         for icon, key, callback in (("select", "image_editor.select", self._toggle_selection),
+                                    ("brush", "image_editor.brush", self._toggle_brush),
                                     ("rotate", "image_editor.rotate", self.rotate),
                                     ("flip", "image_editor.flip", self.flip),
                                     ("grayscale", "image_editor.grayscale", self.grayscale),
@@ -90,8 +107,9 @@ class ImageEditor(QDialog):
                                     ("text", "image_editor.add_text", self.add_text)):
             button = QToolButton()
             button.setIcon(image_tool_icon(icon))
-            if icon == "select":
+            if icon in ("select", "brush"):
                 button.setCheckable(True)
+                button.setStyleSheet("QToolButton:checked { background: #286dcc; border: 1px solid #67b7ff; }")
             button.setIconSize(QSize(22, 22))
             button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
             button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -145,16 +163,75 @@ class ImageEditor(QDialog):
         self._layer_list.setAccessibleName(_t("image_editor.layers"))
         self._zoom.setAccessibleName(_t("image_editor.zoom"))
         self._zoom.setToolTip(_t("image_editor.zoom_hint"))
+        self._brush_size.setAccessibleName(_t("image_editor.brush_size"))
+        self._update_brush_swatch()
         for key, button in self._image_tools.items():
             button.setToolTip(_t(key))
             button.setAccessibleName(_t(key))
 
     def _toggle_selection(self):
         enabled = self._image_tools["image_editor.select"].isChecked()
+        if enabled:
+            self._image_tools["image_editor.brush"].setChecked(False)
         self._preview.set_selecting(enabled)
         if enabled:
             self._status.setText(_t("image_editor.select_hint") if self._image is not None
                                  else _t("image_editor.empty"))
+
+    def _toggle_brush(self):
+        enabled = self._image_tools["image_editor.brush"].isChecked()
+        if enabled:
+            self._image_tools["image_editor.select"].setChecked(False)
+        self._preview.set_brushing(enabled)
+        if enabled:
+            self._status.setText(_t("image_editor.brush_hint") if self._image is not None
+                                 else _t("image_editor.empty"))
+
+    def _set_brush_size(self, value):
+        self._preview.brush_size = value
+
+    def _update_brush_swatch(self):
+        name = f"{_t('image_editor.brush_color')}: {self._brush_color.name()}"
+        self._brush_swatch.setAccessibleName(name)
+        self._brush_swatch.setToolTip(name)
+        self._brush_swatch.setStyleSheet(f"background: {self._brush_color.name()}; border: 1px solid #8d9aaa;")
+
+    def _choose_brush_color(self):
+        color = QColorDialog.getColor(self._brush_color, self, _t("image_editor.brush_color"))
+        if color.isValid():
+            self._brush_color = color
+            self._preview.brush_color = color
+            self._update_brush_swatch()
+
+    def _apply_brush_stroke(self, points):
+        if self._image is None or not points:
+            return
+        # Paint a detached image underneath text layers. Undo keeps the exact
+        # previous image and layers; neither save nor flatten is implicit.
+        image = self._image.convertToFormat(QImage.Format.Format_ARGB32).copy()
+        if image.isNull():
+            self._status.setText(_t("image_editor.brush_error"))
+            return
+        painter = QPainter(image)
+        if not painter.isActive():
+            self._status.setText(_t("image_editor.brush_error"))
+            return
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(QPen(self._brush_color, self._brush_size.value(), Qt.PenStyle.SolidLine,
+                            Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+        if len(points) == 1:
+            painter.drawPoint(QPointF(*points[0]))
+        else:
+            path = QPainterPath(QPointF(*points[0]))
+            for point in points[1:]:
+                path.lineTo(QPointF(*point))
+            painter.drawPath(path)
+        painter.end()
+        self._snapshot()
+        self._image = image
+        self._dirty = True
+        self._status.setText(_t("image_editor.unsaved"))
+        self._render()
 
     def _selection_changed(self, selection):
         self._status.setText(_t("image_editor.selected", width=selection[2], height=selection[3]))
