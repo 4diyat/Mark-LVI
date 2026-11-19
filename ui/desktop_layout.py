@@ -115,7 +115,7 @@ def build_conversation(window, log_cls, drop_cls):
     window._file_heading = _label(_t("desktop.files"), 8, bold=True)
     layout.addWidget(window._file_heading)
     window._file_heading.hide()
-    window._attachment_toggle = QPushButton("＋")
+    window._attachment_toggle = QPushButton("+")
     window._attachment_toggle.setCheckable(True)
     window._attachment_toggle.setFixedSize(30, 30)
     window._attachment_toggle.setToolTip(_t("desktop.attach"))

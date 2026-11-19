@@ -4984,7 +4984,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         self._input.returnPressed.connect(self._send)
         row.addWidget(self._input)
 
-        send = QPushButton("➤")
+        send = QPushButton(">")
         self._send_btn = send
         send.setToolTip(_t("desktop.send"))
         send.setAccessibleName(_t("desktop.send"))
