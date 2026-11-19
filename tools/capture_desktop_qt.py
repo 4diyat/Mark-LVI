@@ -23,7 +23,6 @@ def main():
         home = Path(tmp)
         for name in ('Projects', 'Documents', 'Downloads', 'Desktop'):
             (home / name).mkdir()
-        (home / 'readme.txt').write_text('Synthetic desktop preview.\n', encoding='utf-8')
         config.CONFIG_DIR = Path(tmp)
         config.CONFIG_FILE = Path(tmp) / 'api_keys.json'
         MainWindow._check_config = lambda self: True
@@ -37,8 +36,11 @@ def main():
         for text in ('You: Summarize my latest project.',
                      'JARVIS: This preview uses fictional data for visual testing.'):
             window._log._enqueue(text)
-            while window._log._typing:
+            for _ in range(len(text) + 1):
                 window._log._step()
+            # _step queues _next via the event loop; advance it now rather than
+            # spinning until that queued callback is allowed to run.
+            window._log._next()
         QTest.qWait(300)
         app.processEvents()
         image = window.grab().scaledToWidth(820, Qt.TransformationMode.SmoothTransformation)
