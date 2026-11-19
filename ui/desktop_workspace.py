@@ -319,7 +319,8 @@ class FileBrowser(QWidget):
                          border: 1px solid {C.DESKTOP_BORDER}; border-radius: 6px; padding: 6px; }}
             QPushButton {{ background: transparent; color: {C.DESKTOP_TEXT}; border: none;
                            text-align: left; padding: 8px; border-radius: 6px; }}
-            QPushButton:hover {{ background: {C.DESKTOP_DOCK}; }}
+            QPushButton:hover, QPushButton:checked {{ background: {C.DESKTOP_DOCK}; }}
+            QPushButton#FileNavigation {{ text-align: center; padding: 0; font-size: 18px; }}
         """)
         root = QHBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -332,21 +333,41 @@ class FileBrowser(QWidget):
         self.favorites_heading = QLabel(_t("workspace.favorites"))
         favorites.addWidget(self.favorites_heading)
         self._favorite_buttons = []
+        self._favorite_paths = []
+        self._history = []
+        self._history_index = -1
         home = Path.home()
-        for key, folder in (("workspace.home", home), ("workspace.desktop", home / "Desktop"),
-                            ("workspace.documents", home / "Documents"), ("workspace.downloads", home / "Downloads")):
+        for key, folder, icon in (("workspace.home", home, "SP_DirHomeIcon"),
+                                  ("workspace.desktop", home / "Desktop", "SP_DesktopIcon"),
+                                  ("workspace.documents", home / "Documents", "SP_FileIcon"),
+                                  ("workspace.downloads", home / "Downloads", "SP_DirIcon")):
             button = QPushButton(_t(key))
+            button.setCheckable(True)
+            button.setIcon(self.style().standardIcon(getattr(QStyle.StandardPixmap, icon)))
+            button.setIconSize(QSize(18, 18))
             button.setEnabled(folder.is_dir())
             button.clicked.connect(lambda checked=False, target=folder: self.navigate(str(target)))
             favorites.addWidget(button)
             self._favorite_buttons.append((button, key))
+            self._favorite_paths.append((button, folder))
         favorites.addStretch(1)
         root.addWidget(sidebar)
         content = QWidget()
         layout = QVBoxLayout(content)
         layout.setContentsMargins(12, 10, 12, 10)
         header = QHBoxLayout()
-        self.up = QPushButton(_t("workspace.up"))
+        self.back = QPushButton("‹")
+        self.forward = QPushButton("›")
+        for button in (self.back, self.forward):
+            button.setObjectName("FileNavigation")
+            button.setFixedSize(26, 30)
+        self.back.clicked.connect(lambda: self._history_step(-1))
+        self.forward.clicked.connect(lambda: self._history_step(1))
+        header.addWidget(self.back)
+        header.addWidget(self.forward)
+        self.up = QPushButton("↑")
+        self.up.setObjectName("FileNavigation")
+        self.up.setFixedSize(26, 30)
         self.up.clicked.connect(self._up)
         header.addWidget(self.up)
         self.path = QLineEdit(str(home))
@@ -375,6 +396,7 @@ class FileBrowser(QWidget):
         layout.addWidget(self.status)
         root.addWidget(content, 1)
         self.navigate(str(home))
+        self.retranslate()
 
     def _set_status(self, key):
         self._status_key = key
@@ -384,7 +406,10 @@ class FileBrowser(QWidget):
         self.favorites_heading.setText(_t("workspace.favorites"))
         for button, key in self._favorite_buttons:
             button.setText(_t(key))
-        self.up.setText(_t("workspace.up"))
+        for button, key in ((self.back, "workspace.back"), (self.forward, "workspace.forward"),
+                            (self.up, "workspace.up")):
+            button.setToolTip(_t(key))
+            button.setAccessibleName(_t(key))
         self.search.setPlaceholderText(_t("workspace.search"))
         self.status.setText(_t(self._status_key))
 
@@ -394,19 +419,38 @@ class FileBrowser(QWidget):
         text = text.strip()
         self.model.setNameFilters([f"*{text}*"] if text else [])
 
-    def navigate(self, path):
+    def navigate(self, path, *, _record=True):
         target = Path(path).expanduser()
         if not target.is_dir():
             self._set_status("workspace.bad_folder")
             return False
         path = str(target.resolve())
+        if _record and (self._history_index < 0 or self._history[self._history_index] != path):
+            del self._history[self._history_index + 1:]
+            self._history.append(path)
+            self._history = self._history[-100:]
+            self._history_index = len(self._history) - 1
         self.view.setRootIndex(self.model.setRootPath(path))
         self.path.setText(path)
+        for button, folder in self._favorite_paths:
+            button.setChecked(folder.resolve() == Path(path))
+        self._sync_history()
         self._set_status("workspace.files_hint")
         return True
 
+    def _sync_history(self):
+        self.back.setEnabled(self._history_index > 0)
+        self.forward.setEnabled(self._history_index + 1 < len(self._history))
+
+    def _history_step(self, delta):
+        index = self._history_index + delta
+        if 0 <= index < len(self._history) and self.navigate(self._history[index], _record=False):
+            self._history_index = index
+            self._sync_history()
+
     def _up(self):
-        self.navigate(str(Path(self.path.text()).parent))
+        if self._history_index >= 0:
+            self.navigate(str(Path(self._history[self._history_index]).parent))
 
     def _open(self, index):
         path = self.model.filePath(index)

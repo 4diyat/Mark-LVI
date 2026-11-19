@@ -34,6 +34,26 @@ def main():
         assert chat.toPlainText() == '<'
         assert chat.textCursor().blockFormat().alignment() == Qt.AlignmentFlag.AlignRight
         chat.close()
+        # Real Qt navigation: back/forward, branch history, and a directory
+        # removed after it was visited must not move the current location.
+        from ui.desktop_workspace import FileBrowser
+        browser = FileBrowser()
+        first, second, third = (Path(tmp) / name for name in ('first', 'second', 'third'))
+        for folder in (first, second, third):
+            folder.mkdir()
+        assert browser.navigate(str(first)) and browser.navigate(str(second))
+        browser._history_step(-1)
+        assert Path(browser.path.text()) == first.resolve() and browser.forward.isEnabled()
+        browser._history_step(1)
+        assert Path(browser.path.text()) == second.resolve()
+        browser._history_step(-1)
+        assert browser.navigate(str(third)) and not browser.forward.isEnabled()
+        third.rmdir()
+        browser._history_step(-1)
+        assert Path(browser.path.text()) == first.resolve()
+        browser._history_step(1)
+        assert Path(browser.path.text()) == first.resolve() and browser.forward.isEnabled()
+        browser.close()
         window = MainWindow("")
         window.resize(1366, 768)
         window.show()
