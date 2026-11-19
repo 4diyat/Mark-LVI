@@ -407,3 +407,11 @@ tab baru, penolakan penutupan draft (jawaban konfirmasi disimulasikan), drag
 seleksi, rotasi gambar dan undo. Ini tidak menguji dialog persetujuan atau menu
 popup yang nyata; tidak ada file pengguna, kode yang dijalankan, atau input OS.
 Rotasi jendela workspace dan kontrol dua tangan tetap belum terintegrasi.
+
+Eksperimen popup dan dialog sintetis terpisah berada di
+`tools/check_rotation_popups_qt.py`. Tes ini terbatas pada menu Qt dan dialog
+Ya/Tidak, bukan dialog persetujuan JARVIS yang sesungguhnya. Pada pengujian
+pertama, interaksi popup tertunda sehingga tes harus menunggu event Qt. Pada
+rerun berikutnya instalasi pustaka sistem Linux CI gagal sebelum eksperimen
+dijalankan; hasil popup perlu dikonfirmasi kembali, dan belum menjadi dasar
+untuk mengintegrasikan rotasi ke workspace.
