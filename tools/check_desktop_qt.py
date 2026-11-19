@@ -128,14 +128,16 @@ def main():
         window._input.setFocus()
         app.processEvents()
         assert QApplication.focusWidget() is window._input
+        edit_debug = []
         def choose_select_all():
-            assert QApplication.activePopupWidget() is edit_menu
+            edit_debug.append((repr(QApplication.focusWidget()), repr(window._desktop_focus_tracker.target),
+                               edit_menu.actions()[-1].isEnabled(), QApplication.activePopupWidget() is edit_menu))
             edit_menu.actions()[-1].trigger()
             edit_menu.close()
         QTimer.singleShot(50, choose_select_all)
         QTimer.singleShot(500, edit_menu.close)
         QTest.mouseClick(edit_button, Qt.MouseButton.LeftButton)
-        assert window._input.selectedText() == 'edit menu test'
+        assert window._input.selectedText() == 'edit menu test', (edit_debug, repr(window._input))
         window._input.clear()
         # Activation is discoverable in Apps -> Controls and needs no external
         # server, installation directory, or camera in this smoke test.
