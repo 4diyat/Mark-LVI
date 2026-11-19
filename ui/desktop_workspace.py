@@ -84,13 +84,17 @@ class WorkspaceAvatar(QWidget):
         painter.setBrush(QBrush(aura))
         painter.drawEllipse(QRectF(cx - radius * 1.7, cy - radius * 1.7, radius * 3.4, radius * 3.4))
         color = qcol(C.MUTED_C if self.hud.muted else C.PRI)
+        # A brighter projection improves facial features on the dark desktop;
+        # preserve the user's hue and the distinct muted state.
+        if not self.hud.muted:
+            color = color.lighter(135)
         avatar.paint(painter, cx, cy, radius, color, color, qcol(C.DESKTOP_BAR))
         bottom = min(height - 58, cy + (avatar.SPAN - 1) * radius + 5)
         painter.setPen(qcol(C.DESKTOP_TEXT))
-        painter.setFont(QFont("Courier New", 14, QFont.Weight.Bold))
+        painter.setFont(QFont("Arial", 19, QFont.Weight.Bold))
         painter.drawText(QRectF(0, bottom, width, 28), Qt.AlignmentFlag.AlignCenter,
                          (self.hud._assistant_name or 'JARVIS').upper())
-        painter.setFont(QFont("Courier New", 9, QFont.Weight.Bold))
+        painter.setFont(QFont("Arial", 10, QFont.Weight.Normal))
         painter.setPen(qcol(C.MUTED_C if self.hud.muted else C.PRI))
         painter.drawText(QRectF(0, bottom + 29, width, 24), Qt.AlignmentFlag.AlignCenter,
                          state_label('MUTED' if self.hud.muted else self.hud.state))
@@ -136,7 +140,15 @@ class WallpaperArea(QMdiArea):
             stage = self._avatar_stage
             face = bool(stage is not None and stage.hud.hud_style == 'face' and stage.hud._avatar is not None)
             self._emblem.setVisible(wide and not face)
-            geometry = (max(0, (width - 260) // 2), max(0, int(height * .20)), 260, min(300, height))
+            # The stage fits in the breathing room between the initial Files
+            # and Assistant windows and stays clear of the dock on short screens.
+            files, assistant = initial_window_geometry(width, height)
+            gap_left, gap_right = files[0] + files[2], assistant[0]
+            stage_width = max(1, min(320, gap_right - gap_left - 20))
+            stage_top = max(0, int(height * .18))
+            stage_height = max(1, min(350, height - stage_top - 90))
+            geometry = (gap_left + (gap_right - gap_left - stage_width) // 2,
+                        stage_top, stage_width, stage_height)
             self._emblem.setGeometry(*geometry)
             if stage is not None:
                 stage.setGeometry(*geometry)

@@ -186,6 +186,12 @@ def main():
         assert window.hud.hud_style == "face"
         assert window.hud._avatar is not None
         assert mdi._avatar_stage.isVisible() and not mdi._emblem.isVisible()
+        face_geometry = mdi._avatar_stage.geometry()
+        files_geometry = window._desktop_windows["files"].geometry()
+        assistant_geometry = window._desktop_windows["assistant"].geometry()
+        assert files_geometry.right() < face_geometry.left()
+        assert face_geometry.right() < assistant_geometry.left()
+        assert face_geometry.bottom() < dock.geometry().top()
         assert window._hud_cam_stack.isHidden() and window._center_split.isHidden()
         assert window._suggestions_card.isVisible()
         assert all(button.isVisible() for button, _ in window._suggestion_buttons)
