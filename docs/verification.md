@@ -60,11 +60,16 @@ interaktif belum tersedia.
 
 Mockup acuan: `design/jarvis-desktop-visual-revisi.png`. Implementasi memakai
 wallpaper biru-grafit, palet bersama untuk panel workspace, emblem JARVIS
-ornamental, file di kiri dan percakapan di kanan pada layar lebar. Pada layar
-kecil emblem disembunyikan agar ruang tetap untuk aplikasi. Badge kontrol tangan
-hanya muncul saat controller benar-benar mulai atau aktif; bukan gambar status
-kamera statis. Emblem di desktop bersifat dekoratif; HUD dalam panel asisten
-masih menjadi sumber status JARVIS. Saat kamera kontrol tangan mulai atau aktif,
+ornamental, file di kiri dan percakapan di kanan pada layar lebar. Editor kode
+kosong dibuka di bawah Files pada layar lebar setelah registry siap, hanya jika
+plugin editor valid dan aktif; pada layar sempit editor tidak dibuka otomatis.
+Menu desktop menghubungkan aksi nyata dan Files memiliki riwayat navigasi.
+Pada layar kecil emblem disembunyikan agar ruang tetap untuk aplikasi. Badge
+kontrol tangan hanya muncul saat controller benar-benar mulai atau aktif; bukan
+gambar status kamera statis. Wajah tengah menggunakan instance dan status HUD
+yang sama; pada layar lebar panel HUD yang duplikat disembunyikan saat mode
+wajah aktif, sedangkan hasil, kuis, dan audio dapat muncul saat diperlukan.
+Mode orb/core dan layar sempit tetap menampilkan HUD panel. Saat kamera kontrol tangan mulai atau aktif,
 panel di kanan atas menampilkan status controller dan tombol berhenti; penunjuk
 berubah saat mencubit dan garis hanya muncul saat transformasi dua tangan sedang
 berlangsung. Panel disembunyikan saat modal, konfirmasi atau aplikasi tidak fokus.
@@ -258,8 +263,8 @@ pemulihan pada Windows/webcam nyata belum diverifikasi.
 
 ### Panel Asisten dan claw
 
-Panel memiliki penanda asisten dan tombol saran yang mengisi draft kosong tanpa
-mengirim otomatis atau menimpa teks yang belum dikirim. Pesan pengguna dan
+Panel memiliki penanda asisten dan kartu tombol saran yang mengisi draft kosong
+tanpa mengirim otomatis atau menimpa teks yang belum dikirim. Pesan pengguna dan
 asisten memakai blok berwarna dan alignment berbeda tanpa menafsirkan isi
 sebagai HTML. Blok belum memiliki sudut membulat dan keseluruhan tata letaknya
 belum direplikasi persis dari mockup. Gesture claw memakai
