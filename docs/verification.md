@@ -425,3 +425,9 @@ Kebijakan `rotation_allowed` menolak browser, dialog, dan jenis tidak dikenal;
 kebijakan ini baru fondasi yang diuji, **belum dihubungkan** ke workspace yang
 berputar. Integrasi kelak harus menerapkannya dengan identifikasi target tepercaya,
 tanpa mengubah aturan keamanan, izin atau penyimpanan kredensial browser.
+
+Layer teks pada editor gambar ditampilkan dari depan ke belakang; tombol
+naik/turun mengubah urutan komposisi dan dapat di-undo tanpa menyimpan atau
+meratakan layer. Background tetap selalu terlihat. Tes logika dan Qt offscreen
+memeriksa urutan, kondisi batas, visibilitas, penghapusan dan undo; ini belum
+mengubah format penyimpanan: Save as tetap mengekspor gambar yang diratakan.

@@ -423,6 +423,8 @@
   "video_control.pause": "Jeda",
   "video_control.play": "Putar",
   "workspace.camera": "Kamera",
+  "image_editor.layer_up": "Naikkan",
+  "image_editor.layer_down": "Turunkan",
   "image_editor.layers": "Lapisan",
   "image_editor.background": "Latar (selalu terlihat)",
   "image_editor.add_text": "Tambah lapisan teks",

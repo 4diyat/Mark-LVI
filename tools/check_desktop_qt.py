@@ -265,6 +265,44 @@ def main():
         assert image._brush_size.value() == 4 and image._brush_color.name() == '#00ff00'
         assert image._preview.selecting and not image._preview.brushing
         assert not image._image_tools['image_editor.brush'].isChecked()
+        # Topmost text layer is shown first; moving it affects composition
+        # order without flattening and undo restores the exact layer sequence.
+        middle = make_text_layer('middle', 0, 10, 8, 40, 20)
+        top = make_text_layer('top', 0, 10, 8, 40, 20)
+        image._layers = [layer, middle, top]
+        image._update_layers()
+        assert [image._layer_list.item(i).text() for i in range(3)] == ['top', 'middle', 'sample']
+        assert not image._layer_up.isEnabled() and not image._layer_down.isEnabled()
+        class LayerPaintSpy:
+            def __init__(self):
+                self.order = []
+            def setPen(self, _color):
+                pass
+            def setFont(self, _font):
+                pass
+            def drawText(self, _x, _y, text):
+                self.order.append(text)
+        image._layer_list.setCurrentRow(1)
+        assert image._layer_up.isEnabled() and image._layer_down.isEnabled()
+        image._layer_up.click()
+        assert image._layers == [layer, top, middle] and image._layer_list.currentRow() == 0
+        spy = LayerPaintSpy()
+        image._paint_layers(spy)
+        assert spy.order == ['sample', 'top', 'middle']
+        assert image._dirty and not image._layer_up.isEnabled()
+        image._file_tools['image_editor.undo'].click()
+        assert image._layers == [layer, middle, top]
+        image._layer_list.setCurrentRow(2)
+        assert not image._layer_down.isEnabled() and image._layer_up.isEnabled()
+        image._layer_list.item(0).setCheckState(Qt.CheckState.Unchecked)
+        assert not image._layers[2].visible and image._layers[0].visible
+        image._file_tools['image_editor.undo'].click()
+        assert image._layers == [layer, middle, top]
+        image._layer_list.setCurrentRow(1)
+        image._layer_remove.click()
+        assert image._layers == [layer, top]
+        image._file_tools['image_editor.undo'].click()
+        assert image._layers == [layer, middle, top]
         image._layers = []
         image._update_layers()
         image._dirty = False
@@ -358,6 +396,8 @@ def main():
         assert image._zoom.toolTip() == translate("image_editor.zoom_hint")
         assert image._brush_size.accessibleName() == translate("image_editor.brush_size")
         assert image._brush_swatch.accessibleName().startswith(translate("image_editor.brush_color"))
+        assert image._layer_up.text() == translate("image_editor.layer_up")
+        assert image._layer_down.text() == translate("image_editor.layer_down")
         assert all(button.toolTip() == button.accessibleName() == translate(key)
                    for key, button in image._image_tools.items())
         assert all(button.text() == translate(key) for key, button in image._file_tools.items())

@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (QColorDialog, QDialog, QDialogButtonBox, QFileDialo
 
 from core.i18n import label as _t
 from core.image_geometry import preview_size, valid_crop
-from core.image_layers import make_text_layer, set_visible
+from core.image_layers import layer_index_from_row, make_text_layer, move_layer, set_visible
 from ui.theme import workspace_stylesheet
 from ui.localization import TranslationBindings
 from ui.image_tool_icons import image_tool_icon
@@ -151,10 +151,20 @@ class ImageEditor(QDialog):
         self._layer_list = QListWidget()
         self._layer_list.setAccessibleName(_t("image_editor.layers"))
         self._layer_list.itemChanged.connect(self._toggle_layer)
+        self._layer_list.currentRowChanged.connect(self._update_layer_actions)
         layers_layout.addWidget(self._layer_list, 1)
-        remove = self._translations.text(QPushButton(), "image_editor.remove_layer")
-        remove.clicked.connect(self.remove_layer)
-        layers_layout.addWidget(remove)
+        order = QHBoxLayout()
+        self._layer_up = self._translations.text(QPushButton(), "image_editor.layer_up")
+        self._layer_down = self._translations.text(QPushButton(), "image_editor.layer_down")
+        self._layer_up.clicked.connect(lambda: self._move_layer(-1))
+        self._layer_down.clicked.connect(lambda: self._move_layer(1))
+        order.addWidget(self._layer_up)
+        order.addWidget(self._layer_down)
+        layers_layout.addLayout(order)
+        self._layer_remove = self._translations.text(QPushButton(), "image_editor.remove_layer")
+        self._layer_remove.clicked.connect(self.remove_layer)
+        layers_layout.addWidget(self._layer_remove)
+        self._update_layer_actions()
         workspace.addWidget(layers_panel)
         layout.addLayout(workspace, 1)
         self._zoom.valueChanged.connect(self._zoom_changed)
@@ -398,17 +408,41 @@ class ImageEditor(QDialog):
         painter.end()
         return result
 
-    def _update_layers(self):
+    def _update_layers(self, selected_row=None):
         self._layer_list.blockSignals(True)
         try:
             self._layer_list.clear()
-            for layer in self._layers:
+            # List top-to-bottom matches visual stacking; composition paints
+            # bottom-to-top, so the last model layer is displayed first.
+            for layer in reversed(self._layers):
                 item = QListWidgetItem(layer.text[:60])
                 item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
                 item.setCheckState(Qt.CheckState.Checked if layer.visible else Qt.CheckState.Unchecked)
                 self._layer_list.addItem(item)
+            if selected_row is not None and 0 <= selected_row < len(self._layers):
+                self._layer_list.setCurrentRow(selected_row)
         finally:
             self._layer_list.blockSignals(False)
+        self._update_layer_actions()
+
+    def _update_layer_actions(self, *_args):
+        row = self._layer_list.currentRow()
+        selected = layer_index_from_row(len(self._layers), row) is not None
+        self._layer_up.setEnabled(selected and row > 0)
+        self._layer_down.setEnabled(selected and row < len(self._layers) - 1)
+        self._layer_remove.setEnabled(selected)
+
+    def _move_layer(self, direction):
+        result = move_layer(self._layers, self._layer_list.currentRow(), direction)
+        if result is None:
+            return
+        layers, selected_row = result
+        self._snapshot()
+        self._layers = layers
+        self._dirty = True
+        self._update_layers(selected_row)
+        self._status.setText(_t("image_editor.unsaved"))
+        self._render()
 
     def add_text(self, initial=""):
         if self._image is None:
@@ -446,31 +480,32 @@ class ImageEditor(QDialog):
         self._snapshot()
         self._layers.append(layer)
         self._dirty = True
-        self._update_layers()
+        self._update_layers(selected_row=0)
         self._status.setText(_t("image_editor.unsaved"))
         self._render()
 
     def _toggle_layer(self, item):
-        row = self._layer_list.row(item)
-        if not 0 <= row < len(self._layers):
+        index = layer_index_from_row(len(self._layers), self._layer_list.row(item))
+        if index is None:
             return
         visible = item.checkState() == Qt.CheckState.Checked
-        if self._layers[row].visible == visible:
+        if self._layers[index].visible == visible:
             return
         self._snapshot()
-        self._layers[row] = set_visible(self._layers[row], visible)
+        self._layers[index] = set_visible(self._layers[index], visible)
         self._dirty = True
         self._status.setText(_t("image_editor.unsaved"))
         self._render()
 
     def remove_layer(self):
         row = self._layer_list.currentRow()
-        if not 0 <= row < len(self._layers):
+        index = layer_index_from_row(len(self._layers), row)
+        if index is None:
             return
         self._snapshot()
-        del self._layers[row]
+        del self._layers[index]
         self._dirty = True
-        self._update_layers()
+        self._update_layers(selected_row=min(row, len(self._layers) - 1))
         self._status.setText(_t("image_editor.unsaved"))
         self._render()
 

@@ -423,6 +423,8 @@
   "video_control.pause": "Pause",
   "video_control.play": "Play",
   "workspace.camera": "Camera",
+  "image_editor.layer_up": "Move up",
+  "image_editor.layer_down": "Move down",
   "image_editor.layers": "Layers",
   "image_editor.background": "Background (always visible)",
   "image_editor.add_text": "Add text layer",

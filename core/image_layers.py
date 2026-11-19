@@ -23,3 +23,28 @@ def make_text_layer(text, x, y, size, width, height):
 
 def set_visible(layer, visible):
     return replace(layer, visible=bool(visible))
+
+
+def layer_index_from_row(count, row):
+    """The top row is the last layer painted; invalid rows select nothing."""
+    if type(count) is not int or type(row) is not int or count < 0 or not 0 <= row < count:
+        return None
+    return count - row - 1
+
+
+def move_layer(layers, row, direction):
+    """Return reordered bottom-to-top layers and the new row, or None.
+
+    Direction is -1 for up in the UI (toward the front), +1 for down.
+    The input is not mutated. Identical layer values still retain their slots.
+    """
+    count = len(layers)
+    index = layer_index_from_row(count, row)
+    if index is None or type(direction) is not int or direction not in (-1, 1):
+        return None
+    destination = index - direction
+    if not 0 <= destination < count:
+        return None
+    result = list(layers)
+    result[index], result[destination] = result[destination], result[index]
+    return result, row + direction
