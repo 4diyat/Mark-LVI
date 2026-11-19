@@ -2,11 +2,13 @@
 import base64
 import os
 import tempfile
+import time
 from pathlib import Path
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from PyQt6.QtCore import QBuffer, QByteArray, QIODevice, Qt  # noqa: E402
+from PyQt6.QtGui import QColor, QImage, QPainter  # noqa: E402
 from PyQt6.QtTest import QTest  # noqa: E402
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
@@ -61,6 +63,21 @@ def main():
             raise RuntimeError(f'Screenshot too large: {len(parts)} chunks')
         for i, part in enumerate(parts):
             print(f'::notice title=Desktop capture {i + 1} of {len(parts)}::{part}', flush=True)
+        # Report actual software-render cost; a visual improvement must not
+        # silently consume an entire frame budget on the CI runner.
+        avatar = window.hud._avatar
+        canvas = QImage(300, 300, QImage.Format.Format_ARGB32_Premultiplied)
+        bg, primary = QColor('#0b1725'), QColor('#8fd3ff')
+        elapsed = []
+        for _ in range(8):
+            canvas.fill(bg)
+            painter = QPainter(canvas)
+            start = time.perf_counter()
+            avatar.paint(painter, 150, 120, 90, primary, primary, bg, wireframe=False)
+            painter.end()
+            elapsed.append((time.perf_counter() - start) * 1000)
+        print(f'::notice title=Desktop face render::Mean {sum(elapsed[1:]) / 7:.1f} ms '
+              f'(7 warm frames, offscreen synthetic test)', flush=True)
         window._hand_timer.stop()
 
 
