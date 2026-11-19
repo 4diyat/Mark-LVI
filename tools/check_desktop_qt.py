@@ -137,6 +137,7 @@ def main():
         QTimer.singleShot(50, choose_select_all)
         QTimer.singleShot(500, edit_menu.close)
         QTest.mouseClick(edit_button, Qt.MouseButton.LeftButton)
+        QTest.qWait(100)  # InstantPopup can return before its queued menu action.
         assert window._input.selectedText() == 'edit menu test', (edit_debug, repr(window._input))
         window._input.clear()
         # Activation is discoverable in Apps -> Controls and needs no external
