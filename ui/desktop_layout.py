@@ -4,7 +4,7 @@ This module only builds widgets on the Qt thread. Audio, file drops, plugin
 consent and action confirmation remain owned by MainWindow and their existing
 signals; rearranging them must not create another session or another log.
 """
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QObject, Qt
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (QApplication, QHBoxLayout, QLabel, QLineEdit, QMenu,
                              QPlainTextEdit, QPushButton, QSizePolicy, QTextEdit, QToolButton,
@@ -12,6 +12,22 @@ from PyQt6.QtWidgets import (QApplication, QHBoxLayout, QLabel, QLineEdit, QMenu
 
 from core.i18n import label as _t
 from ui.theme import C, workspace_stylesheet
+
+
+class _EditFocusTracker(QObject):
+    """Keep the last text focus only while its Edit menu takes focus."""
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.target = None
+        self.button = None
+        self.menu = None
+
+    def changed(self, old, new):
+        del old
+        if isinstance(new, (QLineEdit, QPlainTextEdit, QTextEdit)):
+            self.target = new
+        elif new is not None and new is not self.button and new is not self.menu:
+            self.target = None
 
 
 def _label(text, size=9, *, bold=False, color=None):
@@ -243,6 +259,8 @@ def build_menu_bar(window):
     row.addWidget(window._sub_lbl)
     window._desktop_menu_labels = []
     window._desktop_menus = {}
+    window._desktop_focus_tracker = _EditFocusTracker(window)
+    QApplication.instance().focusChanged.connect(window._desktop_focus_tracker.changed)
 
     def workspace_action(action, target):
         from ui.workspace_commands import execute
@@ -251,21 +269,19 @@ def build_menu_bar(window):
             window.write_log("SYS: " + result.get("message", ""))
 
     def edit_action(method):
-        widget = getattr(window, "_desktop_edit_target", None)
+        widget = window._desktop_focus_tracker.target
         try:
             if isinstance(widget, (QLineEdit, QPlainTextEdit, QTextEdit)):
                 getattr(widget, method)()
         except RuntimeError:
             pass  # The focused document was closed after the menu opened.
 
-    def capture_edit_target():
-        # The tool button receives the press before the popup steals focus.
-        widget = QApplication.focusWidget()
-        window._desktop_edit_target = widget if isinstance(widget, (QLineEdit, QPlainTextEdit, QTextEdit)) else None
-
     def update_edit_actions():
+        widget = QApplication.focusWidget()
+        if isinstance(widget, (QLineEdit, QPlainTextEdit, QTextEdit)):
+            window._desktop_focus_tracker.target = widget
         for action in window._desktop_edit_actions:
-            action.setEnabled(window._desktop_edit_target is not None)
+            action.setEnabled(window._desktop_focus_tracker.target is not None)
 
     def help_action():
         window._show_content(_t("desktop.menu_help"), _t("desktop.menu_help_content"))
@@ -303,7 +319,8 @@ def build_menu_bar(window):
             actions.append(action)
         if key == "desktop.menu_edit":
             window._desktop_edit_actions = actions
-            button.pressed.connect(capture_edit_target)
+            window._desktop_focus_tracker.button = button
+            window._desktop_focus_tracker.menu = menu
             menu.aboutToShow.connect(update_edit_actions)
         window._desktop_menus[key] = (button, menu)
         window._desktop_menu_labels.append((button, key))
