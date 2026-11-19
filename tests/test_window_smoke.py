@@ -1606,6 +1606,9 @@ def test_conversation_formats_messages_as_plain_selectable_blocks(window_module,
     assert formats[0]['left'] == formats[1]['right'] == 130
     assert module.LogWidget._bubble_margin(140) == 0
     assert module.LogWidget._bubble_margin(300) == 90
+    assert module.LogWidget._bubble_margins(200, 'you') == (60, 18)
+    assert module.LogWidget._bubble_margins(400, 'you') == (130, 48)
+    assert module.LogWidget._bubble_margins(400, 'ai') == (48, 130)
 
 
 def test_claw_changes_only_active_model_slider_and_loss_cancels(window, monkeypatch):

@@ -50,6 +50,8 @@ def main():
         # The centre of the top edge is coloured, its rounded corner is not.
         assert pixel(rect.center().x(), rect.top() + 2) == '#1c3a59'
         assert pixel(rect.left() + 1, rect.top() + 1) != '#1c3a59'
+        # The role marker is outside the selectable user bubble.
+        assert pixel(rect.right() + 18, rect.top() + 17) == '#bdcee1'
         before = chat.document().firstBlock().blockFormat().leftMargin()
         chat.selectAll()
         chat.resize(600, 220)
@@ -78,6 +80,11 @@ def main():
         app.processEvents()
         bottom_bubbles = chat._bubble_rects()
         assert len(bottom_bubbles) > 1 and all(side == 'ai' for _, side in bottom_bubbles)
+        ai_rect = next(rect for rect, _side in bottom_bubbles if rect.top() >= 0 and rect.top() + 25 < chat.viewport().height())
+        ai_image = chat.viewport().grab().toImage()
+        ai_scale = ai_image.devicePixelRatio()
+        assert ai_image.pixelColor(round((ai_rect.left() - 18) * ai_scale),
+                                   round((ai_rect.top() + 13) * ai_scale)).name() == '#123251'
         assert 'JARVIS: message 34' in chat.toPlainText()
         selection = QTextCursor(chat.document())
         selection.setPosition(0)

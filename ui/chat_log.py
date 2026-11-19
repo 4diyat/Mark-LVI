@@ -1,6 +1,6 @@
 """Selectable, bounded assistant conversation on the Qt main thread."""
 from PyQt6.QtCore import QRectF, QTimer, Qt, pyqtSignal
-from PyQt6.QtGui import QBrush, QColor, QFont, QPainter, QTextBlockFormat, QTextCursor
+from PyQt6.QtGui import QBrush, QColor, QFont, QPainter, QRadialGradient, QTextBlockFormat, QTextCursor
 from PyQt6.QtWidgets import QTextEdit
 
 from ui.theme import C, qcol
@@ -18,20 +18,29 @@ class LogWidget(QTextEdit):
     def _bubble_margin(width):
         return max(0, min(round(width * .30), width - 150))
 
+    @classmethod
+    def _bubble_margins(cls, width, side):
+        margin = cls._bubble_margin(width)
+        # Reserve room for role markers only when the panel has enough width;
+        # narrow windows retain the text area instead.
+        near = 38 if width >= 280 else 8
+        pad = cls._bubble_padding
+        return ((margin + pad, near + pad) if side == 'you'
+                else (near + pad, margin + pad))
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
         if getattr(self, '_reflowing_bubbles', False):
             return
         self._reflowing_bubbles = True
         try:
-            margin = self._bubble_margin(self.viewport().width())
+            width = self.viewport().width()
             block = self.document().begin()
             while block.isValid():
                 fmt = block.blockFormat()
                 side = fmt.property(self._bubble_property)
                 if side in ('you', 'ai'):
-                    pad = self._bubble_padding
-                    left, right = (margin + pad, 8 + pad) if side == 'you' else (8 + pad, margin + pad)
+                    left, right = self._bubble_margins(width, side)
                     if fmt.leftMargin() != left or fmt.rightMargin() != right:
                         fmt.setLeftMargin(left)
                         fmt.setRightMargin(right)
@@ -80,6 +89,26 @@ class LogWidget(QTextEdit):
         for rect, side in self._bubble_rects():
             painter.setBrush(QColor("#1c3a59" if side == "you" else "#192d41"))
             painter.drawRoundedRect(rect, 9, 9)
+            if self.viewport().width() >= 280:
+                # Non-interactive role markers are painted outside the text
+                # document: copying, selection and streaming stay unchanged.
+                x = rect.right() + 6 if side == "you" else rect.left() - 30
+                icon = QRectF(x, rect.top() + 1, 24, 24)
+                if side == "ai":
+                    gradient = QRadialGradient(icon.center(), 12)
+                    gradient.setColorAt(0, QColor("#164c83"))
+                    gradient.setColorAt(.65, QColor("#127dd1"))
+                    gradient.setColorAt(1, QColor("#7adfff"))
+                    painter.setBrush(gradient)
+                    painter.drawEllipse(icon)
+                    painter.setBrush(QColor("#123251"))
+                    painter.drawEllipse(icon.adjusted(5, 5, -5, -5))
+                else:
+                    painter.setBrush(QColor("#344d67"))
+                    painter.drawEllipse(icon)
+                    painter.setBrush(QColor("#bdcee1"))
+                    painter.drawEllipse(QRectF(x + 8, icon.top() + 4, 8, 8))
+                    painter.drawRoundedRect(QRectF(x + 5, icon.top() + 14, 14, 7), 4, 4)
         painter.end()
         # Let Qt draw the actual selectable document and selection on top.
         super().paintEvent(event)
@@ -166,10 +195,9 @@ class LogWidget(QTextEdit):
                 if self._tag in ("you", "ai"):
                     block.setAlignment(Qt.AlignmentFlag.AlignRight if self._tag == "you"
                                        else Qt.AlignmentFlag.AlignLeft)
-                    margin = self._bubble_margin(self.viewport().width())
-                    pad = self._bubble_padding
-                    block.setLeftMargin((margin if self._tag == "you" else 8) + pad)
-                    block.setRightMargin((8 if self._tag == "you" else margin) + pad)
+                    left, right = self._bubble_margins(self.viewport().width(), self._tag)
+                    block.setLeftMargin(left)
+                    block.setRightMargin(right)
                     self._bubble_sequence += 1
                     block.setProperty(self._bubble_property, self._tag)
                     block.setProperty(self._message_property, self._bubble_sequence)

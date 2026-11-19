@@ -470,3 +470,10 @@ baris lebih mudah dibaca, dan thumbnail background aktual di bawah layer teks
 berfungsi; background tetap selalu terlihat. Ini masih penyelarasan bertahap,
 bukan kesesuaian visual penuh dengan desain. Gambar CI sintetis tidak
 membuktikan hasil pada monitor/DPI atau perangkat pengguna.
+
+Panel percakapan disesuaikan lagi dengan konsep asisten: penanda visual
+pengguna dan JARVIS digambar di luar bubble, tanpa menambahkan teks atau aksi
+palsu. Pada panel sempit penanda disembunyikan agar ruang teks tetap tersedia;
+seleksi, penyalinan, streaming dan scroll tetap memakai dokumen Qt asli.
+Penanda ini bersifat ilustratif, bukan indikator koneksi atau status layanan.
+Belum menyamai seluruh detail, proporsi, font atau ikon pada mockup.
