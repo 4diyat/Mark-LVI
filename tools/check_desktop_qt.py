@@ -142,6 +142,17 @@ def main():
         assert dock.parentWidget() is mdi.viewport()
         assert 500 <= dock.width() <= mdi.viewport().width()
         assert all(button.isVisible() for button, _ in window._workspace_dock)
+        for button, key in window._workspace_dock:
+            assert button.toolButtonStyle() == Qt.ToolButtonStyle.ToolButtonIconOnly
+            assert button.accessibleName() == button.toolTip() == translate(key)
+            assert button.focusPolicy() == Qt.FocusPolicy.StrongFocus
+        from ui.desktop_workspace import retranslate as retranslate_workspace
+        set_locale("id")
+        retranslate_workspace(window)
+        assert all(button.accessibleName() == button.toolTip() == translate(key)
+                   for button, key in window._workspace_dock)
+        set_locale(previous_locale)
+        retranslate_workspace(window)
         # The mockup's menu labels are functional controls, not decorative text.
         assert len(window._desktop_menus) == 5
         edit_button, edit_menu = window._desktop_menus['desktop.menu_edit']

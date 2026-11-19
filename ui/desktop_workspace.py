@@ -598,6 +598,7 @@ def build(window):
         QToolButton#DockButton {{ color: {C.DESKTOP_TEXT}; background: transparent;
             border: none; border-radius: 8px; padding: 4px; }}
         QToolButton#DockButton:hover {{ background: {C.DESKTOP_SIDEBAR}; }}
+        QToolButton#DockButton:focus {{ border: 1px solid #69c8f4; }}
     """)
     layout = QVBoxLayout(shell)
     layout.setContentsMargins(0, 0, 0, 0)
@@ -741,8 +742,10 @@ def build(window):
         button = QToolButton()
         button.setText(_t(key))
         button.setToolTip(_t(key))
+        button.setAccessibleName(_t(key))
         button.setObjectName("DockButton")
-        button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
+        button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         button.setIcon(dock_icon(window.style(), icon, color))
         button.setIconSize(QSize(44, 44))
         button.setMinimumWidth(64)
@@ -794,6 +797,7 @@ def retranslate(window):
     for button, key in getattr(window, "_workspace_dock", ()):
         button.setText(_t(key))
         button.setToolTip(_t(key))
+        button.setAccessibleName(_t(key))
     for action, key in getattr(window, "_workspace_dock_actions", ()):
         action.setText(_t(key))
     for name, key in (("assistant", "workspace.assistant"),
