@@ -94,3 +94,24 @@ def bounded_flick(position, delta, viewport):
                 round(max(0, min(max(0, height - 33), y + dy))))
     except (TypeError, ValueError, OverflowError):
         return None
+
+
+def hand_rotation_delta(initial_hands, current_hands):
+    """Signed screen-space angle change in degrees, normalized to [-180, 180).
+
+    Hand identity/order must already be stable. Both hand separations must be
+    large enough to avoid unstable angles. This computes geometry only; it
+    does not rotate windows or synthesize any input.
+    """
+    try:
+        (x1, y1), (x2, y2) = initial_hands
+        (u1, v1), (u2, v2) = current_hands
+        if not all(math.isfinite(v) for v in (x1, y1, x2, y2, u1, v1, u2, v2)):
+            return None
+        if math.hypot(x2 - x1, y2 - y1) < 40 or math.hypot(u2 - u1, v2 - v1) < 40:
+            return None
+        before = math.atan2(y2 - y1, x2 - x1)
+        after = math.atan2(v2 - v1, u2 - u1)
+        return (math.degrees(after - before) + 180) % 360 - 180
+    except (TypeError, ValueError, OverflowError):
+        return None

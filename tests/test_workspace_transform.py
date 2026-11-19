@@ -66,3 +66,16 @@ def test_flick_rejects_slow_stale_invalid_or_reversed_samples():
     tracker.add((100, 0), 1)
     assert tracker.displacement(1) is None
     assert bounded_flick((0, 0), (math.inf, 1), (1000, 800)) is None
+
+
+def test_hand_rotation_delta_signed_wrap_and_invalid_samples():
+    from core.workspace_transform import hand_rotation_delta
+
+    assert hand_rotation_delta(((0, 0), (100, 0)), ((0, 0), (0, 100))) == 90
+    assert hand_rotation_delta(((0, 0), (100, 0)), ((0, 0), (0, -100))) == -90
+    angle = hand_rotation_delta(((0, 0), (-100, 1)), ((0, 0), (-100, -1)))
+    assert 1 < angle < 2  # crosses +180/-180 without a 360-degree jump
+    assert hand_rotation_delta(((0, 0), (10, 0)), ((0, 0), (100, 0))) is None
+    assert hand_rotation_delta(((0, 0), (100, 0)), ((0, 0), (0, 0))) is None
+    assert hand_rotation_delta(((0, 0), (100, 0)), ((0, 0), (float('nan'), 100))) is None
+    assert hand_rotation_delta(None, ((0, 0), (100, 0))) is None

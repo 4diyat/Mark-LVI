@@ -389,3 +389,14 @@ zoom dan aksi file tetap di toolbar utama. Ini bukan bukti kesetiaan visual penu
 
 Tes Qt juga memeriksa visibilitas kontrol kuas dan bahwa warna serta ukuran
 tetap tersimpan ketika beralih ke mode seleksi.
+
+### Fondasi rotasi jendela (belum terintegrasi)
+
+Eksperimen terisolasi `tools/check_rotation_qt.py` menguji widget Qt biasa
+di `QGraphicsProxyWidget` pada beberapa sudut: pemetaan koordinat, klik,
+checkbox, fokus, pengetikan dan scroll via keyboard. Perhitungan selisih sudut
+dua tangan diuji terpisah pada sampel sintetis. Keduanya **belum mengubah**
+workspace `QMdiArea` atau menghubungkan rotasi ke gesture. Belum ada bukti
+bahwa WebEngine, video/OpenGL, dialog/popup, siklus hidup jendela, aksesibilitas,
+input gesture, dan perangkat Windows akan bekerja melalui proxy. Jangan
+menganggap eksperimen ini implementasi rotasi interaktif bagi semua jendela.
