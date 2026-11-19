@@ -457,3 +457,16 @@ memeriksa versi, ukuran, dimensi dan isi sebelum mengganti dokumen aktif.
 Tes model memeriksa round-trip dan data salah; smoke Qt CI memakai proyek dan
 piksel sintetis untuk simpan, buka, pembatalan, file rusak, kegagalan simpan,
 dan ekspor. Ini bukan pengujian perangkat atau format eksternal nyata.
+
+### Perbandingan visual: desktop dan editor gambar
+
+Capture sintetis desktop pada CI memperlihatkan susunan Files/editor kiri,
+wajah tengah, asisten kanan dan dock seperti konsep, tetapi proporsi panel,
+konten contoh, detail chrome dan wajah masih berbeda; ini bukan replika mockup.
+Editor gambar sebelumnya memperlihatkan daftar layer polos dan label background
+terpisah. Panel layer kini diberi permukaan bersama, ikon teks berwarna,
+baris lebih mudah dibaca, dan thumbnail background aktual di bawah layer teks
+(sesuai urutan komposisi, bukan dekorasi). Checkbox dan tindakan layer tetap
+berfungsi; background tetap selalu terlihat. Ini masih penyelarasan bertahap,
+bukan kesesuaian visual penuh dengan desain. Gambar CI sintetis tidak
+membuktikan hasil pada monitor/DPI atau perangkat pengguna.

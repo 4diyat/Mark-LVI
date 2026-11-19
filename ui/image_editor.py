@@ -1,6 +1,6 @@
 """A small local image editor; AI suggestions never open or save files."""
 from PyQt6.QtCore import QBuffer, QByteArray, QIODevice, QPointF, QSaveFile, QSize, QTimer, Qt
-from PyQt6.QtGui import QColor, QFont, QImage, QImageReader, QPainter, QPainterPath, QPen, QPixmap, QTransform
+from PyQt6.QtGui import QColor, QFont, QIcon, QImage, QImageReader, QPainter, QPainterPath, QPen, QPixmap, QTransform
 from PyQt6.QtWidgets import (QColorDialog, QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
                              QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
                              QMessageBox, QPushButton, QScrollArea, QSlider, QSpinBox, QToolButton, QVBoxLayout, QWidget)
@@ -148,14 +148,28 @@ class ImageEditor(QDialog):
         workspace.addWidget(scroll, 1)
         layers_panel = QWidget()
         layers_panel.setMaximumWidth(220)
+        layers_panel.setObjectName("WorkspaceSection")
         layers_layout = QVBoxLayout(layers_panel)
+        layers_layout.setContentsMargins(10, 10, 10, 10)
         layers_layout.addWidget(self._translations.text(QLabel(), "image_editor.layers"))
-        layers_layout.addWidget(self._translations.text(QLabel(), "image_editor.background"))
         self._layer_list = QListWidget()
+        self._layer_list.setIconSize(QSize(28, 28))
         self._layer_list.setAccessibleName(_t("image_editor.layers"))
         self._layer_list.itemChanged.connect(self._toggle_layer)
         self._layer_list.currentRowChanged.connect(self._update_layer_actions)
         layers_layout.addWidget(self._layer_list, 1)
+        # The background sits below the text stack and is intentionally not a
+        # selectable or hideable layer. Its thumbnail displays real image data.
+        background_row = QHBoxLayout()
+        self._background_thumbnail = QLabel()
+        self._background_thumbnail.setFixedSize(36, 28)
+        self._background_thumbnail.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._background_thumbnail.setAccessibleName(_t("image_editor.background"))
+        background_row.addWidget(self._background_thumbnail)
+        background_label = self._translations.text(QLabel(), "image_editor.background")
+        background_label.setWordWrap(True)
+        background_row.addWidget(background_label, 1)
+        layers_layout.addLayout(background_row)
         order = QHBoxLayout()
         self._layer_up = self._translations.text(QPushButton(), "image_editor.layer_up")
         self._layer_down = self._translations.text(QPushButton(), "image_editor.layer_down")
@@ -191,6 +205,7 @@ class ImageEditor(QDialog):
         self._translations.refresh()
         self._preview.setAccessibleName(_t("image_editor.title"))
         self._layer_list.setAccessibleName(_t("image_editor.layers"))
+        self._background_thumbnail.setAccessibleName(_t("image_editor.background"))
         self._zoom.setAccessibleName(_t("image_editor.zoom"))
         self._zoom.setToolTip(_t("image_editor.zoom_hint"))
         self._brush_size.setAccessibleName(_t("image_editor.brush_size"))
@@ -493,6 +508,25 @@ class ImageEditor(QDialog):
         painter.end()
         return result
 
+    @staticmethod
+    def _text_layer_icon(color):
+        # A neutral backing keeps dark text colors visible in the layer list.
+        pixmap = QPixmap(28, 28)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(QPen(QColor("#8190a1"), 1))
+        painter.setBrush(QColor("#dce4eb"))
+        painter.drawRoundedRect(1, 1, 26, 26, 4, 4)
+        painter.setPen(QColor(color))
+        font = QFont("Courier New")
+        font.setBold(True)
+        font.setPixelSize(20)
+        painter.setFont(font)
+        painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, "T")
+        painter.end()
+        return QIcon(pixmap)
+
     def _update_layers(self, selected_row=None):
         self._layer_list.blockSignals(True)
         try:
@@ -501,6 +535,9 @@ class ImageEditor(QDialog):
             # bottom-to-top, so the last model layer is displayed first.
             for layer in reversed(self._layers):
                 item = QListWidgetItem(layer.text[:60])
+                item.setIcon(self._text_layer_icon(layer.color))
+                item.setSizeHint(QSize(0, 38))
+                item.setToolTip(layer.text)
                 item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
                 item.setCheckState(Qt.CheckState.Checked if layer.visible else Qt.CheckState.Unchecked)
                 self._layer_list.addItem(item)
@@ -663,6 +700,10 @@ class ImageEditor(QDialog):
 
     def _render(self):
         if self._image is not None:
+            thumbnail = self._image.scaled(
+                self._background_thumbnail.size(), Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation)
+            self._background_thumbnail.setPixmap(QPixmap.fromImage(thumbnail))
             # Use the scrollbar-free maximum viewport so scrolling does not
             # continually change the fitted size when scrollbars appear.
             viewport = self._canvas_scroll.maximumViewportSize()

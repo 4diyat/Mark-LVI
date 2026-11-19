@@ -255,6 +255,9 @@ def main():
         QTest.mouseMove(image._preview, end)
         QTest.mouseRelease(image._preview, Qt.MouseButton.LeftButton, pos=end)
         assert image._image.pixelColor(20, 10).green() > 200
+        thumb = image._background_thumbnail.pixmap().toImage()
+        assert not thumb.isNull() and any(thumb.pixelColor(x, y).green() > 100
+                                          for y in range(thumb.height()) for x in range(thumb.width()))
         assert image._image.pixelColor(20, 2).red() == 255
         assert image._dirty and image._layers == [layer]
         image._file_tools['image_editor.undo'].click()
@@ -272,6 +275,10 @@ def main():
         image._layers = [layer, middle, top]
         image._update_layers()
         assert [image._layer_list.item(i).text() for i in range(3)] == ['top', 'middle', 'sample']
+        assert all(not image._layer_list.item(i).icon().isNull() for i in range(3))
+        assert all(image._layer_list.item(i).sizeHint().height() >= 38 for i in range(3))
+        assert image._layer_list.item(0).toolTip() == 'top'
+        assert image._background_thumbnail.pixmap() and not image._background_thumbnail.pixmap().isNull()
         assert not image._layer_up.isEnabled() and not image._layer_down.isEnabled()
         class LayerPaintSpy:
             def __init__(self):
@@ -503,6 +510,7 @@ def main():
         assert image._zoom.toolTip() == translate("image_editor.zoom_hint")
         assert image._brush_size.accessibleName() == translate("image_editor.brush_size")
         assert image._brush_swatch.accessibleName().startswith(translate("image_editor.brush_color"))
+        assert image._background_thumbnail.accessibleName() == translate("image_editor.background")
         assert image._layer_up.text() == translate("image_editor.layer_up")
         assert image._layer_down.text() == translate("image_editor.layer_down")
         assert image._layer_edit.text() == translate("image_editor.edit_layer")
