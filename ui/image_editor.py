@@ -3,10 +3,10 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QFont, QImage, QImageReader, QPainter, QPixmap, QTransform
 from PyQt6.QtWidgets import (QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
                              QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
-                             QMessageBox, QPushButton, QScrollArea, QSpinBox, QVBoxLayout, QWidget)
+                             QMessageBox, QPushButton, QScrollArea, QSlider, QSpinBox, QVBoxLayout, QWidget)
 
 from core.i18n import label as _t
-from core.image_geometry import valid_crop
+from core.image_geometry import preview_size, valid_crop
 from core.image_layers import make_text_layer, set_visible
 from ui.theme import workspace_stylesheet
 from ui.localization import TranslationBindings
@@ -30,6 +30,19 @@ class ImageEditor(QDialog):
         toolbar_widget = QWidget()
         toolbar = QHBoxLayout(toolbar_widget)
         toolbar.setContentsMargins(0, 0, 0, 0)
+        toolbar.addWidget(self._translations.text(QLabel(), "image_editor.zoom"))
+        self._zoom = QSlider(Qt.Orientation.Horizontal)
+        self._zoom.setRange(25, 200)
+        self._zoom.setSingleStep(10)
+        self._zoom.setPageStep(25)
+        self._zoom.setValue(100)
+        self._zoom.setFixedWidth(120)
+        self._zoom.setAccessibleName(_t("image_editor.zoom"))
+        self._zoom.setToolTip(_t("image_editor.zoom_hint"))
+        toolbar.addWidget(self._zoom)
+        self._zoom_value = QLabel()
+        self._zoom_value.setText("100%")
+        toolbar.addWidget(self._zoom_value)
         self._file_tools = {}
         for key, callback in (("image_editor.open", self.open_file),
                               ("image_editor.undo", self.undo),
@@ -58,6 +71,7 @@ class ImageEditor(QDialog):
         self._preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._preview.setMinimumSize(200, 150)
         scroll = QScrollArea()
+        self._canvas_scroll = scroll
         scroll.setWidgetResizable(True)
         scroll.setWidget(self._preview)
         workspace = QHBoxLayout()
@@ -98,6 +112,7 @@ class ImageEditor(QDialog):
         layers_layout.addWidget(remove)
         workspace.addWidget(layers_panel)
         layout.addLayout(workspace, 1)
+        self._zoom.valueChanged.connect(self._zoom_changed)
         suggestion = request.get("suggestion", "")
         if suggestion in ("rotate", "flip", "grayscale", "crop", "add_text"):
             row = QHBoxLayout()
@@ -115,6 +130,8 @@ class ImageEditor(QDialog):
         self._translations.refresh()
         self._preview.setAccessibleName(_t("image_editor.title"))
         self._layer_list.setAccessibleName(_t("image_editor.layers"))
+        self._zoom.setAccessibleName(_t("image_editor.zoom"))
+        self._zoom.setToolTip(_t("image_editor.zoom_hint"))
 
     def _may_discard(self):
         return not self._dirty or QMessageBox.question(
@@ -342,15 +359,25 @@ class ImageEditor(QDialog):
             self._status.setText(_t("image_editor.unsaved"))
             self._render()
 
+    def _zoom_changed(self, value):
+        self._zoom_value.setText(f"{value}%")
+        self._render()
+
     def _render(self):
         if self._image is not None:
+            # Use the scrollbar-free maximum viewport so scrolling does not
+            # continually change the fitted size when scrollbars appear.
+            viewport = self._canvas_scroll.maximumViewportSize()
+            width, height = preview_size(self._image.width(), self._image.height(),
+                                         viewport.width(), viewport.height(), self._zoom.value())
             pixmap = QPixmap.fromImage(self._image).scaled(
-                self._preview.size(), Qt.AspectRatioMode.KeepAspectRatio,
+                width, height, Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation)
             painter = QPainter(pixmap)
             painter.scale(pixmap.width() / self._image.width(), pixmap.height() / self._image.height())
             self._paint_layers(painter)
             painter.end()
+            self._preview.setMinimumSize(max(200, pixmap.width()), max(150, pixmap.height()))
             self._preview.setPixmap(pixmap)
 
     def resizeEvent(self, event):

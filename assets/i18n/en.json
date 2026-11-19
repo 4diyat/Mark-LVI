@@ -386,6 +386,8 @@
   "workspace.files_hint": "Double-click a folder to browse or a file to open it with your system.",
   "workspace.bad_folder": "Folder not found.",
   "workspace.open_failed": "Could not open this file with your system.",
+  "image_editor.zoom": "Zoom",
+  "image_editor.zoom_hint": "Percentage of fit to canvas",
   "image_editor.title": "Image Editor",
   "image_editor.open": "Open",
   "image_editor.save_as": "Save as",

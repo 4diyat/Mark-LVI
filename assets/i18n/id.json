@@ -386,6 +386,8 @@
   "workspace.files_hint": "Klik dua kali folder untuk melihat isinya atau berkas untuk membukanya dengan sistem.",
   "workspace.bad_folder": "Folder tidak ditemukan.",
   "workspace.open_failed": "Berkas tidak dapat dibuka oleh sistem.",
+  "image_editor.zoom": "Perbesaran",
+  "image_editor.zoom_hint": "Persentase dari ukuran pas kanvas",
   "image_editor.title": "Editor Gambar",
   "image_editor.open": "Buka",
   "image_editor.save_as": "Simpan sebagai",

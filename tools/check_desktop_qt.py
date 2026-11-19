@@ -170,6 +170,16 @@ def main():
         original.fill(Qt.GlobalColor.red)
         image._image = original
         image._render()
+        fit_width = image._preview.pixmap().width()
+        image._zoom.setValue(200)
+        app.processEvents()
+        assert abs(image._preview.pixmap().width() - fit_width * 2) <= 2
+        assert image._canvas_scroll.horizontalScrollBar().maximum() > 0
+        assert image._zoom_value.text() == '200%' and not image._dirty
+        assert (image._image.width(), image._image.height()) == (40, 20)
+        image._zoom.setValue(100)
+        app.processEvents()
+        assert image._preview.pixmap().width() == fit_width
         image._image_tools['image_editor.rotate'].click()
         assert (image._image.width(), image._image.height()) == (20, 40) and image._dirty
         image._file_tools['image_editor.undo'].click()
@@ -261,6 +271,8 @@ def main():
         creative._close_file_tab(1)
         assert creative._file_tabs.count() == 1
         assert image.windowTitle() == translate("image_editor.title")
+        assert image._zoom.accessibleName() == translate("image_editor.zoom")
+        assert image._zoom.toolTip() == translate("image_editor.zoom_hint")
         assert all(button.text() == translate(key) for key, button in image._image_tools.items())
         assert all(button.text() == translate(key) for key, button in image._file_tools.items())
         set_locale(previous_locale)
