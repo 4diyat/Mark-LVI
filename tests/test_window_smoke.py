@@ -1815,6 +1815,35 @@ def test_multifile_editor_preserves_unsaved_tabs_and_save_targets(window_module,
     assert editor._file_tabs.count() == 1 and editor._code.toPlainText() == ''
 
 
+def test_project_open_rejects_missing_and_outside_paths(window_module, tmp_path):
+    from ui.creative import CreativeWorkspace
+    from core.i18n import label
+    project = tmp_path / 'project'
+    project.mkdir()
+    inside, outside = project / 'main.py', tmp_path / 'outside.py'
+    inside.write_text('inside', encoding='utf-8')
+    outside.write_text('outside', encoding='utf-8')
+    opened, errors = [], []
+    editor = types.SimpleNamespace(_project_root=project.resolve(),
+                                   _open_path=lambda path: opened.append(path) or True,
+                                   _output=types.SimpleNamespace(setPlainText=errors.append))
+    assert CreativeWorkspace._open_project_path(editor, str(inside))
+    assert opened == [str(inside.resolve())]
+    assert not CreativeWorkspace._open_project_path(editor, str(outside))
+    assert not CreativeWorkspace._open_project_path(editor, str(project / 'missing.py'))
+    assert not CreativeWorkspace._open_project_path(editor, str(project))
+    assert opened == [str(inside.resolve())]
+    assert errors == [label('editor.project_outside')] * 3
+    link = project / 'escape.py'
+    try:
+        link.symlink_to(outside)
+    except OSError:
+        pass  # Windows often requires elevated privileges to create symlinks.
+    else:
+        assert not CreativeWorkspace._open_project_path(editor, str(link))
+        assert opened == [str(inside.resolve())]
+
+
 def test_removed_canvas_route_refuses_legacy_requests(window_module):
     from ui.creative import open_workspace
     logs = []

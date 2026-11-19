@@ -15,7 +15,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt6.QtCore import QCoreApplication, QEvent, QFileInfo, QPoint, QTimer, Qt  # noqa: E402
 from PyQt6.QtGui import QTextCursor  # noqa: E402
 from PyQt6.QtTest import QTest  # noqa: E402
-from PyQt6.QtWidgets import QApplication, QComboBox, QPushButton, QScrollArea, QSizeGrip, QSlider, QWidget  # noqa: E402
+from PyQt6.QtWidgets import QApplication, QComboBox, QFileDialog, QPushButton, QScrollArea, QSizeGrip, QSlider, QWidget  # noqa: E402
 
 import memory.config_manager as config  # noqa: E402
 from core.i18n import label as translate  # noqa: E402
@@ -163,7 +163,52 @@ def main():
         image = ImageEditor(window, {})
         # Real Qt checks for the editor gutter and syntax layout, not Qt stubs.
         assert creative._output.isHidden() and creative._output_heading.isHidden()
-        assert creative._file_label.isHidden()
+        assert creative._file_label.isHidden() and creative._project_panel.isHidden()
+        project_button = next(button for button, key in creative._editor_tools if key == 'editor.project')
+        project_button.click()
+        assert not creative._project_panel.isHidden()
+        project = Path(tmp) / 'project'
+        project.mkdir()
+        project_file = project / 'main.py'
+        project_file.write_text('print("project")\n', encoding='utf-8')
+        outside = Path(tmp) / 'outside.py'
+        outside.write_text('outside', encoding='utf-8')
+        original_directory_dialog = QFileDialog.getExistingDirectory
+        try:
+            QFileDialog.getExistingDirectory = staticmethod(lambda *_args: str(project))
+            creative._project_choose.click()
+        finally:
+            QFileDialog.getExistingDirectory = original_directory_dialog
+        assert creative._project_root == project.resolve()
+        assert not creative._set_project_root(str(outside)) and creative._project_root == project.resolve()
+        root_index = creative._project_tree.rootIndex()
+        assert root_index.isValid() and Path(creative._project_model.filePath(root_index)) == project.resolve()
+        assert creative._project_tree.isColumnHidden(1) and creative._project_model.isReadOnly()
+        index = creative._project_model.index(str(project_file))
+        assert index.isValid()
+        creative._project_tree.doubleClicked.emit(index)
+        assert creative._file_tabs.count() == 2 and creative._code.toPlainText() == 'print("project")\n'
+        project_code = creative._code
+        creative._project_tree.doubleClicked.emit(index)
+        assert creative._file_tabs.count() == 2 and creative._code is project_code
+        assert not creative._open_project_path(str(outside))
+        assert creative._file_tabs.count() == 2 and creative._code is project_code
+        assert creative._output.toPlainText() == translate('editor.project_outside')
+        if hasattr(os, 'symlink'):
+            link = project / 'escape.py'
+            try:
+                link.symlink_to(outside)
+            except OSError:
+                pass  # Windows may deny symlink creation.
+            else:
+                assert not creative._open_project_path(str(link))
+        creative._close_file_tab(creative._file_tabs.currentIndex())
+        assert creative._code.toPlainText() == "print('unsaved')" and creative._code.document().isModified()
+        creative._output.clear()
+        creative._output.hide()
+        creative._output_heading.hide()
+        project_button.click()
+        assert creative._project_panel.isHidden()
         for button, key in creative._editor_tools:
             assert button.accessibleName() == button.toolTip() == translate(key)
             if key != "editor.new":
@@ -188,6 +233,9 @@ def main():
         image.retranslate()
         assert all(button.accessibleName() == button.toolTip() == translate(key)
                    for button, key in creative._editor_tools)
+        assert creative._project_tree.accessibleName() == translate('editor.project')
+        assert creative._project_choose.text() == translate('editor.choose_project')
+        assert creative._project_root == project.resolve() and creative._project_title.text() == 'project'
         assert creative._code.toPlainText() == "print('unsaved')"
         assert creative._code.document().isModified()
         first_file = creative._code
