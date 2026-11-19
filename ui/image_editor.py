@@ -1,5 +1,5 @@
 """A small local image editor; AI suggestions never open or save files."""
-from PyQt6.QtCore import QPointF, QSize, QTimer, Qt
+from PyQt6.QtCore import QBuffer, QByteArray, QIODevice, QPointF, QSaveFile, QSize, QTimer, Qt
 from PyQt6.QtGui import QColor, QFont, QImage, QImageReader, QPainter, QPainterPath, QPen, QPixmap, QTransform
 from PyQt6.QtWidgets import (QColorDialog, QDialog, QDialogButtonBox, QFileDialog, QFormLayout,
                              QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (QColorDialog, QDialog, QDialogButtonBox, QFileDialo
 from core.i18n import label as _t
 from core.image_geometry import preview_size, valid_crop
 from core.image_layers import layer_index_from_row, make_text_layer, move_layer, set_visible
+from core.image_project import MAX_PROJECT_BYTES, decode_project, encode_project, png_dimensions
 from ui.theme import workspace_stylesheet
 from ui.localization import TranslationBindings
 from ui.image_tool_icons import image_tool_icon
@@ -48,6 +49,8 @@ class ImageEditor(QDialog):
         toolbar.addStretch()
         self._file_tools = {}
         for key, callback in (("image_editor.open", self.open_file),
+                              ("image_editor.open_project", self.open_project),
+                              ("image_editor.save_project", self.save_project),
                               ("image_editor.undo", self.undo),
                               ("image_editor.save_as", self.save_as)):
             button = self._translations.text(QPushButton(), key)
@@ -298,6 +301,82 @@ class ImageEditor(QDialog):
         self._status.setText(path)
         self._render()
 
+    def _document_state(self):
+        return self._image, tuple(self._layers), self._dirty
+
+    def _state_is_current(self, state):
+        return self._image is state[0] and tuple(self._layers) == state[1] and self._dirty == state[2]
+
+    def open_project(self):
+        if not self._may_discard():
+            return
+        state = self._document_state()
+        path, _ = QFileDialog.getOpenFileName(self, _t("image_editor.open_project"), "",
+                                              "JARVIS image project (*.jimg);;All files (*)")
+        if not path:
+            return
+        if not self._state_is_current(state):
+            self._status.setText(_t("image_editor.layer_changed"))
+            return
+        try:
+            with open(path, "rb") as project:
+                data = project.read(MAX_PROJECT_BYTES + 1)
+            png, layers = decode_project(data)
+            width, height = png_dimensions(png)
+            buffer = QBuffer()
+            buffer.setData(QByteArray(png))
+            if not buffer.open(QIODevice.OpenModeFlag.ReadOnly):
+                raise ValueError("Cannot open image buffer")
+            reader = QImageReader(buffer, b"png")
+            size = reader.size()
+            if not size.isValid() or (size.width(), size.height()) != (width, height):
+                raise ValueError("Invalid background")
+            image = reader.read()
+            if image.isNull() or (image.width(), image.height()) != (width, height):
+                raise ValueError("Invalid background")
+        except (OSError, ValueError, OverflowError):
+            self._status.setText(_t("image_editor.project_read_error"))
+            return
+        self._preview.clear_selection()
+        self._image, self._layers = image, layers
+        self._undo_state, self._source, self._dirty = None, path, False
+        self._update_layers()
+        self._status.setText(path)
+        self._render()
+
+    def save_project(self):
+        if self._image is None:
+            return
+        state = self._document_state()
+        path, _ = QFileDialog.getSaveFileName(self, _t("image_editor.save_project"), "image.jimg",
+                                              "JARVIS image project (*.jimg)")
+        if not path:
+            return
+        if not self._state_is_current(state):
+            self._status.setText(_t("image_editor.layer_changed"))
+            return
+        if not path.lower().endswith(".jimg"):
+            path += ".jimg"
+        try:
+            buffer = QBuffer()
+            if not buffer.open(QIODevice.OpenModeFlag.WriteOnly) or not self._image.save(buffer, "PNG"):
+                raise ValueError("Cannot encode background")
+            data = encode_project(bytes(buffer.data()), self._layers)
+            target = QSaveFile(path)
+            # No direct-write fallback: failed writes must not damage an existing project.
+            if not target.open(QIODevice.OpenModeFlag.WriteOnly):
+                raise OSError("Cannot open project")
+            if target.write(data) != len(data):
+                target.cancelWriting()
+                raise OSError("Cannot write project")
+            if not target.commit():
+                raise OSError("Cannot commit project")
+        except (OSError, ValueError, OverflowError):
+            self._status.setText(_t("image_editor.project_save_error"))
+            return
+        self._source, self._dirty = path, False
+        self._status.setText(_t("image_editor.saved", path=path))
+
     def save_as(self):
         if self._image is None:
             return
@@ -313,8 +392,11 @@ class ImageEditor(QDialog):
         if not self._composite().save(path):
             self._status.setText(_t("image_editor.save_error"))
             return
-        self._source, self._dirty = path, False
-        self._status.setText(_t("image_editor.saved", path=path))
+        # Export cannot preserve editable layers; do not mark their project
+        # changes as saved or replace its source with a flattened image.
+        if not self._layers:
+            self._source, self._dirty = path, False
+        self._status.setText(_t("image_editor.exported_unsaved" if self._dirty else "image_editor.saved", path=path))
 
     def _snapshot(self):
         self._undo_state = (self._image, tuple(self._layers))

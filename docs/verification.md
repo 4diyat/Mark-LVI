@@ -442,3 +442,18 @@ Layer teks mendukung warna RGB per layer (default putih), termasuk saat
 diedit ulang dan di-undo. Dialog warna dibatalkan tanpa mengubah pilihan;
 komposisi dan ekspor menggunakan warna yang dipilih. Pemeriksaan Qt offscreen
 mencakup warna pada piksel komposit sintetis, bukan uji perangkat fisik.
+
+### Proyek editor gambar ber-layer
+
+Buka proyek dan Simpan proyek menggunakan format lokal `.jimg` versi 1, yang
+menyimpan background PNG dan layer teks (termasuk urutan, visibilitas, posisi,
+ukuran dan warna). Ini bukan format PSD dan tidak menyimpan riwayat undo,
+seleksi, atau layer kuas terpisah; sapuan kuas berada pada background. Ekspor
+PNG/JPEG/BMP tetap diratakan dan tidak menandai perubahan layer yang belum
+disimpan sebagai proyek sebagai tersimpan. Penyimpanan proyek memakai file
+atomik; kegagalan tidak boleh merusak file tujuan yang sudah ada. Pembukaan
+memeriksa versi, ukuran, dimensi dan isi sebelum mengganti dokumen aktif.
+
+Tes model memeriksa round-trip dan data salah; smoke Qt CI memakai proyek dan
+piksel sintetis untuk simpan, buka, pembatalan, file rusak, kegagalan simpan,
+dan ekspor. Ini bukan pengujian perangkat atau format eksternal nyata.

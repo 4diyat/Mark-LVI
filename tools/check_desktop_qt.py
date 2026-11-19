@@ -15,7 +15,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt6.QtCore import QCoreApplication, QEvent, QFileInfo, QPoint, QTimer, Qt  # noqa: E402
 from PyQt6.QtGui import QColor, QImage, QTextCursor  # noqa: E402
 from PyQt6.QtTest import QTest  # noqa: E402
-from PyQt6.QtWidgets import QApplication, QColorDialog, QComboBox, QDialog, QFileDialog, QLineEdit, QPushButton, QScrollArea, QSizeGrip, QSlider, QSpinBox, QWidget  # noqa: E402
+from PyQt6.QtWidgets import QApplication, QColorDialog, QComboBox, QDialog, QFileDialog, QLineEdit, QMessageBox, QPushButton, QScrollArea, QSizeGrip, QSlider, QSpinBox, QWidget  # noqa: E402
 
 import memory.config_manager as config  # noqa: E402
 from core.i18n import label as translate  # noqa: E402
@@ -165,7 +165,7 @@ def main():
         image.show()
         app.processEvents()
         assert image._tool_scroll.x() < image._tool_scroll.parentWidget().width() // 2
-        assert len(image._image_tools) == 7 and len(image._file_tools) == 3
+        assert len(image._image_tools) == 7 and len(image._file_tools) == 5
         assert image._brush_options.isHidden()
         for key, button in image._image_tools.items():
             assert not button.icon().isNull()
@@ -370,6 +370,46 @@ def main():
         assert image._layers[-1].text == 'new' and image._layer_list.currentRow() == 0
         image._file_tools['image_editor.undo'].click()
         assert image._layers == [layer, middle, hidden_top]
+        # Project save/open preserves background and editable hidden layers.
+        project_path = Path(tmp) / 'picture.jimg'
+        damaged_path = Path(tmp) / 'damaged.jimg'
+        export_path = Path(tmp) / 'export.png'
+        old_save, old_open, old_question = (QFileDialog.getSaveFileName,
+                                             QFileDialog.getOpenFileName, QMessageBox.question)
+        try:
+            QFileDialog.getSaveFileName = staticmethod(lambda *_args: (str(project_path), ''))
+            image._file_tools['image_editor.save_project'].click()
+            assert project_path.is_file() and not image._dirty
+            expected_layers = list(image._layers)
+            expected_pixel = image._image.pixelColor(20, 10)
+            image._layers = []
+            image._image.fill(QColor('blue'))
+            image._dirty = True
+            QMessageBox.question = staticmethod(lambda *_args: QMessageBox.StandardButton.No)
+            QFileDialog.getOpenFileName = staticmethod(lambda *_args: (str(project_path), ''))
+            image._file_tools['image_editor.open_project'].click()
+            assert image._layers == [] and image._dirty
+            QMessageBox.question = staticmethod(lambda *_args: QMessageBox.StandardButton.Yes)
+            image._file_tools['image_editor.open_project'].click()
+            assert image._layers == expected_layers and not image._dirty
+            assert image._image.pixelColor(20, 10) == expected_pixel and image._undo_state is None
+            loaded_image = image._image
+            damaged_path.write_bytes(project_path.read_bytes()[:100])
+            QFileDialog.getOpenFileName = staticmethod(lambda *_args: (str(damaged_path), ''))
+            image._file_tools['image_editor.open_project'].click()
+            assert image._image is loaded_image and image._layers == expected_layers
+            assert image._status.text() == translate('image_editor.project_read_error')
+            # A failed atomic save leaves the document dirty and unchanged.
+            image._dirty = True
+            QFileDialog.getSaveFileName = staticmethod(lambda *_args: (str(Path(tmp) / 'missing' / 'x.jimg'), ''))
+            image._file_tools['image_editor.save_project'].click()
+            assert image._dirty and image._status.text() == translate('image_editor.project_save_error')
+            # Flattened export does not mark unsaved editable layers as saved.
+            QFileDialog.getSaveFileName = staticmethod(lambda *_args: (str(export_path), ''))
+            image._file_tools['image_editor.save_as'].click()
+            assert export_path.is_file() and image._dirty and image._layers == expected_layers
+        finally:
+            QFileDialog.getSaveFileName, QFileDialog.getOpenFileName, QMessageBox.question = old_save, old_open, old_question
         image._layers = []
         image._update_layers()
         image._dirty = False
