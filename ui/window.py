@@ -97,6 +97,7 @@ _OS = platform.system()  # "Windows" | "Darwin" | "Linux"
 #     package, and imported here because this file reads them on nearly every
 #     line. The long comment that used to sit here — about why the split was
 #     worth doing — is in `ui/__init__.py`, where a reader of the package starts.
+from ui.desktop_layout import set_assistant_tool
 from ui.theme import (          # noqa: F401 — re-exported through the package
     C,
     DEFAULT_UI_COLOR,
@@ -5162,7 +5163,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
             }}
             QPushButton:hover {{ color: {C.TEXT}; border-color: {C.BORDER_B}; }}
         """)
-        dismiss.clicked.connect(w.hide)
+        dismiss.clicked.connect(lambda: set_assistant_tool(self, w, False))
         hdr.addWidget(dismiss)
         lay.addLayout(hdr)
 
@@ -5214,7 +5215,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
             self._content_display.textCursor().MoveOperation.Start
         )
         first_show = not self._content_panel.isVisible()
-        self._content_panel.show()
+        set_assistant_tool(self, self._content_panel, True)
         if first_show:
             total = self._center_split.height()
             self._center_split.setSizes([max(total - 220, 120), 220])
@@ -5299,7 +5300,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         bar.setValue(keep)
         if not self._content_panel.isVisible():
             self.hud.glance(0.0, -0.85, hold=1.3)
-            self._content_panel.show()
+            set_assistant_tool(self, self._content_panel, True)
             total = self._center_split.height()
             self._center_split.setSizes([max(total - 260, 120), 260])
 
@@ -5383,7 +5384,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         self._content_display.moveCursor(
             self._content_display.textCursor().MoveOperation.Start)
         first_show = not self._content_panel.isVisible()
-        self._content_panel.show()
+        set_assistant_tool(self, self._content_panel, True)
         if first_show:
             total = self._center_split.height()
             self._center_split.setSizes([max(total - 260, 120), 260, 0])
@@ -5513,7 +5514,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         self._quiz_title_lbl.setText((topic or "quiz").upper()[:48])
         self.hud.glance(0.0, -0.85, hold=1.3)
         first_show = not self._quiz_panel.isVisible()
-        self._quiz_panel.show()
+        set_assistant_tool(self, self._quiz_panel, True)
         if first_show:
             total = self._center_split.height()
             self._center_split.setSizes([max(total - 250, 120), 0, 250])
@@ -5521,7 +5522,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
 
     def _hide_quiz(self):
         self._quiz = None
-        self._quiz_panel.hide()
+        set_assistant_tool(self, self._quiz_panel, False)
 
     def _quiz_clear_answers(self):
         while self._quiz_answers_lay.count():
@@ -5630,7 +5631,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         right = sum(1 for r in results if r["correct"] is True)
         unsure = sum(1 for r in results if r["correct"] is None)
         total = len(results)
-        self._quiz_panel.hide()
+        set_assistant_tool(self, self._quiz_panel, False)
         self._quiz = None
 
         self._log.append_log(f"QUIZ: {topic or 'quiz'} — {right}/{total} correct")

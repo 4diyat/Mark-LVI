@@ -155,6 +155,20 @@ def build_conversation(window, log_cls, drop_cls):
     return panel
 
 
+def refresh_assistant_tools(window):
+    """Collapse the auxiliary splitter only when all of its sections are hidden."""
+    split = getattr(window, "_center_split", None)
+    sections = tuple(getattr(window, name, None) for name in
+                     ("_hud_cam_stack", "_content_panel", "_quiz_panel", "_audio_cont"))
+    if split is not None and all(section is not None for section in sections):
+        split.setVisible(any(not section.isHidden() for section in sections))
+
+
+def set_assistant_tool(window, section, visible):
+    section.setVisible(visible)
+    refresh_assistant_tools(window)
+
+
 def build_assistant_panel(window):
     """Place the existing HUD, workspace, media and voice controls together."""
     panel = QWidget()

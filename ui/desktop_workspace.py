@@ -105,6 +105,7 @@ class WallpaperArea(QMdiArea):
         self._dock = None
         self._emblem = None
         self._avatar_stage = None
+        self._host_window = None
         self._clap_windows = []
 
     def minimize_for_clap(self):
@@ -140,6 +141,12 @@ class WallpaperArea(QMdiArea):
             if stage is not None:
                 stage.setGeometry(*geometry)
                 stage.setVisible(wide and face)
+            # The central stage replaces the duplicate HUD inside the chat
+            # panel only on wide desktops; compact layouts retain the HUD.
+            if self._host_window is not None:
+                from ui.desktop_layout import refresh_assistant_tools
+                self._host_window._hud_cam_stack.setVisible(not wide)
+                refresh_assistant_tools(self._host_window)
 
     def position_dock(self):
         if self._dock is not None:
@@ -576,6 +583,7 @@ def build(window):
     mdi.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
     layout.addWidget(mdi, 1)
     window._desktop_mdi = mdi
+    mdi._host_window = window
     mdi._emblem = WorkspaceEmblem(window._assistant_name, mdi.viewport())
     mdi._avatar_stage = WorkspaceAvatar(window.hud, mdi.viewport())
     window.hud._desktop_stage = mdi._avatar_stage

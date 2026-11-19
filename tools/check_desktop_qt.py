@@ -164,6 +164,20 @@ def main():
         assert window.hud.hud_style == "face"
         assert window.hud._avatar is not None
         assert mdi._avatar_stage.isVisible() and not mdi._emblem.isVisible()
+        assert window._hud_cam_stack.isHidden() and window._center_split.isHidden()
+        window._show_content('Test', 'Auxiliary result')
+        app.processEvents()
+        assert window._center_split.isVisible() and window._content_panel.isVisible()
+        window._content_panel.hide()
+        from ui.desktop_layout import refresh_assistant_tools
+        refresh_assistant_tools(window)
+        assert window._center_split.isHidden()
+        window._show_audio_bar()
+        app.processEvents()
+        assert window._center_split.isVisible() and window._audio_cont.isVisible()
+        window._audio_cont.hide()
+        refresh_assistant_tools(window)
+        assert window._center_split.isHidden()
         assert not window.grab().isNull()  # paints the actual animated face
         window.hud.hud_style = "orb"
         mdi.position_emblem()
