@@ -276,6 +276,11 @@ def main():
         image._update_layers()
         assert [image._layer_list.item(i).text() for i in range(3)] == ['top', 'middle', 'sample']
         assert all(not image._layer_list.item(i).icon().isNull() for i in range(3))
+        # White and black text icons both need a contrasting visible glyph.
+        for color in ('#ffffff', '#000000'):
+            icon = image._text_layer_icon(color).pixmap(28, 28).toImage()
+            colors = {icon.pixelColor(x, y).name() for y in range(4, 24) for x in range(4, 24)}
+            assert color in colors and len(colors) > 2
         assert all(image._layer_list.item(i).sizeHint().height() >= 38 for i in range(3))
         assert image._layer_list.item(0).toolTip() == 'top'
         assert image._background_thumbnail.pixmap() and not image._background_thumbnail.pixmap().isNull()

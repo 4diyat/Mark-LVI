@@ -510,15 +510,17 @@ class ImageEditor(QDialog):
 
     @staticmethod
     def _text_layer_icon(color):
-        # A neutral backing keeps dark text colors visible in the layer list.
+        # Contrast the backing with each layer's actual text color.
+        ink = QColor(color)
+        brightness = (299 * ink.red() + 587 * ink.green() + 114 * ink.blue()) // 1000
         pixmap = QPixmap(28, 28)
         pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setPen(QPen(QColor("#8190a1"), 1))
-        painter.setBrush(QColor("#dce4eb"))
+        painter.setBrush(QColor("#26384a" if brightness >= 145 else "#dce4eb"))
         painter.drawRoundedRect(1, 1, 26, 26, 4, 4)
-        painter.setPen(QColor(color))
+        painter.setPen(ink)
         font = QFont("Courier New")
         font.setBold(True)
         font.setPixelSize(20)
