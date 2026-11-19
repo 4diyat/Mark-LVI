@@ -107,7 +107,7 @@ def build_conversation(window, log_cls, drop_cls):
     window._conversation_subtitle.hide()
     window._log = log_cls()
     window._log._ai_name_lc = window._assistant_name.lower()
-    window._log.setFont(QFont("Arial", 10))
+    window._log.setFont(QFont("Arial", 11))
     window._log.setMinimumHeight(48)
     window._log.setStyleSheet(f"QTextEdit {{ background: {C.DESKTOP_PANEL}; color: {C.DESKTOP_TEXT}; "
                               f"border: none; border-radius: 10px; padding: 10px; }}")
@@ -146,12 +146,26 @@ def build_conversation(window, log_cls, drop_cls):
     suggestions = QVBoxLayout(window._suggestions_card)
     suggestions.setContentsMargins(9, 7, 9, 7)
     suggestions.setSpacing(4)
-    window._suggestions_heading = _label(_t("desktop.suggestions"), 8, bold=True, color=C.DESKTOP_MUTED)
+    # A disclosure keeps suggestions available while allowing the conversation
+    # to reclaim space without discarding a draft or sending a command.
+    window._suggestions_heading = QToolButton()
+    window._suggestions_heading.setText(_t("desktop.suggestions"))
+    window._suggestions_heading.setAccessibleName(_t("desktop.suggestions"))
+    window._suggestions_heading.setCheckable(True)
+    window._suggestions_heading.setChecked(True)
+    window._suggestions_heading.setArrowType(Qt.ArrowType.DownArrow)
+    window._suggestions_heading.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+    window._suggestions_heading.setFont(QFont("Arial", 9, QFont.Weight.Bold))
+    window._suggestions_heading.setStyleSheet(
+        f"QToolButton {{ text-align: left; color: {C.DESKTOP_MUTED}; background: transparent; "
+        "border: 1px solid transparent; padding: 2px; } "
+        "QToolButton:focus { border: 1px solid #4b9fff; border-radius: 4px; }")
     suggestions.addWidget(window._suggestions_heading)
     window._suggestion_buttons = []
     for key in ("desktop.suggest_tasks", "desktop.suggest_timeline", "desktop.suggest_release"):
         button = QPushButton(_t(key))
         button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setFont(QFont("Arial", 10))
         button.setStyleSheet(f"QPushButton {{ text-align: left; padding: 5px 9px; color: {C.DESKTOP_TEXT}; "
                              f"background: {C.DESKTOP_DOCK}; border: 1px solid {C.DESKTOP_BORDER}; "
                              "border-radius: 8px; } QPushButton:hover { border-color: #69c8f4; }")
@@ -163,6 +177,13 @@ def build_conversation(window, log_cls, drop_cls):
         button.clicked.connect(draft)
         suggestions.addWidget(button)
         window._suggestion_buttons.append((button, key))
+
+    def show_suggestions(expanded):
+        window._suggestions_heading.setArrowType(Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow)
+        for button, _ in window._suggestion_buttons:
+            button.setVisible(expanded)
+
+    window._suggestions_heading.toggled.connect(show_suggestions)
     layout.addWidget(window._suggestions_card)
     layout.addWidget(window._drop_zone)
     layout.addWidget(window._file_hint)
@@ -257,6 +278,7 @@ def retranslate(window):
     window._send_btn.setToolTip(_t("desktop.send"))
     window._send_btn.setAccessibleName(_t("desktop.send"))
     window._suggestions_heading.setText(_t("desktop.suggestions"))
+    window._suggestions_heading.setAccessibleName(_t("desktop.suggestions"))
     for button, key in window._suggestion_buttons:
         button.setText(_t(key))
     for widget, key in getattr(window, "_desktop_menu_labels", ()):

@@ -68,8 +68,10 @@ def main():
         editor._project_panel.show()
         editor._code.setPlainText("def analyze_system(data):\n    return {'status': 'ready'}\n")
         editor._code.highlighter.set_language('python')
-        for text in ('You: Summarize my latest project.',
-                     'JARVIS: This preview uses fictional data for visual testing.'):
+        for text in ('You: Summarize my latest project and suggest next steps.',
+                     'JARVIS: Here is a fictional project summary for visual testing.\n\n'
+                     'The workspace is ready for review.\n\n'
+                     'Next steps:\n1. Review the layout.\n2. Test the controls.\n3. Continue editing.'):
             window._log._enqueue(text)
             for _ in range(len(text) + 1):
                 window._log._step()

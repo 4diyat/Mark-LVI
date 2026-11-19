@@ -477,3 +477,9 @@ palsu. Pada panel sempit penanda disembunyikan agar ruang teks tetap tersedia;
 seleksi, penyalinan, streaming dan scroll tetap memakai dokumen Qt asli.
 Penanda ini bersifat ilustratif, bukan indikator koneksi atau status layanan.
 Belum menyamai seluruh detail, proporsi, font atau ikon pada mockup.
+
+Panel asisten: ukuran teks percakapan dan input ditingkatkan, dan saran tetap
+terbuka seperti konsep tetapi dapat dilipat lewat keyboard untuk memberi lebih
+banyak ruang percakapan. Melipat tidak mengirim perintah atau menghapus draft.
+Capture desktop CI kini menggunakan percakapan sintetis beberapa paragraf
+untuk meninjau proporsi; ini bukan percakapan pengguna dan bukan uji DPI nyata.

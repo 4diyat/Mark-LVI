@@ -616,6 +616,22 @@ def main():
         assert window._hud_cam_stack.isHidden() and window._center_split.isHidden()
         assert window._suggestions_card.isVisible()
         assert all(button.isVisible() for button, _ in window._suggestion_buttons)
+        assert window._log.font().pointSize() == 11 and window._input.font().pointSize() == 11
+        assert window._suggestions_heading.accessibleName() == translate('desktop.suggestions')
+        assert window._suggestions_heading.isChecked()
+        previous_log_height = window._log.height()
+        window._input.setText('keep this draft')
+        window._suggestions_heading.setFocus()
+        QTest.keyClick(window._suggestions_heading, Qt.Key.Key_Space)
+        app.processEvents()
+        assert not window._suggestions_heading.isChecked()
+        assert all(button.isHidden() for button, _ in window._suggestion_buttons)
+        assert window._input.text() == 'keep this draft' and window._log.height() > previous_log_height
+        QTest.keyClick(window._suggestions_heading, Qt.Key.Key_Space)
+        app.processEvents()
+        assert all(button.isVisible() for button, _ in window._suggestion_buttons)
+        assert window._input.text() == 'keep this draft'
+        window._input.clear()
         window._show_content('Test', 'Auxiliary result')
         app.processEvents()
         assert window._center_split.isVisible() and window._content_panel.isVisible()
@@ -669,6 +685,7 @@ def main():
         retranslate_conversation(window)
         assert window._send_btn.accessibleName() == translate("desktop.send")
         assert window._attachment_toggle.accessibleName() == translate("desktop.attach")
+        assert window._suggestions_heading.accessibleName() == translate("desktop.suggestions")
         set_locale(previous_locale)
         retranslate_conversation(window)
         files = window._desktop_windows["files"]

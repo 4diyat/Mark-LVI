@@ -4972,8 +4972,8 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         row = QHBoxLayout(); row.setSpacing(5)
         self._input = QLineEdit()
         self._input.setPlaceholderText(_t("ui.placeholder.command"))
-        self._input.setFont(QFont("Arial", 10))
-        self._input.setFixedHeight(30)
+        self._input.setFont(QFont("Arial", 11))
+        self._input.setFixedHeight(34)
         self._input.setStyleSheet(f"""
             QLineEdit {{
                 background: transparent; color: {C.DESKTOP_TEXT};
