@@ -119,8 +119,6 @@ ACTIONS_CANNOT_RUN_HERE = {
         "changes the real volume, brightness and Wi-Fi state",
     "actions/desktop.py":
         "minimises and moves real windows",
-    "actions/game_updater.py":
-        "launches and patches installed games",
     "actions/open_app.py":
         "starts real applications",
     "actions/screen_processor.py":
@@ -134,6 +132,7 @@ ACTIONS_TESTED = {
     "actions/dev_agent.py":        "tests/test_dev_agent_deps.py",
     "actions/file_controller.py":  "tests/test_file_controller.py",
     "actions/file_processor.py":   "tests/test_archive_extract.py",
+    "actions/game_updater.py":     "tests/test_game_updater_guard.py",
     "actions/reminder.py":         "tests/test_reminder.py",
     "actions/send_message.py":     "tests/test_shell_true.py",
     "actions/web_search.py":       "tests/test_shell_true.py",

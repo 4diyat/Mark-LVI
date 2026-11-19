@@ -20,21 +20,27 @@ import time
 from pathlib import Path
 
 _DEPS_OK = False
+_DEPS_ERROR = ""
 try:
     from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
     from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
     import uvicorn
     _DEPS_OK = True
-except ImportError:
-    pass
+except ImportError as _exc:
+    # Kept as a flag (the module still imports without fastapi), but the NAME
+    # is kept too: the old `pass` turned "uvicorn is missing" into a dashboard
+    # that silently did nothing, with no way to tell which package to install.
+    _DEPS_ERROR = str(_exc)
 
 # python-multipart is required for file uploads — optional dependency
 _UPLOAD_OK = False
 try:
     from fastapi import UploadFile, File as FastAPIFile
     _UPLOAD_OK = True
-except Exception:
-    pass
+except Exception as _exc:      # noqa: BLE001 — python-multipart is optional
+    _UPLOAD_ERROR = str(_exc)
+else:
+    _UPLOAD_ERROR = ""
 
 # The dashboard runs in the app's process and its failures were previously
 # invisible: the routes are wrapped in try/except for good reason (a phone
@@ -515,7 +521,9 @@ def _ensure_network_access(*ports: int) -> None:
                 timeout=60,
             )
         except FileNotFoundError:
-            pass  # macOS firewall is off by default — nothing to do
+            # Deliberate: the tool itself is absent, which means the macOS
+            # firewall is off and there is nothing to open a hole in.
+            _dlog.debug("firewall: socketfilterfw not present; nothing to do")
         except Exception as e:
             # Not silent any more. This is the branch shape that hid the Linux
             # `port` NameError for a release: a broad except, a comment saying
@@ -1815,9 +1823,12 @@ class DashboardServer:
 
     async def serve(self) -> None:
         if not _DEPS_OK:
-            self._bind_error = "fastapi/uvicorn not installed — dashboard disabled."
+            self._bind_error = (
+                "fastapi/uvicorn not installed — dashboard disabled "
+                f"({_DEPS_ERROR or 'import failed'}).")
             print("[Dashboard] " + self._bind_error)
             print("[Dashboard] Run:  pip install fastapi 'uvicorn[standard]' cryptography")
+            _dlog.warning("dashboard disabled: %s", self._bind_error)
             return
 
         # Startup only CHECKS — see report_network_access for why it never

@@ -146,3 +146,112 @@ def test_a_move_inside_home_actually_moves(home):
     assert not src.exists()
     assert (home / "Documents" / "a.txt").read_text() == "payload"
     assert "a.txt" in out
+
+
+# ── rename may not leave the folder, and may not be a path at all ───────────
+#
+# `rename_file` built `target.parent / new_name` and only ever asked
+# `_is_safe_path` about the ORIGINAL file. `Path("/a/b") / "/etc/passwd"` is
+# "/etc/passwd" — the left side is discarded without a word — so an absolute
+# `new_name` moved the file wherever the model said.
+
+@pytest.mark.parametrize("given", [
+    "../escape.txt",          # climbs
+    "../../escape.txt",
+    "/etc/passwd",            # absolute: parent is discarded
+    "sub/file.txt",           # a path, not a name
+    "sub\\file.txt",
+    "C:\\Windows\\evil.txt",
+    "",                       # nothing
+    ".",
+    "..",
+])
+def test_a_rename_that_is_not_a_plain_name_is_refused(home, given):
+    src = home / "Desktop" / "a.txt"
+    src.write_text("payload")
+
+    out = file_controller.rename_file("desktop", "a.txt", given)
+
+    assert "not a file name" in out or "No new name" in out
+    assert src.exists(), "the original must still be where it was"
+    assert src.read_text() == "payload"
+
+
+def test_a_plain_rename_still_works(home):
+    src = home / "Desktop" / "a.txt"
+    src.write_text("payload")
+
+    out = file_controller.rename_file("desktop", "a.txt", "b.txt")
+
+    assert not src.exists()
+    assert (home / "Desktop" / "b.txt").read_text() == "payload"
+    assert "Renamed" in out
+
+
+def test_a_rename_onto_an_existing_name_is_refused(home):
+    (home / "Desktop" / "a.txt").write_text("a")
+    (home / "Desktop" / "b.txt").write_text("b")
+
+    out = file_controller.rename_file("desktop", "a.txt", "b.txt")
+
+    assert "already exists" in out
+    assert (home / "Desktop" / "b.txt").read_text() == "b"
+
+
+# ── move and copy must not overwrite ────────────────────────────────────────
+#
+# shutil.move and shutil.copy2 REPLACE an existing destination, and the
+# replaced file is gone. That is the one outcome the undo stack cannot repair,
+# so the operation has to decline instead.
+
+def test_a_move_onto_an_existing_file_does_not_destroy_it(home):
+    src = home / "Desktop" / "a.txt"
+    src.write_text("NEW")
+    victim = home / "Documents" / "a.txt"
+    victim.write_text("ORIGINAL")
+
+    out = file_controller.move_file("desktop", "a.txt", destination="documents")
+
+    assert "already exists" in out
+    assert victim.read_text() == "ORIGINAL", "the existing file must survive"
+    assert src.read_text() == "NEW", "the source must not have gone anywhere"
+
+
+def test_a_copy_onto_an_existing_file_does_not_destroy_it(home):
+    src = home / "Desktop" / "a.txt"
+    src.write_text("NEW")
+    victim = home / "Documents" / "a.txt"
+    victim.write_text("ORIGINAL")
+
+    out = file_controller.copy_file("desktop", "a.txt", destination="documents")
+
+    assert "already exists" in out
+    assert victim.read_text() == "ORIGINAL"
+    assert src.read_text() == "NEW"
+
+
+def test_a_copy_into_a_free_name_still_works(home):
+    (home / "Desktop" / "a.txt").write_text("payload")
+
+    out = file_controller.copy_file("desktop", "a.txt", destination="documents")
+
+    assert "Copied" in out
+    assert (home / "Documents" / "a.txt").read_text() == "payload"
+    assert (home / "Desktop" / "a.txt").exists()
+
+
+def test_undoing_a_copy_trashes_it_rather_than_deleting_it(home, monkeypatch):
+    """`rmtree` on undo is permanent; the user may have edited the copy."""
+    (home / "Desktop" / "a.txt").write_text("payload")
+    file_controller.copy_file("desktop", "a.txt", destination="documents")
+
+    trashed = []
+    monkeypatch.setattr(file_controller, "_safe_trash",
+                        lambda p: trashed.append(p) or f"Moved to Trash: {p.name}")
+
+    from core import undo
+    undo.undo_last()
+
+    assert trashed, "the copy should have gone to the Trash"
+    assert trashed[0].name == "a.txt"
+    assert home / "Documents" in trashed[0].parents

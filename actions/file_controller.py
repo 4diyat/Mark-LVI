@@ -105,6 +105,25 @@ def _is_safe_path(target: Path) -> bool:
     except Exception:
         return False
 
+
+def _is_plain_name(name: str) -> bool:
+    """One filename component — no separators, no climb, not absolute.
+
+    WHY A SECOND CHECK WHEN `_is_safe_path` EXISTS
+        `rename_file` built `target.parent / new_name` and never re-checked the
+        result, so `new_name="../x"` and `new_name="/etc/passwd"` both produced a
+        path outside the guard while `_is_safe_path` was only ever asked about
+        the ORIGINAL file. `Path("/a/b") / "/etc/passwd"` is "/etc/passwd" — the
+        left side is discarded silently, which is why this has to be a name test
+        rather than a `..` test.
+    """
+    text = str(name or "").strip()
+    if not text or text in (".", ".."):
+        return False
+    if "/" in text or "\\" in text:
+        return False
+    return not Path(text).is_absolute() and ":" not in text
+
 def _get_desktop() -> Path:
     if _OS == "Linux":
         xdg = os.environ.get("XDG_DESKTOP_DIR", "")
@@ -314,6 +333,15 @@ def move_file(path: str, name: str = "", destination: str = "") -> str:
         if dst.is_dir():
             dst = dst / src.name
 
+        # shutil.move REPLACES an existing destination. The user was never
+        # asked, and the replaced file is gone — which is the one outcome the
+        # undo stack cannot repair. Refusing to overwrite is the only answer
+        # that keeps "act immediately, make it reversible" true.
+        if dst.exists() and dst.resolve() != src.resolve():
+            return (f"'{dst.name}' already exists in {dst.parent.name}/ — I did "
+                    f"not overwrite it. Rename one of them, or say where else "
+                    f"to put it.")
+
         dst.parent.mkdir(parents=True, exist_ok=True)
         origin = src.resolve()
         shutil.move(str(src), str(dst))
@@ -343,6 +371,11 @@ def copy_file(path: str, name: str = "", destination: str = "") -> str:
         if dst.is_dir():
             dst = dst / src.name
 
+        # Same reason as in move_file: copy2/copytree overwrite silently.
+        if dst.exists() and dst.resolve() != src.resolve():
+            return (f"'{dst.name}' already exists in {dst.parent.name}/ — I did "
+                    f"not overwrite it. Rename one of them first.")
+
         dst.parent.mkdir(parents=True, exist_ok=True)
 
         if src.is_dir():
@@ -350,16 +383,14 @@ def copy_file(path: str, name: str = "", destination: str = "") -> str:
         else:
             shutil.copy2(str(src), str(dst))
 
-        # The undo for a copy is deleting the copy — never the original.
+        # The undo for a copy is removing the copy — never the original. It
+        # goes to the Trash rather than to nothing: `rmtree` here is permanent,
+        # and the user may well have edited the copy before saying "undo".
         _copy = dst.resolve()
         def _undo_copy():
             if not _copy.exists():
                 return f"The copy '{_copy.name}' is already gone."
-            if _copy.is_dir():
-                shutil.rmtree(_copy)
-            else:
-                _copy.unlink()
-            return f"Removed the copy in {_copy.parent.name}/."
+            return _safe_trash(_copy)
         push_undo(f"copied {src.name} to {dst.parent.name}/", _undo_copy)
 
         return f"Copied: {src.name} → {dst.parent.name}/"
@@ -378,8 +409,15 @@ def rename_file(path: str, name: str = "", new_name: str = "") -> str:
             return f"Not found: {target.name}"
         if not new_name:
             return "No new name provided."
+        if not _is_plain_name(new_name):
+            # `Path("/a/b") / "/etc/passwd"` is "/etc/passwd": the parent is
+            # dropped without a word. `../x` climbs. Neither may reach the
+            # rename below.
+            return f"That is not a file name: {new_name!r}"
 
         new_path = target.parent / new_name
+        if not _is_safe_path(new_path):
+            return f"Access denied: {new_path}"
         if new_path.exists():
             return f"A file named '{new_name}' already exists here."
 

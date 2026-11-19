@@ -38,7 +38,6 @@ import asyncio
 import re
 import threading
 import time
-import json
 import sys
 import traceback
 from contextlib import asynccontextmanager
@@ -1228,9 +1227,13 @@ class JarvisLive:
     def _build_config(self) -> types.LiveConnectConfig:
         from datetime import datetime
 
-        # Load customization from config
+        # Load customization from config — through the config manager, so a
+        # keychain-backed or mid-write file is read the same way everywhere
+        # else. The inline `open(...).read()` also left the handle to the
+        # garbage collector on every reconnect.
         try:
-            _cfg = json.loads(open(API_CONFIG_PATH, encoding="utf-8").read())
+            from memory.config_manager import load_api_keys
+            _cfg = load_api_keys()
             self._asst_name = (_cfg.get("assistant_name") or "JARVIS").strip()
             _user_name = (_cfg.get("user_name") or "").strip()
         except Exception:

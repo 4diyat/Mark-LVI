@@ -126,10 +126,24 @@ model.
 
 - Currently gated: shutdown/restart (`actions/computer_settings.py`) and running
   a file (`actions/code_helper.py`).
-- Should be gated and is not yet: deleting or moving a file, installing a
-  package, extracting an archive. Add the gate before adding a caller.
+- Should be gated and is not yet: installing a package, extracting an archive.
+  Add the gate before adding a caller.
 - `confirm.request` returns the sentence to hand the model. Do not perform the
   work first and ask afterwards.
+
+**File operations are NOT gated — they use `core/undo.py` instead.** That is a
+deliberate design (see its docstring: "act immediately, make it reversible"). The
+rule that follows from it:
+
+- If an operation has no reliable inverse, it must **decline** rather than run.
+  `shutil.move` and `shutil.copy2` silently replace an existing destination, and
+  the replaced file is unrecoverable — so `move_file`/`copy_file` refuse to
+  overwrite instead.
+- The inverse must not itself be destructive. Undoing a copy sends it to the
+  Trash (`_safe_trash`), never `rmtree`.
+- A name that came from a model is checked as a *name* (`_is_plain_name`), not
+  only as a path: `Path("/a/b") / "/etc/passwd"` is `/etc/passwd`, with the left
+  side discarded silently.
 
 ## Running something a model chose
 
