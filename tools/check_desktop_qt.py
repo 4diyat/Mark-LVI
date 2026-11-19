@@ -120,6 +120,23 @@ def main():
         assert dock.parentWidget() is mdi.viewport()
         assert 500 <= dock.width() <= mdi.viewport().width()
         assert all(button.isVisible() for button, _ in window._workspace_dock)
+        # The mockup's menu labels are functional controls, not decorative text.
+        assert len(window._desktop_menus) == 5
+        edit_button, edit_menu = window._desktop_menus['desktop.menu_edit']
+        window.activateWindow()
+        window._input.setText('edit menu test')
+        window._input.setFocus()
+        app.processEvents()
+        assert QApplication.focusWidget() is window._input
+        def choose_select_all():
+            assert QApplication.activePopupWidget() is edit_menu
+            edit_menu.actions()[-1].trigger()
+            edit_menu.close()
+        QTimer.singleShot(50, choose_select_all)
+        QTimer.singleShot(500, edit_menu.close)
+        QTest.mouseClick(edit_button, Qt.MouseButton.LeftButton)
+        assert window._input.selectedText() == 'edit menu test'
+        window._input.clear()
         # Activation is discoverable in Apps -> Controls and needs no external
         # server, installation directory, or camera in this smoke test.
         controls = next(action for action, key in window._workspace_dock_actions if key == "workspace.navigation")

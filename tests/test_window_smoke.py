@@ -574,6 +574,7 @@ def _install_qt() -> dict[str, types.ModuleType]:
         base = _Layout if name in layouts else None
         setattr(widgets, name, _stub_class(name, base))
     class _Menu(_Object):
+        aboutToShow = _Signal()
         def addAction(self, text):
             action = _Object()
             action.setText(text)

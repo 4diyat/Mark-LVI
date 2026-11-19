@@ -6,10 +6,12 @@ signals; rearranging them must not create another session or another log.
 """
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
-from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSizePolicy, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import (QApplication, QHBoxLayout, QLabel, QLineEdit, QMenu,
+                             QPlainTextEdit, QPushButton, QSizePolicy, QTextEdit, QToolButton,
+                             QVBoxLayout, QWidget)
 
 from core.i18n import label as _t
-from ui.theme import C
+from ui.theme import C, workspace_stylesheet
 
 
 def _label(text, size=9, *, bold=False, color=None):
@@ -199,6 +201,8 @@ def retranslate(window):
     window._suggestions_heading.setText(_t("desktop.suggestions"))
     for button, key in window._suggestion_buttons:
         button.setText(_t(key))
+    for widget, key in getattr(window, "_desktop_menu_labels", ()):
+        widget.setText(_t(key))
     window._ctrl_btn.setText(_t("desktop.controls"))
     window._drawer_btn.setText(_t("desktop.settings"))
     update_state(window, window.hud.state)
@@ -237,6 +241,71 @@ def build_menu_bar(window):
     window._sub_lbl = _label("", 7, color=C.DESKTOP_MUTED)
     window._sub_lbl.hide()  # retained for existing name/locale updates
     row.addWidget(window._sub_lbl)
+    window._desktop_menu_labels = []
+    window._desktop_menus = {}
+
+    def workspace_action(action, target):
+        from ui.workspace_commands import execute
+        result = execute(window, {"action": action, "target": target})
+        if not result.get("ok"):
+            window.write_log("SYS: " + result.get("message", ""))
+
+    def edit_action(method):
+        widget = getattr(window, "_desktop_edit_target", None)
+        try:
+            if isinstance(widget, (QLineEdit, QPlainTextEdit, QTextEdit)):
+                getattr(widget, method)()
+        except RuntimeError:
+            pass  # The focused document was closed after the menu opened.
+
+    def capture_edit_target():
+        widget = QApplication.focusWidget()
+        window._desktop_edit_target = widget if isinstance(widget, (QLineEdit, QPlainTextEdit, QTextEdit)) else None
+        for action in window._desktop_edit_actions:
+            action.setEnabled(window._desktop_edit_target is not None)
+
+    def help_action():
+        window._show_content(_t("desktop.menu_help"), _t("desktop.menu_help_content"))
+
+    groups = (
+        ("desktop.menu_file", (("workspace.files", lambda: workspace_action("focus", "files")),
+                               ("workspace.code", lambda: workspace_action("open", "code_editor")),
+                               ("workspace.image", lambda: workspace_action("open", "image_editor")))),
+        ("desktop.menu_edit", (("desktop.menu_undo", lambda: edit_action("undo")),
+                               ("desktop.menu_redo", lambda: edit_action("redo")),
+                               ("desktop.menu_cut", lambda: edit_action("cut")),
+                               ("desktop.menu_copy", lambda: edit_action("copy")),
+                               ("desktop.menu_paste", lambda: edit_action("paste")),
+                               ("desktop.menu_select_all", lambda: edit_action("selectAll")))),
+        ("desktop.menu_view", (("workspace.assistant", lambda: workspace_action("focus", "assistant")),
+                               ("workspace.navigation", lambda: workspace_action("focus", "navigation")))),
+        ("desktop.menu_window", (("workspace.minimize", lambda: workspace_action("minimize", "active")),
+                                 ("workspace.restore_clap", lambda: window._desktop_mdi.restore_clap_windows()))),
+        ("desktop.menu_help", (("desktop.menu_help", help_action),)),
+    )
+    for key, entries in groups:
+        button = QToolButton()
+        button.setText(_t(key))
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setStyleSheet(f"QToolButton {{ color: {C.DESKTOP_TEXT}; background: transparent; "
+                             "border: none; padding: 0 4px; } "
+                             f"QToolButton:hover {{ background: {C.DESKTOP_DOCK}; border-radius: 4px; }}")
+        menu = QMenu(button)
+        menu.setStyleSheet(workspace_stylesheet())
+        actions = []
+        for label_key, callback in entries:
+            action = menu.addAction(_t(label_key))
+            action.triggered.connect(lambda _checked=False, fn=callback: fn())
+            window._desktop_menu_labels.append((action, label_key))
+            actions.append(action)
+        if key == "desktop.menu_edit":
+            window._desktop_edit_actions = actions
+            menu.aboutToShow.connect(capture_edit_target)
+        window._desktop_menus[key] = (button, menu)
+        window._desktop_menu_labels.append((button, key))
+        button.setMenu(menu)
+        button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        row.addWidget(button)
     row.addStretch(1)
     # This badge is driven by the real hand controller, not by the mockup.
     window._hand_badge = _label("", 8, bold=True, color="#83e4b6")
