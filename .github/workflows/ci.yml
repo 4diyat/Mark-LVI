@@ -211,6 +211,11 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: python tools/capture_desktop_qt.py
+      - name: Capture synthetic image editor for visual review
+        if: runner.os == 'Linux'
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python tools/capture_desktop_qt.py --image-editor
       - name: Exercise browser tabs with real Qt offscreen
         if: always() && runner.os == 'Linux'
         env:

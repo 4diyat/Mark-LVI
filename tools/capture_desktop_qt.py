@@ -1,4 +1,5 @@
 """Capture a synthetic offscreen desktop in CI for visual inspection."""
+import argparse
 import base64
 import os
 import tempfile
@@ -35,6 +36,9 @@ def emit_capture(widget, title):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--image-editor', action='store_true', help='capture the synthetic image editor instead')
+    args = parser.parse_args()
     with tempfile.TemporaryDirectory() as tmp:
         os.environ['HOME'] = tmp
         # Fictional contents make the listing and chat inspectable without
@@ -73,29 +77,31 @@ def main():
             window._log._next()
         QTest.qWait(300)
         app.processEvents()
-        emit_capture(window, 'Desktop capture')
-        # A generated in-memory image and fictional text layer reveal the image
-        # editor layout without reading or uploading user documents.
-        picture = QImage(640, 360, QImage.Format.Format_ARGB32)
-        gradient = QLinearGradient(0, 0, 0, 360)
-        gradient.setColorAt(0, QColor('#78aaca'))
-        gradient.setColorAt(1, QColor('#243e58'))
-        painter = QPainter(picture)
-        painter.fillRect(picture.rect(), gradient)
-        painter.setBrush(QColor('#e7c78b'))
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawEllipse(430, 50, 80, 80)
-        painter.end()
-        photo = ImageEditor(window, {})
-        photo._image = picture
-        photo._layers = [make_text_layer('Synthetic landscape', 20, 320, 24, 640, 360)]
-        photo._update_layers()
-        sub = show_document(window, photo, 'image_editor')
-        sub.setGeometry(180, 70, 900, 590)
-        photo._render()
-        QTest.qWait(300)
-        app.processEvents()
-        emit_capture(sub, 'Image editor capture')
+        if not args.image_editor:
+            emit_capture(window, 'Desktop capture')
+        else:
+            # A generated in-memory image and fictional text layer reveal the image
+            # editor layout without reading or uploading user documents.
+            picture = QImage(640, 360, QImage.Format.Format_ARGB32)
+            gradient = QLinearGradient(0, 0, 0, 360)
+            gradient.setColorAt(0, QColor('#78aaca'))
+            gradient.setColorAt(1, QColor('#243e58'))
+            painter = QPainter(picture)
+            painter.fillRect(picture.rect(), gradient)
+            painter.setBrush(QColor('#e7c78b'))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawEllipse(430, 50, 80, 80)
+            painter.end()
+            photo = ImageEditor(window, {})
+            photo._image = picture
+            photo._layers = [make_text_layer('Synthetic landscape', 20, 320, 24, 640, 360)]
+            photo._update_layers()
+            sub = show_document(window, photo, 'image_editor')
+            sub.setGeometry(180, 70, 900, 590)
+            photo._render()
+            QTest.qWait(300)
+            app.processEvents()
+            emit_capture(sub, 'Image editor capture')
         # Report actual software-render cost; a visual improvement must not
         # silently consume an entire frame budget on the CI runner.
         avatar = window.hud._avatar
