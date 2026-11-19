@@ -148,14 +148,18 @@ class LogWidget(QTextEdit):
         self._tmr.start(6)
 
     def _step(self):
+        # Work on a cursor copy, not the widget's selection. Follow new output
+        # only if the reader was already at the bottom and is not selecting.
+        cur = self.textCursor()
+        scrollbar = self.verticalScrollBar()
+        follow = not cur.hasSelection() and scrollbar.value() >= scrollbar.maximum() - 2
+        cur.movePosition(cur.MoveOperation.End)
         if self._pos < len(self._text):
             ch  = self._text[self._pos]
-            cur = self.textCursor()
             if self._pos == 0:
                 # Use native text blocks rather than inserting HTML: text from a model
                 # or user remains inert and selectable, while chat messages get the
                 # alignment and restrained blue surface of the desktop concept.
-                cur.movePosition(cur.MoveOperation.End)
                 block = QTextBlockFormat()
                 block.setTopMargin(4)
                 block.setBottomMargin(4)
@@ -173,7 +177,6 @@ class LogWidget(QTextEdit):
                     block.setLeftMargin(8)
                     block.setRightMargin(8)
                 cur.setBlockFormat(block)
-                self.setTextCursor(cur)
             fmt = cur.charFormat()
             col = {
                 "you":  qcol(C.WHITE),
@@ -188,19 +191,14 @@ class LogWidget(QTextEdit):
                 "sys":  qcol(C.TEXT_MED),
             }.get(self._tag, qcol(C.TEXT))
             fmt.setForeground(QBrush(col))
-            cur.movePosition(cur.MoveOperation.End)
             cur.insertText(ch, fmt)
-            self.setTextCursor(cur)
-            self.ensureCursorVisible()
             self._pos += 1
             # Qt's small dirty text rectangle does not include rounded padding.
             self.viewport().update()
         else:
             self._tmr.stop()
-            cur = self.textCursor()
-            cur.movePosition(cur.MoveOperation.End)
             cur.insertText("\n")
-            self.setTextCursor(cur)
-            self.ensureCursorVisible()
             QTimer.singleShot(20, self._next)
+        if follow:
+            scrollbar.setValue(scrollbar.maximum())
 

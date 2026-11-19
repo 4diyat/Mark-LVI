@@ -13,6 +13,7 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtCore import QCoreApplication, QEvent, QFileInfo, QPoint, QTimer, Qt  # noqa: E402
+from PyQt6.QtGui import QTextCursor  # noqa: E402
 from PyQt6.QtTest import QTest  # noqa: E402
 from PyQt6.QtWidgets import QApplication, QComboBox, QPushButton, QScrollArea, QSizeGrip, QSlider, QWidget  # noqa: E402
 
@@ -57,6 +58,9 @@ def main():
         assert chat.document().firstBlock().blockFormat().leftMargin() > before
         # Repeated messages from the same sender remain distinct and scroll
         # with the native document rather than sticking to the viewport.
+        selected = chat.textCursor()
+        selected.clearSelection()
+        chat.setTextCursor(selected)
         chat._step()  # finish the first multiline message
         for i in range(35):
             chat._tag, chat._text, chat._pos = 'ai', f'JARVIS: message {i}', 0
@@ -75,6 +79,29 @@ def main():
         bottom_bubbles = chat._bubble_rects()
         assert len(bottom_bubbles) > 1 and all(side == 'ai' for _, side in bottom_bubbles)
         assert 'JARVIS: message 34' in chat.toPlainText()
+        selection = QTextCursor(chat.document())
+        selection.setPosition(0)
+        selection.setPosition(8, QTextCursor.MoveMode.KeepAnchor)
+        chat.setTextCursor(selection)
+        bar.setValue(0)
+        app.processEvents()
+        assert chat.textCursor().selectedText() == '<unsafe>'
+        chat._tag, chat._text, chat._pos = 'ai', 'JARVIS: new response', 0
+        for _ in chat._text:
+            chat._step()
+        chat._step()
+        app.processEvents()
+        assert chat.textCursor().selectedText() == '<unsafe>' and bar.value() == 0
+        selection = chat.textCursor()
+        selection.clearSelection()
+        chat.setTextCursor(selection)
+        bar.setValue(bar.maximum())
+        chat._tag, chat._text, chat._pos = 'ai', 'JARVIS: follow latest ' * 8, 0
+        for _ in chat._text:
+            chat._step()
+        chat._step()
+        app.processEvents()
+        assert bar.value() == bar.maximum()
         chat.close()
         # Real Qt navigation: back/forward, branch history, and a directory
         # removed after it was visited must not move the current location.

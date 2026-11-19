@@ -1574,6 +1574,8 @@ def test_conversation_formats_messages_as_plain_selectable_blocks(window_module,
 
     class Cursor:
         MoveOperation = types.SimpleNamespace(End=1)
+        def hasSelection(self):
+            return False
         def movePosition(self, _position):
             pass
         def setBlockFormat(self, value):
@@ -1588,6 +1590,8 @@ def test_conversation_formats_messages_as_plain_selectable_blocks(window_module,
     cursor = Cursor()
     monkeypatch.setattr(log, 'textCursor', lambda: cursor)
     monkeypatch.setattr(log, 'viewport', lambda: types.SimpleNamespace(width=lambda: 400, update=lambda: None))
+    monkeypatch.setattr(log, 'verticalScrollBar', lambda: types.SimpleNamespace(
+        value=lambda: 0, maximum=lambda: 0, setValue=lambda _value: None))
     for tag in ('you', 'ai', 'sys'):
         log._tag, log._pos, log._text = tag, 0, '<unsafe>'
         log._step()
