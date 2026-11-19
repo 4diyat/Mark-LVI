@@ -536,7 +536,8 @@ class HoloAvatar:
         return self._lut_cache
 
     def paint(self, p: QPainter, cx: float, cy: float, r: float,
-              primary: QColor, accent: QColor, bg: QColor | None = None) -> None:
+              primary: QColor, accent: QColor, bg: QColor | None = None,
+              *, wireframe: bool = True) -> None:
         """Draw the avatar with its head centre at (cx, cy).
 
         `r` is the head's half-height in pixels — the caller owns the layout, so
@@ -566,7 +567,8 @@ class HoloAvatar:
 
         if self.shaded:
             self._paint_surface(p, xs, ys, norms, verts, primary, accent, bg, amp)
-        self._paint_wire(p, xs, ys, norms, verts, primary, bg, amp)
+        if wireframe or not self.shaded:
+            self._paint_wire(p, xs, ys, norms, verts, primary, bg, amp)
         self._paint_features(p, xs, ys, norms, r, primary, accent, bg, amp)
 
     def _paint_surface(self, p: QPainter, xs, ys, norms, verts,

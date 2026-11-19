@@ -88,7 +88,7 @@ class WorkspaceAvatar(QWidget):
         # preserve the user's hue and the distinct muted state.
         if not self.hud.muted:
             color = color.lighter(135)
-        avatar.paint(painter, cx, cy, radius, color, color, qcol(C.DESKTOP_BAR))
+        avatar.paint(painter, cx, cy, radius, color, color, qcol(C.DESKTOP_BAR), wireframe=False)
         bottom = min(height - 58, cy + (avatar.SPAN - 1) * radius + 5)
         painter.setPen(qcol(C.DESKTOP_TEXT))
         painter.setFont(QFont("Arial", 19, QFont.Weight.Bold))
