@@ -32,15 +32,28 @@ def main():
         chat.resize(400, 220)
         chat.show()
         app.processEvents()
-        chat._tag, chat._text, chat._pos = 'you', '<', 0
-        chat._step()
-        assert chat.toPlainText() == '<'
-        assert chat.textCursor().blockFormat().alignment() == Qt.AlignmentFlag.AlignRight
-        before = chat.textCursor().blockFormat().leftMargin()
+        text = '<unsafe>\nsecond paragraph'
+        chat._tag, chat._text, chat._pos = 'you', text, 0
+        for _ in text:
+            chat._step()
+        assert chat.toPlainText() == text
+        assert chat.document().firstBlock().blockFormat().alignment() == Qt.AlignmentFlag.AlignRight
+        app.processEvents()
+        bubbles = chat._bubble_rects()
+        assert len(bubbles) == 1 and bubbles[0][1] == 'you'
+        rect = bubbles[0][0]
+        image = chat.viewport().grab().toImage()
+        scale = image.devicePixelRatio()
+        def pixel(x, y):
+            return image.pixelColor(round(x * scale), round(y * scale)).name()
+        # The centre of the top edge is coloured, its rounded corner is not.
+        assert pixel(rect.center().x(), rect.top() + 2) == '#1c3a59'
+        assert pixel(rect.left() + 1, rect.top() + 1) != '#1c3a59'
+        before = chat.document().firstBlock().blockFormat().leftMargin()
         chat.selectAll()
         chat.resize(600, 220)
         app.processEvents()
-        assert chat.toPlainText() == '<' and chat.textCursor().selectedText() == '<'
+        assert chat.toPlainText() == text and chat.textCursor().selectedText().replace('\u2029', '\n') == text
         assert chat.document().firstBlock().blockFormat().leftMargin() > before
         chat.close()
         # Real Qt navigation: back/forward, branch history, and a directory

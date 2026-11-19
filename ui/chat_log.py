@@ -1,6 +1,6 @@
 """Selectable, bounded assistant conversation on the Qt main thread."""
-from PyQt6.QtCore import QTimer, Qt, pyqtSignal
-from PyQt6.QtGui import QBrush, QColor, QFont, QTextBlockFormat, QTextCursor
+from PyQt6.QtCore import QRectF, QTimer, Qt, pyqtSignal
+from PyQt6.QtGui import QBrush, QColor, QFont, QPainter, QTextBlockFormat, QTextCursor
 from PyQt6.QtWidgets import QTextEdit
 
 from ui.theme import C, qcol
@@ -11,6 +11,8 @@ class LogWidget(QTextEdit):
     # A document-local marker allows bubble widths to follow a resized panel
     # without relying on user/model text or changing what can be copied.
     _bubble_property = 0x100001  # QTextFormat.UserProperty + 1
+    _message_property = 0x100002
+    _bubble_padding = 10
 
     @staticmethod
     def _bubble_margin(width):
@@ -28,7 +30,8 @@ class LogWidget(QTextEdit):
                 fmt = block.blockFormat()
                 side = fmt.property(self._bubble_property)
                 if side in ('you', 'ai'):
-                    left, right = (margin, 8) if side == 'you' else (8, margin)
+                    pad = self._bubble_padding
+                    left, right = (margin + pad, 8 + pad) if side == 'you' else (8 + pad, margin + pad)
                     if fmt.leftMargin() != left or fmt.rightMargin() != right:
                         fmt.setLeftMargin(left)
                         fmt.setRightMargin(right)
@@ -36,6 +39,50 @@ class LogWidget(QTextEdit):
                 block = block.next()
         finally:
             self._reflowing_bubbles = False
+
+    def _bubble_rects(self):
+        """Return visible message backdrops in viewport coordinates.
+
+        Message IDs combine consecutive paragraphs into one bubble while keeping
+        separate messages distinct. Never inspect text as HTML or alter the
+        document during painting.
+        """
+        document = self.document()
+        layout = document.documentLayout()
+        viewport = self.viewport()
+        scroll_x = self.horizontalScrollBar().value()
+        scroll_y = self.verticalScrollBar().value()
+        doc_margin = document.documentMargin()
+        result = []
+        block = document.begin()
+        while block.isValid():
+            fmt = block.blockFormat()
+            side, message = fmt.property(self._bubble_property), fmt.property(self._message_property)
+            if side in ('you', 'ai') and message is not None and block.text():
+                bounds = layout.blockBoundingRect(block).translated(-scroll_x, -scroll_y)
+                pad = self._bubble_padding
+                left = doc_margin + fmt.leftMargin() - pad - scroll_x
+                right = viewport.width() - doc_margin - fmt.rightMargin() + pad - scroll_x
+                rect = QRectF(left, bounds.top() - 4, max(1.0, right - left), bounds.height() + 8)
+                if result and result[-1][2] == message:
+                    previous, _, _ = result[-1]
+                    result[-1] = (previous.united(rect), side, message)
+                else:
+                    result.append((rect, side, message))
+            block = block.next()
+        return [(rect, side) for rect, side, _ in result if rect.intersects(QRectF(viewport.rect()))]
+
+    def paintEvent(self, event):
+        painter = QPainter(self.viewport())
+        painter.setClipRect(event.rect())
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+        for rect, side in self._bubble_rects():
+            painter.setBrush(QColor("#1c3a59" if side == "you" else "#192d41"))
+            painter.drawRoundedRect(rect, 9, 9)
+        painter.end()
+        # Let Qt draw the actual selectable document and selection on top.
+        super().paintEvent(event)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -70,6 +117,7 @@ class LogWidget(QTextEdit):
         self._text    = ""
         self._pos     = 0
         self._tag     = "sys"
+        self._bubble_sequence = 0
         self._ai_name_lc = "jarvis"   # updated when assistant name changes
         self._tmr = QTimer(self)
         self._tmr.timeout.connect(self._step)
@@ -115,10 +163,12 @@ class LogWidget(QTextEdit):
                     block.setAlignment(Qt.AlignmentFlag.AlignRight if self._tag == "you"
                                        else Qt.AlignmentFlag.AlignLeft)
                     margin = self._bubble_margin(self.viewport().width())
-                    block.setLeftMargin(margin if self._tag == "you" else 8)
-                    block.setRightMargin(8 if self._tag == "you" else margin)
+                    pad = self._bubble_padding
+                    block.setLeftMargin((margin if self._tag == "you" else 8) + pad)
+                    block.setRightMargin((8 if self._tag == "you" else margin) + pad)
+                    self._bubble_sequence += 1
                     block.setProperty(self._bubble_property, self._tag)
-                    block.setBackground(QBrush(QColor("#1c3a59" if self._tag == "you" else "#192d41")))
+                    block.setProperty(self._message_property, self._bubble_sequence)
                 else:
                     block.setLeftMargin(8)
                     block.setRightMargin(8)
@@ -143,6 +193,8 @@ class LogWidget(QTextEdit):
             self.setTextCursor(cur)
             self.ensureCursorVisible()
             self._pos += 1
+            # Qt's small dirty text rectangle does not include rounded padding.
+            self.viewport().update()
         else:
             self._tmr.stop()
             cur = self.textCursor()

@@ -1570,7 +1570,7 @@ def test_conversation_formats_messages_as_plain_selectable_blocks(window_module,
         def setBackground(self, value):
             self.values['background'] = value
         def setProperty(self, key, value):
-            self.values['property'] = (key, value)
+            self.values.setdefault('properties', {})[key] = value
 
     class Cursor:
         MoveOperation = types.SimpleNamespace(End=1)
@@ -1587,16 +1587,18 @@ def test_conversation_formats_messages_as_plain_selectable_blocks(window_module,
     log = module.LogWidget()
     cursor = Cursor()
     monkeypatch.setattr(log, 'textCursor', lambda: cursor)
-    monkeypatch.setattr(log, 'viewport', lambda: types.SimpleNamespace(width=lambda: 400))
+    monkeypatch.setattr(log, 'viewport', lambda: types.SimpleNamespace(width=lambda: 400, update=lambda: None))
     for tag in ('you', 'ai', 'sys'):
         log._tag, log._pos, log._text = tag, 0, '<unsafe>'
         log._step()
         assert cursor.inserted == '<'  # not interpreted as rich HTML
     assert formats[0]['left'] > formats[0]['right']
     assert formats[1]['right'] > formats[1]['left']
-    assert 'background' in formats[0] and 'background' in formats[1]
-    assert 'background' not in formats[2]
-    assert formats[0]['left'] == formats[1]['right'] == 120
+    assert all('background' not in fmt for fmt in formats)
+    assert formats[0]['properties'][module.LogWidget._bubble_property] == 'you'
+    assert formats[1]['properties'][module.LogWidget._bubble_property] == 'ai'
+    assert formats[0]['properties'][module.LogWidget._message_property] != formats[1]['properties'][module.LogWidget._message_property]
+    assert formats[0]['left'] == formats[1]['right'] == 130
     assert module.LogWidget._bubble_margin(140) == 0
     assert module.LogWidget._bubble_margin(300) == 90
 
