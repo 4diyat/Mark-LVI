@@ -453,6 +453,39 @@ def initial_window_geometry(width, height):
     return (file_x, file_y, file_w, file_h), (assistant_x, assistant_y, assistant_w, assistant_h)
 
 
+def open_initial_editor(window):
+    """Open one blank editor after plugin discovery, only on a roomy desktop.
+
+    Never re-open a closed window on registry refresh, and never bypass plugin
+    enablement. This is dispatched on the Qt thread, not the registry worker.
+    """
+    if getattr(window, "_initial_editor_attempted", False):
+        return
+    window._initial_editor_attempted = True
+    mdi = window._desktop_mdi
+    width, height = mdi.viewport().width(), mdi.viewport().height()
+    if width < 1100 or height < 650:
+        return
+    if any(kind == "code_editor" for kind, _ in window._workspace_documents.values()):
+        return
+    try:
+        enabled = any(item.get("name") == "code_editor" and item.get("valid") and item.get("enabled")
+                      for item in window.get_plugins())
+    except Exception:
+        return
+    if not enabled:
+        return
+    from ui.creative import open_workspace
+    sub = open_workspace(window, {"kind": "creative_workspace", "tab": "editor"})
+    if sub is None:
+        return
+    files, _ = initial_window_geometry(width, height)
+    x, y, w, h = files
+    top = y + h + 18
+    sub.setGeometry(x, top, w, max(1, height - 90 - top))
+    mdi.position_dock()
+
+
 def build(window):
     shell = QWidget()
     shell.setObjectName("WorkspaceShell")

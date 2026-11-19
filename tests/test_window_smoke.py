@@ -1190,6 +1190,22 @@ def test_wide_desktop_reserves_left_lower_area_for_editor(window):
     assert assistant[1] + assistant[3] <= height - 90
 
 
+def test_initial_editor_respects_disabled_plugin_and_only_attempts_once(window_module):
+    from ui.desktop_workspace import open_initial_editor
+    viewport = types.SimpleNamespace(width=lambda: 1366, height=lambda: 738)
+    mdi = types.SimpleNamespace(viewport=lambda: viewport)
+    calls = []
+    host = types.SimpleNamespace(_desktop_mdi=mdi, _workspace_documents={},
+                                 get_plugins=lambda: calls.append(True) or [])
+    open_initial_editor(host)
+    open_initial_editor(host)
+    assert calls == [True] and host._initial_editor_attempted
+    compact = types.SimpleNamespace(_desktop_mdi=types.SimpleNamespace(
+        viewport=lambda: types.SimpleNamespace(width=lambda: 800, height=lambda: 600)),
+        _workspace_documents={}, get_plugins=lambda: pytest.fail("compact desktop must not open editor"))
+    open_initial_editor(compact)
+
+
 def test_initialising_does_not_claim_microphone_is_active(window):
     from core.i18n import label
     window.hud.state = "INITIALISING"

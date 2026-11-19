@@ -543,6 +543,36 @@ def main():
         board_sub.raise_()
         app.processEvents()
 
+        # Plugin discovery can finish on a worker; its signal must create only
+        # one real editor on the Qt thread, below the initial Files geometry.
+        from ui.desktop_workspace import open_initial_editor
+        window.get_plugins = lambda: [{"name": "code_editor", "valid": True, "enabled": True}]
+        # Close test documents first, without affecting the original smoke tests.
+        for kind, existing in tuple(window._workspace_documents.values()):
+            if kind == "code_editor":
+                existing.close()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        app.processEvents()
+        open_initial_editor(window)
+        editors = [sub for kind, sub in window._workspace_documents.values() if kind == "code_editor"]
+        assert len(editors) == 1
+        editor_sub = editors[0]
+        initial_files, _ = initial_window_geometry(mdi.viewport().width(), mdi.viewport().height())
+        assert editor_sub.x() == initial_files[0]
+        assert editor_sub.y() == initial_files[1] + initial_files[3] + 18
+        assert editor_sub.width() == initial_files[2]
+        assert editor_sub.y() + editor_sub.height() <= mdi.viewport().height() - 90
+        editor_sub._document._code.setPlainText("unsaved")
+        editor_sub._document._code.document().setModified(True)
+        open_initial_editor(window)
+        assert editor_sub._document._code.toPlainText() == "unsaved"
+        editor_sub._document._code.document().setModified(False)
+        editor_sub.close()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        app.processEvents()
+        open_initial_editor(window)
+        assert not any(kind == "code_editor" for kind, _ in window._workspace_documents.values())
+
         window._hand_timer.start()
         print("Real Qt desktop, workspace and local OBJ viewer passed.")
 

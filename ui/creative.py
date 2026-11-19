@@ -303,4 +303,4 @@ def open_workspace(window, request):
     window._creative_dialogs.add(dialog)
     dialog.destroyed.connect(lambda: window._creative_dialogs.discard(dialog))
     from ui.desktop_workspace import show_document
-    show_document(window, dialog, "code_editor")
+    return show_document(window, dialog, "code_editor")

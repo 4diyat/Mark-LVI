@@ -3506,6 +3506,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
     _state_sig      = pyqtSignal(str)
     _content_sig    = pyqtSignal(str, str)   # (title, text) — thread-safe content display
     _codejob_sig    = pyqtSignal(object)     # dev_agent job state — live coding panel
+    _plugins_ready_sig = pyqtSignal()  # registry can be supplied from a worker thread
     _ssh_assist_sig = pyqtSignal(object)
     _editor_assist_sig = pyqtSignal(object)
     _workspace_command_sig = pyqtSignal(object)  # worker request, completed on Qt thread
@@ -3876,6 +3877,8 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         self._state_sig.connect(self._apply_state)
         self._content_sig.connect(self._show_content)
         self._codejob_sig.connect(self._show_code_job)
+        from ui.desktop_workspace import open_initial_editor
+        self._plugins_ready_sig.connect(lambda: open_initial_editor(self))
         self._workspace_command_sig.connect(self._execute_workspace_command)
         self._editor_assist_sig.connect(self._execute_editor_assist)
         self._ssh_assist_sig.connect(self._execute_ssh_assist)
@@ -6695,6 +6698,8 @@ class JarvisUI:
     @get_plugins.setter
     def get_plugins(self, cb):
         self._win.get_plugins = cb
+        if cb is not None:
+            self._win._plugins_ready_sig.emit()
 
     @property
     def get_plugin_settings(self):
