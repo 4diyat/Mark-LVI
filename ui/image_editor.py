@@ -11,6 +11,7 @@ from core.image_layers import make_text_layer, set_visible
 from ui.theme import workspace_stylesheet
 from ui.localization import TranslationBindings
 from ui.image_tool_icons import image_tool_icon
+from ui.image_canvas import ImageCanvas
 
 
 class ImageEditor(QDialog):
@@ -67,7 +68,8 @@ class ImageEditor(QDialog):
         self._status.setTextFormat(Qt.TextFormat.PlainText)
         self._status.setWordWrap(True)
         layout.addWidget(self._status)
-        self._preview = QLabel()
+        self._preview = ImageCanvas()
+        self._preview.selection_changed.connect(self._selection_changed)
         self._preview.setAccessibleName(_t("image_editor.title"))
         self._preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._preview.setMinimumSize(200, 150)
@@ -80,13 +82,16 @@ class ImageEditor(QDialog):
         tool_layout = QVBoxLayout(tool_panel)
         tool_layout.setContentsMargins(0, 0, 0, 0)
         self._image_tools = {}
-        for icon, key, callback in (("rotate", "image_editor.rotate", self.rotate),
+        for icon, key, callback in (("select", "image_editor.select", self._toggle_selection),
+                                    ("rotate", "image_editor.rotate", self.rotate),
                                     ("flip", "image_editor.flip", self.flip),
                                     ("grayscale", "image_editor.grayscale", self.grayscale),
                                     ("crop", "image_editor.crop", self.crop),
                                     ("text", "image_editor.add_text", self.add_text)):
             button = QToolButton()
             button.setIcon(image_tool_icon(icon))
+            if icon == "select":
+                button.setCheckable(True)
             button.setIconSize(QSize(22, 22))
             button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
             button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -144,6 +149,16 @@ class ImageEditor(QDialog):
             button.setToolTip(_t(key))
             button.setAccessibleName(_t(key))
 
+    def _toggle_selection(self):
+        enabled = self._image_tools["image_editor.select"].isChecked()
+        self._preview.set_selecting(enabled)
+        if enabled:
+            self._status.setText(_t("image_editor.select_hint") if self._image is not None
+                                 else _t("image_editor.empty"))
+
+    def _selection_changed(self, selection):
+        self._status.setText(_t("image_editor.selected", width=selection[2], height=selection[3]))
+
     def _may_discard(self):
         return not self._dirty or QMessageBox.question(
             self, _t("image_editor.title"), _t("image_editor.discard"),
@@ -168,6 +183,7 @@ class ImageEditor(QDialog):
         if image.isNull():
             self._status.setText(_t("image_editor.read_error"))
             return
+        self._preview.clear_selection()
         self._image, self._undo_state, self._source, self._dirty = image, None, path, False
         self._layers = []
         self._update_layers()
@@ -208,6 +224,7 @@ class ImageEditor(QDialog):
             return
         had_layers = bool(self._layers)
         self._snapshot()
+        self._preview.clear_selection()
         self._image, self._layers = image, []
         self._dirty = True
         self._update_layers()
@@ -238,15 +255,16 @@ class ImageEditor(QDialog):
             self._status.setText(_t("image_editor.empty"))
             return
         width, height = self._image.width(), self._image.height()
+        x, y, selected_width, selected_height = self._preview.selection or (0, 0, width, height)
         dialog = QDialog(self)
         dialog.setWindowTitle(_t("image_editor.crop"))
         form = QFormLayout(dialog)
         controls = []
         for key, minimum, maximum, value in (
-            ("image_editor.crop_x", 0, width - 1, 0),
-            ("image_editor.crop_y", 0, height - 1, 0),
-            ("image_editor.crop_width", 1, width, width),
-            ("image_editor.crop_height", 1, height, height),
+            ("image_editor.crop_x", 0, width - 1, x),
+            ("image_editor.crop_y", 0, height - 1, y),
+            ("image_editor.crop_width", 1, width, selected_width),
+            ("image_editor.crop_height", 1, height, selected_height),
         ):
             control = QSpinBox()
             control.setRange(minimum, maximum)
@@ -363,6 +381,7 @@ class ImageEditor(QDialog):
 
     def undo(self):
         if self._undo_state is not None:
+            self._preview.clear_selection()
             self._image, layers = self._undo_state
             self._layers, self._undo_state = list(layers), None
             self._dirty = True
@@ -388,6 +407,7 @@ class ImageEditor(QDialog):
             painter.scale(pixmap.width() / self._image.width(), pixmap.height() / self._image.height())
             self._paint_layers(painter)
             painter.end()
+            self._preview.image_size = (self._image.width(), self._image.height())
             self._preview.setMinimumSize(max(200, pixmap.width()), max(150, pixmap.height()))
             self._preview.setPixmap(pixmap)
 

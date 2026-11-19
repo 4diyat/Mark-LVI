@@ -1077,6 +1077,7 @@ def test_image_flatten_cancel_and_undo_restore_layers(window_module, monkeypatch
     import ui.image_editor as editor
     from core.image_layers import make_text_layer
     instance = editor.ImageEditor.__new__(editor.ImageEditor)
+    instance._preview = types.SimpleNamespace(clear_selection=lambda: None)
     instance._image = "original"
     layer = make_text_layer("hello", 0, 5, 12, 100, 100)
     instance._layers = [layer]

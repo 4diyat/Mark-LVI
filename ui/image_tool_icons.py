@@ -18,7 +18,16 @@ def image_tool_icon(kind):
     painter.setPen(pen)
     painter.setBrush(Qt.BrushStyle.NoBrush)
     path = QPainterPath()
-    if kind == "rotate":
+    if kind == "select":
+        path.moveTo(5, 3)
+        path.lineTo(5, 19)
+        path.lineTo(9, 15)
+        path.lineTo(12, 21)
+        path.lineTo(15, 20)
+        path.lineTo(12, 14)
+        path.lineTo(18, 14)
+        path.closeSubpath()
+    elif kind == "rotate":
         path.arcMoveTo(QRectF(4, 4, 16, 16), 35)
         path.arcTo(QRectF(4, 4, 16, 16), 35, 260)
         path.moveTo(17, 3)

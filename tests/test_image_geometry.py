@@ -24,3 +24,13 @@ def test_preview_size_fit_zoom_and_allocation_limits():
     width, height = preview_size(400, 200, 50000, 50000, 200)
     assert width <= 8192 and height <= 8192 and width * height <= 16_000_000
     assert abs(width / height - 2) < .01
+
+
+def test_selection_maps_preview_drag_to_image_and_clips():
+    from core.image_geometry import selection_from_points
+    select = selection_from_points
+    assert select(400, 200, 10, 20, 200, 100, (60, 45), (160, 95)) == (100, 50, 200, 100)
+    assert select(400, 200, 10, 20, 200, 100, (160, 95), (60, 45)) == (100, 50, 200, 100)
+    assert select(400, 200, 10, 20, 200, 100, (-5, -5), (300, 300)) == (0, 0, 400, 200)
+    assert select(400, 200, 10, 20, 200, 100, (30, 30), (30, 30)) is None
+    assert select(400, 200, 10, 20, 200, 100, (0, 0), (5, 5)) is None

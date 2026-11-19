@@ -15,7 +15,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt6.QtCore import QCoreApplication, QEvent, QFileInfo, QPoint, QTimer, Qt  # noqa: E402
 from PyQt6.QtGui import QImage, QTextCursor  # noqa: E402
 from PyQt6.QtTest import QTest  # noqa: E402
-from PyQt6.QtWidgets import QApplication, QComboBox, QFileDialog, QPushButton, QScrollArea, QSizeGrip, QSlider, QWidget  # noqa: E402
+from PyQt6.QtWidgets import QApplication, QComboBox, QDialog, QFileDialog, QPushButton, QScrollArea, QSizeGrip, QSlider, QSpinBox, QWidget  # noqa: E402
 
 import memory.config_manager as config  # noqa: E402
 from core.i18n import label as translate  # noqa: E402
@@ -165,7 +165,7 @@ def main():
         image.show()
         app.processEvents()
         assert image._tool_scroll.x() < image._tool_scroll.parentWidget().width() // 2
-        assert len(image._image_tools) == 5 and len(image._file_tools) == 3
+        assert len(image._image_tools) == 6 and len(image._file_tools) == 3
         for key, button in image._image_tools.items():
             assert not button.icon().isNull()
             assert button.toolButtonStyle() == Qt.ToolButtonStyle.ToolButtonIconOnly
@@ -191,6 +191,38 @@ def main():
         image._image_tools['image_editor.rotate'].setFocus()
         QTest.keyClick(image._image_tools['image_editor.rotate'], Qt.Key.Key_Space)
         assert (image._image.width(), image._image.height()) == (20, 40) and image._dirty
+        image._file_tools['image_editor.undo'].click()
+        assert (image._image.width(), image._image.height()) == (40, 20)
+        image._dirty = False
+        image._image_tools['image_editor.select'].click()
+        app.processEvents()
+        rect = image._preview._image_rect()
+        start = QPoint(round(rect.left() + rect.width() * .25), round(rect.top() + rect.height() * .25))
+        end = QPoint(round(rect.left() + rect.width() * .75), round(rect.top() + rect.height() * .75))
+        QTest.mousePress(image._preview, Qt.MouseButton.LeftButton, pos=start)
+        QTest.mouseMove(image._preview, end)
+        QTest.mouseRelease(image._preview, Qt.MouseButton.LeftButton, pos=end)
+        selected = image._preview.selection
+        assert selected and 9 <= selected[0] <= 10 and 4 <= selected[1] <= 5
+        assert 19 <= selected[2] <= 21 and 9 <= selected[3] <= 11
+        assert not image._dirty and (image._image.width(), image._image.height()) == (40, 20)
+        image._zoom.setValue(150)
+        app.processEvents()
+        assert image._preview.selection == selected
+        image._zoom.setValue(100)
+        app.processEvents()
+        def crop_dialog(accept):
+            dialog = app.activeModalWidget()
+            assert isinstance(dialog, QDialog)
+            assert tuple(control.value() for control in dialog.findChildren(QSpinBox)) == selected
+            dialog.accept() if accept else dialog.reject()
+        QTimer.singleShot(0, lambda: crop_dialog(False))
+        image._image_tools['image_editor.crop'].click()
+        assert image._preview.selection == selected and not image._dirty
+        QTimer.singleShot(0, lambda: crop_dialog(True))
+        image._image_tools['image_editor.crop'].click()
+        assert (image._image.width(), image._image.height()) == selected[2:]
+        assert image._dirty and image._preview.selection is None
         image._file_tools['image_editor.undo'].click()
         assert (image._image.width(), image._image.height()) == (40, 20)
         image._dirty = False
