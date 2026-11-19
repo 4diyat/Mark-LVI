@@ -80,10 +80,16 @@ def _make_uploads_dir() -> Path:
 UPLOADS_DIR = _make_uploads_dir()
 
 def _get_gemini_key() -> str | None:
+    """The Gemini key through the config manager, never a private file read.
+
+    Reading `api_keys.json` here meant the dashboard answered from the file even
+    when `core/keychain.py` held the current key, and it knew nothing about
+    `gemini_api_key_source`. The dashboard runs in a thread of its own, so the
+    import is local: it keeps `memory/` off this module's import path.
+    """
     try:
-        import json as _json
-        with open(BASE_DIR / "config" / "api_keys.json", "r", encoding="utf-8") as f:
-            return _json.load(f).get("gemini_api_key")
+        from memory.config_manager import get_gemini_key
+        return get_gemini_key() or None
     except Exception:
         return None
 
@@ -903,6 +909,10 @@ class DashboardServer:
     def __init__(self):
         self._ip                          = _local_ip()
         self._use_ssl                     = self._ssl_enabled()
+        # Set when the listener actually comes up over plain HTTP, so the panel
+        # and the log can say which protocol is really in use rather than
+        # inferring it from the config.
+        self._insecure_http               = False
         # token -> issued-at. A set had no way to expire anything; this does,
         # and `_auth` sweeps as it reads so nothing has to run a timer.
         # auth_token → [issued_at, last_seen, scope]. A bare issued-at could
@@ -1830,7 +1840,25 @@ class DashboardServer:
                 print(f"[Dashboard] {self._bind_error}")
                 return
         else:
-            print("[Dashboard] WARNING: HTTP does not protect pairing and commands from the network.")
+            # PLAINTEXT KEEPS ITS WARNING — AND NOW ALSO RECORDS IT.
+            #
+            # HTTPS stays opt-in on purpose (readme.md explains the interstitial
+            # and the blank in-app browser that made mandatory TLS a mistake),
+            # but the warning used to go to stdout only. The desktop shortcut
+            # runs `pythonw main.py`, where stdout is a null device, so on a
+            # shared network the pairing key and every remote command travelled
+            # in clear text with nothing written down afterwards.
+            #
+            # So: the same warning, to the log file as well, and a flag
+            # (`_insecure_http`) any caller can read to know which protocol is
+            # really in use. `dashboard_https: true` with a broken certificate
+            # still fails closed — above.
+            self._insecure_http = True
+            _dlog.warning(
+                "dashboard: serving over plain HTTP on 0.0.0.0:%s — pairing keys "
+                "and remote commands are unencrypted on the local network", PORT)
+            print("[Dashboard] WARNING: HTTP does not protect pairing and commands "
+                  "from the network. Enable HTTPS in the REMOTE panel.")
 
         cfg = uvicorn.Config(
             self.app, host="0.0.0.0",

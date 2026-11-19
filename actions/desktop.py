@@ -1,7 +1,6 @@
 #desktop.py
 import os
 import sys
-import json
 import shutil
 import subprocess
 import tempfile
@@ -24,10 +23,14 @@ def _get_base_dir() -> Path:
     return Path(__file__).resolve().parent.parent
 
 def _get_api_key() -> str:
-    path = _get_base_dir() / "config" / "api_keys.json"
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)["gemini_api_key"]
-    
+    """The Gemini key, through the module that knows where it lives — see
+    actions/dev_agent.py for why a local copy of this read is a bug."""
+    try:
+        from core.gemini import api_key
+        return api_key() or ""
+    except Exception:
+        return ""
+
 def _get_desktop() -> Path:
     if _OS == "Linux":
         xdg = os.environ.get("XDG_DESKTOP_DIR", "")

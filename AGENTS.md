@@ -114,11 +114,39 @@ is how a "new project" could place a `.py` outside the project and then run it.
   `actions/dev_agent.py` before reading or writing anything.
 - `tests/test_paths.py` is the list of shapes that must be refused. Add to it
   when you find a new one.
+- `_safe_rel` must resolve BOTH sides (`folder.resolve()` too). Comparing a
+  resolved left side against an unresolved root rejected every path under a
+  symlinked or relative root; see the comment there and the symlink test.
+
+## Doing something the user cannot take back
+
+Anything that is irreversible, or that leaves the app's own folders, goes behind
+`core/confirm.request()` — the on-screen token is issued by the UI, never by the
+model.
+
+- Currently gated: shutdown/restart (`actions/computer_settings.py`) and running
+  a file (`actions/code_helper.py`).
+- Should be gated and is not yet: deleting or moving a file, installing a
+  package, extracting an archive. Add the gate before adding a caller.
+- `confirm.request` returns the sentence to hand the model. Do not perform the
+  work first and ask afterwards.
+
+## Running something a model chose
+
+- `run_command` is split with `shlex.split`, never `.split()`: a quoted path is
+  one argument.
+- A `pip install` argument must pass `_safe_requirement()` in
+  `actions/dev_agent.py`: a plain name, optional extras and specifier, nothing
+  beginning with `-`, no URL, no path. pip reads `--index-url` as an option.
+- A file to execute is executed by absolute interpreter path (`sys.executable`
+  for Python), and `-`-prefixed "arguments" are not forwarded — they are
+  interpreter options, not program arguments.
 
 ## Testing and lint before you hand work back
 
-- `ruff check .` must print "All checks passed!" — the enabled rules are `F` and
-  `E9` only (undefined names, unused imports and variables, syntax). An
+- `ruff check .` must print "All checks passed!" — the enabled rules are `F`,
+  `E9` and `B006` only (undefined names, unused imports and variables, syntax,
+  mutable default arguments). An
   undefined name is not a style issue here: it is a branch that can never run,
   and the Linux firewall path in `dashboard/server.py` was nine of them.
 - `python -m pytest -q` must be green. No test may need an API key, a

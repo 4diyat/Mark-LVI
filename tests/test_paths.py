@@ -10,6 +10,7 @@ Nothing here needs an API key: the function is pure.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
 
@@ -81,3 +82,39 @@ def test_safe_target_refuses_a_symlink_leaving_the_folder(project, tmp_path):
     outside.mkdir()
     (project / "link").symlink_to(outside, target_is_directory=True)
     assert _safe_target(project, "link/evil.py") is None
+
+
+# ── the guard must not refuse a legitimate folder ───────────────────────────
+#
+# `_safe_rel` used to compare a RESOLVED left side against an UNRESOLVED right
+# side:
+#     (folder / rel).resolve().relative_to(folder)
+# so a relative root, or a root reached through a symlink, failed for EVERY
+# path — the agent refused to write anything and the symptom looked like a
+# model failure. These are the two shapes that produced it.
+
+def test_a_relative_root_still_accepts_a_path(tmp_path, monkeypatch):
+    (tmp_path / "demo" / "utils").mkdir(parents=True)
+    monkeypatch.chdir(tmp_path)
+
+    assert _safe_rel(Path("demo"), "utils/helpers.py") == "utils/helpers.py"
+
+
+def test_a_root_reached_through_a_symlink_still_accepts_a_path(tmp_path):
+    if os.name == "nt":
+        pytest.skip("creating symlinks on Windows needs privileges")
+    real = tmp_path / "real"
+    (real / "utils").mkdir(parents=True)
+    link = tmp_path / "link"
+    link.symlink_to(real, target_is_directory=True)
+
+    assert _safe_rel(link, "utils/helpers.py") == "utils/helpers.py"
+    assert _safe_target(link, "utils/helpers.py") is not None
+
+
+def test_the_relative_root_still_refuses_an_escape(tmp_path, monkeypatch):
+    """Fixing the false rejection must not open the real one."""
+    (tmp_path / "demo").mkdir()
+    monkeypatch.chdir(tmp_path)
+
+    assert _safe_rel(Path("demo"), "../outside.py") is None

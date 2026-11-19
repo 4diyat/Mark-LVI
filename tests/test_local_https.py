@@ -182,7 +182,10 @@ def test_http_redirect_does_not_forward_pairing_query(monkeypatch, isolated_conf
 def test_dashboard_disables_access_log_for_query_credentials(monkeypatch, isolated_config):
     import asyncio
     from dashboard import server
-    isolated_config.set_config_values(dashboard_https=False)
+    # Plaintext is now an explicit opt-out, not the default: the pairing key
+    # travels in a query string, so access_log=True would write it to a file.
+    isolated_config.set_config_values(dashboard_https=False,
+                                      dashboard_allow_insecure_http=True)
     monkeypatch.setattr(server, "PORT", 0)
     monkeypatch.setattr(server, "report_network_access", lambda *args: None)
     monkeypatch.setattr(server, "_sweep_uploads", lambda *args: None)
@@ -195,3 +198,79 @@ def test_dashboard_disables_access_log_for_query_credentials(monkeypatch, isolat
     monkeypatch.setattr(server.uvicorn, "Server", FakeServer)
     asyncio.run(server.DashboardServer().serve())
     assert seen == [False]
+
+
+
+# ── plaintext keeps its warning, and now records it ─────────────────────────
+#
+# The old code printed "HTTP does not protect pairing and commands" to stdout
+# and nothing else. Under `pythonw main.py` — the desktop shortcut — stdout is a
+# null device, so on a shared Wi-Fi network the pairing key and every remote
+# command travelled in clear text and no record of the choice survived.
+#
+# HTTPS stays opt-in on purpose (readme.md: mandatory TLS produced a full-page
+# interstitial on Android and a blank page in in-app browsers). The fix is that
+# the decision is now written to logs/jarvis.log and reported to the panel.
+
+def test_plain_http_starts_but_is_recorded_as_insecure(monkeypatch, isolated_config,
+                                                       caplog):
+    import asyncio
+    import logging
+    from dashboard import server
+    isolated_config.set_config_values(dashboard_https=False)
+    monkeypatch.setattr(server, "PORT", 0)
+    monkeypatch.setattr(server, "report_network_access", lambda *args: None)
+    monkeypatch.setattr(server, "_sweep_uploads", lambda *args: None)
+
+    class FakeServer:
+        def __init__(self, cfg):
+            pass
+        async def serve(self):
+            pass
+
+    monkeypatch.setattr(server.uvicorn, "Server", FakeServer)
+    srv = server.DashboardServer()
+    with caplog.at_level(logging.WARNING, logger="dashboard"):
+        asyncio.run(srv.serve())
+
+    assert getattr(srv, "_insecure_http", False) is True
+    assert any("plain HTTP" in r.getMessage() for r in caplog.records), caplog.text
+
+
+def test_https_mode_is_not_flagged_insecure(monkeypatch, isolated_config):
+    import asyncio
+    from dashboard import server
+    isolated_config.set_config_values(dashboard_https=True)
+    monkeypatch.setattr(server, "report_network_access", lambda *args: None)
+    monkeypatch.setattr(server, "_ensure_certs", lambda ip: True)
+    monkeypatch.setattr(server, "_validate_certs", lambda *a: None)
+    monkeypatch.setattr(server, "SECURE_PORT", 0)
+
+    class FakeServer:
+        def __init__(self, cfg):
+            assert cfg.ssl_keyfile and cfg.ssl_certfile
+        async def serve(self):
+            pass
+
+    monkeypatch.setattr(server.uvicorn, "Server", FakeServer)
+    srv = server.DashboardServer()
+    asyncio.run(srv.serve())
+
+    assert getattr(srv, "_insecure_http", False) is False
+
+
+def test_broken_https_still_fails_closed(tmp_path, monkeypatch, isolated_config):
+    """A certificate that cannot be built must never fall back to plaintext."""
+    import asyncio
+    from dashboard import server
+    isolated_config.set_config_values(dashboard_https=True)
+    monkeypatch.setattr(server, "BASE_DIR", tmp_path)
+    monkeypatch.setattr(server, "report_network_access", lambda *args: None)
+    monkeypatch.setattr(server, "_ensure_certs", lambda ip: False)
+    monkeypatch.setattr(server.uvicorn, "Server",
+                        lambda cfg: pytest.fail("must not fall back to HTTP"))
+    srv = server.DashboardServer()
+    asyncio.run(srv.serve())
+
+    assert "HTTPS unavailable" in srv._bind_error
+    assert getattr(srv, "_insecure_http", False) is False

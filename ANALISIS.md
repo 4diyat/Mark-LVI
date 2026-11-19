@@ -1,5 +1,24 @@
 # Analisis Teknis — MARK LVI (JARVIS)
 
+> **⚠️ Dokumen ini adalah potret satu titik waktu, bukan status sekarang.**
+>
+> Tinjauan di bawah dilakukan pada **2026-11-11** terhadap branch
+> `arena/0905ecd0-mark-lvi` (base `0101e54`), sebelum `ui/` dipecah dan sebelum
+> suite tes serta CI dibangun. Beberapa angka di sini **sudah tidak benar** dan
+> sudah tidak boleh dipakai untuk menilai repo ini:
+>
+> | Klaim di dokumen ini | Keadaan sekarang |
+> |---|---|
+> | "`ui.py` 7.504 baris" | sudah dipecah ke `ui/` (theme, metrics, audio, widget); tidak ada lagi `ui.py` |
+> | "`main.py` 2.706 baris" | ≈ 3.000 baris, `JarvisLive` masih besar — temuan ini masih berlaku |
+> | "0 test runner, 0 CI" | 1.183 tes lulus, CI 3 OS × Python 3.11/3.12 |
+> | "konfirmasi hanya untuk shutdown" | masih sebagian benar: lihat daftar di `AGENTS.md` |
+>
+> Untuk status yang benar, baca `readme.md`, `AGENTS.md`, dan `docs/verification.md`.
+> Temuan arsitektural di bawah (terutama ukuran `main.py` dan god-object di UI)
+> masih relevan; angka cakupan tesnya tidak.
+
+
 Ditinjau sebagai fullstack developer. Semua temuan di bawah **diverifikasi langsung**
 terhadap kode di repo ini (bukan asumsi): `python -m compileall`, `pyflakes`,
 pembacaan AST, pemanggilan loader asli (`core.action_loader.discover_actions`),

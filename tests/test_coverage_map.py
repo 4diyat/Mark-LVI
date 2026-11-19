@@ -89,6 +89,93 @@ def modules() -> dict[str, int]:
     return out
 
 
+def action_modules() -> dict[str, int]:
+    """The same rule for `actions/` and `plugins/`.
+
+    WHY THIS WAS A SECOND FUNCTION RATHER THAN A WIDER LOOP
+        The map above is at zero and must stay there — it is enforced by name.
+        `actions/` is not: it holds the code that deletes files, installs
+        packages and runs generated programs, and twelve modules there had no
+        test file at all while this rule was busy proving that `core/` did. They
+        are listed here so the gap is a number in a test, not a surprise in a
+        review. Modules this machine genuinely cannot run (a display, a
+        microphone, a trading terminal) carry a reason, exactly as above.
+    """
+    out = {}
+    for folder in ("actions", "plugins"):
+        for path in sorted((ROOT / folder).glob("*.py")):
+            if path.name.startswith("_"):
+                continue
+            out[path.relative_to(ROOT).as_posix()] = statements(path)
+    return out
+
+
+ACTIONS_CANNOT_RUN_HERE = {
+    "actions/browser_control.py":
+        "drives a real browser through Playwright",
+    "actions/computer_control.py":
+        "synthetic mouse, keyboard and screen coordinates",
+    "actions/computer_settings.py":
+        "changes the real volume, brightness and Wi-Fi state",
+    "actions/desktop.py":
+        "minimises and moves real windows",
+    "actions/game_updater.py":
+        "launches and patches installed games",
+    "actions/open_app.py":
+        "starts real applications",
+    "actions/screen_processor.py":
+        "needs a screen and a webcam",
+    "actions/video_player.py":
+        "needs a media stack and an output device",
+}
+
+ACTIONS_TESTED = {
+    "actions/code_helper.py":      "tests/test_code_helper_guard.py",
+    "actions/dev_agent.py":        "tests/test_dev_agent_deps.py",
+    "actions/file_controller.py":  "tests/test_file_controller.py",
+    "actions/file_processor.py":   "tests/test_archive_extract.py",
+    "actions/reminder.py":         "tests/test_reminder.py",
+    "actions/send_message.py":     "tests/test_shell_true.py",
+    "actions/web_search.py":       "tests/test_shell_true.py",
+    "actions/youtube_video.py":    "tests/test_shell_true.py",
+}
+
+
+def test_every_action_is_tested_or_explained():
+    missing = sorted(
+        f"{name} ({count} statements)"
+        for name, count in action_modules().items()
+        if count >= MIN_STATEMENTS
+        and name not in ACTIONS_TESTED
+        and name not in ACTIONS_CANNOT_RUN_HERE
+    )
+    assert missing == [], (
+        "these actions are big enough to matter and have neither a test nor a "
+        "reason: " + ", ".join(missing))
+
+
+def test_every_action_mapping_points_at_a_real_test():
+    missing = [f"{module} -> {test}" for module, test in ACTIONS_TESTED.items()
+               if not (ROOT / test).is_file()]
+    assert missing == []
+
+
+def test_every_action_exemption_still_has_a_module_behind_it():
+    stale = [name for name in ACTIONS_CANNOT_RUN_HERE
+             if not (ROOT / name).is_file()]
+    assert stale == []
+
+
+def test_the_exempt_actions_are_not_the_ones_that_write_or_execute():
+    """An exemption is for "needs a screen", not "needs a test"."""
+    may_be_exempt = set(ACTIONS_CANNOT_RUN_HERE)
+    for name in ("actions/file_controller.py", "actions/file_processor.py",
+                 "actions/dev_agent.py", "actions/code_helper.py"):
+        assert name not in may_be_exempt, (
+            f"{name} changes files or runs code; it cannot be excused")
+        assert name in ACTIONS_TESTED, f"{name} has no test"
+
+
 def test_every_component_is_either_tested_or_explained():
     missing = sorted(
         f"{name} ({count} statements)"

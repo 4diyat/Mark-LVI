@@ -289,3 +289,42 @@ def test_desktop_face_default_preserves_explicit_hud_choices(isolated_config):
     for style in ("face", "core", "orb"):
         isolated_config.save_hud_style(style)
         assert isolated_config.get_hud_style() == style
+
+
+def test_no_module_reads_a_secret_field_without_the_config_manager():
+    """The read half of the same rule.
+
+    The write rule above was enforced and the read rule was not: ten modules
+    opened `config/api_keys.json` and pulled `gemini_api_key` out of the dict
+    themselves. That bypasses `core/keychain.py` and the
+    `gemini_api_key_source` marker, so a key rotated in the panel could still be
+    the old one on the wire, and a keychain-backed key was never consulted.
+
+    A reader is identified the same way a writer is: the file name, then the
+    secret field name close enough to it to be the same expression.
+    """
+    offenders = []
+    readers = re.compile(r"""\[[\"']gemini_api_key[\"']\]|\.get\([\"']gemini_api_key[\"']""")
+    allowed = {
+        "memory/config_manager.py",   # the one module that may
+        "core/keychain.py",           # owns the keychain copy itself
+        "core/gemini.py",             # the accessor, with a documented fallback
+        "config/__init__.py",         # names the path, reads no field
+        "providers/_tests.py",        # temp dir, never the user's file
+    }
+    for path in ROOT.rglob("*.py"):
+        if any(part in {".git", "__pycache__", "tests", ".venv"} for part in path.parts):
+            continue
+        rel = path.relative_to(ROOT).as_posix()
+        if rel in allowed:
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for match in re.finditer(r"api_keys\.json", text):
+            window = text[max(0, match.start() - 400): match.start() + 600]
+            if readers.search(window):
+                line_no = text.count("\n", 0, match.start()) + 1
+                offenders.append(f"{rel}:{line_no}")
+    assert offenders == [], (
+        "these read the Gemini key straight out of api_keys.json; use "
+        "core.gemini.api_key() or memory.config_manager.get_gemini_key() "
+        "instead:\n" + "\n".join(offenders))

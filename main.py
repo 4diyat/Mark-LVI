@@ -345,8 +345,17 @@ def _render_prompt(template: str, values: dict) -> str:
 
 
 def _get_api_key() -> str:
-    with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)["gemini_api_key"]
+    """The one accessor, through the config manager and the keychain.
+
+    This used to read the file directly — and it is the copy the live session
+    calls on every connect, so a key rotated in the panel could still be the old
+    one on the wire, and a keychain-stored key was never consulted here.
+    """
+    try:
+        from core.gemini import api_key
+        return api_key() or ""
+    except Exception:
+        return ""
 
 
 def _load_system_prompt() -> str:

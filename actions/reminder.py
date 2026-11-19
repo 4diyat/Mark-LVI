@@ -1,5 +1,7 @@
 import json
 import platform
+import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -42,8 +44,19 @@ def _sanitise(text: str, max_len: int = 200) -> str:
             .strip()
     )[:max_len]
 
+def _safe_task_name(task_name: str) -> str:
+    """The task name as one filename component, never a path.
+
+    `f"{task_name}.py"` was joined straight onto the scripts folder, so a name
+    containing `../` — or an absolute path — wrote the generated script
+    somewhere else entirely. The name comes from the model's JSON.
+    """
+    cleaned = re.sub(r"[^A-Za-z0-9._-]", "_", str(task_name or "")).strip("._")
+    return (cleaned or "reminder")[:64]
+
+
 def _write_notify_script(task_name: str, message: str, os_name: str) -> Path:
-    script_path = _scripts_dir() / f"{task_name}.py"
+    script_path = _scripts_dir() / f"{_safe_task_name(task_name)}.py"
     msg_literal = json.dumps(message)  
 
     if os_name == "windows":
@@ -270,7 +283,10 @@ def _schedule_linux(target_dt: datetime, task_name: str,
 
     if shutil.which("at"):
         at_time = target_dt.strftime("%H:%M %Y-%m-%d")
-        cmd_str = f"{sys.executable} {script_path}\n"
+        # `at` reads a SHELL script from its input, so this one string is a
+        # command line: both paths are quoted, or a space in either becomes two
+        # words and the reminder silently never runs.
+        cmd_str = f"{shlex.quote(sys.executable)} {shlex.quote(str(script_path))}\n"
         result  = subprocess.run(
             ["at", at_time],
             input=cmd_str, capture_output=True, text=True, encoding="utf-8", errors="replace",

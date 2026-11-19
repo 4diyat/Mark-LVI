@@ -56,3 +56,12 @@ providers/voices/
 
 # Encrypted browser credentials, SQLite journals, and interprocess lock
 memory/browser_vault.db*
+
+# ── Coverage output ──────────────────────────────────────────────────────────
+# `.coverage` is a SQLite file full of absolute paths from whichever machine ran
+# the suite. It was committed once by accident and then looked like a source
+# file to every `git status` afterwards.
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml

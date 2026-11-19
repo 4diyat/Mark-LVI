@@ -73,9 +73,19 @@ CONFIG_DIR = BASE_DIR / "config"
 API_FILE   = CONFIG_DIR / "api_keys.json"
 
 def _read_full_config() -> dict:
-    """Read api_keys.json config dict. Returns {} on any error."""
+    """The whole config dict, through `memory/config_manager`. {} on any error.
+
+    WHY NOT `API_FILE.read_text()`
+        That is what this did, and it is how the window ended up with a second
+        opinion about a file that `memory/config_manager.py` owns: no
+        last-good-copy when the JSON is half-written, no shared cache, and a
+        read that bypasses anything the manager does later. The manager already
+        promises never to raise and to return {} when there is nothing stored,
+        which is exactly this function's contract.
+    """
     try:
-        return json.loads(API_FILE.read_text(encoding="utf-8"))
+        from memory.config_manager import load_api_keys
+        return load_api_keys() or {}
     except Exception:
         return {}
 
@@ -3907,8 +3917,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
             # Reuse camera index detected by screen_processor (cached in api_keys.json)
             cam_idx = 0
             try:
-                import json as _j
-                cfg = _j.loads((CONFIG_DIR / "api_keys.json").read_text())
+                cfg = _read_full_config()
                 cam_idx = int(cfg.get("camera_index", 0))
             except Exception:
                 pass
