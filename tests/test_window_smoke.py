@@ -711,7 +711,7 @@ def window_module():
     saved = {k: v for k, v in sys.modules.items() if k == "PyQt6" or k.startswith("PyQt6.")}
     stubs = _install_qt()
     sys.modules.update(stubs)
-    for name in ("ui", "ui.window", "ui.audio", "ui.video_fallback",
+    for name in ("ui", "ui.window", "ui.audio", "ui.chat_log", "ui.video_fallback",
                  "ui.theme", "ui.metrics", "ui.overlays"):
         sys.modules.pop(name, None)
     # `ui/__init__.py` imports the whole window and re-exports it; importing the
@@ -1551,7 +1551,7 @@ def test_suggested_action_drafts_without_sending_or_overwriting(window, monkeypa
 
 
 def test_conversation_formats_messages_as_plain_selectable_blocks(window_module, monkeypatch):
-    from ui import window as module
+    from ui import chat_log as module
     formats = []
 
     class Block:
@@ -1569,6 +1569,8 @@ def test_conversation_formats_messages_as_plain_selectable_blocks(window_module,
             self.values['right'] = value
         def setBackground(self, value):
             self.values['background'] = value
+        def setProperty(self, key, value):
+            self.values['property'] = (key, value)
 
     class Cursor:
         MoveOperation = types.SimpleNamespace(End=1)
@@ -1585,6 +1587,7 @@ def test_conversation_formats_messages_as_plain_selectable_blocks(window_module,
     log = module.LogWidget()
     cursor = Cursor()
     monkeypatch.setattr(log, 'textCursor', lambda: cursor)
+    monkeypatch.setattr(log, 'viewport', lambda: types.SimpleNamespace(width=lambda: 400))
     for tag in ('you', 'ai', 'sys'):
         log._tag, log._pos, log._text = tag, 0, '<unsafe>'
         log._step()
@@ -1593,6 +1596,9 @@ def test_conversation_formats_messages_as_plain_selectable_blocks(window_module,
     assert formats[1]['right'] > formats[1]['left']
     assert 'background' in formats[0] and 'background' in formats[1]
     assert 'background' not in formats[2]
+    assert formats[0]['left'] == formats[1]['right'] == 120
+    assert module.LogWidget._bubble_margin(140) == 0
+    assert module.LogWidget._bubble_margin(300) == 90
 
 
 def test_claw_changes_only_active_model_slider_and_loss_cancels(window, monkeypatch):

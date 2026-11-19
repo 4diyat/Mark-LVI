@@ -29,10 +29,19 @@ def main():
         MainWindow._check_config = lambda self: True
         app = QApplication([])
         chat = LogWidget()
+        chat.resize(400, 220)
+        chat.show()
+        app.processEvents()
         chat._tag, chat._text, chat._pos = 'you', '<', 0
         chat._step()
         assert chat.toPlainText() == '<'
         assert chat.textCursor().blockFormat().alignment() == Qt.AlignmentFlag.AlignRight
+        before = chat.textCursor().blockFormat().leftMargin()
+        chat.selectAll()
+        chat.resize(600, 220)
+        app.processEvents()
+        assert chat.toPlainText() == '<' and chat.textCursor().selectedText() == '<'
+        assert chat.document().firstBlock().blockFormat().leftMargin() > before
         chat.close()
         # Real Qt navigation: back/forward, branch history, and a directory
         # removed after it was visited must not move the current location.
