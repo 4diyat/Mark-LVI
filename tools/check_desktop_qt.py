@@ -184,8 +184,10 @@ def main():
         window.hud.hud_style = "orb"
         mdi.position_emblem()
         assert not mdi._avatar_stage.isVisible() and mdi._emblem.isVisible()
+        assert not window._hud_cam_stack.isHidden() and not window._center_split.isHidden()
         window.hud.hud_style = "face"
         mdi.position_emblem()
+        assert window._hud_cam_stack.isHidden() and window._center_split.isHidden()
         files_for_clap = window._desktop_windows["files"]
         assistant_for_clap = window._desktop_windows["assistant"]
         mdi.minimize_for_clap()

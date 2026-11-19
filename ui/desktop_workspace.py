@@ -141,11 +141,11 @@ class WallpaperArea(QMdiArea):
             if stage is not None:
                 stage.setGeometry(*geometry)
                 stage.setVisible(wide and face)
-            # The central stage replaces the duplicate HUD inside the chat
-            # panel only on wide desktops; compact layouts retain the HUD.
+            # The live central face replaces the duplicate HUD on wide
+            # desktops. Orb/core and compact layouts retain their live HUD.
             if self._host_window is not None:
                 from ui.desktop_layout import refresh_assistant_tools
-                self._host_window._hud_cam_stack.setVisible(not wide)
+                self._host_window._hud_cam_stack.setVisible(not (wide and face))
                 refresh_assistant_tools(self._host_window)
 
     def position_dock(self):
