@@ -286,8 +286,14 @@ Editor memakai gutter nomor baris, pewarnaan sintaks ringan per baris untuk
 berkas Python/JavaScript, dan status bahasa serta posisi kursor. Pewarnaan bukan
 parser penuh (misalnya string multibaris); file tanpa ekstensi yang dikenal
 masih teks polos. Setiap jendela editor kini mendukung beberapa tab file dan
-sidebar untuk file baru, buka, simpan, simpan sebagai, serta jalankan. Tampilan
-mendekati konsep, tetapi belum diverifikasi secara visual di Qt nyata.
+tombol untuk file baru, buka, simpan, simpan sebagai, serta jalankan. Panel
+project tree dapat dibuka lewat tombol proyek; folder dipilih pengguna secara
+lokal dan tidak dibuka secara otomatis. Klik dua kali berkas membuka tab dengan
+pembaca UTF-8 berbatas ukuran yang sama, tanpa otomatis mengirim isi ke JARVIS
+atau menjalankannya. Tree tidak menampilkan symlink dan menolak target yang
+sudah berubah menjadi di luar folder saat dibuka; ini bukan sandbox filesystem.
+File yang sudah terbuka difokuskan kembali tanpa menggandakan tab atau menimpa
+draft. Tampilan masih belum sama persis dengan konsep.
 
 Plugin `code_editor` dapat membuka editor atau, setelah `workspace_control`
 mencantumkan ID `doc-N`, meminta membaca dokumen editor aktif. Pengguna harus

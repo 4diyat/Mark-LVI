@@ -25,6 +25,9 @@ def main():
         home = Path(tmp)
         for name in ('Projects', 'Documents', 'Downloads', 'Desktop'):
             (home / name).mkdir()
+        # A local-only project tree for the screenshot, never user files.
+        (home / 'Projects' / 'main.py').touch()
+        (home / 'Projects' / 'utils.py').touch()
         config.CONFIG_DIR = Path(tmp)
         config.CONFIG_FILE = Path(tmp) / 'api_keys.json'
         MainWindow._check_config = lambda self: True
@@ -38,6 +41,9 @@ def main():
         # Example code is synthetic, unsaved, and never executed.
         editor = next(sub._document for kind, sub in window._workspace_documents.values()
                       if kind == 'code_editor')
+        if not editor._set_project_root(str(home / 'Projects')):
+            raise RuntimeError('Synthetic project could not be opened')
+        editor._project_panel.show()
         editor._code.setPlainText("def analyze_system(data):\n    return {'status': 'ready'}\n")
         editor._code.highlighter.set_language('python')
         for text in ('You: Summarize my latest project.',
