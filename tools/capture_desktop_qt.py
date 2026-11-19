@@ -17,7 +17,8 @@ import memory.config_manager as config  # noqa: E402
 from ui.window import MainWindow  # noqa: E402
 from ui.desktop_workspace import open_initial_editor, show_document
 from ui.image_editor import ImageEditor
-from core.image_layers import make_text_layer  # noqa: E402
+from core.image_layers import make_text_layer
+from core.i18n import label as translate  # noqa: E402
 
 
 def emit_capture(widget, title):
@@ -94,6 +95,7 @@ def main():
             painter.end()
             photo = ImageEditor(window, {})
             photo._image = picture
+            photo._status.setText(translate('image_editor.unsaved'))
             photo._layers = [make_text_layer('Synthetic landscape', 20, 320, 24, 640, 360)]
             photo._update_layers()
             sub = show_document(window, photo, 'image_editor')

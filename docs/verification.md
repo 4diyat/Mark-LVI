@@ -380,3 +380,8 @@ komposisi ber-layer. Pengujian ini tidak menggantikan uji manual perangkat.
 Kuas diuji pada Qt offscreen dengan gambar sintetis: pemilihan warna dan
 pembatalannya, ukuran, sapuan piksel, pemisahan layer teks, pergantian mode,
 dan undo. Belum mencakup kuas lanjutan atau pengujian manual perangkat.
+
+Tangkapan Qt sintetis editor gambar dibuat terpisah di CI agar dapat ditinjau
+tanpa dokumen pengguna. Hasilnya menunjukkan rail ikon, kanvas, dan layer;
+kontrol atas masih lebih padat dan panel layer lebih sederhana daripada
+mockup. Ini bukan bukti kesetiaan visual penuh ataupun uji pada perangkat.
