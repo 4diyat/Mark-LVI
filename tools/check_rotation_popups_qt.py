@@ -100,11 +100,13 @@ def main():
         before = len(chosen)
         QTimer.singleShot(100, choose_menu)
         click_root(menu_button)
+        QTest.qWait(250)  # InstantPopup may open after the click returns.
         assert len(chosen) == before + 1, outcomes
         print(f'popup proof angle {angle}: reject', flush=True)
         QTimer.singleShot(100, reject_dialog)
         click_root(confirm_button)
-        assert answers[-1] == QMessageBox.StandardButton.No, (answers, outcomes)
+        QTest.qWait(250)
+        assert answers and answers[-1] == QMessageBox.StandardButton.No, (answers, outcomes)
     assert all(item in ('proxy', 'top-level') for item in outcomes), outcomes
     assert len(outcomes) == 4
     print(f'Popup and rejection proof passed; popup routes: {outcomes}', flush=True)
