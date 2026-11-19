@@ -259,8 +259,11 @@ def build_menu_bar(window):
             pass  # The focused document was closed after the menu opened.
 
     def capture_edit_target():
+        # The tool button receives the press before the popup steals focus.
         widget = QApplication.focusWidget()
         window._desktop_edit_target = widget if isinstance(widget, (QLineEdit, QPlainTextEdit, QTextEdit)) else None
+
+    def update_edit_actions():
         for action in window._desktop_edit_actions:
             action.setEnabled(window._desktop_edit_target is not None)
 
@@ -300,7 +303,8 @@ def build_menu_bar(window):
             actions.append(action)
         if key == "desktop.menu_edit":
             window._desktop_edit_actions = actions
-            menu.aboutToShow.connect(capture_edit_target)
+            button.pressed.connect(capture_edit_target)
+            menu.aboutToShow.connect(update_edit_actions)
         window._desktop_menus[key] = (button, menu)
         window._desktop_menu_labels.append((button, key))
         button.setMenu(menu)

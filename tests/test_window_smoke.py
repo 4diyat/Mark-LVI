@@ -174,6 +174,7 @@ class _Object:
     finished = _Signal()
     activated_ = _Signal()
     clicked = _Signal()
+    pressed = _Signal()
     toggled = _Signal()
     valueChanged = _Signal()
     currentIndexChanged = _Signal()
