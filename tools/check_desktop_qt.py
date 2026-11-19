@@ -13,7 +13,7 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtCore import QCoreApplication, QEvent, QFileInfo, QPoint, QTimer, Qt  # noqa: E402
-from PyQt6.QtGui import QTextCursor  # noqa: E402
+from PyQt6.QtGui import QImage, QTextCursor  # noqa: E402
 from PyQt6.QtTest import QTest  # noqa: E402
 from PyQt6.QtWidgets import QApplication, QComboBox, QFileDialog, QPushButton, QScrollArea, QSizeGrip, QSlider, QWidget  # noqa: E402
 
@@ -161,6 +161,20 @@ def main():
         set_locale("en")
         creative = CreativeWorkspace(window, {"code": "print('unsaved')"})
         image = ImageEditor(window, {})
+        # Image tools remain usable in a vertically scrollable rail beside the canvas.
+        image.show()
+        app.processEvents()
+        assert image._tool_scroll.x() < image._tool_scroll.parentWidget().width() // 2
+        assert len(image._image_tools) == 5 and len(image._file_tools) == 3
+        original = QImage(40, 20, QImage.Format.Format_ARGB32)
+        original.fill(Qt.GlobalColor.red)
+        image._image = original
+        image._render()
+        image._image_tools['image_editor.rotate'].click()
+        assert (image._image.width(), image._image.height()) == (20, 40) and image._dirty
+        image._file_tools['image_editor.undo'].click()
+        assert (image._image.width(), image._image.height()) == (40, 20)
+        image._dirty = False
         # Real Qt checks for the editor gutter and syntax layout, not Qt stubs.
         assert creative._output.isHidden() and creative._output_heading.isHidden()
         assert creative._file_label.isHidden() and creative._project_panel.isHidden()
@@ -247,6 +261,8 @@ def main():
         creative._close_file_tab(1)
         assert creative._file_tabs.count() == 1
         assert image.windowTitle() == translate("image_editor.title")
+        assert all(button.text() == translate(key) for key, button in image._image_tools.items())
+        assert all(button.text() == translate(key) for key, button in image._file_tools.items())
         set_locale(previous_locale)
         # Don't close the unsaved editor via a confirmation dialog in smoke CI.
         creative._code.document().setModified(False)

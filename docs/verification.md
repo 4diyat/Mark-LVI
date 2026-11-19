@@ -352,3 +352,12 @@ Tes menggunakan request dan transport palsu memeriksa batas, persetujuan,
 penolakan, sesi yang berganti, draft pengguna, pembatalan timeout, isolasi,
 dan pencabutan. Smoke Qt nyata ditambahkan tetapi belum dijalankan di lingkungan
 ini; tidak ada uji terhadap server SSH nyata, provider model, atau Windows.
+
+### Penataan awal editor gambar
+
+Aksi buka, undo dan simpan berada di atas; operasi gambar dan penambahan teks
+berada pada panel vertikal yang dapat digulir di sebelah kanvas. Panel layer
+masih berada di kanan. Smoke test Qt memeriksa tombol rotasi dan undo pada
+gambar sintetis serta penerjemahan kontrol. Ini baru penataan awal, bukan
+replika penuh mockup: toolbar masih berupa tombol berlabel, belum ada kontrol
+zoom interaktif seperti pada konsep, dan belum ada pengujian manual perangkat.

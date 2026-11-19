@@ -26,18 +26,20 @@ class ImageEditor(QDialog):
         self._dirty = False
         self._source = ""
         layout = QVBoxLayout(self)
+        # File actions stay above the canvas; image operations live beside it.
         toolbar_widget = QWidget()
         toolbar = QHBoxLayout(toolbar_widget)
         toolbar.setContentsMargins(0, 0, 0, 0)
-        for key, callback in (("image_editor.open", self.open_file), ("image_editor.save_as", self.save_as),
-                              ("image_editor.undo", self.undo), ("image_editor.rotate", self.rotate),
-                              ("image_editor.flip", self.flip), ("image_editor.grayscale", self.grayscale),
-                              ("image_editor.crop", self.crop)):
+        self._file_tools = {}
+        for key, callback in (("image_editor.open", self.open_file),
+                              ("image_editor.undo", self.undo),
+                              ("image_editor.save_as", self.save_as)):
             button = self._translations.text(QPushButton(), key)
             if key == "image_editor.save_as":
                 button.setObjectName("WorkspacePrimary")
             button.clicked.connect(callback)
             toolbar.addWidget(button)
+            self._file_tools[key] = button
         toolbar.addStretch()
         toolbar_scroll = QScrollArea()
         toolbar_scroll.setWidgetResizable(True)
@@ -59,6 +61,28 @@ class ImageEditor(QDialog):
         scroll.setWidgetResizable(True)
         scroll.setWidget(self._preview)
         workspace = QHBoxLayout()
+        tool_panel = QWidget()
+        tool_layout = QVBoxLayout(tool_panel)
+        tool_layout.setContentsMargins(0, 0, 0, 0)
+        self._image_tools = {}
+        for key, callback in (("image_editor.rotate", self.rotate),
+                              ("image_editor.flip", self.flip),
+                              ("image_editor.grayscale", self.grayscale),
+                              ("image_editor.crop", self.crop),
+                              ("image_editor.add_text", lambda: self.add_text())):
+            button = self._translations.text(QPushButton(), key)
+            button.clicked.connect(callback)
+            tool_layout.addWidget(button)
+            self._image_tools[key] = button
+        tool_layout.addStretch()
+        tool_scroll = QScrollArea()
+        tool_scroll.setWidgetResizable(True)
+        tool_scroll.setWidget(tool_panel)
+        tool_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        tool_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        tool_scroll.setFixedWidth(150)
+        self._tool_scroll = tool_scroll
+        workspace.addWidget(tool_scroll)
         workspace.addWidget(scroll, 1)
         layers_panel = QWidget()
         layers_panel.setMaximumWidth(220)
@@ -69,9 +93,6 @@ class ImageEditor(QDialog):
         self._layer_list.setAccessibleName(_t("image_editor.layers"))
         self._layer_list.itemChanged.connect(self._toggle_layer)
         layers_layout.addWidget(self._layer_list, 1)
-        add_text = self._translations.text(QPushButton(), "image_editor.add_text")
-        add_text.clicked.connect(lambda: self.add_text())
-        layers_layout.addWidget(add_text)
         remove = self._translations.text(QPushButton(), "image_editor.remove_layer")
         remove.clicked.connect(self.remove_layer)
         layers_layout.addWidget(remove)
