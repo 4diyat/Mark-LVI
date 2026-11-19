@@ -400,3 +400,10 @@ workspace `QMdiArea` atau menghubungkan rotasi ke gesture. Belum ada bukti
 bahwa WebEngine, video/OpenGL, dialog/popup, siklus hidup jendela, aksesibilitas,
 input gesture, dan perangkat Windows akan bekerja melalui proxy. Jangan
 menganggap eksperimen ini implementasi rotasi interaktif bagi semua jendela.
+
+Eksperimen tambahan `tools/check_rotation_editors_qt.py` menguji editor kode
+JARVIS dan editor gambar yang sebenarnya dalam scene Qt terisolasi: pengetikan,
+tab baru, penolakan penutupan draft (jawaban konfirmasi disimulasikan), drag
+seleksi, rotasi gambar dan undo. Ini tidak menguji dialog persetujuan atau menu
+popup yang nyata; tidak ada file pengguna, kode yang dijalankan, atau input OS.
+Rotasi jendela workspace dan kontrol dua tangan tetap belum terintegrasi.
