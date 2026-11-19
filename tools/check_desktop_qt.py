@@ -104,13 +104,20 @@ def main():
         # Real Qt checks for the editor gutter and syntax layout, not Qt stubs.
         assert creative._output.isHidden() and creative._output_heading.isHidden()
         assert creative._file_label.isHidden()
+        for button, key in creative._editor_tools:
+            assert button.accessibleName() == button.toolTip() == translate(key)
+            if key != "editor.new":
+                assert not button.icon().isNull()
+                assert button.toolButtonStyle() == Qt.ToolButtonStyle.ToolButtonIconOnly
+                assert button.focusPolicy() == Qt.FocusPolicy.StrongFocus
         assert creative._file_tabs.cornerWidget(Qt.Corner.TopRightCorner) is creative._new_tab_button
         before = creative._file_tabs.count()
         creative._new_tab_button.click()
         assert creative._file_tabs.count() == before + 1
         creative._close_file_tab(creative._file_tabs.currentIndex())
         assert creative._file_tabs.count() == before and creative._code.toPlainText() == "print('unsaved')"
-        creative._output.setPlainText('Run output')
+        creative._run_btn.click()  # unsaved code must never run
+        assert creative._output.toPlainText() == translate("creative.save_before_run")
         assert not creative._output.isHidden() and not creative._output_heading.isHidden()
         assert creative._code.line_number_width() > 0
         creative._code.highlighter.set_language('python')
@@ -119,6 +126,8 @@ def main():
         set_locale("id")
         creative.retranslate()
         image.retranslate()
+        assert all(button.accessibleName() == button.toolTip() == translate(key)
+                   for button, key in creative._editor_tools)
         assert creative._code.toPlainText() == "print('unsaved')"
         assert creative._code.document().isModified()
         first_file = creative._code

@@ -5,8 +5,8 @@ import secrets
 import threading
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QFont
+from PyQt6.QtCore import QRectF, QSize, Qt, pyqtSignal
+from PyQt6.QtGui import QColor, QFont, QIcon, QPainter, QPainterPath, QPen, QPixmap
 from PyQt6.QtWidgets import (QDialog, QFileDialog, QHBoxLayout, QLabel,
                              QMessageBox, QPlainTextEdit, QTabWidget,
                              QToolButton, QVBoxLayout, QWidget)
@@ -17,6 +17,55 @@ from ui.theme import C, workspace_stylesheet
 from ui.localization import TranslationBindings
 from ui.code_editor import CodeEditor
 from core.code_syntax import language_for_path
+
+
+def _tool_icon(kind):
+    """Draw small, font-independent editor actions on the Qt thread."""
+    pixmap = QPixmap(48, 48)
+    pixmap.setDevicePixelRatio(2)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    pen = QPen(QColor(C.DESKTOP_TEXT))
+    pen.setWidthF(1.45)
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+    painter.setPen(pen)
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    path = QPainterPath()
+    if kind == "open":
+        path.moveTo(3, 8)
+        path.lineTo(3, 19)
+        path.lineTo(20, 19)
+        path.lineTo(21, 10)
+        path.lineTo(10, 10)
+        path.lineTo(8, 7)
+        path.lineTo(4, 7)
+        path.closeSubpath()
+    elif kind in ("save", "save_as"):
+        path.addRoundedRect(QRectF(4, 3, 16, 18), 2, 2)
+        path.moveTo(8, 3)
+        path.lineTo(8, 9)
+        path.lineTo(16, 9)
+        path.lineTo(16, 3)
+        path.moveTo(8, 20)
+        path.lineTo(8, 14)
+        path.lineTo(16, 14)
+        path.lineTo(16, 20)
+        if kind == "save_as":
+            path.moveTo(16, 17)
+            path.lineTo(21, 12)
+            path.moveTo(17, 13)
+            path.lineTo(21, 12)
+            path.lineTo(20, 16)
+    elif kind == "run":
+        path.moveTo(7, 4)
+        path.lineTo(19, 12)
+        path.lineTo(7, 20)
+        path.closeSubpath()
+    painter.drawPath(path)
+    painter.end()
+    return QIcon(pixmap)
 
 
 class CreativeWorkspace(QDialog):
@@ -72,12 +121,15 @@ class CreativeWorkspace(QDialog):
         sidebar.setContentsMargins(5, 5, 5, 5)
         sidebar.setSpacing(4)
         self._editor_tools = []
-        for symbol, key, callback in (("↥", "creative.open", self._open_file),
-                                      ("▣", "creative.save", self._save_file),
-                                      ("⇩", "creative.save_as", self._save_as),
-                                      ("▶", "creative.run", self._run_file)):
+        for icon, key, callback in (("open", "creative.open", self._open_file),
+                                    ("save", "creative.save", self._save_file),
+                                    ("save_as", "creative.save_as", self._save_as),
+                                    ("run", "creative.run", self._run_file)):
             button = QToolButton()
-            button.setText(symbol)
+            button.setIcon(_tool_icon(icon))
+            button.setIconSize(QSize(22, 22))
+            button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+            button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
             button.setToolTip(_t(key))
             button.setAccessibleName(_t(key))
             button.setFixedSize(36, 34)
