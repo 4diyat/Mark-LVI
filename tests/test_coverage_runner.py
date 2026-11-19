@@ -13,6 +13,7 @@ def test_last_test_uses_pytest_node_id_only():
 def test_timeout_reports_last_test_and_fails(monkeypatch, capsys):
     class Process:
         def __init__(self, command, stdout, **kwargs):
+            assert command[-4:] == ['pytest', '-o', 'addopts=', '-vv']
             self.stdout = stdout
             self.stdout.write(b'tests/test_example.py::test_slow ')
             self.killed = False

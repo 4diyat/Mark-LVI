@@ -24,7 +24,7 @@ def last_test(transcript: str) -> str:
 
 def run(timeout: int = TIMEOUT_SECONDS) -> int:
     command = [sys.executable, "-m", "coverage", "run", "--source=core,memory,dashboard",
-               "-m", "pytest", "-v"]
+               "-m", "pytest", "-o", "addopts=", "-vv"]
     env = dict(os.environ, PYTHONUNBUFFERED="1")
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "pytest.log"
@@ -45,8 +45,9 @@ def run(timeout: int = TIMEOUT_SECONDS) -> int:
         print(transcript[-30000:], flush=True)
         if timed_out:
             name = last_test(transcript).replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+            tail = transcript[-2000:].replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
             print(f"::error title=Coverage suite timed out::Coverage suite exceeded {timeout}s; "
-                  f"last started test: {name}", flush=True)
+                  f"last started test: {name}%0A{tail}", flush=True)
         return status
 
 
