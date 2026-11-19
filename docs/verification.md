@@ -417,3 +417,11 @@ jendela. Ini bukan uji dialog persetujuan JARVIS di workspace terputar; model
 parenting dan siklus hidup untuk semua dialog nyata masih harus diintegrasikan
 dan diuji. Konfirmasi sensitif tetap memerlukan tindakan pengguna lokal dan
 tidak boleh disetujui dengan gesture. Rotasi workspace belum tersedia.
+
+Eksperimen `tools/check_rotation_webengine_qt.py` menggunakan halaman HTML
+sintetis tanpa jaringan di `QWebEngineView` dalam proxy terisolasi. CI Linux
+Qt offscreen memeriksa piksel yang dirender serta klik, ketikan dan tombol
+pada 0° dan 30°. Ini bukan uji `BrowserWindow` sebenarnya, situs nyata,
+WebEngine Windows, vault/keychain, popup izin, video, atau kontrol gesture;
+hasilnya tidak membuktikan dukungan untuk semua jendela dan tidak mengaktifkan
+rotasi pada workspace. Dialog tetap tegak di luar scene sesuai arahan pengguna.
