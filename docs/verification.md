@@ -269,9 +269,10 @@ pemulihan pada Windows/webcam nyata belum diverifikasi.
 
 Panel memiliki penanda asisten dan kartu tombol saran yang mengisi draft kosong
 tanpa mengirim otomatis atau menimpa teks yang belum dikirim. Pesan pengguna dan
-asisten memakai blok berwarna dan alignment berbeda tanpa menafsirkan isi
-sebagai HTML. Blok belum memiliki sudut membulat dan keseluruhan tata letaknya
-belum direplikasi persis dari mockup. Gesture claw memakai
+asisten memakai latar membulat dan alignment berbeda tanpa menafsirkan isi
+sebagai HTML; teks tetap dipilih dan digulir dengan widget Qt asli. Pesan dengan
+beberapa paragraf menggunakan satu latar. Keseluruhan tata letaknya belum
+direplikasi persis dari mockup. Gesture claw memakai
 heuristik jari melengkung, dwell 0,4 detik, dan hanya mengubah slider exploded
 view pada canvas penampil model aktif yang memiliki beberapa komponen. Lepas,
 hilangnya tracking, popup, atau dialog membatalkan aksi tanpa klik. Unit test

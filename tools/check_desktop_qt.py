@@ -55,6 +55,26 @@ def main():
         app.processEvents()
         assert chat.toPlainText() == text and chat.textCursor().selectedText().replace('\u2029', '\n') == text
         assert chat.document().firstBlock().blockFormat().leftMargin() > before
+        # Repeated messages from the same sender remain distinct and scroll
+        # with the native document rather than sticking to the viewport.
+        chat._step()  # finish the first multiline message
+        for i in range(35):
+            chat._tag, chat._text, chat._pos = 'ai', f'JARVIS: message {i}', 0
+            for _ in chat._text:
+                chat._step()
+            chat._step()
+        app.processEvents()
+        bar = chat.verticalScrollBar()
+        assert bar.maximum() > 0
+        bar.setValue(0)
+        app.processEvents()
+        top_bubbles = chat._bubble_rects()
+        assert len(top_bubbles) > 1 and top_bubbles[0][1] == 'you'
+        bar.setValue(bar.maximum())
+        app.processEvents()
+        bottom_bubbles = chat._bubble_rects()
+        assert len(bottom_bubbles) > 1 and all(side == 'ai' for _, side in bottom_bubbles)
+        assert 'JARVIS: message 34' in chat.toPlainText()
         chat.close()
         # Real Qt navigation: back/forward, branch history, and a directory
         # removed after it was visited must not move the current location.
