@@ -383,7 +383,8 @@ class FileBrowser(QWidget):
         self._history = []
         self._history_index = -1
         home = Path.home()
-        for key, folder, icon in (("workspace.home", home, "SP_DirHomeIcon"),
+        for key, folder, icon in (("workspace.projects", home / "Projects", "SP_DirIcon"),
+                                  ("workspace.home", home, "SP_DirHomeIcon"),
                                   ("workspace.desktop", home / "Desktop", "SP_DesktopIcon"),
                                   ("workspace.documents", home / "Documents", "SP_FileIcon"),
                                   ("workspace.downloads", home / "Downloads", "SP_DirIcon")):
@@ -496,6 +497,7 @@ class FileBrowser(QWidget):
     def navigate(self, path, *, _record=True):
         target = Path(path).expanduser()
         if not target.is_dir():
+            self._refresh_favorites()
             self._set_status("workspace.bad_folder")
             return False
         path = str(target.resolve())
@@ -507,11 +509,22 @@ class FileBrowser(QWidget):
         self.view.setRootIndex(self.model.setRootPath(path))
         self.path.setText(path)
         self.folder_title.setText(Path(path).name or Path(path).anchor)
-        for button, folder in self._favorite_paths:
-            button.setChecked(folder.resolve() == Path(path))
+        self._refresh_favorites()
         self._sync_history()
         self._set_status("workspace.files_hint")
         return True
+
+    def _refresh_favorites(self):
+        current = self._history[self._history_index] if self._history_index >= 0 else ""
+        for button, folder in self._favorite_paths:
+            exists = folder.is_dir()
+            button.setEnabled(exists)
+            button.setChecked(exists and str(folder.resolve()) == current)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        # Folders may be created or removed while the Files window is hidden.
+        self._refresh_favorites()
 
     def _edit_path(self):
         self.folder_title.hide()
@@ -532,6 +545,7 @@ class FileBrowser(QWidget):
         index = self._history_index + delta
         if 0 <= index < len(self._history) and self.navigate(self._history[index], _record=False):
             self._history_index = index
+            self._refresh_favorites()
             self._sync_history()
 
     def _up(self):

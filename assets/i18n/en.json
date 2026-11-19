@@ -462,6 +462,7 @@
   "workspace.back": "Back",
   "workspace.forward": "Forward",
   "workspace.favorites": "FAVORITES",
+  "workspace.projects": "Projects",
   "workspace.home": "Home",
   "workspace.desktop": "Desktop",
   "workspace.documents": "Documents",

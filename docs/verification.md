@@ -483,3 +483,10 @@ terbuka seperti konsep tetapi dapat dilipat lewat keyboard untuk memberi lebih
 banyak ruang percakapan. Melipat tidak mengirim perintah atau menghapus draft.
 Capture desktop CI kini menggunakan percakapan sintetis beberapa paragraf
 untuk meninjau proporsi; ini bukan percakapan pengguna dan bukan uji DPI nyata.
+
+Pada Files, shortcut Proyek ditambahkan seperti konsep dan mengarah hanya ke
+folder `Projects` di home lokal, bila tersedia. Tidak membuat atau membuka
+folder secara otomatis: jika tidak ada, shortcut dinonaktifkan dan diperiksa
+kembali saat jendela ditampilkan atau navigasi terjadi. Pilihan favorit mengikuti
+riwayat Back/Forward; folder yang hilang menampilkan error dan tidak mengganti
+lokasi aktif. Perbedaan visual lain pada Files masih ada.

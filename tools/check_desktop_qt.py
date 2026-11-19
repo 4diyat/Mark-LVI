@@ -9,6 +9,7 @@ import threading
 import time
 from types import SimpleNamespace
 from pathlib import Path
+from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -113,6 +114,40 @@ def main():
         # Real Qt navigation: back/forward, branch history, and a directory
         # removed after it was visited must not move the current location.
         from ui.desktop_workspace import FileBrowser
+        # Projects is a real local favourite, not a decorative mockup item.
+        # It is disabled when absent and refreshed when the window is shown.
+        home = Path(tmp) / 'visual-home'
+        home.mkdir()
+        with patch.object(Path, 'home', return_value=home):
+            favorites_browser = FileBrowser()
+            favorites_browser.resize(720, 360)
+            favorites_browser.show()
+            app.processEvents()
+            project_button = next(button for button, key in favorites_browser._favorite_buttons
+                                  if key == 'workspace.projects')
+            home_button = next(button for button, key in favorites_browser._favorite_buttons
+                               if key == 'workspace.home')
+            assert project_button.text() == translate('workspace.projects') and not project_button.isEnabled()
+            assert home_button.isChecked() and Path(favorites_browser.path.text()) == home.resolve()
+            project_dir = home / 'Projects'
+            project_dir.mkdir()
+            favorites_browser.hide()
+            favorites_browser.show()
+            app.processEvents()
+            assert project_button.isEnabled() and not project_button.icon().isNull()
+            project_button.click()
+            assert Path(favorites_browser.path.text()) == project_dir.resolve()
+            assert project_button.isChecked() and not home_button.isChecked()
+            favorites_browser.back.click()
+            assert home_button.isChecked() and not project_button.isChecked()
+            favorites_browser.forward.click()
+            assert project_button.isChecked() and not home_button.isChecked()
+            home_button.click()
+            project_dir.rmdir()
+            project_button.click()
+            assert not project_button.isEnabled() and not project_button.isChecked()
+            assert home_button.isChecked() and not favorites_browser.status.isHidden()
+            favorites_browser.close()
         browser = FileBrowser()
         assert browser.view.isColumnHidden(2)
         assert browser.view.header().visualIndex(3) < browser.view.header().visualIndex(1)
