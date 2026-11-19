@@ -247,10 +247,31 @@ def main():
         restore_action.trigger()
         assert not files_for_clap.isMinimized() and not assistant_for_clap.isMinimized()
         assert window._drop_zone.isHidden()
+        assert window._attachment_toggle.parentWidget() is window._composer
+        assert window._send_btn.parentWidget() is window._composer
+        assert window._send_btn.accessibleName() == translate("desktop.send")
         QTest.mouseClick(window._attachment_toggle, Qt.MouseButton.LeftButton)
         assert not window._drop_zone.isHidden()
+        assert window._attachment_toggle.accessibleName() == translate("desktop.hide_attach")
         QTest.mouseClick(window._attachment_toggle, Qt.MouseButton.LeftButton)
         assert window._drop_zone.isHidden()
+        sent, delivered = [], threading.Event()
+        def receive_command(text):
+            sent.append(text)
+            delivered.set()
+        window.on_text_command = receive_command
+        window._input.setText("composer test")
+        QTest.mouseClick(window._send_btn, Qt.MouseButton.LeftButton)
+        assert delivered.wait(2) and sent == ["composer test"]
+        assert window._input.text() == ""
+        window.on_text_command = None
+        from ui.desktop_layout import retranslate as retranslate_conversation
+        set_locale("id")
+        retranslate_conversation(window)
+        assert window._send_btn.accessibleName() == translate("desktop.send")
+        assert window._attachment_toggle.accessibleName() == translate("desktop.attach")
+        set_locale(previous_locale)
+        retranslate_conversation(window)
         files = window._desktop_windows["files"]
         title = files._workspace_title
         old_position = files.pos()

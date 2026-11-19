@@ -4972,28 +4972,32 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         row = QHBoxLayout(); row.setSpacing(5)
         self._input = QLineEdit()
         self._input.setPlaceholderText(_t("ui.placeholder.command"))
-        self._input.setFont(QFont("Courier New", 9))
+        self._input.setFont(QFont("Arial", 10))
         self._input.setFixedHeight(30)
         self._input.setStyleSheet(f"""
             QLineEdit {{
-                background: {C.DESKTOP_DOCK}; color: {C.DESKTOP_TEXT};
-                border: 1px solid {C.DESKTOP_BORDER}; border-radius: 6px; padding: 3px 7px;
+                background: transparent; color: {C.DESKTOP_TEXT};
+                border: 1px solid transparent; border-radius: 6px; padding: 3px 7px;
             }}
             QLineEdit:focus {{ border: 1px solid {C.PRI}; }}
         """)
         self._input.returnPressed.connect(self._send)
         row.addWidget(self._input)
 
-        send = QPushButton("▸")
+        send = QPushButton("➤")
+        self._send_btn = send
+        send.setToolTip(_t("desktop.send"))
+        send.setAccessibleName(_t("desktop.send"))
         send.setFixedSize(30, 30)
         send.setFont(QFont("Courier New", 11, QFont.Weight.Bold))
         send.setCursor(Qt.CursorShape.PointingHandCursor)
-        send.setStyleSheet(f"""
-            QPushButton {{
-                background: {C.DESKTOP_DOCK}; color: {C.DESKTOP_TEXT};
-                border: 1px solid {C.DESKTOP_BORDER}; border-radius: 6px;
-            }}
-            QPushButton:hover {{ background: {C.PRI_GHO}; border: 1px solid {C.PRI}; }}
+        send.setStyleSheet("""
+            QPushButton {
+                background: #287fce; color: #ffffff;
+                border: 1px solid #4b9fff; border-radius: 15px;
+            }
+            QPushButton:hover { background: #3599eb; }
+            QPushButton:focus { border: 2px solid #ffffff; }
         """)
         send.clicked.connect(self._send)
         row.addWidget(send)

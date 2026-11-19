@@ -449,6 +449,7 @@
   "workspace.search": "Search files…",
   "ui.hud.orb": "◉  HUD: GLOWING ORB",
   "ui.hud.cycle_hint": "Switch between the orb, animated face and reactor core.",
+  "desktop.send": "Send",
   "desktop.attach": "Attach file or folder",
   "desktop.hide_attach": "Hide file picker",
   "workspace.close": "Close window",

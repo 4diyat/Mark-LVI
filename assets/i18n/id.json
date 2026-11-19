@@ -449,6 +449,7 @@
   "workspace.search": "Cari berkas…",
   "ui.hud.orb": "◉  HUD: ORB BERSINAR",
   "ui.hud.cycle_hint": "Beralih antara orb, wajah animasi, dan reaktor.",
+  "desktop.send": "Kirim",
   "desktop.attach": "Lampirkan berkas atau folder",
   "desktop.hide_attach": "Sembunyikan pemilih berkas",
   "workspace.close": "Tutup jendela",

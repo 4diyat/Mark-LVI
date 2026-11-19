@@ -115,10 +115,15 @@ def build_conversation(window, log_cls, drop_cls):
     window._file_heading = _label(_t("desktop.files"), 8, bold=True)
     layout.addWidget(window._file_heading)
     window._file_heading.hide()
-    window._attachment_toggle = QPushButton(_t("desktop.attach"))
+    window._attachment_toggle = QPushButton("＋")
     window._attachment_toggle.setCheckable(True)
-    window._attachment_toggle.setStyleSheet(f"QPushButton {{ color: {C.DESKTOP_MUTED}; background: transparent; "
-                                             "border: none; text-align: left; padding: 4px; }")
+    window._attachment_toggle.setFixedSize(30, 30)
+    window._attachment_toggle.setToolTip(_t("desktop.attach"))
+    window._attachment_toggle.setAccessibleName(_t("desktop.attach"))
+    window._attachment_toggle.setStyleSheet(f"QPushButton {{ color: {C.DESKTOP_TEXT}; background: transparent; "
+        "border: 1px solid transparent; border-radius: 8px; font-size: 18px; } "
+        f"QPushButton:hover, QPushButton:checked {{ background: {C.DESKTOP_DOCK}; }} "
+        "QPushButton:focus { border: 1px solid #4b9fff; }")
     window._drop_zone = drop_cls()
     window._drop_zone.file_selected.connect(window._on_file_selected)
     window._file_hint = _label(_t("ui.drop.empty"), 8)
@@ -128,7 +133,9 @@ def build_conversation(window, log_cls, drop_cls):
     def toggle_attachment(checked):
         window._drop_zone.setVisible(checked)
         window._file_hint.setVisible(checked)
-        window._attachment_toggle.setText(_t("desktop.hide_attach" if checked else "desktop.attach"))
+        name = _t("desktop.hide_attach" if checked else "desktop.attach")
+        window._attachment_toggle.setToolTip(name)
+        window._attachment_toggle.setAccessibleName(name)
     window._attachment_toggle.toggled.connect(toggle_attachment)
     # Suggestions are optional drafts, never commands sent on the user's behalf.
     window._suggestions_card = QWidget()
@@ -157,10 +164,18 @@ def build_conversation(window, log_cls, drop_cls):
         suggestions.addWidget(button)
         window._suggestion_buttons.append((button, key))
     layout.addWidget(window._suggestions_card)
-    layout.addWidget(window._attachment_toggle)
     layout.addWidget(window._drop_zone)
     layout.addWidget(window._file_hint)
-    layout.addLayout(window._build_input_row())
+    composer = QWidget()
+    composer.setObjectName("AssistantComposer")
+    composer.setStyleSheet(f"QWidget#AssistantComposer {{ background: {C.DESKTOP_BAR}; "
+                           f"border: 1px solid {C.DESKTOP_BORDER}; border-radius: 11px; }}")
+    row = window._build_input_row()
+    row.setContentsMargins(5, 4, 5, 4)
+    row.insertWidget(0, window._attachment_toggle)
+    composer.setLayout(row)
+    window._composer = composer
+    layout.addWidget(composer)
     return panel
 
 
@@ -236,7 +251,11 @@ def retranslate(window):
                       ("_file_heading", "desktop.files"),
                       ("_voice_hint", "desktop.voice_hint"), ("_interrupt_btn", "ui.interrupt")):
         getattr(window, attr).setText(_t(key))
-    window._attachment_toggle.setText(_t("desktop.hide_attach" if window._attachment_toggle.isChecked() else "desktop.attach"))
+    attachment_name = _t("desktop.hide_attach" if window._attachment_toggle.isChecked() else "desktop.attach")
+    window._attachment_toggle.setToolTip(attachment_name)
+    window._attachment_toggle.setAccessibleName(attachment_name)
+    window._send_btn.setToolTip(_t("desktop.send"))
+    window._send_btn.setAccessibleName(_t("desktop.send"))
     window._suggestions_heading.setText(_t("desktop.suggestions"))
     for button, key in window._suggestion_buttons:
         button.setText(_t(key))
