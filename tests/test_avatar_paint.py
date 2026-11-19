@@ -129,6 +129,9 @@ class _Brush:
     def color(self):
         return self.args[0]
 
+    def gradient(self):
+        return self.args[0] if self.args and isinstance(self.args[0], _Gradient) else None
+
 
 class _Gradient:
     def __init__(self, *a, **k):
@@ -295,8 +298,7 @@ def test_desktop_surface_can_hide_wire_without_disabling_animation(avatar_module
     plain = _paint(avatar_module, avatar, wireframe=False)
     assert plain.count("drawPolygon") > 100
     assert plain.count("drawLines") == 0
-    assert any(isinstance(b, _Brush) and b.args and isinstance(b.args[0], _Gradient)
-               for b in plain.brushes)
+    assert sum(bool(getattr(b, "gradient", lambda: None)()) for b in plain.brushes) > 1
     avatar.shaded = False
     wire = _paint(avatar_module, avatar, wireframe=False)
     assert wire.count("drawLines") >= 1  # transparent mode must remain visible

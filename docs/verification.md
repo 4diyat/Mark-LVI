@@ -245,7 +245,11 @@ pembaruan saat panel tersembunyi, rendering dengan stub Qt, serta animasi
 wajah; smoke test Qt nyata juga mencakup pengambilan gambar desktop.
 
 Visual ini adalah implementasi mesh holografis yang sudah ada, bukan model wajah
-fotorealistis seperti gambar konsep. Hasil visual, komposit transparan, kinerja,
+fotorealistis seperti gambar konsep. Permukaan desktop menginterpolasi warna
+pencahayaan antar-vertex agar perbedaan segitiga lebih halus, sedangkan HUD asli
+mempertahankan render sebelumnya; bentuk dan animasi masih menggunakan mesh yang
+sama. Uji CI offscreen mencatat waktu render sintetis, bukan performa perangkat
+pengguna. Hasil visual, komposit transparan, kinerja,
 dan sinkronisasi suara masih perlu diperiksa pada Qt dan perangkat Windows
 nyata; lingkungan pengujian lokal tidak memiliki dependensi Qt sistem.
 
