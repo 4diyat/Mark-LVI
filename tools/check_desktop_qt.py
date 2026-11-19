@@ -165,6 +165,8 @@ def main():
         assert window.hud._avatar is not None
         assert mdi._avatar_stage.isVisible() and not mdi._emblem.isVisible()
         assert window._hud_cam_stack.isHidden() and window._center_split.isHidden()
+        assert window._suggestions_card.isVisible()
+        assert all(button.isVisible() for button, _ in window._suggestion_buttons)
         window._show_content('Test', 'Auxiliary result')
         app.processEvents()
         assert window._center_split.isVisible() and window._content_panel.isVisible()

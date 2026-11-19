@@ -109,7 +109,7 @@ def build_conversation(window, log_cls, drop_cls):
     window._log._ai_name_lc = window._assistant_name.lower()
     window._log.setFont(QFont("Arial", 10))
     window._log.setMinimumHeight(48)
-    window._log.setStyleSheet(f"QTextEdit {{ background: {C.DESKTOP_DOCK}; color: {C.DESKTOP_TEXT}; "
+    window._log.setStyleSheet(f"QTextEdit {{ background: {C.DESKTOP_PANEL}; color: {C.DESKTOP_TEXT}; "
                               f"border: none; border-radius: 10px; padding: 10px; }}")
     layout.addWidget(window._log, stretch=1)
     window._file_heading = _label(_t("desktop.files"), 8, bold=True)
@@ -119,13 +119,10 @@ def build_conversation(window, log_cls, drop_cls):
     window._attachment_toggle.setCheckable(True)
     window._attachment_toggle.setStyleSheet(f"QPushButton {{ color: {C.DESKTOP_MUTED}; background: transparent; "
                                              "border: none; text-align: left; padding: 4px; }")
-    layout.addWidget(window._attachment_toggle)
     window._drop_zone = drop_cls()
     window._drop_zone.file_selected.connect(window._on_file_selected)
-    layout.addWidget(window._drop_zone)
     window._file_hint = _label(_t("ui.drop.empty"), 8)
     window._file_hint.setWordWrap(True)
-    layout.addWidget(window._file_hint)
     window._drop_zone.hide()
     window._file_hint.hide()
     def toggle_attachment(checked):
@@ -134,8 +131,16 @@ def build_conversation(window, log_cls, drop_cls):
         window._attachment_toggle.setText(_t("desktop.hide_attach" if checked else "desktop.attach"))
     window._attachment_toggle.toggled.connect(toggle_attachment)
     # Suggestions are optional drafts, never commands sent on the user's behalf.
+    window._suggestions_card = QWidget()
+    window._suggestions_card.setObjectName("AssistantSuggestions")
+    window._suggestions_card.setStyleSheet(
+        f"QWidget#AssistantSuggestions {{ background: {C.DESKTOP_PANEL}; "
+        f"border: 1px solid {C.DESKTOP_BORDER}; border-radius: 10px; }}")
+    suggestions = QVBoxLayout(window._suggestions_card)
+    suggestions.setContentsMargins(9, 7, 9, 7)
+    suggestions.setSpacing(4)
     window._suggestions_heading = _label(_t("desktop.suggestions"), 8, bold=True, color=C.DESKTOP_MUTED)
-    layout.addWidget(window._suggestions_heading)
+    suggestions.addWidget(window._suggestions_heading)
     window._suggestion_buttons = []
     for key in ("desktop.suggest_tasks", "desktop.suggest_timeline", "desktop.suggest_release"):
         button = QPushButton(_t(key))
@@ -149,8 +154,12 @@ def build_conversation(window, log_cls, drop_cls):
                 window._input.setText(_t(prompt_key))
             window._input.setFocus()
         button.clicked.connect(draft)
-        layout.addWidget(button)
+        suggestions.addWidget(button)
         window._suggestion_buttons.append((button, key))
+    layout.addWidget(window._suggestions_card)
+    layout.addWidget(window._attachment_toggle)
+    layout.addWidget(window._drop_zone)
+    layout.addWidget(window._file_hint)
     layout.addLayout(window._build_input_row())
     return panel
 
