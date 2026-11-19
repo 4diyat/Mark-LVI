@@ -36,4 +36,6 @@ if(globalThis.injected)throw Error('script injection');
     for marker, value in [('SCENARIO', json.dumps(scenario)), ('SCRIPT', code), ('EXPECTED', json.dumps(expected)),
                           ('USER', json.dumps('alice";globalThis.injected=true;//')), ('PASSWORD', json.dumps('secret"value'))]:
         harness = harness.replace(marker, value, 1)
-    subprocess.run(['node', '-e', harness], check=True, timeout=10)
+    # Cold Node startup on shared Windows runners can exceed ten seconds.
+    # The bound still turns a genuinely stuck process into a test failure.
+    subprocess.run(['node', '-e', harness], check=True, timeout=45)

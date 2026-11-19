@@ -37,13 +37,18 @@ def test_phone_stream_wakes_and_ends_queued_after_audio():
         await q.put({"data": b"old", "mime_type": "audio/pcm", "received_at": time.monotonic() - 3})
         await q.put({"data": b"ab", "mime_type": "audio/pcm", "received_at": time.monotonic()})
         await q.put({"phone_audio_end": True})
-        await asyncio.sleep(.02)
-        assert out.get_nowait() == {"data": b"ab", "mime_type": "audio/pcm"}
-        assert out.get_nowait() == {"audio_stream_end": True}
-        assert out.empty() and wakes == ["remote microphone"] and not obj._phone_active
-        task.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await task
+        try:
+            # Waiting for the actual queue events is deterministic on a busy
+            # Windows runner; a fixed 20 ms sleep can wake before the relay.
+            first = await asyncio.wait_for(out.get(), timeout=2)
+            second = await asyncio.wait_for(out.get(), timeout=2)
+            assert first == {"data": b"ab", "mime_type": "audio/pcm"}
+            assert second == {"audio_stream_end": True}
+            assert out.empty() and wakes == ["remote microphone"] and not obj._phone_active
+        finally:
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
     asyncio.run(check())
 
 
@@ -58,15 +63,27 @@ def test_muted_or_speaking_never_forwards_or_wakes(muted, speaking):
             _phone_active=False, _speaking_lock=threading.Lock(), _is_speaking=speaking,
             _wake_enabled=True, _awake=False, ui=SimpleNamespace(muted=muted),
             wake=lambda **_: pytest.fail("should not wake"))
+        end_seen = asyncio.Event()
+        class EndMarker(dict):
+            def get(self, key, default=None):
+                result = super().get(key, default)
+                if key == "phone_audio_end" and result:
+                    end_seen.set()
+                return result
         task = asyncio.create_task(get_relay()(obj))
         await q.put({"data": b"ab", "mime_type": "audio/pcm"})
-        await q.put({"phone_audio_end": True})
-        await asyncio.sleep(.02)
-        assert out.empty() and not obj._phone_active
-        assert bool(messages) == muted
-        task.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await task
+        await q.put(EndMarker(phone_audio_end=True))
+        try:
+            # The marker is observed inside the relay, not merely dequeued by
+            # wait_for's inner task. The relay then reaches its next queue wait
+            # before this task resumes, avoiding a cancellation race on Python 3.11.
+            await asyncio.wait_for(end_seen.wait(), timeout=2)
+            assert out.empty() and not obj._phone_active
+            assert bool(messages) == muted
+        finally:
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(task, timeout=2)
     asyncio.run(check())
 
 

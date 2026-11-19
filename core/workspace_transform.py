@@ -94,3 +94,43 @@ def bounded_flick(position, delta, viewport):
                 round(max(0, min(max(0, height - 33), y + dy))))
     except (TypeError, ValueError, OverflowError):
         return None
+
+
+def hand_rotation_delta(initial_hands, current_hands):
+    """Signed screen-space angle change in degrees, normalized to [-180, 180).
+
+    Hand identity/order must already be stable. Both hand separations must be
+    large enough to avoid unstable angles. This computes geometry only; it
+    does not rotate windows or synthesize any input.
+    """
+    try:
+        (x1, y1), (x2, y2) = initial_hands
+        (u1, v1), (u2, v2) = current_hands
+        if not all(math.isfinite(v) for v in (x1, y1, x2, y2, u1, v1, u2, v2)):
+            return None
+        if math.hypot(x2 - x1, y2 - y1) < 40 or math.hypot(u2 - u1, v2 - v1) < 40:
+            return None
+        before = math.atan2(y2 - y1, x2 - x1)
+        after = math.atan2(v2 - v1, u2 - u1)
+        return (math.degrees(after - before) + 180) % 360 - 180
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+# Kinds are the names registered by the workspace, not window titles or URLs.
+# Unknown kinds fail closed until explicitly reviewed. This policy is not yet
+# connected to a rotating workspace implementation.
+_ROTATABLE_KINDS = frozenset({
+    'assistant', 'chat', 'files', 'navigation', 'video', 'camera',
+    'model_viewer', 'code_editor', 'image_editor', 'trading', 'ssh_manager',
+})
+
+
+def rotation_allowed(kind, *, is_dialog):
+    """Policy for future rotation: browser, dialogs and unknown types stay upright.
+
+    ``is_dialog`` describes a separate modal/popup, not the QDialog base class
+    of a document embedded as a workspace widget. Only a trusted UI caller may
+    classify the target; this function does not inspect Qt or enforce access.
+    """
+    return is_dialog is False and isinstance(kind, str) and kind in _ROTATABLE_KINDS

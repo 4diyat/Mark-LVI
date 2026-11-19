@@ -5,18 +5,72 @@ import secrets
 import threading
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QFont
+from PyQt6.QtCore import QDir, QRectF, QSize, Qt, pyqtSignal
+from PyQt6.QtGui import QColor, QFileSystemModel, QFont, QIcon, QPainter, QPainterPath, QPen, QPixmap
 from PyQt6.QtWidgets import (QDialog, QFileDialog, QHBoxLayout, QLabel,
-                             QMessageBox, QPlainTextEdit, QTabWidget,
-                             QToolButton, QVBoxLayout, QWidget)
+                             QMessageBox, QPlainTextEdit, QPushButton, QTabWidget,
+                             QToolButton, QTreeView, QVBoxLayout, QWidget)
 
 from core.i18n import label as _t
 from plugins import _creative
-from ui.theme import workspace_stylesheet
+from ui.theme import C, workspace_stylesheet
 from ui.localization import TranslationBindings
 from ui.code_editor import CodeEditor
 from core.code_syntax import language_for_path
+
+
+def _tool_icon(kind):
+    """Draw small, font-independent editor actions on the Qt thread."""
+    pixmap = QPixmap(48, 48)
+    pixmap.setDevicePixelRatio(2)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    pen = QPen(QColor(C.DESKTOP_TEXT))
+    pen.setWidthF(1.45)
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+    painter.setPen(pen)
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    path = QPainterPath()
+    if kind in ("open", "project"):
+        path.moveTo(3, 8)
+        path.lineTo(3, 19)
+        path.lineTo(20, 19)
+        path.lineTo(21, 10)
+        path.lineTo(10, 10)
+        path.lineTo(8, 7)
+        path.lineTo(4, 7)
+        path.closeSubpath()
+        if kind == "project":
+            path.moveTo(8, 14)
+            path.lineTo(16, 14)
+            path.moveTo(12, 11)
+            path.lineTo(12, 17)
+    elif kind in ("save", "save_as"):
+        path.addRoundedRect(QRectF(4, 3, 16, 18), 2, 2)
+        path.moveTo(8, 3)
+        path.lineTo(8, 9)
+        path.lineTo(16, 9)
+        path.lineTo(16, 3)
+        path.moveTo(8, 20)
+        path.lineTo(8, 14)
+        path.lineTo(16, 14)
+        path.lineTo(16, 20)
+        if kind == "save_as":
+            path.moveTo(16, 17)
+            path.lineTo(21, 12)
+            path.moveTo(17, 13)
+            path.lineTo(21, 12)
+            path.lineTo(20, 16)
+    elif kind == "run":
+        path.moveTo(7, 4)
+        path.lineTo(19, 12)
+        path.lineTo(7, 20)
+        path.closeSubpath()
+    painter.drawPath(path)
+    painter.end()
+    return QIcon(pixmap)
 
 
 class CreativeWorkspace(QDialog):
@@ -32,6 +86,7 @@ class CreativeWorkspace(QDialog):
         self._host = parent
         self._path = None
         self._paths = {}
+        self._project_root = None
         self._run_done.connect(self._on_run_done)
         layout = QVBoxLayout(self)
         self._build_editor(layout)
@@ -47,6 +102,9 @@ class CreativeWorkspace(QDialog):
         for button, key in self._editor_tools:
             button.setToolTip(_t(key))
             button.setAccessibleName(_t(key))
+        self._project_tree.setAccessibleName(_t("editor.project"))
+        self._project_title.setText((self._project_root.name or str(self._project_root))
+                                    if self._project_root else _t("editor.project_none"))
         self._refresh_file_tabs()
         self._update_editor_status()
 
@@ -66,18 +124,29 @@ class CreativeWorkspace(QDialog):
     def _build_editor(self, parent_layout):
         page = QWidget()
         outer = QHBoxLayout(page)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
         sidebar = QVBoxLayout()
+        sidebar.setContentsMargins(5, 5, 5, 5)
+        sidebar.setSpacing(4)
         self._editor_tools = []
-        for symbol, key, callback in (("+", "editor.new", self._new_file),
-                                      ("↥", "creative.open", self._open_file),
-                                      ("▣", "creative.save", self._save_file),
-                                      ("⇩", "creative.save_as", self._save_as),
-                                      ("▶", "creative.run", self._run_file)):
+        for icon, key, callback in (("project", "editor.project", self._toggle_project),
+                                    ("open", "creative.open", self._open_file),
+                                    ("save", "creative.save", self._save_file),
+                                    ("save_as", "creative.save_as", self._save_as),
+                                    ("run", "creative.run", self._run_file)):
             button = QToolButton()
-            button.setText(symbol)
+            button.setIcon(_tool_icon(icon))
+            button.setIconSize(QSize(22, 22))
+            button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+            button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
             button.setToolTip(_t(key))
             button.setAccessibleName(_t(key))
             button.setFixedSize(36, 34)
+            button.setStyleSheet(f"QToolButton {{ background: transparent; color: {C.DESKTOP_TEXT}; "
+                                 "border: 1px solid transparent; border-radius: 6px; padding: 2px; } "
+                                 f"QToolButton:hover {{ background: {C.DESKTOP_DOCK}; }} "
+                                 "QToolButton:focus { border: 1px solid #4b9fff; }")
             button.clicked.connect(lambda _checked=False, fn=callback: fn())
             sidebar.addWidget(button)
             self._editor_tools.append((button, key))
@@ -85,25 +154,74 @@ class CreativeWorkspace(QDialog):
                 self._run_btn = button
         sidebar.addStretch()
         outer.addLayout(sidebar)
+        self._project_panel = QWidget()
+        self._project_panel.setFixedWidth(170)
+        self._project_panel.setStyleSheet(f"background: {C.DESKTOP_SIDEBAR};")
+        project_layout = QVBoxLayout(self._project_panel)
+        project_layout.setContentsMargins(8, 8, 8, 8)
+        self._project_title = QLabel(_t("editor.project_none"))
+        self._project_title.setWordWrap(True)
+        project_layout.addWidget(self._project_title)
+        self._project_choose = self._translations.text(QPushButton(), "editor.choose_project")
+        self._project_choose.clicked.connect(self._choose_project)
+        project_layout.addWidget(self._project_choose)
+        self._project_model = QFileSystemModel(self)
+        self._project_model.setReadOnly(True)
+        self._project_model.setFilter(QDir.Filter.AllDirs | QDir.Filter.Files |
+                                      QDir.Filter.NoDotAndDotDot | QDir.Filter.NoSymLinks)
+        self._project_tree = QTreeView()
+        self._project_tree.setAccessibleName(_t("editor.project"))
+        self._project_tree.setModel(self._project_model)
+        self._project_tree.setHeaderHidden(True)
+        for column in (1, 2, 3):
+            self._project_tree.setColumnHidden(column, True)
+        self._project_tree.doubleClicked.connect(self._open_project_item)
+        project_layout.addWidget(self._project_tree, 1)
+        outer.addWidget(self._project_panel)
+        self._project_panel.hide()  # keep the compact desktop editor usable
         layout = QVBoxLayout()
         outer.addLayout(layout, 1)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        # The tab already labels the current file and exposes its full path in
+        # a tooltip; avoid a duplicate path row consuming the code canvas.
         self._file_label = self._translations.text(QLabel(), "creative.unsaved", conditional=True)
-        layout.addWidget(self._file_label)
+        self._file_label.hide()
         self._file_tabs = QTabWidget()
         self._file_tabs.setTabsClosable(True)
         self._file_tabs.setMovable(True)
+        self._new_tab_button = QToolButton()
+        self._new_tab_button.setText("+")
+        self._new_tab_button.setToolTip(_t("editor.new"))
+        self._new_tab_button.setAccessibleName(_t("editor.new"))
+        self._new_tab_button.clicked.connect(lambda _checked=False: self._new_file())
+        self._editor_tools.append((self._new_tab_button, "editor.new"))
+        self._file_tabs.setCornerWidget(self._new_tab_button, Qt.Corner.TopRightCorner)
         self._file_tabs.currentChanged.connect(self._select_file_tab)
         self._file_tabs.tabCloseRequested.connect(self._close_file_tab)
         layout.addWidget(self._file_tabs, 1)
         self._editor_status = QLabel()
+        self._editor_status.setStyleSheet(f"background: {C.DESKTOP_SIDEBAR}; color: {C.DESKTOP_MUTED}; "
+                                          "padding: 4px 8px; border: none;")
         layout.addWidget(self._editor_status)
         self._add_code_tab()
-        layout.addWidget(self._translations.text(QLabel(), "creative.output"))
+        self._output_heading = self._translations.text(QLabel(), "creative.output")
+        layout.addWidget(self._output_heading)
         self._output = QPlainTextEdit()
         self._output.setReadOnly(True)
         self._output.setMaximumHeight(160)
         layout.addWidget(self._output)
+        # Keep the editor readable in the compact desktop layout. The output
+        # panel appears as soon as a run or error writes to it.
+        self._output_heading.hide()
+        self._output.hide()
+        self._output.textChanged.connect(self._show_output_when_written)
         parent_layout.addWidget(page)
+
+    def _show_output_when_written(self):
+        if self._output.toPlainText():
+            self._output_heading.show()
+            self._output.show()
 
     def _add_code_tab(self, text='', path=None, dirty=False):
         code = CodeEditor()
@@ -180,6 +298,52 @@ class CreativeWorkspace(QDialog):
         # All tabs must be confirmed before the window/application is closed.
         return all(self._confirm_discard(code) for code in tuple(self._paths))
 
+    def _toggle_project(self):
+        if self._require("code_editor"):
+            self._project_panel.setVisible(self._project_panel.isHidden())
+
+    def _choose_project(self):
+        if not self._require("code_editor"):
+            return
+        folder = QFileDialog.getExistingDirectory(self, _t("editor.choose_project"),
+                                                   str(self._project_root or Path.home()))
+        if folder:
+            self._set_project_root(folder)
+
+    def _set_project_root(self, folder):
+        try:
+            root = Path(folder).resolve(strict=True)
+            if not root.is_dir():
+                raise ValueError("Not a directory")
+        except (OSError, ValueError, RuntimeError):
+            self._output.setPlainText(_t("editor.project_invalid"))
+            return False
+        self._project_root = root
+        self._project_title.setText(root.name or str(root))
+        self._project_title.setToolTip(str(root))
+        self._project_tree.setRootIndex(self._project_model.setRootPath(str(root)))
+        return True
+
+    def _open_project_item(self, index):
+        if not self._require("code_editor") or self._project_root is None:
+            return
+        if self._project_model.isDir(index):
+            return  # QTreeView handles expansion without changing the project root.
+        self._open_project_path(self._project_model.filePath(index))
+
+    def _open_project_path(self, path):
+        # The tree is not an AI grant or a filesystem sandbox. Refuse paths
+        # that no longer resolve within the selected folder, including links
+        # replaced after listing; the normal reader still enforces its size cap.
+        try:
+            target = Path(path).resolve(strict=True)
+            if self._project_root is None or not target.is_relative_to(self._project_root) or not target.is_file():
+                raise ValueError("Outside project")
+        except (OSError, ValueError, RuntimeError):
+            self._output.setPlainText(_t("editor.project_outside"))
+            return False
+        return self._open_path(str(target))
+
     def _open_file(self):
         if not self._require("code_editor"):
             return False
@@ -187,6 +351,9 @@ class CreativeWorkspace(QDialog):
                                               "Code (*.py *.js *.mjs *.cjs *.txt);;All files (*)")
         if not path:
             return
+        return self._open_path(path)
+
+    def _open_path(self, path):
         resolved = str(Path(path).resolve())
         for code, existing in self._paths.items():
             if existing and str(Path(existing).resolve()) == resolved:
@@ -303,4 +470,4 @@ def open_workspace(window, request):
     window._creative_dialogs.add(dialog)
     dialog.destroyed.connect(lambda: window._creative_dialogs.discard(dialog))
     from ui.desktop_workspace import show_document
-    show_document(window, dialog, "code_editor")
+    return show_document(window, dialog, "code_editor")

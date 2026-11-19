@@ -60,11 +60,16 @@ interaktif belum tersedia.
 
 Mockup acuan: `design/jarvis-desktop-visual-revisi.png`. Implementasi memakai
 wallpaper biru-grafit, palet bersama untuk panel workspace, emblem JARVIS
-ornamental, file di kiri dan percakapan di kanan pada layar lebar. Pada layar
-kecil emblem disembunyikan agar ruang tetap untuk aplikasi. Badge kontrol tangan
-hanya muncul saat controller benar-benar mulai atau aktif; bukan gambar status
-kamera statis. Emblem di desktop bersifat dekoratif; HUD dalam panel asisten
-masih menjadi sumber status JARVIS. Saat kamera kontrol tangan mulai atau aktif,
+ornamental, file di kiri dan percakapan di kanan pada layar lebar. Editor kode
+kosong dibuka di bawah Files pada layar lebar setelah registry siap, hanya jika
+plugin editor valid dan aktif; pada layar sempit editor tidak dibuka otomatis.
+Menu desktop menghubungkan aksi nyata dan Files memiliki riwayat navigasi.
+Pada layar kecil emblem disembunyikan agar ruang tetap untuk aplikasi. Badge
+kontrol tangan hanya muncul saat controller benar-benar mulai atau aktif; bukan
+gambar status kamera statis. Wajah tengah menggunakan instance dan status HUD
+yang sama; pada layar lebar panel HUD yang duplikat disembunyikan saat mode
+wajah aktif, sedangkan hasil, kuis, dan audio dapat muncul saat diperlukan.
+Mode orb/core dan layar sempit tetap menampilkan HUD panel. Saat kamera kontrol tangan mulai atau aktif,
 panel di kanan atas menampilkan status controller dan tombol berhenti; penunjuk
 berubah saat mencubit dan garis hanya muncul saat transformasi dua tangan sedang
 berlangsung. Panel disembunyikan saat modal, konfirmasi atau aplikasi tidak fokus.
@@ -240,7 +245,11 @@ pembaruan saat panel tersembunyi, rendering dengan stub Qt, serta animasi
 wajah; smoke test Qt nyata juga mencakup pengambilan gambar desktop.
 
 Visual ini adalah implementasi mesh holografis yang sudah ada, bukan model wajah
-fotorealistis seperti gambar konsep. Hasil visual, komposit transparan, kinerja,
+fotorealistis seperti gambar konsep. Permukaan desktop menginterpolasi warna
+pencahayaan antar-vertex agar perbedaan segitiga lebih halus, sedangkan HUD asli
+mempertahankan render sebelumnya; bentuk dan animasi masih menggunakan mesh yang
+sama. Uji CI offscreen mencatat waktu render sintetis, bukan performa perangkat
+pengguna. Hasil visual, komposit transparan, kinerja,
 dan sinkronisasi suara masih perlu diperiksa pada Qt dan perangkat Windows
 nyata; lingkungan pengujian lokal tidak memiliki dependensi Qt sistem.
 
@@ -258,11 +267,12 @@ pemulihan pada Windows/webcam nyata belum diverifikasi.
 
 ### Panel Asisten dan claw
 
-Panel memiliki penanda asisten dan tombol saran yang mengisi draft kosong tanpa
-mengirim otomatis atau menimpa teks yang belum dikirim. Pesan pengguna dan
-asisten memakai blok berwarna dan alignment berbeda tanpa menafsirkan isi
-sebagai HTML. Blok belum memiliki sudut membulat dan keseluruhan tata letaknya
-belum direplikasi persis dari mockup. Gesture claw memakai
+Panel memiliki penanda asisten dan kartu tombol saran yang mengisi draft kosong
+tanpa mengirim otomatis atau menimpa teks yang belum dikirim. Pesan pengguna dan
+asisten memakai latar membulat dan alignment berbeda tanpa menafsirkan isi
+sebagai HTML; teks tetap dipilih dan digulir dengan widget Qt asli. Pesan dengan
+beberapa paragraf menggunakan satu latar. Keseluruhan tata letaknya belum
+direplikasi persis dari mockup. Gesture claw memakai
 heuristik jari melengkung, dwell 0,4 detik, dan hanya mengubah slider exploded
 view pada canvas penampil model aktif yang memiliki beberapa komponen. Lepas,
 hilangnya tracking, popup, atau dialog membatalkan aksi tanpa klik. Unit test
@@ -276,8 +286,14 @@ Editor memakai gutter nomor baris, pewarnaan sintaks ringan per baris untuk
 berkas Python/JavaScript, dan status bahasa serta posisi kursor. Pewarnaan bukan
 parser penuh (misalnya string multibaris); file tanpa ekstensi yang dikenal
 masih teks polos. Setiap jendela editor kini mendukung beberapa tab file dan
-sidebar untuk file baru, buka, simpan, simpan sebagai, serta jalankan. Tampilan
-mendekati konsep, tetapi belum diverifikasi secara visual di Qt nyata.
+tombol untuk file baru, buka, simpan, simpan sebagai, serta jalankan. Panel
+project tree dapat dibuka lewat tombol proyek; folder dipilih pengguna secara
+lokal dan tidak dibuka secara otomatis. Klik dua kali berkas membuka tab dengan
+pembaca UTF-8 berbatas ukuran yang sama, tanpa otomatis mengirim isi ke JARVIS
+atau menjalankannya. Tree tidak menampilkan symlink dan menolak target yang
+sudah berubah menjadi di luar folder saat dibuka; ini bukan sandbox filesystem.
+File yang sudah terbuka difokuskan kembali tanpa menggandakan tab atau menimpa
+draft. Tampilan masih belum sama persis dengan konsep.
 
 Plugin `code_editor` dapat membuka editor atau, setelah `workspace_control`
 mencantumkan ID `doc-N`, meminta membaca dokumen editor aktif. Pengguna harus
@@ -336,3 +352,141 @@ Tes menggunakan request dan transport palsu memeriksa batas, persetujuan,
 penolakan, sesi yang berganti, draft pengguna, pembatalan timeout, isolasi,
 dan pencabutan. Smoke Qt nyata ditambahkan tetapi belum dijalankan di lingkungan
 ini; tidak ada uji terhadap server SSH nyata, provider model, atau Windows.
+
+### Penataan awal editor gambar
+
+Aksi buka, undo dan simpan berada di atas; operasi gambar dan penambahan teks
+berada pada panel vertikal yang dapat digulir di sebelah kanvas. Panel layer
+masih berada di kanan. Smoke test Qt memeriksa tombol rotasi dan undo pada
+gambar sintetis serta penerjemahan kontrol. Ini baru penataan awal, bukan
+replika penuh mockup: toolbar memakai ikon vektor untuk operasi yang tersedia. Kuas dasar bekerja
+pada gambar latar dengan ukuran dan warna yang dapat dipilih; layer teks tetap
+terpisah dan satu sapuan dapat di-undo. Seleksi area dapat ditarik pada gambar
+dan dipertahankan saat zoom; Crop membuka dialog dengan koordinat seleksi
+untuk ditinjau sebelum diterapkan. Seleksi saja tidak mengubah gambar. Belum ada pengujian manual perangkat.
+Slider zoom mengubah pratinjau dari 25–200% ukuran pas kanvas, dengan scroll
+bila diperbesar; gambar dan layer asli tidak diubah. Ukuran render dibatasi
+untuk mencegah alokasi berlebihan. Tes Qt memeriksa zoom, scroll, rotasi, undo
+dan terjemahan dengan gambar sintetis, bukan pengujian manual perangkat.
+
+Toolbar ikon diuji melalui Qt asli: ikon terisi, nama aksesibel dan tooltip
+diterjemahkan, dan rotasi dapat dijalankan dengan keyboard. Tidak ada tombol
+dekoratif untuk alat yang belum tersedia.
+
+Smoke test Qt menggunakan gambar sintetis untuk drag seleksi, perubahan zoom,
+pembatalan dan konfirmasi Crop, serta undo; dialog flatten tetap berlaku untuk
+komposisi ber-layer. Pengujian ini tidak menggantikan uji manual perangkat.
+
+Kuas diuji pada Qt offscreen dengan gambar sintetis: pemilihan warna dan
+pembatalannya, ukuran, sapuan piksel, pemisahan layer teks, pergantian mode,
+dan undo. Belum mencakup kuas lanjutan atau pengujian manual perangkat.
+
+Tangkapan Qt sintetis editor gambar dibuat terpisah di CI agar dapat ditinjau
+tanpa dokumen pengguna. Hasilnya menunjukkan rail ikon, kanvas, dan layer;
+panel layer masih lebih sederhana daripada mockup. Kontrol warna dan ukuran
+kuas dipindahkan ke baris kontekstual yang hanya muncul saat kuas aktif;
+zoom dan aksi file tetap di toolbar utama. Ini bukan bukti kesetiaan visual penuh ataupun uji pada perangkat.
+
+Tes Qt juga memeriksa visibilitas kontrol kuas dan bahwa warna serta ukuran
+tetap tersimpan ketika beralih ke mode seleksi.
+
+### Fondasi rotasi jendela (belum terintegrasi)
+
+Eksperimen terisolasi `tools/check_rotation_qt.py` menguji widget Qt biasa
+di `QGraphicsProxyWidget` pada beberapa sudut: pemetaan koordinat, klik,
+checkbox, fokus, pengetikan dan scroll via keyboard. Perhitungan selisih sudut
+dua tangan diuji terpisah pada sampel sintetis. Keduanya **belum mengubah**
+workspace `QMdiArea` atau menghubungkan rotasi ke gesture. Belum ada bukti
+bahwa WebEngine, video/OpenGL, dialog/popup, siklus hidup jendela, aksesibilitas,
+input gesture, dan perangkat Windows akan bekerja melalui proxy. Jangan
+menganggap eksperimen ini implementasi rotasi interaktif bagi semua jendela.
+
+Eksperimen tambahan `tools/check_rotation_editors_qt.py` menguji editor kode
+JARVIS dan editor gambar yang sebenarnya dalam scene Qt terisolasi: pengetikan,
+tab baru, penolakan penutupan draft (jawaban konfirmasi disimulasikan), drag
+seleksi, rotasi gambar dan undo. Ini tidak menguji dialog persetujuan atau menu
+popup yang nyata; tidak ada file pengguna, kode yang dijalankan, atau input OS.
+Rotasi jendela workspace dan kontrol dua tangan tetap belum terintegrasi.
+
+Sesuai keputusan pengguna, dialog **tidak ikut diputar**. Eksperimen
+`tools/check_rotation_popups_qt.py` menempatkan dialog Ya/Tidak sintetis di
+luar scene terputar sebagai dialog modal tegak dan memeriksa penolakan dengan
+input langsung. Menu Qt diuji secara terpisah. Smoke test workspace menguji
+bahwa dialog application-modal membatalkan gesture dan tidak memindahkan
+jendela. Ini bukan uji dialog persetujuan JARVIS di workspace terputar; model
+parenting dan siklus hidup untuk semua dialog nyata masih harus diintegrasikan
+dan diuji. Konfirmasi sensitif tetap memerlukan tindakan pengguna lokal dan
+tidak boleh disetujui dengan gesture. Rotasi workspace belum tersedia.
+
+Sesuai keputusan pengguna, browser juga dikecualikan dari rotasi dan tetap
+tegak, seperti dialog. Eksperimen WebEngine sintetis sebelumnya disimpan
+sebagai referensi, tetapi tidak lagi dijalankan sebagai target rotasi di CI.
+Kebijakan `rotation_allowed` menolak browser, dialog, dan jenis tidak dikenal;
+kebijakan ini baru fondasi yang diuji, **belum dihubungkan** ke workspace yang
+berputar. Integrasi kelak harus menerapkannya dengan identifikasi target tepercaya,
+tanpa mengubah aturan keamanan, izin atau penyimpanan kredensial browser.
+
+Layer teks pada editor gambar ditampilkan dari depan ke belakang; tombol
+naik/turun mengubah urutan komposisi dan dapat di-undo tanpa menyimpan atau
+meratakan layer. Background tetap selalu terlihat. Tes logika dan Qt offscreen
+memeriksa urutan, kondisi batas, visibilitas, penghapusan dan undo; ini belum
+mengubah format penyimpanan: Save as tetap mengekspor gambar yang diratakan.
+
+Layer teks yang dipilih dapat diedit ulang: teks, posisi dan ukuran huruf.
+Visibilitas dan urutan layer dipertahankan, perubahan dapat di-undo, dan
+dialog yang dibatalkan atau data yang berubah selama dialog tidak menimpa
+layer. Pengujian Qt offscreen menggunakan teks sintetis dan tidak membuktikan
+penggunaan pada perangkat desktop sebenarnya.
+
+Layer teks mendukung warna RGB per layer (default putih), termasuk saat
+diedit ulang dan di-undo. Dialog warna dibatalkan tanpa mengubah pilihan;
+komposisi dan ekspor menggunakan warna yang dipilih. Pemeriksaan Qt offscreen
+mencakup warna pada piksel komposit sintetis, bukan uji perangkat fisik.
+
+### Proyek editor gambar ber-layer
+
+Buka proyek dan Simpan proyek menggunakan format lokal `.jimg` versi 1, yang
+menyimpan background PNG dan layer teks (termasuk urutan, visibilitas, posisi,
+ukuran dan warna). Ini bukan format PSD dan tidak menyimpan riwayat undo,
+seleksi, atau layer kuas terpisah; sapuan kuas berada pada background. Ekspor
+PNG/JPEG/BMP tetap diratakan dan tidak menandai perubahan layer yang belum
+disimpan sebagai proyek sebagai tersimpan. Penyimpanan proyek memakai file
+atomik; kegagalan tidak boleh merusak file tujuan yang sudah ada. Pembukaan
+memeriksa versi, ukuran, dimensi dan isi sebelum mengganti dokumen aktif.
+
+Tes model memeriksa round-trip dan data salah; smoke Qt CI memakai proyek dan
+piksel sintetis untuk simpan, buka, pembatalan, file rusak, kegagalan simpan,
+dan ekspor. Ini bukan pengujian perangkat atau format eksternal nyata.
+
+### Perbandingan visual: desktop dan editor gambar
+
+Capture sintetis desktop pada CI memperlihatkan susunan Files/editor kiri,
+wajah tengah, asisten kanan dan dock seperti konsep, tetapi proporsi panel,
+konten contoh, detail chrome dan wajah masih berbeda; ini bukan replika mockup.
+Editor gambar sebelumnya memperlihatkan daftar layer polos dan label background
+terpisah. Panel layer kini diberi permukaan bersama, ikon teks berwarna,
+baris lebih mudah dibaca, dan thumbnail background aktual di bawah layer teks
+(sesuai urutan komposisi, bukan dekorasi). Checkbox dan tindakan layer tetap
+berfungsi; background tetap selalu terlihat. Ini masih penyelarasan bertahap,
+bukan kesesuaian visual penuh dengan desain. Gambar CI sintetis tidak
+membuktikan hasil pada monitor/DPI atau perangkat pengguna.
+
+Panel percakapan disesuaikan lagi dengan konsep asisten: penanda visual
+pengguna dan JARVIS digambar di luar bubble, tanpa menambahkan teks atau aksi
+palsu. Pada panel sempit penanda disembunyikan agar ruang teks tetap tersedia;
+seleksi, penyalinan, streaming dan scroll tetap memakai dokumen Qt asli.
+Penanda ini bersifat ilustratif, bukan indikator koneksi atau status layanan.
+Belum menyamai seluruh detail, proporsi, font atau ikon pada mockup.
+
+Panel asisten: ukuran teks percakapan dan input ditingkatkan, dan saran tetap
+terbuka seperti konsep tetapi dapat dilipat lewat keyboard untuk memberi lebih
+banyak ruang percakapan. Melipat tidak mengirim perintah atau menghapus draft.
+Capture desktop CI kini menggunakan percakapan sintetis beberapa paragraf
+untuk meninjau proporsi; ini bukan percakapan pengguna dan bukan uji DPI nyata.
+
+Pada Files, shortcut Proyek ditambahkan seperti konsep dan mengarah hanya ke
+folder `Projects` di home lokal, bila tersedia. Tidak membuat atau membuka
+folder secara otomatis: jika tidak ada, shortcut dinonaktifkan dan diperiksa
+kembali saat jendela ditampilkan atau navigasi terjadi. Pilihan favorit mengikuti
+riwayat Back/Forward; folder yang hilang menampilkan error dan tidak mengganti
+lokasi aktif. Perbedaan visual lain pada Files masih ada.

@@ -37,7 +37,7 @@ from PyQt6.QtCore import (
 )
 from PyQt6.QtGui import (
     QBrush, QColor, QCursor, QDragEnterEvent, QDropEvent, QFont,
-    QKeySequence, QPainter, QPen, QPixmap, QRadialGradient, QShortcut, QTextBlockFormat,
+    QKeySequence, QPainter, QPen, QPixmap, QRadialGradient, QShortcut,
 )
 # Video playback for the HUD. Part of PyQt6, so it costs no new dependency —
 # but the multimedia plugins are a separate piece of the Qt install and can be
@@ -97,6 +97,7 @@ _OS = platform.system()  # "Windows" | "Darwin" | "Linux"
 #     package, and imported here because this file reads them on nearly every
 #     line. The long comment that used to sit here — about why the split was
 #     worth doing — is in `ui/__init__.py`, where a reader of the package starts.
+from ui.desktop_layout import set_assistant_tool
 from ui.theme import (          # noqa: F401 — re-exported through the package
     C,
     DEFAULT_UI_COLOR,
@@ -763,121 +764,8 @@ class MetricBar(QWidget):
 
         p.end()
 
-class LogWidget(QTextEdit):
-    _sig = pyqtSignal(str)
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setReadOnly(True)
-        # Cap scrollback so an hours-long session can't grow the document
-        # without bound — keeps memory flat and every insert cheap. Oldest
-        # lines drop off the top automatically.
-        self.document().setMaximumBlockCount(600)
-        self.setFont(QFont("Courier New", 9))
-        self.setStyleSheet(f"""
-            QTextEdit {{
-                background: {C.PANEL};
-                color: {C.TEXT};
-                border: 1px solid {C.BORDER};
-                border-radius: 4px;
-                padding: 6px;
-                selection-background-color: {C.PRI_GHO};
-            }}
-            QScrollBar:vertical {{
-                background: {C.BG};
-                width: 8px;
-                border: none;
-            }}
-            QScrollBar::handle:vertical {{
-                background: {C.BORDER_B};
-                border-radius: 4px;
-                min-height: 20px;
-            }}
-        """)
-        self._queue: list[str] = []
-        self._typing  = False
-        self._text    = ""
-        self._pos     = 0
-        self._tag     = "sys"
-        self._ai_name_lc = "jarvis"   # updated when assistant name changes
-        self._tmr = QTimer(self)
-        self._tmr.timeout.connect(self._step)
-        self._sig.connect(self._enqueue)
-
-    def append_log(self, text: str):
-        self._sig.emit(text)
-
-    def _enqueue(self, text: str):
-        self._queue.append(text)
-        if not self._typing:
-            self._next()
-
-    def _next(self):
-        if not self._queue:
-            self._typing = False
-            return
-        self._typing = True
-        self._text   = self._queue.pop(0)
-        self._pos    = 0
-        tl = self._text.lower()
-        _ai_pfx = f"{self._ai_name_lc}:"
-        if   tl.startswith("you:"):                              self._tag = "you"
-        elif tl.startswith(_ai_pfx) or tl.startswith("jarvis:"): self._tag = "ai"
-        elif tl.startswith("file:"):                             self._tag = "file"
-        elif "err" in tl:                                        self._tag = "err"
-        else:                                                    self._tag = "sys"
-        self._tmr.start(6)
-
-    def _step(self):
-        if self._pos < len(self._text):
-            ch  = self._text[self._pos]
-            cur = self.textCursor()
-            if self._pos == 0:
-                # Use native text blocks rather than inserting HTML: text from a model
-                # or user remains inert and selectable, while chat messages get the
-                # alignment and restrained blue surface of the desktop concept.
-                cur.movePosition(cur.MoveOperation.End)
-                block = QTextBlockFormat()
-                block.setTopMargin(4)
-                block.setBottomMargin(4)
-                if self._tag in ("you", "ai"):
-                    block.setAlignment(Qt.AlignmentFlag.AlignRight if self._tag == "you"
-                                       else Qt.AlignmentFlag.AlignLeft)
-                    block.setLeftMargin(38 if self._tag == "you" else 8)
-                    block.setRightMargin(8 if self._tag == "you" else 38)
-                    block.setBackground(QBrush(QColor("#1c3a59" if self._tag == "you" else "#192d41")))
-                else:
-                    block.setLeftMargin(8)
-                    block.setRightMargin(8)
-                cur.setBlockFormat(block)
-                self.setTextCursor(cur)
-            fmt = cur.charFormat()
-            col = {
-                "you":  qcol(C.WHITE),
-                "ai":   qcol(C.DESKTOP_TEXT),
-                "err":  qcol(C.RED),
-                "file": qcol(C.GREEN),
-                # SYS lines are the bulk of the log. Amber fought the cyan HUD
-                # and, being a fixed status colour rather than a hue-linked one,
-                # stayed amber even after the accent picker retinted everything
-                # else. TEXT_MED follows the theme and drops the contrast to a
-                # level you can read past.
-                "sys":  qcol(C.TEXT_MED),
-            }.get(self._tag, qcol(C.TEXT))
-            fmt.setForeground(QBrush(col))
-            cur.movePosition(cur.MoveOperation.End)
-            cur.insertText(ch, fmt)
-            self.setTextCursor(cur)
-            self.ensureCursorVisible()
-            self._pos += 1
-        else:
-            self._tmr.stop()
-            cur = self.textCursor()
-            cur.movePosition(cur.MoveOperation.End)
-            cur.insertText("\n")
-            self.setTextCursor(cur)
-            self.ensureCursorVisible()
-            QTimer.singleShot(20, self._next)
+# Re-exported here for existing UI and plugin imports.
+from ui.chat_log import LogWidget
 
 _FILE_ICONS = {
     "image":   ("🖼", "#00d4ff"), "video":   ("🎬", "#ff6b00"),
@@ -3506,6 +3394,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
     _state_sig      = pyqtSignal(str)
     _content_sig    = pyqtSignal(str, str)   # (title, text) — thread-safe content display
     _codejob_sig    = pyqtSignal(object)     # dev_agent job state — live coding panel
+    _plugins_ready_sig = pyqtSignal()  # registry can be supplied from a worker thread
     _ssh_assist_sig = pyqtSignal(object)
     _editor_assist_sig = pyqtSignal(object)
     _workspace_command_sig = pyqtSignal(object)  # worker request, completed on Qt thread
@@ -3876,6 +3765,8 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         self._state_sig.connect(self._apply_state)
         self._content_sig.connect(self._show_content)
         self._codejob_sig.connect(self._show_code_job)
+        from ui.desktop_workspace import open_initial_editor
+        self._plugins_ready_sig.connect(lambda: open_initial_editor(self))
         self._workspace_command_sig.connect(self._execute_workspace_command)
         self._editor_assist_sig.connect(self._execute_editor_assist)
         self._ssh_assist_sig.connect(self._execute_ssh_assist)
@@ -5081,28 +4972,32 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         row = QHBoxLayout(); row.setSpacing(5)
         self._input = QLineEdit()
         self._input.setPlaceholderText(_t("ui.placeholder.command"))
-        self._input.setFont(QFont("Courier New", 9))
-        self._input.setFixedHeight(30)
+        self._input.setFont(QFont("Arial", 11))
+        self._input.setFixedHeight(34)
         self._input.setStyleSheet(f"""
             QLineEdit {{
-                background: {C.DESKTOP_DOCK}; color: {C.DESKTOP_TEXT};
-                border: 1px solid {C.DESKTOP_BORDER}; border-radius: 6px; padding: 3px 7px;
+                background: transparent; color: {C.DESKTOP_TEXT};
+                border: 1px solid transparent; border-radius: 6px; padding: 3px 7px;
             }}
             QLineEdit:focus {{ border: 1px solid {C.PRI}; }}
         """)
         self._input.returnPressed.connect(self._send)
         row.addWidget(self._input)
 
-        send = QPushButton("▸")
+        send = QPushButton(">")
+        self._send_btn = send
+        send.setToolTip(_t("desktop.send"))
+        send.setAccessibleName(_t("desktop.send"))
         send.setFixedSize(30, 30)
         send.setFont(QFont("Courier New", 11, QFont.Weight.Bold))
         send.setCursor(Qt.CursorShape.PointingHandCursor)
-        send.setStyleSheet(f"""
-            QPushButton {{
-                background: {C.DESKTOP_DOCK}; color: {C.DESKTOP_TEXT};
-                border: 1px solid {C.DESKTOP_BORDER}; border-radius: 6px;
-            }}
-            QPushButton:hover {{ background: {C.PRI_GHO}; border: 1px solid {C.PRI}; }}
+        send.setStyleSheet("""
+            QPushButton {
+                background: #287fce; color: #ffffff;
+                border: 1px solid #4b9fff; border-radius: 15px;
+            }
+            QPushButton:hover { background: #3599eb; }
+            QPushButton:focus { border: 2px solid #ffffff; }
         """)
         send.clicked.connect(self._send)
         row.addWidget(send)
@@ -5159,7 +5054,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
             }}
             QPushButton:hover {{ color: {C.TEXT}; border-color: {C.BORDER_B}; }}
         """)
-        dismiss.clicked.connect(w.hide)
+        dismiss.clicked.connect(lambda: set_assistant_tool(self, w, False))
         hdr.addWidget(dismiss)
         lay.addLayout(hdr)
 
@@ -5211,7 +5106,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
             self._content_display.textCursor().MoveOperation.Start
         )
         first_show = not self._content_panel.isVisible()
-        self._content_panel.show()
+        set_assistant_tool(self, self._content_panel, True)
         if first_show:
             total = self._center_split.height()
             self._center_split.setSizes([max(total - 220, 120), 220])
@@ -5296,7 +5191,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         bar.setValue(keep)
         if not self._content_panel.isVisible():
             self.hud.glance(0.0, -0.85, hold=1.3)
-            self._content_panel.show()
+            set_assistant_tool(self, self._content_panel, True)
             total = self._center_split.height()
             self._center_split.setSizes([max(total - 260, 120), 260])
 
@@ -5380,7 +5275,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         self._content_display.moveCursor(
             self._content_display.textCursor().MoveOperation.Start)
         first_show = not self._content_panel.isVisible()
-        self._content_panel.show()
+        set_assistant_tool(self, self._content_panel, True)
         if first_show:
             total = self._center_split.height()
             self._center_split.setSizes([max(total - 260, 120), 260, 0])
@@ -5510,7 +5405,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         self._quiz_title_lbl.setText((topic or "quiz").upper()[:48])
         self.hud.glance(0.0, -0.85, hold=1.3)
         first_show = not self._quiz_panel.isVisible()
-        self._quiz_panel.show()
+        set_assistant_tool(self, self._quiz_panel, True)
         if first_show:
             total = self._center_split.height()
             self._center_split.setSizes([max(total - 250, 120), 0, 250])
@@ -5518,7 +5413,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
 
     def _hide_quiz(self):
         self._quiz = None
-        self._quiz_panel.hide()
+        set_assistant_tool(self, self._quiz_panel, False)
 
     def _quiz_clear_answers(self):
         while self._quiz_answers_lay.count():
@@ -5627,7 +5522,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         right = sum(1 for r in results if r["correct"] is True)
         unsure = sum(1 for r in results if r["correct"] is None)
         total = len(results)
-        self._quiz_panel.hide()
+        set_assistant_tool(self, self._quiz_panel, False)
         self._quiz = None
 
         self._log.append_log(f"QUIZ: {topic or 'quiz'} — {right}/{total} correct")
@@ -6695,6 +6590,8 @@ class JarvisUI:
     @get_plugins.setter
     def get_plugins(self, cb):
         self._win.get_plugins = cb
+        if cb is not None:
+            self._win._plugins_ready_sig.emit()
 
     @property
     def get_plugin_settings(self):

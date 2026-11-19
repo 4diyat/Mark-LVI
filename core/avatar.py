@@ -37,7 +37,7 @@ import random
 
 import numpy as np
 from PyQt6.QtCore import QLineF, QPointF, QRectF, Qt
-from PyQt6.QtGui import QBrush, QColor, QPainter, QPen, QPolygonF, QRadialGradient
+from PyQt6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPen, QPolygonF, QRadialGradient
 
 from core import avatar_face as _face
 from core.avatar_mesh import JAW_MAX, JAW_PIVOT, get_head_mesh
@@ -536,7 +536,8 @@ class HoloAvatar:
         return self._lut_cache
 
     def paint(self, p: QPainter, cx: float, cy: float, r: float,
-              primary: QColor, accent: QColor, bg: QColor | None = None) -> None:
+              primary: QColor, accent: QColor, bg: QColor | None = None,
+              *, wireframe: bool = True) -> None:
         """Draw the avatar with its head centre at (cx, cy).
 
         `r` is the head's half-height in pixels — the caller owns the layout, so
@@ -565,13 +566,15 @@ class HoloAvatar:
         ys = cy - verts[:, 1] * k
 
         if self.shaded:
-            self._paint_surface(p, xs, ys, norms, verts, primary, accent, bg, amp)
-        self._paint_wire(p, xs, ys, norms, verts, primary, bg, amp)
+            self._paint_surface(p, xs, ys, norms, verts, primary, accent, bg, amp,
+                                smooth=not wireframe)
+        if wireframe or not self.shaded:
+            self._paint_wire(p, xs, ys, norms, verts, primary, bg, amp)
         self._paint_features(p, xs, ys, norms, r, primary, accent, bg, amp)
 
     def _paint_surface(self, p: QPainter, xs, ys, norms, verts,
                        primary: QColor, accent: QColor, bg: QColor,
-                       amp: float) -> None:
+                       amp: float, *, smooth: bool = False) -> None:
         """Fill the camera-facing triangles as lit, occluded, warm skin.
 
         The maths lives in `core.avatar_face` (Qt-free, so it can be tested);
@@ -603,6 +606,9 @@ class HoloAvatar:
             return
 
         table = self._skin_table(bg, primary, accent)
+        if smooth:
+            self._paint_smooth_surface(p, xs, ys, vis, sh, table, len(verts))
+            return
         n_lvl, n_heat = table.shape[0], table.shape[1]
 
         bi = np.clip((bright[vis] * (n_lvl - 1) + 0.5).astype(np.int32), 0, n_lvl - 1)
@@ -640,6 +646,61 @@ class HoloAvatar:
                 p.setBrush(table[bl, bh, bd])
             p.drawPolygon(QPolygonF([QPointF(q[0], q[1]), QPointF(q[2], q[3]),
                                      QPointF(q[4], q[5])]))
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+
+    def _paint_smooth_surface(self, p, xs, ys, vis, shading, table, nverts):
+        """Interpolate neighbouring visible-facet lighting across each triangle.
+
+        Only the desktop's solid surface uses gradients; the original HUD and
+        transparent-wire mode keep their inexpensive renderer. Neck and face
+        remain separate meshes and are painted in their established order.
+        """
+        faces = self._f[vis]
+        indices = faces.reshape(-1)
+        counts = np.bincount(indices, minlength=nverts)
+        counts = np.maximum(counts, 1)
+        fields = []
+        for name, n in (("bright", table.shape[0]), ("heat", table.shape[1]),
+                        ("dark", table.shape[2])):
+            sums = np.bincount(indices, weights=np.repeat(shading[name][vis], 3), minlength=nverts)
+            fields.append(np.clip((sums / counts * (n - 1) + .5).astype(np.int32), 0, n - 1))
+        vb, vh, vd = fields
+        # Face-group ordering keeps the neck behind the head.
+        vis = vis[np.argsort(self._fgroup[vis], kind="stable")]
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+        p.setPen(Qt.PenStyle.NoPen)
+        for face in self._f[vis].tolist():
+            points = [(float(xs[i]), float(ys[i])) for i in face]
+            colors = [table[vb[i], vh[i], vd[i]].color() for i in face]
+            light = [0.2126 * col.red() + 0.7152 * col.green() + 0.0722 * col.blue()
+                     for col in colors]
+            order = sorted(range(3), key=light.__getitem__)
+            low, mid, high = order
+            delta = light[high] - light[low]
+            x0, y0 = points[0]
+            dx1, dy1 = points[1][0] - x0, points[1][1] - y0
+            dx2, dy2 = points[2][0] - x0, points[2][1] - y0
+            det = dx1 * dy2 - dx2 * dy1
+            if delta < 0.5 or abs(det) < 1e-6:
+                p.setBrush(QBrush(colors[mid]))
+            else:
+                dl1, dl2 = light[1] - light[0], light[2] - light[0]
+                gx = (dl1 * dy2 - dl2 * dy1) / det
+                gy = (dx1 * dl2 - dx2 * dl1) / det
+                length2 = gx * gx + gy * gy
+                if length2 < 1e-12:
+                    p.setBrush(QBrush(colors[mid]))
+                else:
+                    sx, sy = points[low]
+                    grad = QLinearGradient(sx, sy, sx + delta * gx / length2,
+                                           sy + delta * gy / length2)
+                    grad.setColorAt(0.0, colors[low])
+                    middle = (light[mid] - light[low]) / delta
+                    if 0.0 < middle < 1.0:
+                        grad.setColorAt(middle, colors[mid])
+                    grad.setColorAt(1.0, colors[high])
+                    p.setBrush(QBrush(grad))
+            p.drawPolygon(QPolygonF([QPointF(x, y) for x, y in points]))
         p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
     def _skin_table(self, bg: QColor, primary: QColor, accent: QColor):

@@ -230,6 +230,9 @@ class AudioMixin:
         """
         try:
             self._audio_cont.show()
+            if hasattr(self, "_hud_cam_stack"):
+                from ui.desktop_layout import refresh_assistant_tools
+                refresh_assistant_tools(self)
         except Exception:
             return
         split = getattr(self, "_center_split", None)
@@ -280,6 +283,9 @@ class AudioMixin:
         self._audio_exhausted_cb = None
         self._audio_cont.hide()
         self._collapse_audio_bar()
+        if hasattr(self, "_hud_cam_stack"):
+            from ui.desktop_layout import refresh_assistant_tools
+            refresh_assistant_tools(self)
 
     def _on_audio_pause(self, paused: bool) -> None:
         if not (getattr(self, "_audio_player", None) and self._audio_on):

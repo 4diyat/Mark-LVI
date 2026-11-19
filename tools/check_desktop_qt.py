@@ -9,12 +9,14 @@ import threading
 import time
 from types import SimpleNamespace
 from pathlib import Path
+from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtCore import QCoreApplication, QEvent, QPoint, QTimer, Qt  # noqa: E402
+from PyQt6.QtCore import QCoreApplication, QEvent, QFileInfo, QPoint, QTimer, Qt  # noqa: E402
+from PyQt6.QtGui import QColor, QImage, QTextCursor  # noqa: E402
 from PyQt6.QtTest import QTest  # noqa: E402
-from PyQt6.QtWidgets import QApplication, QComboBox, QPushButton, QScrollArea, QSizeGrip, QSlider, QWidget  # noqa: E402
+from PyQt6.QtWidgets import QApplication, QColorDialog, QComboBox, QDialog, QFileDialog, QLineEdit, QMessageBox, QPushButton, QScrollArea, QSizeGrip, QSlider, QSpinBox, QWidget  # noqa: E402
 
 import memory.config_manager as config  # noqa: E402
 from core.i18n import label as translate  # noqa: E402
@@ -29,11 +31,163 @@ def main():
         MainWindow._check_config = lambda self: True
         app = QApplication([])
         chat = LogWidget()
-        chat._tag, chat._text, chat._pos = 'you', '<', 0
+        chat.resize(400, 220)
+        chat.show()
+        app.processEvents()
+        text = '<unsafe>\nsecond paragraph'
+        chat._tag, chat._text, chat._pos = 'you', text, 0
+        for _ in text:
+            chat._step()
+        assert chat.toPlainText() == text
+        assert chat.document().firstBlock().blockFormat().alignment() == Qt.AlignmentFlag.AlignRight
+        app.processEvents()
+        bubbles = chat._bubble_rects()
+        assert len(bubbles) == 1 and bubbles[0][1] == 'you'
+        rect = bubbles[0][0]
+        image = chat.viewport().grab().toImage()
+        scale = image.devicePixelRatio()
+        def pixel(x, y):
+            return image.pixelColor(round(x * scale), round(y * scale)).name()
+        # The centre of the top edge is coloured, its rounded corner is not.
+        assert pixel(rect.center().x(), rect.top() + 2) == '#1c3a59'
+        assert pixel(rect.left() + 1, rect.top() + 1) != '#1c3a59'
+        # The role marker is outside the selectable user bubble.
+        assert pixel(rect.right() + 18, rect.top() + 17) == '#bdcee1'
+        before = chat.document().firstBlock().blockFormat().leftMargin()
+        chat.selectAll()
+        chat.resize(600, 220)
+        app.processEvents()
+        assert chat.toPlainText() == text and chat.textCursor().selectedText().replace('\u2029', '\n') == text
+        assert chat.document().firstBlock().blockFormat().leftMargin() > before
+        # Repeated messages from the same sender remain distinct and scroll
+        # with the native document rather than sticking to the viewport.
+        selected = chat.textCursor()
+        selected.clearSelection()
+        chat.setTextCursor(selected)
+        chat._step()  # finish the first multiline message
+        for i in range(35):
+            chat._tag, chat._text, chat._pos = 'ai', f'JARVIS: message {i}', 0
+            for _ in chat._text:
+                chat._step()
+            chat._step()
+        app.processEvents()
+        bar = chat.verticalScrollBar()
+        assert bar.maximum() > 0
+        bar.setValue(0)
+        app.processEvents()
+        top_bubbles = chat._bubble_rects()
+        assert len(top_bubbles) > 1 and top_bubbles[0][1] == 'you'
+        bar.setValue(bar.maximum())
+        app.processEvents()
+        bottom_bubbles = chat._bubble_rects()
+        assert len(bottom_bubbles) > 1 and all(side == 'ai' for _, side in bottom_bubbles)
+        ai_rect = next(rect for rect, _side in bottom_bubbles if rect.top() >= 0 and rect.top() + 25 < chat.viewport().height())
+        ai_image = chat.viewport().grab().toImage()
+        ai_scale = ai_image.devicePixelRatio()
+        assert ai_image.pixelColor(round((ai_rect.left() - 18) * ai_scale),
+                                   round((ai_rect.top() + 13) * ai_scale)).name() == '#123251'
+        assert 'JARVIS: message 34' in chat.toPlainText()
+        selection = QTextCursor(chat.document())
+        selection.setPosition(0)
+        selection.setPosition(8, QTextCursor.MoveMode.KeepAnchor)
+        chat.setTextCursor(selection)
+        bar.setValue(0)
+        app.processEvents()
+        assert chat.textCursor().selectedText() == '<unsafe>'
+        chat._tag, chat._text, chat._pos = 'ai', 'JARVIS: new response', 0
+        for _ in chat._text:
+            chat._step()
         chat._step()
-        assert chat.toPlainText() == '<'
-        assert chat.textCursor().blockFormat().alignment() == Qt.AlignmentFlag.AlignRight
+        app.processEvents()
+        assert chat.textCursor().selectedText() == '<unsafe>' and bar.value() == 0
+        selection = chat.textCursor()
+        selection.clearSelection()
+        chat.setTextCursor(selection)
+        bar.setValue(bar.maximum())
+        chat._tag, chat._text, chat._pos = 'ai', 'JARVIS: follow latest ' * 8, 0
+        for _ in chat._text:
+            chat._step()
+        chat._step()
+        app.processEvents()
+        assert bar.value() == bar.maximum()
         chat.close()
+        # Real Qt navigation: back/forward, branch history, and a directory
+        # removed after it was visited must not move the current location.
+        from ui.desktop_workspace import FileBrowser
+        # Projects is a real local favourite, not a decorative mockup item.
+        # It is disabled when absent and refreshed when the window is shown.
+        home = Path(tmp) / 'visual-home'
+        home.mkdir()
+        with patch.object(Path, 'home', return_value=home):
+            favorites_browser = FileBrowser()
+            favorites_browser.resize(720, 360)
+            favorites_browser.show()
+            app.processEvents()
+            project_button = next(button for button, key in favorites_browser._favorite_buttons
+                                  if key == 'workspace.projects')
+            home_button = next(button for button, key in favorites_browser._favorite_buttons
+                               if key == 'workspace.home')
+            assert project_button.text() == translate('workspace.projects') and not project_button.isEnabled()
+            assert home_button.isChecked() and Path(favorites_browser.path.text()) == home.resolve()
+            project_dir = home / 'Projects'
+            project_dir.mkdir()
+            favorites_browser.hide()
+            favorites_browser.show()
+            app.processEvents()
+            assert project_button.isEnabled() and not project_button.icon().isNull()
+            project_button.click()
+            assert Path(favorites_browser.path.text()) == project_dir.resolve()
+            assert project_button.isChecked() and not home_button.isChecked()
+            favorites_browser.back.click()
+            assert home_button.isChecked() and not project_button.isChecked()
+            favorites_browser.forward.click()
+            assert project_button.isChecked() and not home_button.isChecked()
+            home_button.click()
+            project_dir.rmdir()
+            project_button.click()
+            assert not project_button.isEnabled() and not project_button.isChecked()
+            assert home_button.isChecked() and not favorites_browser.status.isHidden()
+            favorites_browser.close()
+        browser = FileBrowser()
+        assert browser.view.isColumnHidden(2)
+        assert browser.view.header().visualIndex(3) < browser.view.header().visualIndex(1)
+        assert browser.status.isHidden()
+        assert not browser.navigate(str(Path(tmp) / 'missing'))
+        assert not browser.status.isHidden()
+        first, second, third = (Path(tmp) / name for name in ('first', 'second', 'third'))
+        for folder in (first, second, third):
+            folder.mkdir()
+        assert not browser._icon_provider.icon(QFileInfo(str(first))).isNull()
+        assert browser.navigate(str(tmp))
+        # QFileSystemModel fills icons on its worker; wait for that real model,
+        # not just the icon provider, while keeping the test bounded.
+        for _ in range(30):
+            if not browser.model.fileIcon(browser.model.index(str(first))).isNull():
+                break
+            QTest.qWait(100)
+        else:
+            raise AssertionError("folder icon was not populated by the filesystem model")
+        assert browser.navigate(str(first)) and browser.status.isHidden()
+        assert browser.navigate(str(second))
+        assert browser.folder_title.text() == 'second' and browser.path.isHidden()
+        browser._edit_path()
+        assert not browser.path.isHidden() and browser.folder_title.isHidden()
+        browser.path.setText(str(first))
+        browser._accept_path()
+        assert browser.path.isHidden() and browser.folder_title.text() == 'first'
+        assert browser.navigate(str(second))
+        browser._history_step(-1)
+        assert Path(browser.path.text()) == first.resolve() and browser.forward.isEnabled()
+        browser._history_step(1)
+        assert Path(browser.path.text()) == second.resolve()
+        browser._history_step(-1)
+        assert browser.navigate(str(third)) and not browser.forward.isEnabled()
+        third.rmdir()
+        browser._history_step(-1)
+        assert Path(browser.path.text()) == first.resolve()
+        browser._history_step(1)
+        assert Path(browser.path.text()) == first.resolve() and browser.forward.isEnabled()
+        browser.close()
         window = MainWindow("")
         window.resize(1366, 768)
         window.show()
@@ -49,7 +203,333 @@ def main():
         set_locale("en")
         creative = CreativeWorkspace(window, {"code": "print('unsaved')"})
         image = ImageEditor(window, {})
+        # Image tools remain usable in a vertically scrollable rail beside the canvas.
+        image.show()
+        app.processEvents()
+        assert image._tool_scroll.x() < image._tool_scroll.parentWidget().width() // 2
+        assert len(image._image_tools) == 7 and len(image._file_tools) == 5
+        assert image._brush_options.isHidden()
+        for key, button in image._image_tools.items():
+            assert not button.icon().isNull()
+            assert button.toolButtonStyle() == Qt.ToolButtonStyle.ToolButtonIconOnly
+            assert button.focusPolicy() == Qt.FocusPolicy.StrongFocus
+            assert button.toolTip() == button.accessibleName() == translate(key)
+            icon_image = button.icon().pixmap(22, 22).toImage()
+            assert any(icon_image.pixelColor(x, y).alpha() for x in range(icon_image.width())
+                       for y in range(icon_image.height()))
+        original = QImage(40, 20, QImage.Format.Format_ARGB32)
+        original.fill(Qt.GlobalColor.red)
+        image._image = original
+        image._render()
+        fit_width = image._preview.pixmap().width()
+        image._zoom.setValue(200)
+        app.processEvents()
+        assert abs(image._preview.pixmap().width() - fit_width * 2) <= 2
+        assert image._canvas_scroll.horizontalScrollBar().maximum() > 0
+        assert image._zoom_value.text() == '200%' and not image._dirty
+        assert (image._image.width(), image._image.height()) == (40, 20)
+        image._zoom.setValue(100)
+        app.processEvents()
+        assert image._preview.pixmap().width() == fit_width
+        image._image_tools['image_editor.rotate'].setFocus()
+        QTest.keyClick(image._image_tools['image_editor.rotate'], Qt.Key.Key_Space)
+        assert (image._image.width(), image._image.height()) == (20, 40) and image._dirty
+        image._file_tools['image_editor.undo'].click()
+        assert (image._image.width(), image._image.height()) == (40, 20)
+        image._dirty = False
+        image._image_tools['image_editor.select'].click()
+        app.processEvents()
+        rect = image._preview._image_rect()
+        start = QPoint(round(rect.left() + rect.width() * .25), round(rect.top() + rect.height() * .25))
+        end = QPoint(round(rect.left() + rect.width() * .75), round(rect.top() + rect.height() * .75))
+        QTest.mousePress(image._preview, Qt.MouseButton.LeftButton, pos=start)
+        QTest.mouseMove(image._preview, end)
+        QTest.mouseRelease(image._preview, Qt.MouseButton.LeftButton, pos=end)
+        selected = image._preview.selection
+        assert selected and 9 <= selected[0] <= 10 and 4 <= selected[1] <= 5
+        assert 19 <= selected[2] <= 21 and 9 <= selected[3] <= 11
+        assert not image._dirty and (image._image.width(), image._image.height()) == (40, 20)
+        image._zoom.setValue(150)
+        app.processEvents()
+        assert image._preview.selection == selected
+        image._zoom.setValue(100)
+        app.processEvents()
+        def crop_dialog(accept):
+            dialog = app.activeModalWidget()
+            assert isinstance(dialog, QDialog)
+            assert tuple(control.value() for control in dialog.findChildren(QSpinBox)) == selected
+            dialog.accept() if accept else dialog.reject()
+        QTimer.singleShot(0, lambda: crop_dialog(False))
+        image._image_tools['image_editor.crop'].click()
+        assert image._preview.selection == selected and not image._dirty
+        QTimer.singleShot(0, lambda: crop_dialog(True))
+        image._image_tools['image_editor.crop'].click()
+        assert (image._image.width(), image._image.height()) == selected[2:]
+        assert image._dirty and image._preview.selection is None
+        image._file_tools['image_editor.undo'].click()
+        assert (image._image.width(), image._image.height()) == (40, 20)
+        image._dirty = False
+        # Brush edits only the background, retains text layers, and is undoable.
+        from core.image_layers import make_text_layer
+        layer = make_text_layer('sample', 0, 10, 8, 40, 20)
+        image._layers = [layer]
+        image._update_layers()
+        image._image_tools['image_editor.brush'].click()
+        app.processEvents()
+        assert not image._brush_options.isHidden()
+        assert image._preview.brushing and not image._preview.selecting
+        assert not image._image_tools['image_editor.select'].isChecked()
+        original_picker = QColorDialog.getColor
+        try:
+            QColorDialog.getColor = staticmethod(lambda *_args: QColor())
+            image._brush_color_button.click()
+            assert image._brush_color.name() == '#4b9fff'
+            QColorDialog.getColor = staticmethod(lambda *_args: QColor('#00ff00'))
+            image._brush_color_button.click()
+        finally:
+            QColorDialog.getColor = original_picker
+        assert image._brush_swatch.accessibleName().endswith('#00ff00')
+        image._brush_size.setValue(4)
+        rect = image._preview._image_rect()
+        start = QPoint(round(rect.left() + rect.width() * .25), round(rect.top() + rect.height() * .5))
+        end = QPoint(round(rect.left() + rect.width() * .75), round(rect.top() + rect.height() * .5))
+        QTest.mousePress(image._preview, Qt.MouseButton.LeftButton, pos=start)
+        QTest.mouseMove(image._preview, end)
+        QTest.mouseRelease(image._preview, Qt.MouseButton.LeftButton, pos=end)
+        assert image._image.pixelColor(20, 10).green() > 200
+        thumb = image._background_thumbnail.pixmap().toImage()
+        assert not thumb.isNull() and any(thumb.pixelColor(x, y).green() > 100
+                                          for y in range(thumb.height()) for x in range(thumb.width()))
+        assert image._image.pixelColor(20, 2).red() == 255
+        assert image._dirty and image._layers == [layer]
+        image._file_tools['image_editor.undo'].click()
+        assert image._image.pixelColor(20, 10).red() == 255 and image._layers == [layer]
+        image._image_tools['image_editor.select'].click()
+        app.processEvents()
+        assert image._brush_options.isHidden()
+        assert image._brush_size.value() == 4 and image._brush_color.name() == '#00ff00'
+        assert image._preview.selecting and not image._preview.brushing
+        assert not image._image_tools['image_editor.brush'].isChecked()
+        # Topmost text layer is shown first; moving it affects composition
+        # order without flattening and undo restores the exact layer sequence.
+        middle = make_text_layer('middle', 0, 10, 8, 40, 20)
+        top = make_text_layer('top', 0, 10, 8, 40, 20)
+        image._layers = [layer, middle, top]
+        image._update_layers()
+        assert [image._layer_list.item(i).text() for i in range(3)] == ['top', 'middle', 'sample']
+        assert all(not image._layer_list.item(i).icon().isNull() for i in range(3))
+        # White and black text icons both need a contrasting visible glyph.
+        for color in ('#ffffff', '#000000'):
+            icon = image._text_layer_icon(color).pixmap(28, 28).toImage()
+            colors = {icon.pixelColor(x, y).name() for y in range(4, 24) for x in range(4, 24)}
+            assert color in colors and len(colors) > 2
+        assert all(image._layer_list.item(i).sizeHint().height() >= 38 for i in range(3))
+        assert image._layer_list.item(0).toolTip() == 'top'
+        assert image._background_thumbnail.pixmap() and not image._background_thumbnail.pixmap().isNull()
+        assert not image._layer_up.isEnabled() and not image._layer_down.isEnabled()
+        class LayerPaintSpy:
+            def __init__(self):
+                self.order = []
+            def setPen(self, _color):
+                pass
+            def setFont(self, _font):
+                pass
+            def drawText(self, _x, _y, text):
+                self.order.append(text)
+        image._layer_list.setCurrentRow(1)
+        assert image._layer_up.isEnabled() and image._layer_down.isEnabled()
+        image._layer_up.click()
+        assert image._layers == [layer, top, middle] and image._layer_list.currentRow() == 0
+        spy = LayerPaintSpy()
+        image._paint_layers(spy)
+        assert spy.order == ['sample', 'top', 'middle']
+        assert image._dirty and not image._layer_up.isEnabled()
+        image._file_tools['image_editor.undo'].click()
+        assert image._layers == [layer, middle, top]
+        image._layer_list.setCurrentRow(2)
+        assert not image._layer_down.isEnabled() and image._layer_up.isEnabled()
+        image._layer_list.item(0).setCheckState(Qt.CheckState.Unchecked)
+        assert not image._layers[2].visible and image._layers[0].visible
+        image._file_tools['image_editor.undo'].click()
+        assert image._layers == [layer, middle, top]
+        image._layer_list.setCurrentRow(1)
+        image._layer_remove.click()
+        assert image._layers == [layer, top]
+        image._file_tools['image_editor.undo'].click()
+        assert image._layers == [layer, middle, top]
+        # Editing a hidden layer keeps it hidden and preserves its position.
+        image._layer_list.setCurrentRow(0)
+        assert image._layer_edit.isEnabled()
+        image._layer_list.item(0).setCheckState(Qt.CheckState.Unchecked)
+        hidden_top = image._layers[-1]
+        image._dirty, image._undo_state = False, None
+        def edit_text_dialog(mode):
+            dialog = app.activeModalWidget()
+            assert isinstance(dialog, QDialog)
+            text = dialog.findChildren(QLineEdit)[0]
+            controls = dialog.findChildren(QSpinBox)
+            assert text.text() == 'top' and [control.value() for control in controls] == [0, 10, 8]
+            color_button = dialog.findChild(QPushButton, 'TextLayerColor')
+            assert color_button.text() == f"{translate('image_editor.text_color')}: #ffffff"
+            if mode in ('apply', 'cancel'):
+                picker = QColorDialog.getColor
+                try:
+                    QColorDialog.getColor = staticmethod(lambda *_args: QColor())
+                    color_button.click()
+                    assert color_button.text().endswith('#ffffff')
+                    QColorDialog.getColor = staticmethod(lambda *_args: QColor('#ff0000'))
+                    color_button.click()
+                    assert color_button.text().endswith('#ff0000')
+                finally:
+                    QColorDialog.getColor = picker
+            if mode in ('apply', 'cancel', 'stale', 'invalid'):
+                text.setText('' if mode == 'invalid' else 'updated')
+                for control, value in zip(controls, (5, 12, 9)):
+                    control.setValue(value)
+            if mode == 'stale':
+                image._image = image._image.copy()
+            dialog.reject() if mode == 'cancel' else dialog.accept()
+        for mode in ('cancel', 'unchanged', 'invalid', 'stale'):
+            QTimer.singleShot(0, lambda m=mode: edit_text_dialog(m))
+            image._layer_edit.click()
+            assert image._layers[-1] == hidden_top and not image._dirty and image._undo_state is None
+        assert image._status.text() == translate('image_editor.layer_changed')
+        QTimer.singleShot(0, lambda: edit_text_dialog('apply'))
+        image._layer_edit.click()
+        assert image._layers[:2] == [layer, middle]
+        assert (image._layers[-1].text, image._layers[-1].x, image._layers[-1].y,
+                image._layers[-1].size, image._layers[-1].visible, image._layers[-1].color) == ('updated', 5, 12, 9, False, '#ff0000')
+        assert image._layer_list.currentRow() == 0 and image._layer_list.item(0).text() == 'updated'
+        assert image._dirty
+        # Real composite pixels reflect the selected color once visible.
+        old_image, edited_layers = image._image, image._layers
+        canvas = QImage(120, 40, QImage.Format.Format_ARGB32)
+        canvas.fill(QColor('black'))
+        image._image = canvas
+        image._layers = [make_text_layer('Color', 0, 30, 25, 120, 40, '#ff0000')]
+        composite = image._composite()
+        pixels = [composite.pixelColor(x, y) for y in range(40) for x in range(120)]
+        assert any(pixel.red() > 50 and pixel.green() == 0 and pixel.blue() == 0 for pixel in pixels)
+        assert canvas.pixelColor(0, 0) == QColor('black')
+        image._image, image._layers = old_image, edited_layers
+        image._file_tools['image_editor.undo'].click()
+        assert image._layers == [layer, middle, hidden_top]
+        # Adding text uses the same dialog but still creates a new top layer.
+        def add_text_dialog():
+            dialog = app.activeModalWidget()
+            assert isinstance(dialog, QDialog) and dialog.findChildren(QLineEdit)[0].text() == 'new'
+            dialog.accept()
+        QTimer.singleShot(0, add_text_dialog)
+        image.add_text('new')
+        assert image._layers[-1].text == 'new' and image._layer_list.currentRow() == 0
+        image._file_tools['image_editor.undo'].click()
+        assert image._layers == [layer, middle, hidden_top]
+        # Project save/open preserves background and editable hidden layers.
+        project_path = Path(tmp) / 'picture.jimg'
+        damaged_path = Path(tmp) / 'damaged.jimg'
+        export_path = Path(tmp) / 'export.png'
+        old_save, old_open, old_question = (QFileDialog.getSaveFileName,
+                                             QFileDialog.getOpenFileName, QMessageBox.question)
+        try:
+            QFileDialog.getSaveFileName = staticmethod(lambda *_args: (str(project_path), ''))
+            image._file_tools['image_editor.save_project'].click()
+            assert project_path.is_file() and not image._dirty
+            expected_layers = list(image._layers)
+            expected_pixel = image._image.pixelColor(20, 10)
+            image._layers = []
+            image._image.fill(QColor('blue'))
+            image._dirty = True
+            QMessageBox.question = staticmethod(lambda *_args: QMessageBox.StandardButton.No)
+            QFileDialog.getOpenFileName = staticmethod(lambda *_args: (str(project_path), ''))
+            image._file_tools['image_editor.open_project'].click()
+            assert image._layers == [] and image._dirty
+            QMessageBox.question = staticmethod(lambda *_args: QMessageBox.StandardButton.Yes)
+            image._file_tools['image_editor.open_project'].click()
+            assert image._layers == expected_layers and not image._dirty
+            assert image._image.pixelColor(20, 10) == expected_pixel and image._undo_state is None
+            loaded_image = image._image
+            damaged_path.write_bytes(project_path.read_bytes()[:100])
+            QFileDialog.getOpenFileName = staticmethod(lambda *_args: (str(damaged_path), ''))
+            image._file_tools['image_editor.open_project'].click()
+            assert image._image is loaded_image and image._layers == expected_layers
+            assert image._status.text() == translate('image_editor.project_read_error')
+            # A failed atomic save leaves the document dirty and unchanged.
+            image._dirty = True
+            QFileDialog.getSaveFileName = staticmethod(lambda *_args: (str(Path(tmp) / 'missing' / 'x.jimg'), ''))
+            image._file_tools['image_editor.save_project'].click()
+            assert image._dirty and image._status.text() == translate('image_editor.project_save_error')
+            # Flattened export does not mark unsaved editable layers as saved.
+            QFileDialog.getSaveFileName = staticmethod(lambda *_args: (str(export_path), ''))
+            image._file_tools['image_editor.save_as'].click()
+            assert export_path.is_file() and image._dirty and image._layers == expected_layers
+        finally:
+            QFileDialog.getSaveFileName, QFileDialog.getOpenFileName, QMessageBox.question = old_save, old_open, old_question
+        image._layers = []
+        image._update_layers()
+        image._dirty = False
         # Real Qt checks for the editor gutter and syntax layout, not Qt stubs.
+        assert creative._output.isHidden() and creative._output_heading.isHidden()
+        assert creative._file_label.isHidden() and creative._project_panel.isHidden()
+        project_button = next(button for button, key in creative._editor_tools if key == 'editor.project')
+        project_button.click()
+        assert not creative._project_panel.isHidden()
+        project = Path(tmp) / 'project'
+        project.mkdir()
+        project_file = project / 'main.py'
+        project_file.write_text('print("project")\n', encoding='utf-8')
+        outside = Path(tmp) / 'outside.py'
+        outside.write_text('outside', encoding='utf-8')
+        original_directory_dialog = QFileDialog.getExistingDirectory
+        try:
+            QFileDialog.getExistingDirectory = staticmethod(lambda *_args: str(project))
+            creative._project_choose.click()
+        finally:
+            QFileDialog.getExistingDirectory = original_directory_dialog
+        assert creative._project_root == project.resolve()
+        assert not creative._set_project_root(str(outside)) and creative._project_root == project.resolve()
+        root_index = creative._project_tree.rootIndex()
+        assert root_index.isValid() and Path(creative._project_model.filePath(root_index)) == project.resolve()
+        assert creative._project_tree.isColumnHidden(1) and creative._project_model.isReadOnly()
+        index = creative._project_model.index(str(project_file))
+        assert index.isValid()
+        creative._project_tree.doubleClicked.emit(index)
+        assert creative._file_tabs.count() == 2 and creative._code.toPlainText() == 'print("project")\n'
+        project_code = creative._code
+        creative._project_tree.doubleClicked.emit(index)
+        assert creative._file_tabs.count() == 2 and creative._code is project_code
+        assert not creative._open_project_path(str(outside))
+        assert creative._file_tabs.count() == 2 and creative._code is project_code
+        assert creative._output.toPlainText() == translate('editor.project_outside')
+        if hasattr(os, 'symlink'):
+            link = project / 'escape.py'
+            try:
+                link.symlink_to(outside)
+            except OSError:
+                pass  # Windows may deny symlink creation.
+            else:
+                assert not creative._open_project_path(str(link))
+        creative._close_file_tab(creative._file_tabs.currentIndex())
+        assert creative._code.toPlainText() == "print('unsaved')" and creative._code.document().isModified()
+        creative._output.clear()
+        creative._output.hide()
+        creative._output_heading.hide()
+        project_button.click()
+        assert creative._project_panel.isHidden()
+        for button, key in creative._editor_tools:
+            assert button.accessibleName() == button.toolTip() == translate(key)
+            if key != "editor.new":
+                assert not button.icon().isNull()
+                assert button.toolButtonStyle() == Qt.ToolButtonStyle.ToolButtonIconOnly
+                assert button.focusPolicy() == Qt.FocusPolicy.StrongFocus
+        assert creative._file_tabs.cornerWidget(Qt.Corner.TopRightCorner) is creative._new_tab_button
+        before = creative._file_tabs.count()
+        creative._new_tab_button.click()
+        assert creative._file_tabs.count() == before + 1
+        creative._close_file_tab(creative._file_tabs.currentIndex())
+        assert creative._file_tabs.count() == before and creative._code.toPlainText() == "print('unsaved')"
+        creative._run_btn.click()  # unsaved code must never run
+        assert creative._output.toPlainText() == translate("creative.save_before_run")
+        assert not creative._output.isHidden() and not creative._output_heading.isHidden()
         assert creative._code.line_number_width() > 0
         creative._code.highlighter.set_language('python')
         creative._code.highlighter.rehighlight()
@@ -57,6 +537,11 @@ def main():
         set_locale("id")
         creative.retranslate()
         image.retranslate()
+        assert all(button.accessibleName() == button.toolTip() == translate(key)
+                   for button, key in creative._editor_tools)
+        assert creative._project_tree.accessibleName() == translate('editor.project')
+        assert creative._project_choose.text() == translate('editor.choose_project')
+        assert creative._project_root == project.resolve() and creative._project_title.text() == 'project'
         assert creative._code.toPlainText() == "print('unsaved')"
         assert creative._code.document().isModified()
         first_file = creative._code
@@ -68,6 +553,17 @@ def main():
         creative._close_file_tab(1)
         assert creative._file_tabs.count() == 1
         assert image.windowTitle() == translate("image_editor.title")
+        assert image._zoom.accessibleName() == translate("image_editor.zoom")
+        assert image._zoom.toolTip() == translate("image_editor.zoom_hint")
+        assert image._brush_size.accessibleName() == translate("image_editor.brush_size")
+        assert image._brush_swatch.accessibleName().startswith(translate("image_editor.brush_color"))
+        assert image._background_thumbnail.accessibleName() == translate("image_editor.background")
+        assert image._layer_up.text() == translate("image_editor.layer_up")
+        assert image._layer_down.text() == translate("image_editor.layer_down")
+        assert image._layer_edit.text() == translate("image_editor.edit_layer")
+        assert all(button.toolTip() == button.accessibleName() == translate(key)
+                   for key, button in image._image_tools.items())
+        assert all(button.text() == translate(key) for key, button in image._file_tools.items())
         set_locale(previous_locale)
         # Don't close the unsaved editor via a confirmation dialog in smoke CI.
         creative._code.document().setModified(False)
@@ -77,12 +573,51 @@ def main():
         app.processEvents()
         mdi = window._desktop_mdi
         dock = mdi._dock
+        # Verify actual Qt geometry, not just the pure geometry calculation.
+        from ui.desktop_workspace import initial_window_geometry
+        expected_files, expected_assistant = initial_window_geometry(mdi.viewport().width(), mdi.viewport().height())
+        for name, expected in (("files", expected_files), ("assistant", expected_assistant)):
+            geometry = window._desktop_windows[name].geometry()
+            actual = (geometry.x(), geometry.y(), geometry.width(), geometry.height())
+            assert actual == expected, f"{name} actual={actual}, expected={expected}"
         from ui.theme import C
         assert C.DESKTOP_PANEL in window._workspace_file_browser.styleSheet()
         assert 'QMenu::item:selected' in window._workspace_file_browser.styleSheet()
+        assert window._workspace_file_browser.view.header().sectionSize(0) >= 110
         assert dock.parentWidget() is mdi.viewport()
         assert 500 <= dock.width() <= mdi.viewport().width()
         assert all(button.isVisible() for button, _ in window._workspace_dock)
+        for button, key in window._workspace_dock:
+            assert button.toolButtonStyle() == Qt.ToolButtonStyle.ToolButtonIconOnly
+            assert button.accessibleName() == button.toolTip() == translate(key)
+            assert button.focusPolicy() == Qt.FocusPolicy.StrongFocus
+        from ui.desktop_workspace import retranslate as retranslate_workspace
+        set_locale("id")
+        retranslate_workspace(window)
+        assert all(button.accessibleName() == button.toolTip() == translate(key)
+                   for button, key in window._workspace_dock)
+        set_locale(previous_locale)
+        retranslate_workspace(window)
+        # The mockup's menu labels are functional controls, not decorative text.
+        assert len(window._desktop_menus) == 5
+        edit_button, edit_menu = window._desktop_menus['desktop.menu_edit']
+        window.activateWindow()
+        window._input.setText('edit menu test')
+        window._input.setFocus()
+        app.processEvents()
+        assert QApplication.focusWidget() is window._input
+        edit_debug = []
+        def choose_select_all():
+            edit_debug.append((repr(QApplication.focusWidget()), repr(window._desktop_focus_tracker.target),
+                               edit_menu.actions()[-1].isEnabled(), QApplication.activePopupWidget() is edit_menu))
+            edit_menu.actions()[-1].trigger()
+            edit_menu.close()
+        QTimer.singleShot(50, choose_select_all)
+        QTimer.singleShot(500, edit_menu.close)
+        QTest.mouseClick(edit_button, Qt.MouseButton.LeftButton)
+        QTest.qWait(100)  # InstantPopup can return before its queued menu action.
+        assert window._input.selectedText() == 'edit menu test', (edit_debug, repr(window._input))
+        window._input.clear()
         # Activation is discoverable in Apps -> Controls and needs no external
         # server, installation directory, or camera in this smoke test.
         controls = next(action for action, key in window._workspace_dock_actions if key == "workspace.navigation")
@@ -107,12 +642,55 @@ def main():
         assert window.hud.hud_style == "face"
         assert window.hud._avatar is not None
         assert mdi._avatar_stage.isVisible() and not mdi._emblem.isVisible()
+        face_geometry = mdi._avatar_stage.geometry()
+        files_geometry = window._desktop_windows["files"].geometry()
+        assistant_geometry = window._desktop_windows["assistant"].geometry()
+        assert files_geometry.right() < face_geometry.left()
+        assert face_geometry.right() < assistant_geometry.left()
+        assert face_geometry.bottom() < dock.geometry().top()
+        assert window._hud_cam_stack.isHidden() and window._center_split.isHidden()
+        assert window._suggestions_card.isVisible()
+        assert all(button.isVisible() for button, _ in window._suggestion_buttons)
+        assert window._log.font().pointSize() == 11 and window._input.font().pointSize() == 11
+        assert 'QScrollBar::handle:vertical' in window._log.styleSheet()
+        assert window._suggestions_heading.accessibleName() == translate('desktop.suggestions')
+        assert window._suggestions_heading.isChecked()
+        previous_log_height = window._log.height()
+        window._input.setText('keep this draft')
+        window._suggestions_heading.setFocus()
+        QTest.keyClick(window._suggestions_heading, Qt.Key.Key_Space)
+        QTest.qWait(100)
+        assert not window._suggestions_heading.isChecked()
+        assert all(button.isHidden() for button, _ in window._suggestion_buttons)
+        assert window._input.text() == 'keep this draft'
+        assert window._log.height() > previous_log_height, (
+            f"log: {previous_log_height} -> {window._log.height()}, card: {window._suggestions_card.height()}")
+        QTest.keyClick(window._suggestions_heading, Qt.Key.Key_Space)
+        app.processEvents()
+        assert all(button.isVisible() for button, _ in window._suggestion_buttons)
+        assert window._input.text() == 'keep this draft'
+        window._input.clear()
+        window._show_content('Test', 'Auxiliary result')
+        app.processEvents()
+        assert window._center_split.isVisible() and window._content_panel.isVisible()
+        window._content_panel.hide()
+        from ui.desktop_layout import refresh_assistant_tools
+        refresh_assistant_tools(window)
+        assert window._center_split.isHidden()
+        window._show_audio_bar()
+        app.processEvents()
+        assert window._center_split.isVisible() and window._audio_cont.isVisible()
+        window._audio_cont.hide()
+        refresh_assistant_tools(window)
+        assert window._center_split.isHidden()
         assert not window.grab().isNull()  # paints the actual animated face
         window.hud.hud_style = "orb"
         mdi.position_emblem()
         assert not mdi._avatar_stage.isVisible() and mdi._emblem.isVisible()
+        assert not window._hud_cam_stack.isHidden() and not window._center_split.isHidden()
         window.hud.hud_style = "face"
         mdi.position_emblem()
+        assert window._hud_cam_stack.isHidden() and window._center_split.isHidden()
         files_for_clap = window._desktop_windows["files"]
         assistant_for_clap = window._desktop_windows["assistant"]
         mdi.minimize_for_clap()
@@ -122,10 +700,32 @@ def main():
         restore_action.trigger()
         assert not files_for_clap.isMinimized() and not assistant_for_clap.isMinimized()
         assert window._drop_zone.isHidden()
+        assert window._attachment_toggle.parentWidget() is window._composer
+        assert window._send_btn.parentWidget() is window._composer
+        assert window._send_btn.accessibleName() == translate("desktop.send")
         QTest.mouseClick(window._attachment_toggle, Qt.MouseButton.LeftButton)
         assert not window._drop_zone.isHidden()
+        assert window._attachment_toggle.accessibleName() == translate("desktop.hide_attach")
         QTest.mouseClick(window._attachment_toggle, Qt.MouseButton.LeftButton)
         assert window._drop_zone.isHidden()
+        sent, delivered = [], threading.Event()
+        def receive_command(text):
+            sent.append(text)
+            delivered.set()
+        window.on_text_command = receive_command
+        window._input.setText("composer test")
+        QTest.mouseClick(window._send_btn, Qt.MouseButton.LeftButton)
+        assert delivered.wait(2) and sent == ["composer test"]
+        assert window._input.text() == ""
+        window.on_text_command = None
+        from ui.desktop_layout import retranslate as retranslate_conversation
+        set_locale("id")
+        retranslate_conversation(window)
+        assert window._send_btn.accessibleName() == translate("desktop.send")
+        assert window._attachment_toggle.accessibleName() == translate("desktop.attach")
+        assert window._suggestions_heading.accessibleName() == translate("desktop.suggestions")
+        set_locale(previous_locale)
+        retranslate_conversation(window)
         files = window._desktop_windows["files"]
         title = files._workspace_title
         old_position = files.pos()
@@ -343,6 +943,22 @@ def main():
         gestures.update((sample(left), sample(right)))
         assert gestures.mode is None
         window._hand_closing_confirm = False
+        # A real application-modal dialog cancels gesture manipulation rather
+        # than allowing synthetic hand samples to reach sensitive controls.
+        modal = QDialog(window)
+        modal.setWindowModality(Qt.WindowModality.ApplicationModal)
+        modal.show()
+        app.processEvents()
+        assert QApplication.activeModalWidget() is modal
+        before_modal = sub.geometry()
+        gestures.mode, gestures.target = 'resize', sub
+        gestures.update((sample(left), sample(right)))
+        assert gestures.mode is None and gestures.target is None
+        assert sub.geometry() == before_modal and modal.isVisible()
+        modal.close()
+        window.activateWindow()
+        app.processEvents()
+        assert QApplication.activeModalWidget() is None and window.isActiveWindow()
         window._hand_timer.start()
 
         assert command({"action": "open", "target": "model_viewer"})["ok"]
@@ -535,6 +1151,36 @@ def main():
         mdi.setActiveSubWindow(board_sub)
         board_sub.raise_()
         app.processEvents()
+
+        # Plugin discovery can finish on a worker; its signal must create only
+        # one real editor on the Qt thread, below the initial Files geometry.
+        from ui.desktop_workspace import open_initial_editor
+        window.get_plugins = lambda: [{"name": "code_editor", "valid": True, "enabled": True}]
+        # Close test documents first, without affecting the original smoke tests.
+        for kind, existing in tuple(window._workspace_documents.values()):
+            if kind == "code_editor":
+                existing.close()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        app.processEvents()
+        open_initial_editor(window)
+        editors = [sub for kind, sub in window._workspace_documents.values() if kind == "code_editor"]
+        assert len(editors) == 1
+        editor_sub = editors[0]
+        initial_files, _ = initial_window_geometry(mdi.viewport().width(), mdi.viewport().height())
+        assert editor_sub.x() == initial_files[0]
+        assert editor_sub.y() == initial_files[1] + initial_files[3] + 18
+        assert editor_sub.width() == initial_files[2]
+        assert editor_sub.y() + editor_sub.height() <= mdi.viewport().height() - 90
+        editor_sub._document._code.setPlainText("unsaved")
+        editor_sub._document._code.document().setModified(True)
+        open_initial_editor(window)
+        assert editor_sub._document._code.toPlainText() == "unsaved"
+        editor_sub._document._code.document().setModified(False)
+        editor_sub.close()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        app.processEvents()
+        open_initial_editor(window)
+        assert not any(kind == "code_editor" for kind, _ in window._workspace_documents.values())
 
         window._hand_timer.start()
         print("Real Qt desktop, workspace and local OBJ viewer passed.")

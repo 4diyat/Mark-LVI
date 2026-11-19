@@ -174,6 +174,7 @@ class _Object:
     finished = _Signal()
     activated_ = _Signal()
     clicked = _Signal()
+    pressed = _Signal()
     toggled = _Signal()
     valueChanged = _Signal()
     currentIndexChanged = _Signal()
@@ -574,6 +575,7 @@ def _install_qt() -> dict[str, types.ModuleType]:
         base = _Layout if name in layouts else None
         setattr(widgets, name, _stub_class(name, base))
     class _Menu(_Object):
+        aboutToShow = _Signal()
         def addAction(self, text):
             action = _Object()
             action.setText(text)
@@ -603,6 +605,14 @@ def _install_qt() -> dict[str, types.ModuleType]:
     widgets.QMdiSubWindow = _MdiSubWindow
     widgets.QSizePolicy.Policy = _Enum()
     widgets.QStyle = _stub_class("QStyle")
+    widgets.QHeaderView = _stub_class("QHeaderView")
+    widgets.QHeaderView.ResizeMode = _Enum()
+
+    class _TreeView(_Object):
+        def header(self):
+            return _Object()
+
+    widgets.QTreeView = _TreeView
 
     class _Geometry(_Object):
         def width(self):
@@ -617,6 +627,7 @@ def _install_qt() -> dict[str, types.ModuleType]:
 
     class _App(_Object):
         aboutToQuit = _Signal()
+        focusChanged = _Signal()
         # Class-level, because the window calls QApplication.primaryScreen()
         # without having constructed one — a static in Qt, an instance here.
         primaryScreen = staticmethod(lambda: _Screen())
@@ -700,7 +711,7 @@ def window_module():
     saved = {k: v for k, v in sys.modules.items() if k == "PyQt6" or k.startswith("PyQt6.")}
     stubs = _install_qt()
     sys.modules.update(stubs)
-    for name in ("ui", "ui.window", "ui.audio", "ui.video_fallback",
+    for name in ("ui", "ui.window", "ui.audio", "ui.chat_log", "ui.video_fallback",
                  "ui.theme", "ui.metrics", "ui.overlays"):
         sys.modules.pop(name, None)
     # `ui/__init__.py` imports the whole window and re-exports it; importing the
@@ -1066,6 +1077,7 @@ def test_image_flatten_cancel_and_undo_restore_layers(window_module, monkeypatch
     import ui.image_editor as editor
     from core.image_layers import make_text_layer
     instance = editor.ImageEditor.__new__(editor.ImageEditor)
+    instance._preview = types.SimpleNamespace(clear_selection=lambda: None)
     instance._image = "original"
     layer = make_text_layer("hello", 0, 5, 12, 100, 100)
     instance._layers = [layer]
@@ -1175,6 +1187,35 @@ def test_initial_desktop_geometry_keeps_panels_above_dock(window):
             assert x >= 0 and y >= 0
             assert x + w <= width
             assert y + h <= height - 90
+
+
+def test_wide_desktop_reserves_left_lower_area_for_editor(window):
+    from ui.desktop_workspace import initial_window_geometry
+    width, height = 1366, 738
+    files, assistant = initial_window_geometry(width, height)
+    # Match the approved composition: a shorter file window above an editor,
+    # with a taller assistant beside the central avatar.
+    assert files[3] == int(height * .36)
+    assert files[1] + files[3] < height * .46
+    assert assistant[1] == int(height * .10)
+    assert assistant[3] > files[3]
+    assert assistant[1] + assistant[3] <= height - 90
+
+
+def test_initial_editor_respects_disabled_plugin_and_only_attempts_once(window_module):
+    from ui.desktop_workspace import open_initial_editor
+    viewport = types.SimpleNamespace(width=lambda: 1366, height=lambda: 738)
+    mdi = types.SimpleNamespace(viewport=lambda: viewport)
+    calls = []
+    host = types.SimpleNamespace(_desktop_mdi=mdi, _workspace_documents={},
+                                 get_plugins=lambda: calls.append(True) or [])
+    open_initial_editor(host)
+    open_initial_editor(host)
+    assert calls == [True] and host._initial_editor_attempted
+    compact = types.SimpleNamespace(_desktop_mdi=types.SimpleNamespace(
+        viewport=lambda: types.SimpleNamespace(width=lambda: 800, height=lambda: 600)),
+        _workspace_documents={}, get_plugins=lambda: pytest.fail("compact desktop must not open editor"))
+    open_initial_editor(compact)
 
 
 def test_initialising_does_not_claim_microphone_is_active(window):
@@ -1295,7 +1336,7 @@ def test_graphite_desktop_layout_uses_new_wallpaper_and_conversation_is_primary(
     files, assistant = initial_window_geometry(1366, 738)
     assert files[0] + files[2] < assistant[0]
     assert assistant[0] > files[0]
-    assert (ROOT / 'assets/workspace/jarvis-blue-wallpaper.jpg').is_file()
+    assert (ROOT / 'assets/workspace/jarvis-desktop-wave.png').is_file()
 
 
 def test_app_shutdown_confirms_ssh_before_disconnecting_any_session(window):
@@ -1511,7 +1552,7 @@ def test_suggested_action_drafts_without_sending_or_overwriting(window, monkeypa
 
 
 def test_conversation_formats_messages_as_plain_selectable_blocks(window_module, monkeypatch):
-    from ui import window as module
+    from ui import chat_log as module
     formats = []
 
     class Block:
@@ -1529,9 +1570,13 @@ def test_conversation_formats_messages_as_plain_selectable_blocks(window_module,
             self.values['right'] = value
         def setBackground(self, value):
             self.values['background'] = value
+        def setProperty(self, key, value):
+            self.values.setdefault('properties', {})[key] = value
 
     class Cursor:
         MoveOperation = types.SimpleNamespace(End=1)
+        def hasSelection(self):
+            return False
         def movePosition(self, _position):
             pass
         def setBlockFormat(self, value):
@@ -1545,14 +1590,25 @@ def test_conversation_formats_messages_as_plain_selectable_blocks(window_module,
     log = module.LogWidget()
     cursor = Cursor()
     monkeypatch.setattr(log, 'textCursor', lambda: cursor)
+    monkeypatch.setattr(log, 'viewport', lambda: types.SimpleNamespace(width=lambda: 400, update=lambda: None))
+    monkeypatch.setattr(log, 'verticalScrollBar', lambda: types.SimpleNamespace(
+        value=lambda: 0, maximum=lambda: 0, setValue=lambda _value: None))
     for tag in ('you', 'ai', 'sys'):
         log._tag, log._pos, log._text = tag, 0, '<unsafe>'
         log._step()
         assert cursor.inserted == '<'  # not interpreted as rich HTML
     assert formats[0]['left'] > formats[0]['right']
     assert formats[1]['right'] > formats[1]['left']
-    assert 'background' in formats[0] and 'background' in formats[1]
-    assert 'background' not in formats[2]
+    assert all('background' not in fmt for fmt in formats)
+    assert formats[0]['properties'][module.LogWidget._bubble_property] == 'you'
+    assert formats[1]['properties'][module.LogWidget._bubble_property] == 'ai'
+    assert formats[0]['properties'][module.LogWidget._message_property] != formats[1]['properties'][module.LogWidget._message_property]
+    assert formats[0]['left'] == formats[1]['right'] == 130
+    assert module.LogWidget._bubble_margin(140) == 0
+    assert module.LogWidget._bubble_margin(300) == 90
+    assert module.LogWidget._bubble_margins(200, 'you') == (60, 18)
+    assert module.LogWidget._bubble_margins(400, 'you') == (130, 48)
+    assert module.LogWidget._bubble_margins(400, 'ai') == (48, 130)
 
 
 def test_claw_changes_only_active_model_slider_and_loss_cancels(window, monkeypatch):
@@ -1761,6 +1817,35 @@ def test_multifile_editor_preserves_unsaved_tabs_and_save_targets(window_module,
     assert editor._code is second and editor._path == str(second_path)
     editor._close_file_tab(0)
     assert editor._file_tabs.count() == 1 and editor._code.toPlainText() == ''
+
+
+def test_project_open_rejects_missing_and_outside_paths(window_module, tmp_path):
+    from ui.creative import CreativeWorkspace
+    from core.i18n import label
+    project = tmp_path / 'project'
+    project.mkdir()
+    inside, outside = project / 'main.py', tmp_path / 'outside.py'
+    inside.write_text('inside', encoding='utf-8')
+    outside.write_text('outside', encoding='utf-8')
+    opened, errors = [], []
+    editor = types.SimpleNamespace(_project_root=project.resolve(),
+                                   _open_path=lambda path: opened.append(path) or True,
+                                   _output=types.SimpleNamespace(setPlainText=errors.append))
+    assert CreativeWorkspace._open_project_path(editor, str(inside))
+    assert opened == [str(inside.resolve())]
+    assert not CreativeWorkspace._open_project_path(editor, str(outside))
+    assert not CreativeWorkspace._open_project_path(editor, str(project / 'missing.py'))
+    assert not CreativeWorkspace._open_project_path(editor, str(project))
+    assert opened == [str(inside.resolve())]
+    assert errors == [label('editor.project_outside')] * 3
+    link = project / 'escape.py'
+    try:
+        link.symlink_to(outside)
+    except OSError:
+        pass  # Windows often requires elevated privileges to create symlinks.
+    else:
+        assert not CreativeWorkspace._open_project_path(editor, str(link))
+        assert opened == [str(inside.resolve())]
 
 
 def test_removed_canvas_route_refuses_legacy_requests(window_module):

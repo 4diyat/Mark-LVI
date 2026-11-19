@@ -139,13 +139,17 @@ jobs:
           # before a single number was printed, leaving "exit code 1" with no
           # way to tell missing coverage from a failing test.
           python -m pip install --quiet coverage
-          python -m coverage run --source=core,memory,dashboard -m pytest -q || true
+          # Do not let a hung test occupy the runner indefinitely. Capture the
+          # suite status but still print the coverage report before failing.
+          suite_status=0
+          python tools/run_coverage_suite.py || suite_status=$?
           echo "::group::whole package (printed, not enforced — see the comment)"
           python -m coverage report || true
           echo "::endgroup::"
           python -m coverage report \
             --include="core/action_loader.py,core/plugin_loader.py,core/outcome.py,core/undo.py,core/confirm.py,core/echo.py,core/platform_support.py,core/lazyimport.py,core/i18n.py,core/keychain.py,core/plugin_manifest.py,memory/memory_manager.py,core/logbook.py,memory/config_manager.py" \
             --fail-under=60
+          exit "$suite_status"
 
   # ── 3. The real dependency set still installs and still loads ──────────────
   # requirements.txt carries sys_platform markers, so this job is also the
@@ -202,6 +206,31 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: python tools/run_qt_smoke.py tools/check_desktop_qt.py
+      - name: Test isolated rotated Qt widget input
+        if: runner.os == 'Linux'
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python tools/run_qt_smoke.py tools/check_rotation_qt.py
+      - name: Test isolated rotated JARVIS editors
+        if: runner.os == 'Linux'
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python tools/run_qt_smoke.py tools/check_rotation_editors_qt.py
+      - name: Test isolated rotated popups and confirmations
+        if: runner.os == 'Linux'
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python tools/run_qt_smoke.py tools/check_rotation_popups_qt.py
+      - name: Capture synthetic desktop for visual review
+        if: runner.os == 'Linux'
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python tools/capture_desktop_qt.py
+      - name: Capture synthetic image editor for visual review
+        if: runner.os == 'Linux'
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python tools/capture_desktop_qt.py --image-editor
       - name: Exercise browser tabs with real Qt offscreen
         if: always() && runner.os == 'Linux'
         env:

@@ -126,6 +126,12 @@ class _Brush:
     def __init__(self, *a, **k):
         self.args = a
 
+    def color(self):
+        return self.args[0]
+
+    def gradient(self):
+        return self.args[0] if self.args and isinstance(self.args[0], _Gradient) else None
+
 
 class _Gradient:
     def __init__(self, *a, **k):
@@ -269,7 +275,7 @@ def _colours(avatar_module):
 def _paint(avatar_module, avatar, **kw):
     p = _Painter()
     bg, primary, accent = _colours(avatar_module)
-    avatar.paint(p, 200.0, 180.0, 120.0, primary, accent, bg)
+    avatar.paint(p, 200.0, 180.0, 120.0, primary, accent, bg, **kw)
     return p
 
 
@@ -285,6 +291,17 @@ def test_the_head_paints_without_a_display(avatar_module, avatar):
     p = _paint(avatar_module, avatar)
     assert p.count("drawPolygon") > 100, "the surface drew nothing"
     assert p.count("drawLines") >= 1, "the wireframe drew nothing"
+
+
+def test_desktop_surface_can_hide_wire_without_disabling_animation(avatar_module, avatar):
+    avatar.step(.05, .7, speaking=True, muted=False)
+    plain = _paint(avatar_module, avatar, wireframe=False)
+    assert plain.count("drawPolygon") > 100
+    assert plain.count("drawLines") == 0
+    assert sum(bool(getattr(b, "gradient", lambda: None)()) for b in plain.brushes) > 1
+    avatar.shaded = False
+    wire = _paint(avatar_module, avatar, wireframe=False)
+    assert wire.count("drawLines") >= 1  # transparent mode must remain visible
 
 
 def test_the_surface_is_shaded_not_outlined(avatar_module, avatar):

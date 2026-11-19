@@ -5,10 +5,10 @@ thread-safe dispatch are still owned by the existing application.
 """
 from pathlib import Path
 
-from PyQt6.QtCore import QDir, QRectF, QSize, Qt, QTimer, QUrl
+from PyQt6.QtCore import QDir, QFileInfo, QRectF, QSize, Qt, QTimer, QUrl
 from PyQt6.QtGui import (QBrush, QColor, QDesktopServices, QFileSystemModel, QIcon,
                          QLinearGradient, QPainter, QPixmap)
-from PyQt6.QtWidgets import (QHBoxLayout, QLabel, QLineEdit, QMdiArea,
+from PyQt6.QtWidgets import (QFileIconProvider, QHeaderView, QHBoxLayout, QLabel, QLineEdit, QMdiArea,
                              QMdiSubWindow, QMenu, QPushButton, QScrollArea, QSizeGrip, QStyle, QToolButton,
                              QTreeView, QVBoxLayout, QWidget)
 
@@ -84,13 +84,17 @@ class WorkspaceAvatar(QWidget):
         painter.setBrush(QBrush(aura))
         painter.drawEllipse(QRectF(cx - radius * 1.7, cy - radius * 1.7, radius * 3.4, radius * 3.4))
         color = qcol(C.MUTED_C if self.hud.muted else C.PRI)
-        avatar.paint(painter, cx, cy, radius, color, color, qcol(C.DESKTOP_BAR))
+        # A brighter projection improves facial features on the dark desktop;
+        # preserve the user's hue and the distinct muted state.
+        if not self.hud.muted:
+            color = color.lighter(135)
+        avatar.paint(painter, cx, cy, radius, color, color, qcol(C.DESKTOP_BAR), wireframe=False)
         bottom = min(height - 58, cy + (avatar.SPAN - 1) * radius + 5)
         painter.setPen(qcol(C.DESKTOP_TEXT))
-        painter.setFont(QFont("Courier New", 14, QFont.Weight.Bold))
+        painter.setFont(QFont("Arial", 19, QFont.Weight.Bold))
         painter.drawText(QRectF(0, bottom, width, 28), Qt.AlignmentFlag.AlignCenter,
                          (self.hud._assistant_name or 'JARVIS').upper())
-        painter.setFont(QFont("Courier New", 9, QFont.Weight.Bold))
+        painter.setFont(QFont("Arial", 10, QFont.Weight.Normal))
         painter.setPen(qcol(C.MUTED_C if self.hud.muted else C.PRI))
         painter.drawText(QRectF(0, bottom + 29, width, 24), Qt.AlignmentFlag.AlignCenter,
                          state_label('MUTED' if self.hud.muted else self.hud.state))
@@ -101,10 +105,11 @@ class WallpaperArea(QMdiArea):
     """Scale the original wallpaper to cover the desktop, not the app windows."""
     def __init__(self):
         super().__init__()
-        self._wallpaper = QPixmap(str(Path(__file__).resolve().parent.parent / "assets/workspace/jarvis-blue-wallpaper.jpg"))
+        self._wallpaper = QPixmap(str(Path(__file__).resolve().parent.parent / "assets/workspace/jarvis-desktop-wave.png"))
         self._dock = None
         self._emblem = None
         self._avatar_stage = None
+        self._host_window = None
         self._clap_windows = []
 
     def minimize_for_clap(self):
@@ -135,11 +140,25 @@ class WallpaperArea(QMdiArea):
             stage = self._avatar_stage
             face = bool(stage is not None and stage.hud.hud_style == 'face' and stage.hud._avatar is not None)
             self._emblem.setVisible(wide and not face)
-            geometry = (max(0, (width - 260) // 2), max(0, int(height * .20)), 260, min(300, height))
+            # The stage fits in the breathing room between the initial Files
+            # and Assistant windows and stays clear of the dock on short screens.
+            files, assistant = initial_window_geometry(width, height)
+            gap_left, gap_right = files[0] + files[2], assistant[0]
+            stage_width = max(1, min(320, gap_right - gap_left - 20))
+            stage_top = max(0, int(height * .18))
+            stage_height = max(1, min(350, height - stage_top - 90))
+            geometry = (gap_left + (gap_right - gap_left - stage_width) // 2,
+                        stage_top, stage_width, stage_height)
             self._emblem.setGeometry(*geometry)
             if stage is not None:
                 stage.setGeometry(*geometry)
                 stage.setVisible(wide and face)
+            # The live central face replaces the duplicate HUD on wide
+            # desktops. Orb/core and compact layouts retain their live HUD.
+            if self._host_window is not None:
+                from ui.desktop_layout import refresh_assistant_tools
+                self._host_window._hud_cam_stack.setVisible(not (wide and face))
+                refresh_assistant_tools(self._host_window)
 
     def position_dock(self):
         if self._dock is not None:
@@ -302,6 +321,32 @@ class CameraWindow(PersistentWindow):
         event.ignore()
 
 
+class WorkspaceFileIcons(QFileIconProvider):
+    """Stable folder glyphs; defer files and symlinks to the operating system."""
+    def __init__(self):
+        super().__init__()
+        pixmap = QPixmap(32, 32)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor("#31a2dc"))
+        painter.drawRoundedRect(QRectF(2, 6, 14, 9), 2, 2)
+        gradient = QLinearGradient(0, 10, 0, 27)
+        gradient.setColorAt(0, QColor("#65c6ef"))
+        gradient.setColorAt(1, QColor("#198acb"))
+        painter.setBrush(QBrush(gradient))
+        painter.drawRoundedRect(QRectF(2, 10, 28, 17), 3, 3)
+        painter.end()
+        self._folder = QIcon(pixmap)
+
+    def icon(self, info):
+        # Preserve the platform's symlink badge and all file-type associations.
+        if isinstance(info, QFileInfo) and info.isDir() and not info.isSymLink():
+            return self._folder
+        return super().icon(info)
+
+
 class FileBrowser(QWidget):
     """Read-only navigation; opening files delegates to the user's OS."""
     def __init__(self):
@@ -319,7 +364,9 @@ class FileBrowser(QWidget):
                          border: 1px solid {C.DESKTOP_BORDER}; border-radius: 6px; padding: 6px; }}
             QPushButton {{ background: transparent; color: {C.DESKTOP_TEXT}; border: none;
                            text-align: left; padding: 8px; border-radius: 6px; }}
-            QPushButton:hover {{ background: {C.DESKTOP_DOCK}; }}
+            QPushButton:hover, QPushButton:checked {{ background: {C.DESKTOP_DOCK}; }}
+            QPushButton#FileNavigation {{ text-align: center; padding: 0; font-size: 18px; }}
+            QPushButton#FileFolderTitle {{ font-weight: bold; color: {C.DESKTOP_TEXT}; padding: 5px; }}
         """)
         root = QHBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -332,26 +379,52 @@ class FileBrowser(QWidget):
         self.favorites_heading = QLabel(_t("workspace.favorites"))
         favorites.addWidget(self.favorites_heading)
         self._favorite_buttons = []
+        self._favorite_paths = []
+        self._history = []
+        self._history_index = -1
         home = Path.home()
-        for key, folder in (("workspace.home", home), ("workspace.desktop", home / "Desktop"),
-                            ("workspace.documents", home / "Documents"), ("workspace.downloads", home / "Downloads")):
+        for key, folder, icon in (("workspace.projects", home / "Projects", "SP_DirIcon"),
+                                  ("workspace.home", home, "SP_DirHomeIcon"),
+                                  ("workspace.desktop", home / "Desktop", "SP_DesktopIcon"),
+                                  ("workspace.documents", home / "Documents", "SP_FileIcon"),
+                                  ("workspace.downloads", home / "Downloads", "SP_DirIcon")):
             button = QPushButton(_t(key))
+            button.setCheckable(True)
+            button.setIcon(self.style().standardIcon(getattr(QStyle.StandardPixmap, icon)))
+            button.setIconSize(QSize(18, 18))
             button.setEnabled(folder.is_dir())
             button.clicked.connect(lambda checked=False, target=folder: self.navigate(str(target)))
             favorites.addWidget(button)
             self._favorite_buttons.append((button, key))
+            self._favorite_paths.append((button, folder))
         favorites.addStretch(1)
         root.addWidget(sidebar)
         content = QWidget()
         layout = QVBoxLayout(content)
         layout.setContentsMargins(12, 10, 12, 10)
         header = QHBoxLayout()
-        self.up = QPushButton(_t("workspace.up"))
+        self.back = QPushButton("‹")
+        self.forward = QPushButton("›")
+        for button in (self.back, self.forward):
+            button.setObjectName("FileNavigation")
+            button.setFixedSize(26, 30)
+        self.back.clicked.connect(lambda: self._history_step(-1))
+        self.forward.clicked.connect(lambda: self._history_step(1))
+        header.addWidget(self.back)
+        header.addWidget(self.forward)
+        self.up = QPushButton("↑")
+        self.up.setObjectName("FileNavigation")
+        self.up.setFixedSize(26, 30)
         self.up.clicked.connect(self._up)
         header.addWidget(self.up)
+        self.folder_title = QPushButton()
+        self.folder_title.setObjectName("FileFolderTitle")
+        self.folder_title.clicked.connect(self._edit_path)
+        header.addWidget(self.folder_title, 1)
         self.path = QLineEdit(str(home))
-        self.path.returnPressed.connect(lambda: self.navigate(self.path.text()))
+        self.path.returnPressed.connect(self._accept_path)
         header.addWidget(self.path, 1)
+        self.path.hide()
         self.search = QLineEdit()
         self.search.setPlaceholderText(_t("workspace.search"))
         self.search.setMaximumWidth(170)
@@ -359,33 +432,60 @@ class FileBrowser(QWidget):
         header.addWidget(self.search)
         layout.addLayout(header)
         self.model = QFileSystemModel(self)
+        self._icon_provider = WorkspaceFileIcons()
+        self.model.setIconProvider(self._icon_provider)
         self.model.setReadOnly(True)
         self.model.setFilter(QDir.Filter.AllDirs | QDir.Filter.Files | QDir.Filter.NoDotAndDotDot)
         self.model.setNameFilterDisables(False)
         self.model.setRootPath(str(home))
         self.view = QTreeView()
         self.view.setModel(self.model)
+        self.view.setIconSize(QSize(20, 20))
         self.view.setAlternatingRowColors(True)
         self.view.setSortingEnabled(True)
+        # Finder-style table: keep names readable, omit the redundant type
+        # column, and put modification time before size. Reserve a usable name
+        # column instead of letting long timestamps consume the whole view;
+        # metadata columns remain resizable and scroll on narrow windows.
+        self.view.setColumnHidden(2, True)
+        header_view = self.view.header()
+        header_view.moveSection(header_view.visualIndex(3), 1)
+        header_view.setStretchLastSection(False)
+        header_view.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header_view.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
+        header_view.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+        header_view.resizeSection(1, 62)
+        header_view.resizeSection(3, 130)
         self.view.doubleClicked.connect(self._open)
         layout.addWidget(self.view, 1)
         self._status_key = "workspace.files_hint"
         self.status = QLabel(_t(self._status_key))
         self.status.setWordWrap(True)
+        # Ordinary navigation needs no persistent explanatory banner. Keep the
+        # status widget for translated errors, which must remain visible.
+        self.status.hide()
         layout.addWidget(self.status)
         root.addWidget(content, 1)
         self.navigate(str(home))
+        self.retranslate()
 
     def _set_status(self, key):
         self._status_key = key
         self.status.setText(_t(key))
+        self.status.setVisible(key != "workspace.files_hint")
 
     def retranslate(self):
         self.favorites_heading.setText(_t("workspace.favorites"))
         for button, key in self._favorite_buttons:
             button.setText(_t(key))
-        self.up.setText(_t("workspace.up"))
+        for button, key in ((self.back, "workspace.back"), (self.forward, "workspace.forward"),
+                            (self.up, "workspace.up")):
+            button.setToolTip(_t(key))
+            button.setAccessibleName(_t(key))
         self.search.setPlaceholderText(_t("workspace.search"))
+        self.folder_title.setAccessibleName(_t("workspace.edit_path"))
+        self.folder_title.setToolTip(_t("workspace.edit_path"))
+        self.path.setAccessibleName(_t("workspace.edit_path"))
         self.status.setText(_t(self._status_key))
 
     def _filter(self, text):
@@ -394,19 +494,63 @@ class FileBrowser(QWidget):
         text = text.strip()
         self.model.setNameFilters([f"*{text}*"] if text else [])
 
-    def navigate(self, path):
+    def navigate(self, path, *, _record=True):
         target = Path(path).expanduser()
         if not target.is_dir():
+            self._refresh_favorites()
             self._set_status("workspace.bad_folder")
             return False
         path = str(target.resolve())
+        if _record and (self._history_index < 0 or self._history[self._history_index] != path):
+            del self._history[self._history_index + 1:]
+            self._history.append(path)
+            self._history = self._history[-100:]
+            self._history_index = len(self._history) - 1
         self.view.setRootIndex(self.model.setRootPath(path))
         self.path.setText(path)
+        self.folder_title.setText(Path(path).name or Path(path).anchor)
+        self._refresh_favorites()
+        self._sync_history()
         self._set_status("workspace.files_hint")
         return True
 
+    def _refresh_favorites(self):
+        current = self._history[self._history_index] if self._history_index >= 0 else ""
+        for button, folder in self._favorite_paths:
+            exists = folder.is_dir()
+            button.setEnabled(exists)
+            button.setChecked(exists and str(folder.resolve()) == current)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        # Folders may be created or removed while the Files window is hidden.
+        self._refresh_favorites()
+
+    def _edit_path(self):
+        self.folder_title.hide()
+        self.path.show()
+        self.path.setFocus()
+        self.path.selectAll()
+
+    def _accept_path(self):
+        if self.navigate(self.path.text()):
+            self.path.hide()
+            self.folder_title.show()
+
+    def _sync_history(self):
+        self.back.setEnabled(self._history_index > 0)
+        self.forward.setEnabled(self._history_index + 1 < len(self._history))
+
+    def _history_step(self, delta):
+        index = self._history_index + delta
+        if 0 <= index < len(self._history) and self.navigate(self._history[index], _record=False):
+            self._history_index = index
+            self._refresh_favorites()
+            self._sync_history()
+
     def _up(self):
-        self.navigate(str(Path(self.path.text()).parent))
+        if self._history_index >= 0:
+            self.navigate(str(Path(self._history[self._history_index]).parent))
 
     def _open(self, index):
         path = self.model.filePath(index)
@@ -445,12 +589,45 @@ def initial_window_geometry(width, height):
     file_x = max(0, int(width * .02))
     file_y = max(0, int(height * .07))
     file_w = max(1, min(int(width * (.37 if wide else .46)), width - file_x))
-    file_h = max(1, min(int(height * .48), floor - file_y))
+    file_h = max(1, min(int(height * (.36 if wide else .48)), floor - file_y))
     assistant_x = max(0, min(int(width * (.63 if wide else .51)), width - 1))
-    assistant_y = max(0, int(height * .14))
+    assistant_y = max(0, int(height * (.10 if wide else .14)))
     assistant_w = max(1, min(int(width * (.35 if wide else .47)), width - assistant_x))
-    assistant_h = max(1, min(int(height * .66), floor - assistant_y))
+    assistant_h = max(1, min(int(height * (.80 if wide else .66)), floor - assistant_y))
     return (file_x, file_y, file_w, file_h), (assistant_x, assistant_y, assistant_w, assistant_h)
+
+
+def open_initial_editor(window):
+    """Open one blank editor after plugin discovery, only on a roomy desktop.
+
+    Never re-open a closed window on registry refresh, and never bypass plugin
+    enablement. This is dispatched on the Qt thread, not the registry worker.
+    """
+    if getattr(window, "_initial_editor_attempted", False):
+        return
+    window._initial_editor_attempted = True
+    mdi = window._desktop_mdi
+    width, height = mdi.viewport().width(), mdi.viewport().height()
+    if width < 1100 or height < 650:
+        return
+    if any(kind == "code_editor" for kind, _ in window._workspace_documents.values()):
+        return
+    try:
+        enabled = any(item.get("name") == "code_editor" and item.get("valid") and item.get("enabled")
+                      for item in window.get_plugins())
+    except Exception:
+        return
+    if not enabled:
+        return
+    from ui.creative import open_workspace
+    sub = open_workspace(window, {"kind": "creative_workspace", "tab": "editor"})
+    if sub is None:
+        return
+    files, _ = initial_window_geometry(width, height)
+    x, y, w, h = files
+    top = y + h + 18
+    sub.setGeometry(x, top, w, max(1, height - 90 - top))
+    mdi.position_dock()
 
 
 def build(window):
@@ -468,6 +645,7 @@ def build(window):
         QToolButton#DockButton {{ color: {C.DESKTOP_TEXT}; background: transparent;
             border: none; border-radius: 8px; padding: 4px; }}
         QToolButton#DockButton:hover {{ background: {C.DESKTOP_SIDEBAR}; }}
+        QToolButton#DockButton:focus {{ border: 1px solid #69c8f4; }}
     """)
     layout = QVBoxLayout(shell)
     layout.setContentsMargins(0, 0, 0, 0)
@@ -478,6 +656,7 @@ def build(window):
     mdi.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
     layout.addWidget(mdi, 1)
     window._desktop_mdi = mdi
+    mdi._host_window = window
     mdi._emblem = WorkspaceEmblem(window._assistant_name, mdi.viewport())
     mdi._avatar_stage = WorkspaceAvatar(window.hud, mdi.viewport())
     window.hud._desktop_stage = mdi._avatar_stage
@@ -610,8 +789,10 @@ def build(window):
         button = QToolButton()
         button.setText(_t(key))
         button.setToolTip(_t(key))
+        button.setAccessibleName(_t(key))
         button.setObjectName("DockButton")
-        button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
+        button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         button.setIcon(dock_icon(window.style(), icon, color))
         button.setIconSize(QSize(44, 44))
         button.setMinimumWidth(64)
@@ -663,6 +844,7 @@ def retranslate(window):
     for button, key in getattr(window, "_workspace_dock", ()):
         button.setText(_t(key))
         button.setToolTip(_t(key))
+        button.setAccessibleName(_t(key))
     for action, key in getattr(window, "_workspace_dock_actions", ()):
         action.setText(_t(key))
     for name, key in (("assistant", "workspace.assistant"),
