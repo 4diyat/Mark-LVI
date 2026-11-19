@@ -221,6 +221,11 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: python tools/run_qt_smoke.py tools/check_rotation_popups_qt.py
+      - name: Test isolated rotated WebEngine input
+        if: runner.os == 'Linux'
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python tools/run_qt_smoke.py tools/check_rotation_webengine_qt.py
       - name: Capture synthetic desktop for visual review
         if: runner.os == 'Linux'
         env:
