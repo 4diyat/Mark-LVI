@@ -33,6 +33,13 @@ def main():
         window.show()
         QTest.qWait(300)
         open_initial_editor(window)
+        # Example code is synthetic, unsaved, and never executed.
+        from ui.creative import CreativeWorkspace
+        editor = next((sub.widget() for sub in window._desktop_mdi.subWindowList()
+                       if isinstance(sub.widget(), CreativeWorkspace)), None)
+        if editor is not None:
+            editor._code.setPlainText("def analyze_system(data):\n    return {'status': 'ready'}\n")
+            editor._code.highlighter.set_language('python')
         for text in ('You: Summarize my latest project.',
                      'JARVIS: This preview uses fictional data for visual testing.'):
             window._log._enqueue(text)

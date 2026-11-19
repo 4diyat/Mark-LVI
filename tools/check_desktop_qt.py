@@ -84,6 +84,13 @@ def main():
         image = ImageEditor(window, {})
         # Real Qt checks for the editor gutter and syntax layout, not Qt stubs.
         assert creative._output.isHidden() and creative._output_heading.isHidden()
+        assert creative._file_label.isHidden()
+        assert creative._file_tabs.cornerWidget(Qt.Corner.TopRightCorner) is creative._new_tab_button
+        before = creative._file_tabs.count()
+        creative._new_tab_button.click()
+        assert creative._file_tabs.count() == before + 1
+        creative._close_file_tab(creative._file_tabs.currentIndex())
+        assert creative._file_tabs.count() == before and creative._code.toPlainText() == "print('unsaved')"
         creative._output.setPlainText('Run output')
         assert not creative._output.isHidden() and not creative._output_heading.isHidden()
         assert creative._code.line_number_width() > 0

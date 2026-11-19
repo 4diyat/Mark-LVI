@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (QDialog, QFileDialog, QHBoxLayout, QLabel,
 
 from core.i18n import label as _t
 from plugins import _creative
-from ui.theme import workspace_stylesheet
+from ui.theme import C, workspace_stylesheet
 from ui.localization import TranslationBindings
 from ui.code_editor import CodeEditor
 from core.code_syntax import language_for_path
@@ -66,10 +66,13 @@ class CreativeWorkspace(QDialog):
     def _build_editor(self, parent_layout):
         page = QWidget()
         outer = QHBoxLayout(page)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
         sidebar = QVBoxLayout()
+        sidebar.setContentsMargins(5, 5, 5, 5)
+        sidebar.setSpacing(4)
         self._editor_tools = []
-        for symbol, key, callback in (("+", "editor.new", self._new_file),
-                                      ("↥", "creative.open", self._open_file),
+        for symbol, key, callback in (("↥", "creative.open", self._open_file),
                                       ("▣", "creative.save", self._save_file),
                                       ("⇩", "creative.save_as", self._save_as),
                                       ("▶", "creative.run", self._run_file)):
@@ -78,6 +81,10 @@ class CreativeWorkspace(QDialog):
             button.setToolTip(_t(key))
             button.setAccessibleName(_t(key))
             button.setFixedSize(36, 34)
+            button.setStyleSheet(f"QToolButton {{ background: transparent; color: {C.DESKTOP_TEXT}; "
+                                 "border: 1px solid transparent; border-radius: 6px; padding: 2px; } "
+                                 f"QToolButton:hover {{ background: {C.DESKTOP_DOCK}; }} "
+                                 "QToolButton:focus { border: 1px solid #4b9fff; }")
             button.clicked.connect(lambda _checked=False, fn=callback: fn())
             sidebar.addWidget(button)
             self._editor_tools.append((button, key))
@@ -87,15 +94,28 @@ class CreativeWorkspace(QDialog):
         outer.addLayout(sidebar)
         layout = QVBoxLayout()
         outer.addLayout(layout, 1)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        # The tab already labels the current file and exposes its full path in
+        # a tooltip; avoid a duplicate path row consuming the code canvas.
         self._file_label = self._translations.text(QLabel(), "creative.unsaved", conditional=True)
-        layout.addWidget(self._file_label)
+        self._file_label.hide()
         self._file_tabs = QTabWidget()
         self._file_tabs.setTabsClosable(True)
         self._file_tabs.setMovable(True)
+        self._new_tab_button = QToolButton()
+        self._new_tab_button.setText("+")
+        self._new_tab_button.setToolTip(_t("editor.new"))
+        self._new_tab_button.setAccessibleName(_t("editor.new"))
+        self._new_tab_button.clicked.connect(lambda _checked=False: self._new_file())
+        self._editor_tools.append((self._new_tab_button, "editor.new"))
+        self._file_tabs.setCornerWidget(self._new_tab_button, Qt.Corner.TopRightCorner)
         self._file_tabs.currentChanged.connect(self._select_file_tab)
         self._file_tabs.tabCloseRequested.connect(self._close_file_tab)
         layout.addWidget(self._file_tabs, 1)
         self._editor_status = QLabel()
+        self._editor_status.setStyleSheet(f"background: {C.DESKTOP_SIDEBAR}; color: {C.DESKTOP_MUTED}; "
+                                          "padding: 4px 8px; border: none;")
         layout.addWidget(self._editor_status)
         self._add_code_tab()
         self._output_heading = self._translations.text(QLabel(), "creative.output")
