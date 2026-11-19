@@ -37,13 +37,18 @@ def test_phone_stream_wakes_and_ends_queued_after_audio():
         await q.put({"data": b"old", "mime_type": "audio/pcm", "received_at": time.monotonic() - 3})
         await q.put({"data": b"ab", "mime_type": "audio/pcm", "received_at": time.monotonic()})
         await q.put({"phone_audio_end": True})
-        await asyncio.sleep(.02)
-        assert out.get_nowait() == {"data": b"ab", "mime_type": "audio/pcm"}
-        assert out.get_nowait() == {"audio_stream_end": True}
-        assert out.empty() and wakes == ["remote microphone"] and not obj._phone_active
-        task.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await task
+        try:
+            # Waiting for the actual queue events is deterministic on a busy
+            # Windows runner; a fixed 20 ms sleep can wake before the relay.
+            first = await asyncio.wait_for(out.get(), timeout=2)
+            second = await asyncio.wait_for(out.get(), timeout=2)
+            assert first == {"data": b"ab", "mime_type": "audio/pcm"}
+            assert second == {"audio_stream_end": True}
+            assert out.empty() and wakes == ["remote microphone"] and not obj._phone_active
+        finally:
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
     asyncio.run(check())
 
 
