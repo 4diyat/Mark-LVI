@@ -161,6 +161,9 @@ class ImageEditor(QDialog):
         order.addWidget(self._layer_up)
         order.addWidget(self._layer_down)
         layers_layout.addLayout(order)
+        self._layer_edit = self._translations.text(QPushButton(), "image_editor.edit_layer")
+        self._layer_edit.clicked.connect(self.edit_layer)
+        layers_layout.addWidget(self._layer_edit)
         self._layer_remove = self._translations.text(QPushButton(), "image_editor.remove_layer")
         self._layer_remove.clicked.connect(self.remove_layer)
         layers_layout.addWidget(self._layer_remove)
@@ -430,6 +433,7 @@ class ImageEditor(QDialog):
         selected = layer_index_from_row(len(self._layers), row) is not None
         self._layer_up.setEnabled(selected and row > 0)
         self._layer_down.setEnabled(selected and row < len(self._layers) - 1)
+        self._layer_edit.setEnabled(selected)
         self._layer_remove.setEnabled(selected)
 
     def _move_layer(self, direction):
@@ -444,21 +448,19 @@ class ImageEditor(QDialog):
         self._status.setText(_t("image_editor.unsaved"))
         self._render()
 
-    def add_text(self, initial=""):
-        if self._image is None:
-            self._status.setText(_t("image_editor.empty"))
-            return
+    def _text_layer_dialog(self, initial, image, existing=None):
         dialog = QDialog(self)
-        dialog.setWindowTitle(_t("image_editor.add_text"))
+        dialog.setWindowTitle(_t("image_editor.edit_layer" if existing else "image_editor.add_text"))
         form = QFormLayout(dialog)
         text = QLineEdit(initial)
         text.setMaxLength(500)
         form.addRow(_t("image_editor.text"), text)
         controls = []
         for key, minimum, maximum, value in (
-            ("image_editor.crop_x", 0, self._image.width() - 1, 0),
-            ("image_editor.baseline", 0, self._image.height() - 1, min(40, self._image.height() - 1)),
-            ("image_editor.font_size", 1, 500, 32),
+            ("image_editor.crop_x", 0, image.width() - 1, existing.x if existing else 0),
+            ("image_editor.baseline", 0, image.height() - 1,
+             existing.y if existing else min(40, image.height() - 1)),
+            ("image_editor.font_size", 1, 500, existing.size if existing else 32),
         ):
             control = QSpinBox()
             control.setRange(minimum, maximum)
@@ -470,17 +472,54 @@ class ImageEditor(QDialog):
         buttons.rejected.connect(dialog.reject)
         form.addRow(buttons)
         if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
+            return None
         try:
             layer = make_text_layer(text.text(), *(control.value() for control in controls),
-                                    self._image.width(), self._image.height())
+                                    image.width(), image.height())
         except ValueError:
             self._status.setText(_t("image_editor.invalid_text"))
+            return None
+        return set_visible(layer, existing.visible) if existing else layer
+
+    def add_text(self, initial=""):
+        if self._image is None:
+            self._status.setText(_t("image_editor.empty"))
+            return
+        image, previous_layers = self._image, tuple(self._layers)
+        layer = self._text_layer_dialog(initial, image)
+        if layer is None:
+            return
+        if self._image is not image or tuple(self._layers) != previous_layers:
+            self._status.setText(_t("image_editor.layer_changed"))
             return
         self._snapshot()
         self._layers.append(layer)
         self._dirty = True
         self._update_layers(selected_row=0)
+        self._status.setText(_t("image_editor.unsaved"))
+        self._render()
+
+    def edit_layer(self):
+        row = self._layer_list.currentRow()
+        index = layer_index_from_row(len(self._layers), row)
+        if self._image is None or index is None:
+            return
+        image, previous_layers = self._image, tuple(self._layers)
+        old = self._layers[index]
+        layer = self._text_layer_dialog(old.text, image, old)
+        if layer is None:
+            return
+        # A queued action may replace or change a document during a modal
+        # dialog. Never overwrite a layer selected against stale state.
+        if self._image is not image or tuple(self._layers) != previous_layers:
+            self._status.setText(_t("image_editor.layer_changed"))
+            return
+        if layer == old:
+            return
+        self._snapshot()
+        self._layers[index] = layer
+        self._dirty = True
+        self._update_layers(selected_row=row)
         self._status.setText(_t("image_editor.unsaved"))
         self._render()
 

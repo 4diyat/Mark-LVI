@@ -425,6 +425,8 @@
   "workspace.camera": "Kamera",
   "image_editor.layer_up": "Naikkan",
   "image_editor.layer_down": "Turunkan",
+  "image_editor.edit_layer": "Ubah lapisan terpilih",
+  "image_editor.layer_changed": "Gambar atau lapisan berubah saat dialog terbuka; perubahan tidak diterapkan.",
   "image_editor.layers": "Lapisan",
   "image_editor.background": "Latar (selalu terlihat)",
   "image_editor.add_text": "Tambah lapisan teks",

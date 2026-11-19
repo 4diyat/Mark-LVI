@@ -425,6 +425,8 @@
   "workspace.camera": "Camera",
   "image_editor.layer_up": "Move up",
   "image_editor.layer_down": "Move down",
+  "image_editor.edit_layer": "Edit selected layer",
+  "image_editor.layer_changed": "Image or layers changed while the dialog was open; no edit was applied.",
   "image_editor.layers": "Layers",
   "image_editor.background": "Background (always visible)",
   "image_editor.add_text": "Add text layer",

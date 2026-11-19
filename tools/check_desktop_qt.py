@@ -15,7 +15,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt6.QtCore import QCoreApplication, QEvent, QFileInfo, QPoint, QTimer, Qt  # noqa: E402
 from PyQt6.QtGui import QColor, QImage, QTextCursor  # noqa: E402
 from PyQt6.QtTest import QTest  # noqa: E402
-from PyQt6.QtWidgets import QApplication, QColorDialog, QComboBox, QDialog, QFileDialog, QPushButton, QScrollArea, QSizeGrip, QSlider, QSpinBox, QWidget  # noqa: E402
+from PyQt6.QtWidgets import QApplication, QColorDialog, QComboBox, QDialog, QFileDialog, QLineEdit, QPushButton, QScrollArea, QSizeGrip, QSlider, QSpinBox, QWidget  # noqa: E402
 
 import memory.config_manager as config  # noqa: E402
 from core.i18n import label as translate  # noqa: E402
@@ -303,6 +303,49 @@ def main():
         assert image._layers == [layer, top]
         image._file_tools['image_editor.undo'].click()
         assert image._layers == [layer, middle, top]
+        # Editing a hidden layer keeps it hidden and preserves its position.
+        image._layer_list.setCurrentRow(0)
+        assert image._layer_edit.isEnabled()
+        image._layer_list.item(0).setCheckState(Qt.CheckState.Unchecked)
+        hidden_top = image._layers[-1]
+        image._dirty, image._undo_state = False, None
+        def edit_text_dialog(mode):
+            dialog = app.activeModalWidget()
+            assert isinstance(dialog, QDialog)
+            text = dialog.findChildren(QLineEdit)[0]
+            controls = dialog.findChildren(QSpinBox)
+            assert text.text() == 'top' and [control.value() for control in controls] == [0, 10, 8]
+            if mode in ('apply', 'cancel', 'stale', 'invalid'):
+                text.setText('' if mode == 'invalid' else 'updated')
+                for control, value in zip(controls, (5, 12, 9)):
+                    control.setValue(value)
+            if mode == 'stale':
+                image._image = image._image.copy()
+            dialog.reject() if mode == 'cancel' else dialog.accept()
+        for mode in ('cancel', 'unchanged', 'invalid', 'stale'):
+            QTimer.singleShot(0, lambda m=mode: edit_text_dialog(m))
+            image._layer_edit.click()
+            assert image._layers[-1] == hidden_top and not image._dirty and image._undo_state is None
+        assert image._status.text() == translate('image_editor.layer_changed')
+        QTimer.singleShot(0, lambda: edit_text_dialog('apply'))
+        image._layer_edit.click()
+        assert image._layers[:2] == [layer, middle]
+        assert (image._layers[-1].text, image._layers[-1].x, image._layers[-1].y,
+                image._layers[-1].size, image._layers[-1].visible) == ('updated', 5, 12, 9, False)
+        assert image._layer_list.currentRow() == 0 and image._layer_list.item(0).text() == 'updated'
+        assert image._dirty
+        image._file_tools['image_editor.undo'].click()
+        assert image._layers == [layer, middle, hidden_top]
+        # Adding text uses the same dialog but still creates a new top layer.
+        def add_text_dialog():
+            dialog = app.activeModalWidget()
+            assert isinstance(dialog, QDialog) and dialog.findChildren(QLineEdit)[0].text() == 'new'
+            dialog.accept()
+        QTimer.singleShot(0, add_text_dialog)
+        image.add_text('new')
+        assert image._layers[-1].text == 'new' and image._layer_list.currentRow() == 0
+        image._file_tools['image_editor.undo'].click()
+        assert image._layers == [layer, middle, hidden_top]
         image._layers = []
         image._update_layers()
         image._dirty = False
@@ -398,6 +441,7 @@ def main():
         assert image._brush_swatch.accessibleName().startswith(translate("image_editor.brush_color"))
         assert image._layer_up.text() == translate("image_editor.layer_up")
         assert image._layer_down.text() == translate("image_editor.layer_down")
+        assert image._layer_edit.text() == translate("image_editor.edit_layer")
         assert all(button.toolTip() == button.accessibleName() == translate(key)
                    for key, button in image._image_tools.items())
         assert all(button.text() == translate(key) for key, button in image._file_tools.items())

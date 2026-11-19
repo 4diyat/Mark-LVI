@@ -431,3 +431,9 @@ naik/turun mengubah urutan komposisi dan dapat di-undo tanpa menyimpan atau
 meratakan layer. Background tetap selalu terlihat. Tes logika dan Qt offscreen
 memeriksa urutan, kondisi batas, visibilitas, penghapusan dan undo; ini belum
 mengubah format penyimpanan: Save as tetap mengekspor gambar yang diratakan.
+
+Layer teks yang dipilih dapat diedit ulang: teks, posisi dan ukuran huruf.
+Visibilitas dan urutan layer dipertahankan, perubahan dapat di-undo, dan
+dialog yang dibatalkan atau data yang berubah selama dialog tidak menimpa
+layer. Pengujian Qt offscreen menggunakan teks sintetis dan tidak membuktikan
+penggunaan pada perangkat desktop sebenarnya.
