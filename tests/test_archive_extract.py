@@ -24,7 +24,9 @@ import pytest
 from actions.file_processor import (
     _MAX_EXTRACT_BYTES,
     _extract_archive,
+    _extract_with_confirmation,
     _is_safe_member_name,
+    _process_archive,
 )
 
 
@@ -158,3 +160,61 @@ def test_a_zip_bomb_sized_archive_is_refused(workdir, monkeypatch):
 
     assert "exceeds the" in _extract_archive(archive, "")
     assert _MAX_EXTRACT_BYTES > 0     # the real ceiling is still a real number
+
+
+# ── extraction is a decision, not a reflex ──────────────────────────────────
+#
+# The member checks above stop an archive writing outside the folder. They
+# cannot judge whether THIS archive should be unpacked at all: a .zip from an
+# email is a set of files the user has not looked at. So `extract` goes through
+# the on-screen gate; `list` does not, because it writes nothing.
+
+def test_extract_asks_before_unpacking(workdir):
+    archive = _zip_with(workdir / "c.zip", {"x.txt": "x"})
+    seen = {}
+
+    def fake_request(key, title, detail, run):
+        seen.update(key=key, title=title, detail=detail, run=run)
+        return "[CONFIRMATION_PENDING] ask the user"
+
+    from core import confirm
+    original = confirm.request
+    confirm.request = fake_request
+    try:
+        out = _extract_with_confirmation(archive, "")
+    finally:
+        confirm.request = original
+
+    assert out == "[CONFIRMATION_PENDING] ask the user"
+    assert seen["key"] == "file_extract"
+    assert "c.zip" in seen["title"]
+    assert callable(seen["run"])
+    assert not (workdir / "c").exists(), "nothing may be unpacked before CONFIRM"
+
+
+def test_listing_does_not_ask(workdir):
+    archive = _zip_with(workdir / "d.zip", {"x.txt": "x"})
+
+    from core import confirm
+    original = confirm.request
+    confirm.request = lambda *a, **k: pytest.fail("listing writes nothing")
+    try:
+        out = _process_archive(archive, "list", {})
+    finally:
+        confirm.request = original
+
+    assert "x.txt" in out
+
+
+def test_extract_does_not_stack_two_banners(workdir):
+    archive = _zip_with(workdir / "e.zip", {"x.txt": "x"})
+
+    from core import confirm
+    original = confirm.pending_title
+    confirm.pending_title = lambda: "Shut down?"
+    try:
+        out = _extract_with_confirmation(archive, "")
+    finally:
+        confirm.pending_title = original
+
+    assert "already on screen" in out

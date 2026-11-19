@@ -146,3 +146,52 @@ def test_interpreter_options_are_not_forwarded(home, monkeypatch):
 
     assert "-c" not in captured["argv"]
     assert "evil()" in captured["argv"]       # plain args are still passed
+
+
+# ── what is read here goes to the model ─────────────────────────────────────
+#
+# `_read_file` accepts any path the model names and the result is pasted into a
+# prompt. "Explain my config" was therefore a way to send config/api_keys.json,
+# ~/.ssh/id_rsa or ~/.aws/credentials to a third party. The rule existed in
+# core/code_checks.py and was enforced for dev_agent alone.
+
+@pytest.mark.parametrize("name", [
+    "api_keys.json",
+    ".env",
+    ".env.local",
+    "secrets.yaml",
+    "id_rsa",
+    "credentials.json",
+    "server.pem",
+])
+def test_a_secret_file_is_not_read_into_a_prompt(home, name):
+    secret = home / "Documents" / name
+    secret.write_text("SUPER-SECRET-KEY")
+
+    text, error = code_helper._read_file(str(secret))
+
+    assert text == "", "the contents must not leave the machine"
+    assert "Refused to read" in error
+    assert "secrets" in error
+
+
+def test_ordinary_source_still_reads(home):
+    source = home / "Documents" / "api_keys.py"     # a NAME, but it is code
+    source.write_text("def get():\n    return 1\n")
+
+    text, error = code_helper._read_file(str(source))
+
+    assert error == ""
+    assert "def get()" in text
+
+
+def test_a_missing_file_is_a_different_message(home):
+    text, error = code_helper._read_file(str(home / "nope.py"))
+    assert text == ""
+    assert "File not found" in error
+
+
+def test_a_directory_is_not_read(home):
+    text, error = code_helper._read_file(str(home / "Documents"))
+    assert text == ""
+    assert "Not a file" in error

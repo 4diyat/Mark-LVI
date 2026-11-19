@@ -101,3 +101,80 @@ def test_an_empty_command_is_none_not_an_index_error(given):
 
 def test_an_unbalanced_quote_is_none_not_an_exception():
     assert _split_command('python "unclosed') is None
+
+
+# ── installing is a human decision ──────────────────────────────────────────
+#
+# `_safe_requirement` stops an option, a URL or a path reaching pip. It cannot
+# judge whether THIS package is the one the user wanted: installing runs
+# setup.py with the user's privileges. So the list is shown and nothing runs
+# until CONFIRM — including the name scraped out of a generated project's own
+# stderr, which used to be installed five times unattended.
+
+def test_a_planned_install_is_parked_for_confirmation(tmp_path):
+    seen = {}
+
+    def fake_request(key, title, detail, run):
+        seen.update(key=key, title=title, detail=detail, run=run)
+        return "[CONFIRMATION_PENDING] ask the user"
+
+    import core.confirm as confirm
+    original = confirm.request
+    confirm.request = fake_request
+    try:
+        from actions.dev_agent import _install_with_confirmation
+        out = _install_with_confirmation(["requests", "numpy>=1.24"], tmp_path)
+    finally:
+        confirm.request = original
+
+    assert out == "[CONFIRMATION_PENDING] ask the user"
+    assert seen["key"] == "dev_agent_install"
+    assert "requests" in seen["detail"] and "numpy>=1.24" in seen["detail"]
+    assert callable(seen["run"])
+
+
+def test_the_banner_and_the_install_agree_on_the_list(tmp_path):
+    """A banner that says one thing while pip does another is worse than none."""
+    captured = {}
+
+    def fake_request(key, title, detail, run):
+        captured["detail"] = detail
+        # Running the callable must install exactly what the banner described.
+        captured["run"] = run
+        return "[CONFIRMATION_PENDING]"
+
+    import core.confirm as confirm
+    original = confirm.request
+    confirm.request = fake_request
+    try:
+        from actions.dev_agent import _install_with_confirmation
+        _install_with_confirmation(["requests", "--index-url evil", "flask"], tmp_path)
+    finally:
+        confirm.request = original
+
+    assert "requests" in captured["detail"]
+    assert "flask" in captured["detail"]
+    assert "--index-url" not in captured["detail"]
+    assert "refused as unsafe" in captured["detail"]
+
+
+def test_an_all_unsafe_list_installs_nothing_and_asks_nothing(tmp_path):
+    import core.confirm as confirm
+    original = confirm.request
+    confirm.request = lambda *a, **k: pytest.fail("must not ask to install nothing")
+    try:
+        from actions.dev_agent import _install_with_confirmation
+        out = _install_with_confirmation(["--index-url evil", "-r /etc/x"], tmp_path)
+    finally:
+        confirm.request = original
+
+    assert "nothing was installed" in out
+
+
+def test_a_missing_module_name_is_validated_before_it_is_offered():
+    from actions.dev_agent import _missing_module
+    assert _missing_module("No module named 'requests'") == "requests"
+    # a dotted name means a submodule: the distribution is the first part
+    assert _missing_module("No module named 'some.module'") == "some"
+    assert _missing_module("ModuleNotFoundError: No module named '--index-url'") == ""
+    assert _missing_module("everything is fine") == ""

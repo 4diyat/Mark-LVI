@@ -104,9 +104,25 @@ def _resolve_save_path(output_path: str, language: str) -> Path:
 def _read_file(file_path: str) -> tuple[str, str]:
     if not file_path:
         return "", "No file path provided."
-    p = Path(file_path)
+    p = Path(file_path).expanduser()
     if not p.exists():
         return "", f"File not found: {file_path}"
+
+    # WHAT IS READ HERE GOES TO THE MODEL.
+    #
+    # This function takes any path the model names, and the content is then
+    # pasted into a prompt — so "explain my config" was a way to send
+    # config/api_keys.json, ~/.ssh/id_rsa or ~/.aws/credentials to a third
+    # party. `core/code_checks.py` has carried the rule that decides this since
+    # the api_keys.json incident, and it was enforced for dev_agent alone.
+    from core.code_checks import is_secret_path
+    if is_secret_path(p):
+        return "", (f"Refused to read {p.name} — it looks like a file of secrets "
+                    f"(keys, tokens, passwords), and its contents would be sent "
+                    f"to the model.")
+
+    if not p.is_file():
+        return "", f"Not a file: {file_path}"
     try:
         return p.read_text(encoding="utf-8"), ""
     except Exception as e:

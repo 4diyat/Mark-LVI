@@ -11,7 +11,7 @@
 > |---|---|
 > | "`ui.py` 7.504 baris" | sudah dipecah ke `ui/` (theme, metrics, audio, widget); tidak ada lagi `ui.py` |
 > | "`main.py` 2.706 baris" | ≈ 3.000 baris, `JarvisLive` masih besar — temuan ini masih berlaku |
-> | "0 test runner, 0 CI" | 1.237 tes lulus, CI 3 OS × Python 3.11/3.12 |
+> | "0 test runner, 0 CI" | 1.254 tes lulus, CI 3 OS × Python 3.11/3.12 |
 > | "konfirmasi hanya untuk shutdown" | masih sebagian benar: lihat daftar di `AGENTS.md` |
 >
 > Untuk status yang benar, baca `readme.md`, `AGENTS.md`, dan `docs/verification.md`.

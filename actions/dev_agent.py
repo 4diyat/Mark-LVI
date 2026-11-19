@@ -305,6 +305,42 @@ _REQ_RE = re.compile(
 _MAX_DEPS = 25
 
 
+def _install_with_confirmation(dependencies: list[str], project_dir: Path) -> str:
+    """Ask the user before pip installs anything into this interpreter.
+
+    WHY THIS IS A HUMAN DECISION AND NOT A PATH CHECK
+        `_safe_requirement` already stops an option, a URL or a path from being
+        passed to pip. What it cannot judge is whether *this* package is the one
+        the user wanted — installing runs setup.py with the user's privileges,
+        and a generated "project" is not a reason to trust a name. So the plan's
+        dependency list is shown, and the install happens only after CONFIRM.
+
+    The accepted list is computed HERE and again inside `_install_dependencies`,
+    so a banner cannot describe one thing while pip installs another.
+    """
+    accepted, rejected = _safe_dependency_list(dependencies)
+    dropped = (f" ({len(rejected)} entr"
+               f"{'y' if len(rejected) == 1 else 'ies'} refused as unsafe)")
+    if not accepted:
+        return ("No dependency was a plain package name, so nothing was "
+                "installed." + dropped)
+
+    from core import confirm
+    if confirm.pending_title():
+        return ("I need to install " + ", ".join(accepted) + ", but another "
+                "confirmation is already on screen. Answer that one first.")
+
+    title = f"Install {len(accepted)} package{'s' if len(accepted) != 1 else ''}?"
+    detail = (f"pip install {' '.join(accepted)} — into the Python running "
+              f"JARVIS, for the project in {project_dir.name}/.{dropped}")
+    return confirm.request(
+        key="dev_agent_install",
+        title=title,
+        detail=detail,
+        run=lambda: _install_dependencies(accepted, project_dir),
+    )
+
+
 def _safe_requirement(dep: str) -> str | None:
     """The requirement as a valid pip argument, or None if it is not one.
 
@@ -324,20 +360,28 @@ def _safe_requirement(dep: str) -> str | None:
     return re.sub(r"\s+", "", req)
 
 
-def _install_dependencies(dependencies: list[str], project_dir: Path) -> str:
-    if not dependencies:
-        return "No external dependencies."
-
+def _safe_dependency_list(dependencies: list[str]) -> tuple[list[str], list[str]]:
+    """(accepted, rejected) — the split that decides what reaches pip."""
     accepted: list[str] = []
     rejected: list[str] = []
-    for dep in dependencies:
+    for dep in dependencies or []:
         safe = _safe_requirement(dep)
         if safe is None:
             rejected.append(str(dep)[:60])
-            print(f"[DevAgent] ⛔ Refused an unsafe dependency entry: {dep!r}"[:200])
             continue
         if safe not in accepted and len(accepted) < _MAX_DEPS:
             accepted.append(safe)
+    return accepted, rejected
+
+
+def _install_dependencies(dependencies: list[str], project_dir: Path) -> str:
+    """Validate, then install. The caller must have asked the user first."""
+    if not dependencies:
+        return "No external dependencies."
+
+    accepted, rejected = _safe_dependency_list(dependencies)
+    for bad in rejected:
+        print(f"[DevAgent] ⛔ Refused an unsafe dependency entry: {bad!r}"[:200])
 
     note = ""
     if rejected:
@@ -472,6 +516,18 @@ def _run_project(run_command: str, project_dir: Path, timeout: int = 30) -> str:
         return f"Command not found: {e}"
     except Exception as e:
         return f"Run error: {e}"
+
+def _missing_module(error_output: str) -> str:
+    """The package name a traceback is missing, validated. '' when there is none."""
+    pattern = re.compile(
+        r"No module named ['\"]([a-zA-Z0-9_\-\.]+)['\"]", re.IGNORECASE
+    )
+    match = pattern.search(error_output or "")
+    if not match:
+        return ""
+    return _safe_requirement(
+        match.group(1).replace("_", "-").split(".")[0]) or ""
+
 
 def _try_auto_install(error_output: str, project_dir: Path) -> bool:
     """If there is a ModuleNotFoundError, tries to auto-install the missing package.
@@ -696,9 +752,22 @@ def _build_project(
 
     if dependencies:
         _update("installing")
-        log(f"Installing {', '.join(dependencies)}...")
-        install_result = _install_dependencies(dependencies, project_dir)
+        log(f"Dependencies requested: {', '.join(dependencies)}")
+        # Parks the install behind the on-screen CONFIRM. Returns the sentence
+        # to speak, so the project is left built and uninstalled until the user
+        # answers — which is the honest state, and the one the HUD can show.
+        install_result = _install_with_confirmation(dependencies, project_dir)
         log(install_result)
+        _gated_install = install_result.startswith("[CONFIRMATION_PENDING]")
+    else:
+        _gated_install = False
+
+    if _gated_install:
+        msg = (f"Project '{proj_name}' is written in {project_dir}, sir. I need "
+               f"you to confirm the dependencies before I can run it.")
+        log(msg)
+        if speak: speak(msg)
+        return msg
 
     _open_vscode(project_dir)
 
@@ -725,6 +794,20 @@ def _build_project(
 
         error_type = _classify_error(last_output)
         if error_type == "dependency_error" and auto_installs < 3:
+            # The package NAME is scraped from the project's own stderr, so it
+            # goes through the same gate as a planned dependency: validated, and
+            # shown to the user before pip runs. Not installing it silently is
+            # the whole point — the previous version did, five times.
+            missing = _missing_module(last_output)
+            if missing:
+                gated = _install_with_confirmation([missing], project_dir)
+                log(gated)
+                if gated.startswith("[CONFIRMATION_PENDING]"):
+                    msg = (f"'{proj_name}' needs the package '{missing}', sir. "
+                           f"Confirm it on the HUD and I will install it and "
+                           f"finish testing the project.")
+                    if speak: speak(msg)
+                    return msg
             installed = _try_auto_install(last_output, project_dir)
             if installed:
                 auto_installs += 1

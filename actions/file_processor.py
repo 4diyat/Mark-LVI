@@ -747,9 +747,33 @@ def _process_archive(path: Path, action: str, params: dict, speak=None) -> str:
             return f"List failed: {e}"
 
     if action == "extract":
-        return _extract_archive(path, params.get("destination", ""))
+        return _extract_with_confirmation(path, params.get("destination", ""))
 
     return f"Unknown archive action: '{action}'. Try: list, extract"
+
+
+def _extract_with_confirmation(path: Path, destination: str) -> str:
+    """Ask before an archive writes a tree of files somewhere.
+
+    WHY THIS IS GATED WHEN `list` IS NOT
+        `_extract_archive` already refuses escaping member names, links and an
+        oversized expansion — but it cannot judge whether this archive should be
+        unpacked at all. A .zip from an email is a set of files the user has not
+        looked at, being written into their folders: that is a decision to make
+        on screen, not one to take because a model read a filename.
+    """
+    from core import confirm
+    if confirm.pending_title():
+        return ("Another confirmation is already on screen, sir. Answer that "
+                "one first, then ask me to extract this archive.")
+
+    where = destination.strip() or str(path.parent / path.stem)
+    return confirm.request(
+        key="file_extract",
+        title=f"Extract {path.name}?",
+        detail=f"Unpack every file in {path.name} into {where}.",
+        run=lambda: _extract_archive(path, destination),
+    )
 
 
 # How much an archive is allowed to expand to. A few kilobytes of zip can be

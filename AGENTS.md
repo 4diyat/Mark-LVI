@@ -124,12 +124,19 @@ Anything that is irreversible, or that leaves the app's own folders, goes behind
 `core/confirm.request()` — the on-screen token is issued by the UI, never by the
 model.
 
-- Currently gated: shutdown/restart (`actions/computer_settings.py`) and running
-  a file (`actions/code_helper.py`).
-- Should be gated and is not yet: installing a package, extracting an archive.
-  Add the gate before adding a caller.
+- Currently gated: shutdown/restart (`actions/computer_settings.py`), running a
+  file (`actions/code_helper.py`), pip installs from a plan or from a
+  `ModuleNotFoundError` (`actions/dev_agent.py`), and archive extraction
+  (`actions/file_processor.py`).
 - `confirm.request` returns the sentence to hand the model. Do not perform the
-  work first and ask afterwards.
+  work first and ask afterwards: put the real work in `run=`, and let the
+  caller's AI turn end with "I need you to confirm that".
+- If the gated work is a step *inside* a longer job (the build → install → test
+  loop in `dev_agent`), the job must stop there and say so, not carry on and
+  report the project as working. See `_gated_install` in `_build_project`.
+- What is checked BEFORE the gate still matters: the banner must describe
+  exactly what the work will do. `_install_with_confirmation` computes the
+  accepted list once and passes it down, so the two cannot disagree.
 
 **File operations are NOT gated — they use `core/undo.py` instead.** That is a
 deliberate design (see its docstring: "act immediately, make it reversible"). The
@@ -155,6 +162,11 @@ rule that follows from it:
 - A file to execute is executed by absolute interpreter path (`sys.executable`
   for Python), and `-`-prefixed "arguments" are not forwarded — they are
   interpreter options, not program arguments.
+- **Anything read here goes to the model.** `actions/code_helper._read_file`
+  takes any path the user names and pastes it into a prompt, so it asks
+  `core.code_checks.is_secret_path()` first. Add that check to any new
+  read-into-a-prompt path; `Protection` only covers the project folder, and a
+  tool handed an absolute path has no project to ask.
 
 ## Testing and lint before you hand work back
 
