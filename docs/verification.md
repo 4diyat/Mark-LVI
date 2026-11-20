@@ -540,3 +540,22 @@ file memori rusak/tidak terbaca, operasi perubahan menolak menimpanya. Tes
 mencakup penulisan bersamaan dan kegagalan penggantian; smoke Qt memeriksa pesan
 kegagalan hapus. Ini bukan lock antarproses, enkripsi memori, jaminan pemulihan
 setelah setiap kegagalan perangkat keras, atau pengujian pada perangkat nyata.
+
+### Konten visual interaktif (tahap awal)
+
+Plugin `visualize_data` menerima 2–48 pasangan label dan angka yang sudah
+tersedia dari pengguna/hasil tool, bersama judul dan keterangan sumber. Nilai
+harus terbatas dan hingga; tidak ada kode, URL, file, atau aksi yang dijalankan.
+Waktu data tidak diada-adakan. Sumber adalah keterangan yang diberikan, **bukan**
+sumber yang telah diverifikasi. UI menampilkan grafik garis dan tabel; pemilihan
+titik lewat mouse, tombol panah atau tabel disinkronkan. Tombol bertanya hanya
+menyiapkan draf berisi titik yang dipilih, tanpa menimpa draf yang ada atau
+mengirim otomatis. Data dibungkus sebagai tak tepercaya; ini bukan jaminan
+terhadap prompt injection. Pengguna meninjau dan mengirim draf sendiri.
+
+Tes `tests/test_visual_content.py` mencakup validasi dan perhitungan posisi;
+`tools/check_desktop_qt.py` menguji jalur worker, pemilihan, tabel, lokalisasi,
+dan draf dengan Qt offscreen. CI mengambil gambar contoh sintetis untuk review.
+Diagram lain, penyimpanan/bagikan, pengambilan data otomatis, dan kesesuaian
+visual/DPI serta interaksi pada perangkat nyata belum diverifikasi atau belum
+tersedia. Model lokal dengan anggaran tool kecil dapat tidak menawarkan plugin.

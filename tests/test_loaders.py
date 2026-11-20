@@ -451,7 +451,7 @@ def test_the_repository_own_plugins_all_reach_the_panel(isolated_config):
     sections = {s["plugin"]: s for s in reg.settings_schemas()}
     managed = {row["name"] for row in reg.list_for_ui()}
     assert managed == {"code_editor", "currency_rates", "gmail_inbox", "image_editor", "market_price",
-                       "morning_brief", "mt5_orb", "mt5_trade", "prayer_times", "quick_notes", "trading_terminal", "workspace_browser", "workspace_control", "ssh_manager"}
+                       "morning_brief", "mt5_orb", "mt5_trade", "prayer_times", "quick_notes", "trading_terminal", "workspace_browser", "workspace_control", "ssh_manager", "visualize_data"}
     assert "barehands" not in sections  # legacy external server requires no installation path
     assert set(sections) == managed                # the panel lists them all
 

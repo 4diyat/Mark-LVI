@@ -226,6 +226,12 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: python tools/capture_desktop_qt.py
+      - name: Capture synthetic visual content for review
+        if: runner.os == 'Linux'
+        env:
+          QT_QPA_PLATFORM: offscreen
+          PYTHONPATH: .
+        run: python tools/capture_desktop_qt.py --visual-content
       - name: Capture synthetic image editor for visual review
         if: runner.os == 'Linux'
         env:

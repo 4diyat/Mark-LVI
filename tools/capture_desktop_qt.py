@@ -39,6 +39,7 @@ def emit_capture(widget, title):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--image-editor', action='store_true', help='capture the synthetic image editor instead')
+    parser.add_argument('--visual-content', action='store_true', help='capture a fictional interactive chart')
     args = parser.parse_args()
     with tempfile.TemporaryDirectory() as tmp:
         os.environ['HOME'] = tmp
@@ -80,7 +81,20 @@ def main():
             window._log._next()
         QTest.qWait(300)
         app.processEvents()
-        if not args.image_editor:
+        if args.visual_content:
+            from ui.visual_content import VisualContent
+            data = {'title': 'Expense analysis', 'source': 'Synthetic example', 'observed': 'Jan–Jun example',
+                    'unit': 'million', 'points': [
+                        {'label': name, 'value': value} for name, value in
+                        [('Jan', 2.0), ('Feb', 2.4), ('Mar', 2.8), ('Apr', 4.2), ('May', 4.8), ('Jun', 3.4)]]}
+            view = VisualContent(window, data)
+            sub = show_document(window, view, 'visual_content')
+            sub.setGeometry(180, 50, 820, 600)
+            view.select(3)
+            QTest.qWait(300)
+            app.processEvents()
+            emit_capture(sub, 'Visual content capture')
+        elif not args.image_editor:
             emit_capture(window, 'Desktop capture')
         else:
             # A generated in-memory image and fictional text layer reveal the image
