@@ -709,6 +709,7 @@ class SetupOverlay(QWidget):
 
 class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
     _log_sig        = pyqtSignal(str)
+    _speech_caption_sig = pyqtSignal(object)
     _phone_connected_sig = pyqtSignal()
     _state_sig      = pyqtSignal(str)
     _content_sig    = pyqtSignal(str, str)   # (title, text) — thread-safe content display
@@ -717,6 +718,8 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
     _ssh_assist_sig = pyqtSignal(object)
     _editor_assist_sig = pyqtSignal(object)
     _workspace_command_sig = pyqtSignal(object)  # worker request, completed on Qt thread
+    _visual_content_sig = pyqtSignal(object)
+    _narrative_content_sig = pyqtSignal(object)
     _browser_read_sig = pyqtSignal(object)
     _reconfig_sig   = pyqtSignal()           # trigger setup overlay from any thread
     _camera_sig     = pyqtSignal(bytes)      # show camera frame preview (small overlay)
@@ -737,8 +740,8 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
     _audio_vol_sig   = pyqtSignal(float)
     _clipboard_sig  = pyqtSignal(str)        # clipboard text changed (thread-safe)
     _hand_menu_sig  = pyqtSignal(object)     # menu target captured on gesture thread
-    _confirm_sig    = pyqtSignal(str, str)   # (title, detail) — irreversible-action gate
-    _confirm_hide_sig = pyqtSignal()
+    _confirm_sig    = pyqtSignal(str, str, str)  # request ID, title, detail
+    _confirm_hide_sig = pyqtSignal(str)        # request ID
     _wake_dl_sig    = pyqtSignal(bool, str)  # wake-word install finished (ok, message)
     _quiz_sig       = pyqtSignal(str, object, object)  # (topic, questions, grader)
     _quiz_hide_sig  = pyqtSignal()
@@ -1080,6 +1083,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         self._update_metrics()
 
         self._log_sig.connect(self._log.append_log)
+        self._speech_caption_sig.connect(self._speech_caption.handle)
         self._phone_connected_sig.connect(self.notify_phone_connected)
         self._state_sig.connect(self._apply_state)
         self._content_sig.connect(self._show_content)
@@ -1087,6 +1091,8 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         from ui.desktop_workspace import open_initial_editor
         self._plugins_ready_sig.connect(lambda: open_initial_editor(self))
         self._workspace_command_sig.connect(self._execute_workspace_command)
+        self._visual_content_sig.connect(self._open_visual_content)
+        self._narrative_content_sig.connect(self._open_narrative_content)
         self._editor_assist_sig.connect(self._execute_editor_assist)
         self._ssh_assist_sig.connect(self._execute_ssh_assist)
         self._browser_read_sig.connect(self._execute_browser_read)
@@ -1149,6 +1155,14 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
     def _execute_browser_read(self, request):
         from ui.browser_read import execute
         execute(self, request)
+
+    def _open_narrative_content(self, request):
+        from ui.visual_bridge import open_content
+        open_content(self, 'narrative', request)
+
+    def _open_visual_content(self, request):
+        from ui.visual_bridge import open_content
+        open_content(self, 'chart', request)
 
     def _execute_workspace_command(self, request):
         """Run on the Qt thread and always return an explicit outcome."""
@@ -3517,32 +3531,37 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
 
     # ── Irreversible-action confirmation ─────────────────────────────────────
 
-    def _show_confirm_banner(self, title: str, detail: str):
+    def _show_confirm_banner(self, token: str, title: str, detail: str):
+        from core.confirm import is_pending
+        if not is_pending(token):
+            return  # a queued banner for an expired or replaced request
         if hasattr(self, "_hand_controller"):
             self._hand_controller.stop()
         if getattr(self, "_hand_menu", None) is not None:
             self._hand_menu.close()
         self._hide_confirm_banner()
         ov = ConfirmBanner(title, detail, parent=self.centralWidget())
-        ov.answered.connect(self._on_confirm_answered)
+        ov.answered.connect(lambda accepted: self._on_confirm_answered(token, accepted))
         self._centre_overlay(ov)
         self._confirm_overlay = ov
+        self._confirm_token = token
 
-    def _hide_confirm_banner(self):
+    def _hide_confirm_banner(self, token=None):
         ov = getattr(self, "_confirm_overlay", None)
-        if ov is not None:
+        if ov is not None and (token is None or token == getattr(self, "_confirm_token", None)):
             ov.hide()
             ov.deleteLater()
             self._confirm_overlay = None
+            self._confirm_token = None
 
-    def _on_confirm_answered(self, accepted: bool):
+    def _on_confirm_answered(self, token: str, accepted: bool):
         # Tear the banner down first: core.confirm.resolve() may be about to
         # shut the machine down, and a live widget mid-callback is not where you
         # want to be when that happens.
-        self._hide_confirm_banner()
+        self._hide_confirm_banner(token)
         try:
             from core.confirm import resolve
-            resolve(bool(accepted))
+            resolve(token, bool(accepted))
         except Exception as e:
             self._log.append_log(f"ERR: Confirmation failed — {e}")
 
@@ -3892,14 +3911,14 @@ class JarvisUI:
     def on_audio_device_change(self, cb):
         self._win.on_audio_device_change = cb
 
-    def show_confirm(self, title: str, detail: str) -> None:
+    def show_confirm(self, token: str, title: str, detail: str) -> None:
         """Thread-safe: raise the irreversible-action gate. Called from action
         handlers running in executor threads, so it goes through a signal."""
-        self._win._confirm_sig.emit(str(title)[:120], str(detail)[:300])
+        self._win._confirm_sig.emit(token, title, detail)
 
-    def hide_confirm(self) -> None:
-        """Thread-safe: take the gate down."""
-        self._win._confirm_hide_sig.emit()
+    def hide_confirm(self, token: str) -> None:
+        """Thread-safe: take down only the matching gate."""
+        self._win._confirm_hide_sig.emit(token)
 
     @property
     def get_plugins(self):
@@ -3998,6 +4017,9 @@ class JarvisUI:
     def set_state(self, state: str):
         self._win._state_sig.emit(state)
 
+    def speech_caption(self, event):
+        self._win._speech_caption_sig.emit(event)
+
     def write_log(self, text: str):
         self._win._log_sig.emit(text)
 
@@ -4012,6 +4034,14 @@ class JarvisUI:
     def show_code_job(self, job: dict) -> None:
         """Thread-safe: draw the coding agent's live progress in the panel."""
         self._win._codejob_sig.emit(dict(job))
+
+    def show_narrative_content(self, payload: dict) -> dict:
+        from ui.visual_bridge import request
+        return request(self._win, 'narrative', payload)
+
+    def show_visual_content(self, payload: dict) -> dict:
+        from ui.visual_bridge import request
+        return request(self._win, 'chart', payload)
 
     def control_workspace(self, command: dict) -> dict:
         """Worker-only request to the desktop; timeout cancels unstarted work."""

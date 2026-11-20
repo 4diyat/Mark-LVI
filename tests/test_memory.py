@@ -249,3 +249,63 @@ def test_a_notifier_that_raises_does_not_stop_the_trim():
     memory = mm.update_memory({"notes": {"new": "y" * 100}})
 
     assert "new" in memory["notes"]
+
+
+def test_concurrent_updates_and_session_are_serialized(monkeypatch):
+    import threading
+
+    entered = threading.Event()
+    release = threading.Event()
+    orig = mm._write_atomic
+    def slow_write(data):
+        if not entered.is_set():
+            entered.set()
+            assert release.wait(5)
+        return orig(data)
+    monkeypatch.setattr(mm, "_write_atomic", slow_write)
+    errors = []
+    def work(fn):
+        try:
+            fn()
+        except Exception as exc:
+            errors.append(exc)
+    jobs = [lambda: mm.update_memory({"notes": {"a": "one"}}),
+            lambda: mm.update_memory({"notes": {"b": "two"}}),
+            lambda: mm.save_session_summary("A session")]
+    threads = [threading.Thread(target=work, args=(job,)) for job in jobs]
+    threads[0].start()
+    assert entered.wait(5)
+    for thread in threads[1:]:
+        thread.start()
+    release.set()
+    for thread in threads:
+        thread.join(timeout=5)
+        assert not thread.is_alive()
+    assert not errors
+    memory = mm.load_memory()
+    assert set(memory["notes"]) == {"a", "b"}
+    assert memory["sessions"][0]["summary"] == "A session"
+
+
+def test_failed_replace_preserves_previous_memory_and_cleans_temp(monkeypatch, isolated_memory):
+    mm.update_memory({"notes": {"keep": "old"}})
+    before = isolated_memory.read_bytes()
+    def fail(*args):
+        raise OSError("replace failed")
+    monkeypatch.setattr(mm.os, "replace", fail)
+    with pytest.raises(OSError):
+        mm.update_memory({"notes": {"new": "value"}})
+    assert isolated_memory.read_bytes() == before
+    assert list(isolated_memory.parent.glob(".memory-*.tmp")) == []
+
+
+def test_corrupt_memory_is_not_overwritten_by_mutations(isolated_memory):
+    isolated_memory.write_text("{ broken", encoding="utf-8")
+    before = isolated_memory.read_bytes()
+    for call in (lambda: mm.update_memory({"notes": {"a": "one"}}),
+                 lambda: mm.forget("a"), lambda: mm.save_session_summary("session")):
+        with pytest.raises(RuntimeError, match="not changed"):
+            call()
+        assert isolated_memory.read_bytes() == before
+    assert mm.pop_last_session() is None
+    assert isolated_memory.read_bytes() == before

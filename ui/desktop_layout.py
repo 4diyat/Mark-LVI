@@ -247,6 +247,9 @@ def build_assistant_panel(window):
     # Keep the real conversation and input as the primary surface. The HUD and
     # existing tool/media panes remain available in the splitter above it.
     layout.addWidget(window._right_panel, stretch=4)
+    from ui.speech_caption import SpeechCaption
+    window._speech_caption = SpeechCaption(panel)
+    layout.addWidget(window._speech_caption)
     window._voice_hint = _label(_t("desktop.voice_hint"), 8)
     window._voice_hint.setWordWrap(True)
     layout.addWidget(window._voice_hint)
@@ -272,6 +275,7 @@ def build_assistant_panel(window):
 
 
 def retranslate(window):
+    window._speech_caption.retranslate()
     for button, key in window._desktop_nav:
         button.setText(_t(key))
     for attr, key in (("_nav_title", "desktop.navigation"), ("_metrics_heading", "desktop.system"),

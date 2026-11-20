@@ -79,6 +79,8 @@ _LIVE_ONLY = ("behavior", "scheduling")
 # Names verified against the live registry rather than written from memory —
 # the first draft of this list said "set_reminder" and the tool is called
 # "reminder", which would have quietly demoted it to an extra.
+VISUAL_TOOLS: tuple[str, ...] = ("present_content", "visualize_data")
+
 CORE_TOOLS: tuple[str, ...] = (
     "open_app",
     "computer_settings",
@@ -271,7 +273,8 @@ def _tier_of(decl: Any, core_names: Sequence[str]) -> int:
 
 def budget(decls: Sequence[Any], max_tools: int | None = None,
            max_chars: int | None = None,
-           core_names: Sequence[str] = CORE_TOOLS) -> list[Any]:
+           core_names: Sequence[str] = CORE_TOOLS,
+           preferred_names: Sequence[str] = ()) -> list[Any]:
     """The declarations an engine should actually be given.
 
     Both limits `None` returns the input unchanged — same objects, same order.
@@ -280,6 +283,10 @@ def budget(decls: Sequence[Any], max_tools: int | None = None,
     Otherwise core tools are kept first, in the order of `core_names` so the
     most load-bearing survive a very tight budget, and extras fill whatever is
     left in their original order. Whichever limit bites first stops the filling.
+
+    An explicit preferred_names list can reserve space for opted-in tools. It
+    never adds tools, raises budgets, or changes the unlimited path. It may
+    displace core tools, so it must only be supplied after the user's choice.
 
     The result is returned in the ORIGINAL order, not in ranked order: ranking
     decides what survives, and a model reads a list that has been reshuffled
@@ -300,11 +307,14 @@ def budget(decls: Sequence[Any], max_tools: int | None = None,
         return [compact(d) for d in decls]
 
     order = {n: i for i, n in enumerate(core_names)}
+    preferred = {n: i for i, n in enumerate(preferred_names)}
 
     def sort_key(item):
         i, d = item
         name = (d.get("name", "") if isinstance(d, dict)
                 else (getattr(d, "name", "") or ""))
+        if name in preferred:
+            return (-1, preferred[name], i)
         return (_tier_of(d, core_names), order.get(name, 10_000), i)
 
     # Compact BEFORE fitting, so a brief that halves a declaration buys room

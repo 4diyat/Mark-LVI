@@ -202,13 +202,17 @@ def test_remote_playback_continues_when_no_local_speakers():
     exec(compile(ast.Module(body=[node], type_ignores=[]), "main.py", "exec"), namespace)
     async def check():
         output, logs = [], []
+        delivered = asyncio.Event()
+        def publish(audio):
+            output.append(audio)
+            delivered.set()
         queue = asyncio.Queue()
         obj = SimpleNamespace(audio_in_queue=queue, _out_latency=.1, _dashboard=SimpleNamespace(
-            publish_audio=output.append), ui=SimpleNamespace(write_log=logs.append),
+            publish_audio=publish), ui=SimpleNamespace(write_log=logs.append),
             set_speaking=lambda _: None, _turn_done_event=None)
         task = asyncio.create_task(namespace["_play_audio"](obj))
         await queue.put(b"\x01\x00" * 1200)
-        await asyncio.sleep(.02)
+        await asyncio.wait_for(delivered.wait(), 2)
         assert output == [b"\x01\x00" * 1200]
         assert any("remote audio can still play" in msg for msg in logs)
         task.cancel()

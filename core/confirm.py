@@ -35,6 +35,7 @@ WHAT BELONGS HERE AND WHAT DOES NOT
 
 from __future__ import annotations
 
+import secrets
 import threading
 import time
 from dataclasses import dataclass
@@ -50,6 +51,7 @@ TIMEOUT_SECONDS = 90.0
 
 @dataclass
 class _Pending:
+    token:   str
     key:     str
     title:   str
     detail:  str
@@ -60,10 +62,10 @@ class _Pending:
 _pending: Optional[_Pending] = None
 _lock = threading.Lock()
 
-# Set once at startup by main.py. Signature: (title, detail) -> None for show,
-# and () -> None for hide. Both are marshalled onto the Qt thread by the UI.
-_show_cb: Optional[Callable[[str, str], None]] = None
-_hide_cb: Optional[Callable[[], None]] = None
+# Callbacks include the opaque request ID, so queued UI events cannot act on
+# a different request. Both callbacks are marshalled onto the Qt thread.
+_show_cb: Optional[Callable[[str, str, str], None]] = None
+_hide_cb: Optional[Callable[[str], None]] = None
 _log_cb:  Optional[Callable[[str], None]] = None
 
 
@@ -92,6 +94,9 @@ def request(key: str, title: str, detail: str, run: Callable[[], str]) -> str:
     rather than reading an English string verbatim."""
     global _pending
 
+    # Never approve details silently truncated by the interface.
+    if not isinstance(title, str) or not isinstance(detail, str) or len(title) > 120 or len(detail) > 300:
+        return "Cannot show the complete action details for confirmation. Nothing was done."
     if _show_cb is None:
         # No interface bound (headless, or a very early call). Refuse rather
         # than silently performing something irreversible.
@@ -99,14 +104,20 @@ def request(key: str, title: str, detail: str, run: Callable[[], str]) -> str:
                 f"not available, so I have not done it.")
 
     with _lock:
-        _pending = _Pending(key=key, title=title, detail=detail,
-                            run=run, at=time.monotonic())
+        now = time.monotonic()
+        if _pending is not None and now - _pending.at <= TIMEOUT_SECONDS:
+            return ("Another action is already awaiting confirmation. "
+                    "This action was not requested; resolve the existing confirmation first.")
+        pending = _Pending(token=secrets.token_urlsafe(24), key=key, title=title,
+                           detail=detail, run=run, at=now)
+        _pending = pending
 
     try:
-        _show_cb(title, detail)
+        _show_cb(pending.token, title, detail)
     except Exception as e:
         with _lock:
-            _pending = None
+            if _pending is pending:
+                _pending = None
         return f"Could not ask for confirmation: {e}. Nothing was done."
 
     _log(f"SYS: Awaiting confirmation — {title}")
@@ -117,7 +128,14 @@ def request(key: str, title: str, detail: str, run: Callable[[], str]) -> str:
     )
 
 
-def resolve(accepted: bool) -> None:
+def is_pending(token: str) -> bool:
+    """Whether a queued banner still belongs to the current, unexpired request."""
+    with _lock:
+        return bool(_pending is not None and token == _pending.token
+                    and time.monotonic() - _pending.at <= TIMEOUT_SECONDS)
+
+
+def resolve(token: str, accepted: bool) -> None:
     """Called by the UI when the user presses CONFIRM or CANCEL.
 
     Runs the stored callable on a worker thread — this is invoked from the Qt
@@ -126,19 +144,18 @@ def resolve(accepted: bool) -> None:
     global _pending
 
     with _lock:
+        if _pending is None or not token or token != _pending.token:
+            return
         p, _pending = _pending, None
 
     if _hide_cb:
         try:
-            _hide_cb()
+            _hide_cb(token)
         except Exception as e:
             # The gate stays drawn on screen while the action runs behind it.
             # Ugly, but strictly better than not running what the user just
             # confirmed; the log says why the panel is still there.
             logbook.get("confirm").debug("hiding the confirmation: %s", e)
-
-    if p is None:
-        return
 
     if time.monotonic() - p.at > TIMEOUT_SECONDS:
         _log(f"SYS: Confirmation expired — {p.title}")

@@ -39,6 +39,9 @@ def emit_capture(widget, title):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--image-editor', action='store_true', help='capture the synthetic image editor instead')
+    parser.add_argument('--visual-content', action='store_true', help='capture a fictional interactive chart')
+    parser.add_argument('--bar-chart', action='store_true', help='show fictional numeric data as bars')
+    parser.add_argument('--narrative-content', choices=('cards', 'steps', 'timeline'), help='capture fictional explanatory content')
     args = parser.parse_args()
     with tempfile.TemporaryDirectory() as tmp:
         os.environ['HOME'] = tmp
@@ -80,7 +83,35 @@ def main():
             window._log._next()
         QTest.qWait(300)
         app.processEvents()
-        if not args.image_editor:
+        if args.narrative_content:
+            from ui.narrative_content import NarrativeContent
+            data = {'kind': args.narrative_content, 'title': 'How plants make food',
+                    'source': 'Synthetic demonstration', 'summary': 'A fictional layout example.',
+                    'items': [{'label': 'Capture light', 'detail': 'Leaves absorb sunlight.'},
+                              {'label': 'Use water and carbon dioxide', 'detail': 'Plants use water and carbon dioxide in the process.', 'when': 'Example time'},
+                              {'label': 'Store energy', 'detail': 'The process produces sugar and releases oxygen.'}]}
+            view = NarrativeContent(window, data)
+            sub = show_document(window, view, 'narrative_content')
+            sub.setGeometry(180, 50, 820, 600)
+            view.items.setCurrentRow(1)
+            QTest.qWait(300)
+            app.processEvents()
+            emit_capture(sub, 'Narrative ' + args.narrative_content + ' capture')
+        elif args.visual_content:
+            from ui.visual_content import VisualContent
+            data = {'title': 'Expense analysis', 'source': 'Synthetic example', 'observed': 'Jan–Jun example',
+                    'chart_type': 'bar' if args.bar_chart else 'line',
+                    'unit': 'million', 'points': [
+                        {'label': name, 'value': value} for name, value in
+                        [('Jan', 2.0), ('Feb', 2.4), ('Mar', 2.8), ('Apr', 4.2), ('May', 4.8), ('Jun', 3.4)]]}
+            view = VisualContent(window, data)
+            sub = show_document(window, view, 'visual_content')
+            sub.setGeometry(180, 50, 820, 600)
+            view.select(3)
+            QTest.qWait(300)
+            app.processEvents()
+            emit_capture(sub, 'Bar chart capture' if args.bar_chart else 'Visual content capture')
+        elif not args.image_editor:
             emit_capture(window, 'Desktop capture')
         else:
             # A generated in-memory image and fictional text layer reveal the image

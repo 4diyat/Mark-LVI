@@ -226,6 +226,27 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: python tools/capture_desktop_qt.py
+      - name: Capture synthetic visual content for review
+        if: runner.os == 'Linux'
+        env:
+          QT_QPA_PLATFORM: offscreen
+          PYTHONPATH: .
+        run: python tools/capture_desktop_qt.py --visual-content
+      - name: Capture synthetic bar chart for review
+        if: runner.os == 'Linux'
+        env:
+          QT_QPA_PLATFORM: offscreen
+          PYTHONPATH: .
+        run: python tools/capture_desktop_qt.py --visual-content --bar-chart
+      - name: Capture synthetic explanatory content for review
+        if: runner.os == 'Linux'
+        env:
+          QT_QPA_PLATFORM: offscreen
+          PYTHONPATH: .
+        run: |
+          python tools/capture_desktop_qt.py --narrative-content cards
+          python tools/capture_desktop_qt.py --narrative-content steps
+          python tools/capture_desktop_qt.py --narrative-content timeline
       - name: Capture synthetic image editor for visual review
         if: runner.os == 'Linux'
         env:

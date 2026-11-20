@@ -62,6 +62,8 @@ from memory.memory_manager import (
 # (screen_process, close_camera, save_memory, manage_monitor, shutdown_jarvis,
 # system_status).
 from core import outcome
+from core import playback_buffer
+from core import speech_sync
 from core.action_loader import strip_meta
 from actions.screen_processor  import _capture_camera, _capture_pointed_screen, _capture_screen
 from actions.system_monitor    import SystemMonitor
@@ -651,6 +653,7 @@ class JarvisLive:
         self._vision_last_time     = 0.0     # monotonic time of last screen_process call (cooldown guard)
         self._vision_busy          = False   # True while a vision capture/inject cycle is in flight
         self._interrupted          = False   # True while draining audio after user interrupt
+        self._interrupt_local_token = None   # ordered pipeline barrier, if any
         # Which engine is holding the conversation, and what it can do.
         # None means Gemini Live — the default and, unless somebody has gone to
         # the providers settings and chosen otherwise, always the case. Every
@@ -1179,31 +1182,33 @@ class JarvisLive:
             pass
 
     def interrupt(self) -> None:
-        """Stop JARVIS mid-speech: drain queued audio and open mic immediately."""
+        """Schedule interruption on the owner loop; called from the Qt thread."""
+        loop, queue = self._loop, self.audio_in_queue
+        if loop is None or queue is None or not loop.is_running():
+            return
+        try:
+            loop.call_soon_threadsafe(self._interrupt_on_loop, queue)
+        except RuntimeError:
+            pass  # The session closed between is_running() and scheduling.
+
+    def _interrupt_on_loop(self, queue) -> None:
+        # An old GUI callback must not interrupt a replacement connection.
+        if queue is not self.audio_in_queue:
+            return
         self._interrupted = True
-        q = self.audio_in_queue
-        if q:
-            drained = 0
-            while True:
-                try:
-                    q.get_nowait()
-                    drained += 1
-                except Exception:
-                    break
-            if drained:
-                print(f"[JARVIS] ✋ Interrupted — {drained} audio chunks discarded")
+        speech_sync.reset(self)
+        drained = playback_buffer.drain(queue)
+        if drained:
+            print(f"[JARVIS] ✋ Interrupted — {drained} audio chunks discarded")
         self.set_speaking(False)
-        # The words we were about to mouth are never going to be spoken now.
         self._visemes.reset()
-        self._play_cursor = 0.0     # next batch starts a fresh timeline
+        self._play_cursor = 0.0
         if self._turn_done_event:
             self._turn_done_event.clear()
-        # Draining the queue stops the speakers, but a local engine is still
-        # generating the rest of the answer and would keep filling it back up.
-        # Live has nothing to cancel here — the server stops on its own.
+        self._interrupt_local_token = None
         if self._engine is not None:
             try:
-                self._engine.interrupt()
+                self._interrupt_local_token = self._engine.interrupt()
             except Exception:
                 pass
         self.ui.write_log("SYS: Interrupted — listening...")
@@ -1312,7 +1317,8 @@ class JarvisLive:
             from providers import schema as _schema
             _offered = _schema.budget(_all_decls,
                                       max_tools=self._engine_caps.get("max_tools"),
-                                      max_chars=self._engine_caps.get("max_tool_chars"))
+                                      max_chars=self._engine_caps.get("max_tool_chars"),
+                                      preferred_names=(_schema.VISUAL_TOOLS if self._engine_caps.get("prioritize_visual_tools") else ()))
             _kept_names = {d.get("name") if isinstance(d, dict) else getattr(d, "name", "")
                            for d in _offered}
             _omitted = [d.get("name") if isinstance(d, dict) else getattr(d, "name", "")
@@ -1338,6 +1344,11 @@ class JarvisLive:
                 has_mic=not self._deaf,
             ),
         })
+
+        from core.visual_guidance import guidance as _visual_guidance
+        _visual_notes = _visual_guidance(_names)
+        if _visual_notes:
+            sys_prompt += "\n\n[VISUAL EXPLANATIONS]\n" + _visual_notes
 
         parts = [time_ctx, identity_ctx]
         if mem_str:
@@ -1468,15 +1479,18 @@ class JarvisLive:
             category = args.get("category", "notes")
             key      = args.get("key", "")
             value    = args.get("value", "")
-            if key and value:
-                update_memory({category: {key: {"value": value}}})
-                print(f"[Memory] 💾 save_memory: {category}/{key} = {value}")
+            try:
+                if not key or not value:
+                    raise ValueError("a key and value are required")
+                await asyncio.to_thread(update_memory, {category: {key: {"value": value}}})
+                result = {"result": "ok", "silent": True}
+            except Exception as e:
+                self.ui.write_log("ERR: Memory could not be saved; existing data was not replaced.")
+                print(f"[Memory] Save failed: {type(e).__name__}")
+                result = {"result": "Memory could not be saved. Tell the user it was not saved."}
             if not self.ui.muted:
                 self.ui.set_state("LISTENING")
-            return types.FunctionResponse(
-                id=fc.id, name=name,
-                response={"result": "ok", "silent": True}
-            )
+            return types.FunctionResponse(id=fc.id, name=name, response=result)
 
         loop   = asyncio.get_event_loop()
         result = "Done."
@@ -1902,10 +1916,20 @@ class JarvisLive:
         try:
             while True:
                 async for response in self.session.receive():
-                    # Anything at all from the server proves the return path is
-                    # alive, so the stall clock stops here rather than in any of
-                    # the branches below — a tool call, a transcript or a bare
-                    # keepalive all count.
+                    # The local pipeline emits an ordered barrier after all
+                    # pre-interrupt messages. Older barriers cannot finish a
+                    # newer interrupt; ordinary turn ends cannot replace it.
+                    _barrier = getattr(response, "interruption_id", None)
+                    if _barrier is not None:
+                        if _barrier == self._interrupt_local_token:
+                            self._interrupt_local_token = None
+                            self._interrupted = False
+                            in_buf, out_buf = [], []
+                            self._visemes.reset()
+                        continue
+
+                    # An internal barrier is not provider traffic and must not
+                    # clear the deadline for a newly submitted request.
                     self._clear_stall()
 
                     # ── Session resumption ───────────────────────────────────
@@ -1927,12 +1951,12 @@ class JarvisLive:
                         else:
                             if self._turn_done_event and self._turn_done_event.is_set():
                                 self._turn_done_event.clear()
-                            # Split into ~50 ms chunks so interrupt() stops audio within 50 ms
-                            # (24000 Hz × 2 bytes/sample × 0.05 s = 2400 bytes per slice)
-                            _audio_data = response.data
-                            _SLICE = 2400
-                            for _i in range(0, len(_audio_data), _SLICE):
-                                self.audio_in_queue.put_nowait(_audio_data[_i : _i + _SLICE])
+                            # Backpressure keeps queued playback bounded without
+                            # silently dropping or splicing a spoken response.
+                            await playback_buffer.enqueue(
+                                self.audio_in_queue, response.data,
+                                lambda: self._interrupted,
+                                caption=getattr(response, "speech_caption", None))
 
                     if response.server_content:
                         sc = response.server_content
@@ -1961,17 +1985,17 @@ class JarvisLive:
                                 self._last_user_speech = time.monotonic()
 
                         if sc.turn_complete:
-                            if self._turn_done_event:
-                                self._turn_done_event.set()
-
-                            # If this turn_complete ends an interrupted response, clear the
-                            # flag and skip all further processing for that turn.
                             if self._interrupted:
-                                self._interrupted = False
-                                in_buf  = []
-                                out_buf = []
+                                # Gemini's turn end is its boundary. Local
+                                # pipeline events may have an older turn end
+                                # before the unique interruption barrier.
+                                if self._interrupt_local_token is None:
+                                    self._interrupted = False
+                                in_buf, out_buf = [], []
                                 self._visemes.reset()
                                 continue
+                            if self._turn_done_event:
+                                self._turn_done_event.set()
 
                             full_in = " ".join(in_buf).strip()
                             if full_in:
@@ -2082,6 +2106,7 @@ class JarvisLive:
         except Exception:
             pass
 
+        from core import playback_buffer as _playback, speech_sync as _speech_sync
         try:
             while True:
                 try:
@@ -2097,15 +2122,22 @@ class JarvisLive:
                     ):
                         self.set_speaking(False)
                         self._turn_done_event.clear()
+                        if getattr(self, "_engine", None) is not None:
+                            _speech_sync.schedule(self, "", max(time.time(), self._play_cursor))
                     continue
 
+                caption = chunk.caption if isinstance(chunk, _playback.CaptionedChunk) else None
+                if caption is not None:
+                    chunk = chunk.data
                 self.set_speaking(True)
 
                 # Batch all immediately-available chunks into one write to reduce
                 # thread-pool round-trips (was one asyncio.to_thread per 50ms slice).
                 # Cap at ~200 ms so interrupt() still stops audio within ~200 ms.
                 batch = bytearray(chunk)
-                while len(batch) < 9600:   # 9600 bytes ≈ 200 ms at 24 kHz / 16-bit mono
+                # A pipeline sentence boundary must not be batched into the
+                # previous sentence. Live has no such PCM-aligned metadata.
+                while len(batch) < 9600 and getattr(self, "_engine", None) is None:
                     try:
                         batch.extend(self.audio_in_queue.get_nowait())
                     except asyncio.QueueEmpty:
@@ -2146,6 +2178,8 @@ class JarvisLive:
                     if not (now <= self._play_cursor <= now + horizon):
                         self._play_cursor = now + _FIRST_SOUND
                     at = self._play_cursor
+                    if caption:
+                        _speech_sync.schedule(self, caption, at)
                     # Advance by the batch's own duration whether or not it
                     # yielded frames, so a block too short to analyse cannot
                     # shift everything after it out of step with the audio.
@@ -2774,7 +2808,7 @@ class JarvisLive:
                     session.send_client_content = _send_and_arm
 
                     self.session          = session
-                    self.audio_in_queue   = asyncio.Queue()
+                    self.audio_in_queue   = asyncio.Queue(maxsize=playback_buffer.MAX_SLICES)
                     self.out_queue        = asyncio.Queue(maxsize=200)
                     self._turn_done_event = asyncio.Event()
                     self._rx_deadline     = None
@@ -2786,6 +2820,8 @@ class JarvisLive:
                     self._vision_busy          = False
                     self._vision_last_time     = 0.0
                     self._interrupted          = False
+                    self._interrupt_local_token = None
+                    speech_sync.reset(self)
 
                     print("[JARVIS] Connected.")
                     if _resumed_with:

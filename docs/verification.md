@@ -519,3 +519,226 @@ layanan aktif. Tata letak dibatasi agar caption tidak bertumpuk dengan wajah
 atau keluar dari stage. Ini bukan perubahan model 3D maupun wajah fotorealistis.
 Tes geometri dan Qt offscreen memeriksa batas, bahasa dan status sintetis;
 kecocokan visual, aksesibilitas dan performa perangkat tetap perlu pemeriksaan.
+
+### Persetujuan tindakan umum
+
+Gerbang `core.confirm` menolak permintaan baru secara atomik saat ada
+persetujuan yang belum kedaluwarsa. Banner dan jawaban membawa ID permintaan
+acak; jawaban, tampilan, atau penutupan yang terlambat tidak dapat menyetujui
+atau menutup banner baru. Judul/detail yang melampaui batas tampilan ditolak,
+bukan dipotong diam-diam. `tests/test_confirm.py` menguji konkurensi, identitas,
+kedaluwarsa dan kegagalan callback; `tools/check_desktop_qt.py` menguji antrean
+sinyal dan tombol dengan Qt offscreen. Ini bukan audit semua jalur persetujuan,
+sandbox plugin, atau validasi interaksi pada perangkat nyata; gerbang MT5 dan
+SSH memiliki mekanisme dan pengujiannya sendiri.
+
+### Keandalan memori
+
+Pembaruan, penghapusan dan ringkasan sesi diserialisasi dalam satu proses dan
+ditulis melalui file sementara di direktori yang sama lalu `os.replace`. Jika
+file memori rusak/tidak terbaca, operasi perubahan menolak menimpanya. Tes
+mencakup penulisan bersamaan dan kegagalan penggantian; smoke Qt memeriksa pesan
+kegagalan hapus. Ini bukan lock antarproses, enkripsi memori, jaminan pemulihan
+setelah setiap kegagalan perangkat keras, atau pengujian pada perangkat nyata.
+
+### Konten visual interaktif (tahap awal)
+
+Plugin `visualize_data` menerima 2–48 pasangan label dan angka yang sudah
+tersedia dari pengguna/hasil tool, bersama judul dan keterangan sumber. Nilai
+harus terbatas dan hingga; tidak ada kode, URL, file, atau aksi yang dijalankan.
+Waktu data tidak diada-adakan. Sumber adalah keterangan yang diberikan, **bukan**
+sumber yang telah diverifikasi. UI menampilkan grafik garis dan tabel; pemilihan
+titik lewat mouse, tombol panah atau tabel disinkronkan. Tombol bertanya hanya
+menyiapkan draf berisi titik yang dipilih, tanpa menimpa draf yang ada atau
+mengirim otomatis. Data dibungkus sebagai tak tepercaya; ini bukan jaminan
+terhadap prompt injection. Pengguna meninjau dan mengirim draf sendiri.
+
+Tes `tests/test_visual_content.py` mencakup validasi dan perhitungan posisi;
+`tools/check_desktop_qt.py` menguji jalur worker, pemilihan, tabel, lokalisasi,
+dan draf dengan Qt offscreen. CI mengambil gambar contoh sintetis untuk review.
+Diagram lain, penyimpanan/bagikan, pengambilan data otomatis, dan kesesuaian
+visual/DPI serta interaksi pada perangkat nyata belum diverifikasi atau belum
+tersedia. Model lokal dengan anggaran tool kecil dapat tidak menawarkan plugin.
+
+### Konten penjelasan, bukan hanya grafik
+
+Plugin `present_content` menerima konten terbatas dalam tiga bentuk: kartu
+konsep, langkah berurutan, atau linimasa. Ini adalah informasi interaktif,
+bukan rencana yang otomatis dijalankan. Item dapat dipilih dengan mouse atau
+keyboard untuk membaca detail dan menyiapkan pertanyaan pada kolom asisten;
+draf lama tidak ditimpa dan tidak ada pengiriman otomatis. Judul, sumber dan
+rincian ditampilkan sebagai teks biasa, tanpa menjalankan kode atau tautan.
+Sumber hanyalah keterangan yang diberikan dan tidak otomatis diverifikasi;
+tanggal kosong tetap tidak diketahui. Konten model dapat keliru dan penanda
+untrusted bukan jaminan keamanan terhadap prompt injection.
+
+`tests/test_narrative_content.py` memeriksa validasi dan pembatalan; CI menguji
+jalur plugin hingga widget Qt offscreen dan menangkap contoh sintetis. Ini
+belum menghasilkan semua jenis media, belum sinkron dengan setiap jawaban suara,
+dan belum membuktikan kualitas pemilihan bentuk oleh provider nyata atau
+penggunaan pada layar nyata. Tool dapat dihilangkan oleh provider beranggaran
+kecil. Browser tetap tidak dikerjakan dalam tahap ini.
+
+Tampilan pilihan kini memakai kartu berpratinjau untuk konsep, nomor untuk
+langkah dan penanda linimasa untuk peristiwa. Pratinjau panjang dapat terpotong;
+teks lengkap tetap tersedia di panel detail. Waktu peristiwa yang tidak diberikan
+ditampilkan sebagai tidak diketahui, bukan diperkirakan. CI juga menguji pilihan
+dengan mouse dan keyboard serta perubahan bahasa di Qt offscreen.
+
+### Pemilihan visual dan batas tool model
+
+Panduan visual ditambahkan ke instruksi model hanya bila tool yang bersangkutan
+benar-benar ditawarkan setelah penyaringan dan anggaran. Model diminta memilih
+bentuk yang sesuai, menghormati penolakan, dan tidak mengklaim tampilan berhasil
+sebelum hasil tool mengonfirmasinya. Ini adalah panduan, bukan pemaksa atau
+jaminan model akan memanggil tool maupun menyelaraskan tampilan dengan ucapan.
+
+Untuk pipeline OpenAI-compatible, pengaturan lanjutan **Prioritize visual
+content tools** bersifat opt-in dan perlu sambung ulang. Saat ada batas tool,
+`present_content` lalu `visualize_data` diprioritaskan hanya jika aktif dan ada
+pada daftar; tool lain, termasuk tool inti, dapat tergeser. Tool yang tidak
+ditawarkan tetap dicatat dalam activity log. Pilihan ini tidak menaikkan
+anggaran dan tidak mengaktifkan plugin yang dinonaktifkan. Tanpa batas, urutan
+semula tetap berlaku. Ini bukan pemilihan tool berdasarkan permintaan per giliran:
+prioritas berlaku sepanjang sesi. Seperti perilaku budget yang sudah ada, tool
+pertama yang sendirian melebihi batas karakter tetap dapat lolos; batas jumlah
+tool tetap berlaku. Model kecil mungkin tetap gagal memakai tool.
+
+### Draf pertanyaan dari pilihan visual
+
+Draf kini membawa salinan bagian yang dipilih, posisi/jumlah bagian, ringkasan
+(jika ada), sumber dan waktu yang diberikan, serta konteks tetangga terbatas:
+judul/waktu untuk konten penjelasan atau label/nilai untuk grafik. Tidak ada
+rincian bagian lain atau seluruh dataset yang diam-diam ditambahkan. Semua
+konteks itu terlihat di kolom masukan untuk diperiksa/diedit sebelum dikirim,
+dibungkus sebagai data tak tepercaya dan tidak otomatis dikirim. Penanda ini
+bukan sandbox, dan pengguna tetap dapat mengubahnya saat mengedit draf.
+
+Draf yang sudah ada, termasuk hanya spasi, tidak diganti. Jika konteks lengkap
+melampaui batas `QLineEdit` dalam unit UTF-16, tidak ada draf parsial yang
+dimasukkan; pesan menjelaskan kegagalan. Uji unit meliputi batas pilihan,
+tetangga, karakter emoji dan penanda berbahaya; uji Qt offscreen CI memeriksa
+pengisian, batas input dan perlindungan draf untuk grafik serta ketiga bentuk
+konten. Konteks ini adalah snapshot pada saat tombol ditekan, bukan sinkronisasi
+pilihan secara langsung atau verifikasi kebenaran informasi.
+
+Pada grafik maupun konten penjelasan, kolom pertanyaan opsional memungkinkan
+pengguna menulis pertanyaan sendiri tanpa mengubah penanda konteks. Jika kosong,
+pertanyaan penjelasan standar dipakai. Tombol tetap hanya membuat draf untuk
+pemeriksaan di asisten, tidak mengirimnya. Saat pemilihan berubah, draf yang
+sudah dibuat tidak berubah; pengguna harus mengosongkan atau mengirim draf itu
+sebelum membuat snapshot baru. Pertanyaan yang ditulis tetap di kolom konten
+jika pembuatan draf gagal atau bahasa UI diganti. Pertanyaan pengguna sengaja
+berada di luar penanda untrusted; data tampilan tetap berada di dalamnya.
+
+### Grafik batang untuk perbandingan
+
+`visualize_data` kini menerima `chart_type` opsional: `bar` untuk perbandingan
+kategori atau `line` untuk tren berurutan. Input lama tanpa tipe tetap memakai
+garis. Pengguna dapat beralih antara garis, batang, dan tabel tanpa kehilangan
+pilihan; draf pertanyaan menyertakan tipe grafik yang terakhir dipilih. Batang
+menggunakan nol sebagai dasar untuk nilai positif maupun negatif, dan nol tidak
+digambar sebagai batang bernilai non-nol. Tabel tetap menampilkan label dan
+angka lengkap ketika label grafik disingkat atau terlalu banyak untuk digambar.
+
+Uji geometri mencakup nilai campuran, nol, konstan dan nilai ekstrem dalam batas;
+CI Qt offscreen menguji pergantian jenis, mouse pada batang termasuk nol,
+keyboard, tabel dan draf. Pemilihan jenis oleh model tetap tidak dijamin benar;
+pengguna dapat menggantinya. Angka dan sumber yang dikirim tool tidak diverifikasi.
+
+### Batas antrean audio keluaran
+
+Antrean potongan PCM menuju pemutar desktop dibatasi 200 potongan, masing-masing
+maksimal 2.400 byte (sekitar 10 detik total pada 24 kHz, mono, 16-bit). Saat
+penuh, penerimaan menunggu ruang: potongan tetap berurutan dan tidak diam-diam
+dibuang. Tombol interrupt kini menjadwalkan pengosongan antrean dan pembatalan
+pipeline pada event loop pemiliknya, bukan menyentuh `asyncio.Queue` dari thread
+Qt; callback dari koneksi lama tidak mengganggu antrean koneksi pengganti. Jika
+producer baru saja terbangun setelah interrupt, potongan lama dibuang sebelum
+pemutar mendapat kesempatan membacanya.
+
+Uji offline mencakup antrean penuh, FIFO, cancellation, interrupt lintas thread,
+callback basi, serta jalur penerimaan sintetis yang membawa transkrip dan tool
+call. Batas ini hanya pada antrean PCM pemutar, bukan ukuran frame individual,
+event non-audio pipeline, frame individual provider, jaringan, buffer perangkat,
+atau executor tool. Antrean PCM internal pipeline kini juga dibatasi seperti
+dijelaskan di bawah.
+Backpressure dapat menunda penerimaan transkrip, tool call dan akhir giliran
+ketika pemutaran lambat; ini pilihan konservatif agar audio tidak hilang, bukan
+nonblocking tool execution. Pemutaran yang sudah diserahkan ke perangkat belum
+pasti berhenti seketika. Interupsi otomatis/barge-in, timeout dan pembatalan tool
+belum diselesaikan. Penanganan batas interrupt pipeline lokal dijelaskan pada
+bagian berikut. Tidak ada uji mikrofon, speaker, provider atau jaringan nyata
+pada tahap ini.
+
+
+### Batas interrupt pipeline lokal
+
+Pipeline lokal mengirim penanda internal bernomor setelah semua event yang sudah
+masuk antrean ketika interrupt ditekan. Penerima membuang audio lama sampai
+penanda terbaru, bahkan bila ada akhir giliran lama sebelumnya; penanda lama
+tidak dapat menyelesaikan interrupt yang lebih baru. Generasi yang dibatalkan
+tidak lagi menghalangi giliran baru, dan giliran yang sudah menunggu dilanjutkan
+setelah penanda. Penanda lokal tidak dihitung sebagai respons provider untuk
+watchdog. Ini memperbaiki kasus status interrupt yang sebelumnya tidak pulih
+ketika pembatalan tidak menghasilkan akhir giliran.
+
+Uji sintetis menjalankan pipeline nyata, antrean pemutaran penuh, dua interrupt,
+akhir giliran/transkrip/audio lama, dan giliran baru dengan audio baru. Ini
+tidak membatalkan tool yang sudah berjalan atau membuktikan respons pada
+provider/perangkat nyata. Respons Gemini Live tetap menggunakan batas giliran
+yang dikirim server; jika batas itu tidak datang, kasus tersebut belum tertangani.
+
+
+### Batas PCM pipeline lokal
+
+Antrean event pipeline tetap membawa pesan kontrol tanpa membuangnya, tetapi
+audio yang menunggu di antrean dibatasi 100 potongan maksimum 2.400 byte
+(sekitar lima detik PCM). Blok TTS besar dipecah dan produser menunggu ruang.
+Penerima melepaskan kapasitas saat mengambil setiap potongan; urutan audio,
+transkrip, tool call dan penanda interrupt tetap mengikuti urutan event.
+Penghentian dan interrupt diuji saat antrean penuh, termasuk blok TTS lebih
+besar dari kapasitas dan pemberitahuan tool setelah ucapan pengantar.
+
+Batas ini tidak mencakup blok yang sudah dialokasikan oleh provider, event
+non-audio, buffer jaringan/perangkat, atau audio yang telah diambil penerima.
+Backpressure juga dapat memperlambat pengiriman tool call; ini bukan solusi
+untuk tool yang macet. Cancellation memerlukan provider kooperatif: kode atau
+thread eksternal yang mengabaikan cancellation tidak dijamin berhenti. Uji
+menggunakan provider sintetis, bukan TTS/provider atau perangkat nyata.
+
+### Provider yang mengabaikan pembatalan
+
+Pipeline memeriksa identitas generasi sebelum memproses event model, setelah
+TTS, dan setelah menunggu kapasitas audio. Jika generasi sudah diganti atau
+sesi ditutup, output terlambat tidak boleh menjadi transkrip, audio, tool call,
+riwayat, atau akhir giliran baru. Uji menggunakan model dan TTS sintetis yang
+sengaja menelan `CancelledError`, lalu mengembalikan output dan tool call lama.
+
+Ini pagar untuk **output pipeline yang datang setelah generasi diganti**, bukan
+jaminan menghentikan provider/thread eksternal. Tool call yang sudah dikeluarkan
+sebelum interrupt dan tool yang sudah berjalan tidak otomatis dibatalkan;
+tindakan eksternal tetap memerlukan mekanisme consent dan pembatalannya sendiri.
+
+### Sinkronisasi awal ucapan dan visual
+
+Pipeline lokal kini menempelkan teks yang benar-benar diserahkan ke TTS pada
+potongan PCM pertama setiap segmen ucapan. Penanda ikut antrean audio dan
+asisten menampilkan teks tersebut ketika pemutar memperkirakan segmen mulai
+terdengar, bukan ketika model selesai menulis transkrip. Segmen berikutnya
+tidak digabung ke batch sebelumnya; tampilan dibersihkan setelah antrean selesai.
+Interrupt dan koneksi ulang mengganti epoch agar timer lama tidak memunculkan
+teks basi. Teks polos hanya ditampilkan di JARVIS, tanpa markup, dan potongan
+lebih dari 1.200 karakter ditandai terpotong.
+
+Uji sintetis mencakup beberapa kalimat, TTS yang menghasilkan beberapa blok,
+backpressure, urutan potongan dan perkiraan waktu playback; Qt offscreen menguji
+penundaan, interrupt, timer basi, teks polos dan pergantian bahasa. Ini adalah
+sinkronisasi **perkiraan per segmen** untuk pipeline lokal dengan TTS yang
+menghasilkan PCM, bukan word-level alignment, tidak membuktikan suara benar-benar
+terdengar pada perangkat, dan dapat berbeda akibat latensi perangkat/remote.
+Gemini Live belum menyediakan pemetaan transkrip-ke-PCM yang dapat diandalkan di
+jalur ini sehingga tidak diberi klaim sinkronisasi palsu. Konten kartu, langkah,
+linimasa dan grafik juga belum otomatis berpindah mengikuti kalimat; tidak ada
+pencocokan topik spekulatif yang dapat memilih konten salah. Pembaruan konten
+terstruktur terikat giliran dan pengujian provider/perangkat nyata masih perlu.

@@ -51,6 +51,7 @@ from typing import Any, AsyncIterator, Optional
 
 from . import schema
 from .base import DEFAULT_CAPS, FunctionCall, Msg
+from core.playback_buffer import SLICE_BYTES
 
 # How much conversation to carry. Gemini Live compresses its own context with a
 # sliding window server-side; a stateless chat API has no such thing, so the
@@ -103,6 +104,18 @@ _VAD_ABSOLUTE_MIN = 0.006  # ...and never below this, so a silent room's own
 _MAX_TOOL_ROUNDS = 4
 
 
+# Bound audio separately from control events. A turn boundary, tool call or
+# interrupt barrier must never be rejected merely because speech filled up.
+_PIPELINE_AUDIO_SLICES = 100  # about five seconds at 24 kHz / 16-bit mono
+
+
+class _QueuedAudio:
+    __slots__ = ('message',)
+
+    def __init__(self, pcm, caption=None):
+        self.message = Msg.audio(pcm, caption)
+
+
 class PipelineEngine:
     """STT -> LLM -> TTS, wearing the Live session's interface."""
 
@@ -121,6 +134,7 @@ class PipelineEngine:
             "tool_format": llm_caps.get("tool_format"),
             "max_tools": llm_caps.get("max_tools"),
             "max_tool_chars": llm_caps.get("max_tool_chars"),
+            "prioritize_visual_tools": bool(llm_caps.get("prioritize_visual_tools")),
             "vision": bool(llm_caps.get("vision")),
             "audio_out": tts is not None,
             # A local pipeline has no server deciding when the user has started
@@ -142,8 +156,10 @@ class PipelineEngine:
 
         self._history: list[dict] = []
         self._queue: asyncio.Queue = asyncio.Queue()
+        self._audio_slots = asyncio.BoundedSemaphore(_PIPELINE_AUDIO_SLICES)
         self._gen: Optional[asyncio.Task] = None
         self._closed = False
+        self._interrupt_id = 0
         # Tool calls handed out and not yet answered. A model that emits two
         # calls in one turn must have BOTH answered before the next generation,
         # or the second result arrives with no call to attach to and several
@@ -187,6 +203,7 @@ class PipelineEngine:
             decls,
             max_tools=self.caps.get("max_tools"),
             max_chars=self.caps.get("max_tool_chars"),
+            preferred_names=(schema.VISUAL_TOOLS if self.caps.get("prioritize_visual_tools") else ()),
         )
         fmt = self.caps.get("tool_format")
         if not self.caps.get("tools") or not self._declarations:
@@ -374,6 +391,9 @@ class PipelineEngine:
             msg = await self._queue.get()
             if msg is None:
                 return
+            if isinstance(msg, _QueuedAudio):
+                self._audio_slots.release()
+                msg = msg.message
             yield msg
 
     async def close(self) -> None:
@@ -403,15 +423,25 @@ class PipelineEngine:
             await asyncio.gather(*jobs, return_exceptions=True)
 
     # ── interruption ─────────────────────────────────────────────────────────
-    def interrupt(self) -> None:
-        """Stop the current generation. Called when the user talks over it.
+    def interrupt(self) -> int | None:
+        """Cancel local generation and queue an ordered internal barrier.
 
-        The generation is cancelled but the history is left as it is: whatever
-        was already said was heard, and deleting it would make the assistant
-        deny having said something the user is replying to.
+        Called on the owning loop. Old queued events precede the marker; any
+        newly started generation follows it. A unique marker prevents an older
+        interrupt from clearing a newer one. This does not cancel running tools.
         """
+        if self._closed:
+            return None
         if self._gen and not self._gen.done():
             self._gen.cancel()
+            # A new user turn must not be parked behind a cancelled task.
+            self._gen = None
+        pending, self._followup = self._followup, False
+        self._interrupt_id += 1
+        self._queue.put_nowait(Msg(interruption_id=self._interrupt_id))
+        if pending:
+            self._queue_generation()
+        return self._interrupt_id
 
     # ── generation ───────────────────────────────────────────────────────────
     def _queue_generation(self) -> None:
@@ -439,7 +469,11 @@ class PipelineEngine:
             self._gen.cancel()
         self._gen = asyncio.create_task(self._generate())
 
+    def _current_generation(self, task) -> bool:
+        return not self._closed and task is self._gen
+
     async def _generate(self) -> None:
+        generation = asyncio.current_task()
         said: list[str] = []
         calls: list[FunctionCall] = []
         t0 = time.monotonic()
@@ -448,6 +482,8 @@ class PipelineEngine:
         pending = ""            # visible text not yet a whole sentence
         try:
             async for ev in self._llm.chat(self._messages(), self._tools):
+                if not self._current_generation(generation):
+                    return
                 if ev.get("text"):
                     visible = thinking.feed(ev["text"])
                     if visible and first_word is None:
@@ -466,17 +502,23 @@ class PipelineEngine:
                     for sentence in ready:
                         said.append(sentence)
                         await self._emit(Msg.said(sentence))
-                        await self._speak(sentence)
+                        await self._speak(sentence, generation=generation)
+                        if not self._current_generation(generation):
+                            return
                 if ev.get("tool_calls"):
                     calls.extend(ev["tool_calls"])
 
+            if not self._current_generation(generation):
+                return
             pending += thinking.flush()
             if pending.strip():
                 said.append(pending.strip())
                 if first_word is None:
                     first_word = time.monotonic() - t0
                 await self._emit(Msg.said(pending.strip()))
-                await self._speak(pending.strip())
+                await self._speak(pending.strip(), generation=generation)
+                if not self._current_generation(generation):
+                    return
             if thinking.hid:
                 self._timing["thought"] = thinking.hid
 
@@ -583,6 +625,8 @@ class PipelineEngine:
         except asyncio.CancelledError:
             raise
         except Exception as e:
+            if not self._current_generation(generation):
+                return
             # A failed generation must still end the turn. Without this the UI
             # sits in THINKING for ever and the stall watchdog reconnects an
             # engine whose only problem was one bad request.
@@ -590,7 +634,7 @@ class PipelineEngine:
             await self._emit(Msg.said(_failure_line("the language model", e)))
             await self._emit(Msg.turn_end())
 
-    async def _speak(self, text: str) -> None:
+    async def _speak(self, text: str, *, generation=None) -> None:
         if self._tts is None:
             return
         text = _speakable(text)
@@ -608,16 +652,24 @@ class PipelineEngine:
         language = getattr(self._stt, "detected_language", "")
         if language and _accepts_language(self._tts):
             kwargs["language"] = language
+        caption_pending = True
         try:
             async for pcm in self._tts.speak(text, **kwargs):
+                if generation is not None and not self._current_generation(generation):
+                    return
                 if pcm:
                     if first is None:
                         first = time.monotonic() - t0
                     total += len(pcm)
-                    await self._emit(Msg.audio(pcm))
+                    await self._emit(Msg.audio(pcm, text if caption_pending else None), generation=generation)
+                    caption_pending = False
+                    if generation is not None and not self._current_generation(generation):
+                        return
         except asyncio.CancelledError:
             raise
         except Exception as e:
+            if generation is not None and not self._current_generation(generation):
+                return
             # Speech failing is NOT the model failing, and saying so was wrong
             # in a way that cost real time: with a broken voice the assistant
             # reported "I could not reach the model", which sent the search to
@@ -625,6 +677,8 @@ class PipelineEngine:
             self._report("the voice", self._tts, e)
             return
 
+        if generation is not None and not self._current_generation(generation):
+            return
         # Accumulated rather than assigned: a turn that calls a tool speaks
         # twice, and the report should show what the voice cost for the whole
         # turn rather than for whichever half finished last.
@@ -728,9 +782,21 @@ class PipelineEngine:
                  f"{type(exc).__name__}: {detail}")
         traceback.print_exception(type(exc), exc, exc.__traceback__)
 
-    async def _emit(self, msg: Msg) -> None:
-        if not self._closed:
-            await self._queue.put(msg)
+    async def _emit(self, msg: Msg, *, generation=None) -> None:
+        if self._closed or (generation is not None and not self._current_generation(generation)):
+            return
+        if msg.data:
+            # TTS providers may return a complete sentence in one large block.
+            # Split it before queueing so the count limit also bounds queued PCM.
+            for offset in range(0, len(msg.data), SLICE_BYTES):
+                await self._audio_slots.acquire()
+                if self._closed or (generation is not None and not self._current_generation(generation)):
+                    self._audio_slots.release()
+                    return
+                self._queue.put_nowait(_QueuedAudio(msg.data[offset:offset + SLICE_BYTES],
+                                                  msg.speech_caption if offset == 0 else None))
+        else:
+            self._queue.put_nowait(msg)
 
     # ── conversion ───────────────────────────────────────────────────────────
     def _to_content(self, parts: list) -> Any:
