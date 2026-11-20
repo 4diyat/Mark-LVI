@@ -25,7 +25,7 @@ WINDOW = UI_PKG / "window.py"
 # the sizes that made them unreadable. The ceiling came down from 7,400 to
 # 7,000 when the three setting panels moved to ui/overlays.py — a ratchet that
 # is only ever loosened is not a ratchet.
-WINDOW_CEILING = 7_000
+WINDOW_CEILING = 4_250
 MODULES = [UI_PKG / "__init__.py", UI_PKG / "theme.py", UI_PKG / "metrics.py",
            UI_PKG / "overlays.py"]
 
@@ -345,3 +345,196 @@ def test_filesystem_model_is_imported_from_qtgui():
               if isinstance(node, ast.ImportFrom)
               and any(alias.name == "QFileSystemModel" for alias in node.names)]
     assert owners == ["PyQt6.QtGui"]
+
+
+# ── the class ceilings ──────────────────────────────────────────────────────
+#
+# A file ceiling is not enough on its own: `MainWindow` is 3,066 lines and lives
+# in a 6,800-line file, so the file could shrink around it for years while the
+# actual god object stayed. These cap the classes instead, which is where the
+# reading cost is.
+
+CLASS_CEILINGS = {
+    "MainWindow": 3_100,       # 3,066 today
+    "JarvisLive": 2_400,       # main.py, 2,357 today
+}
+
+
+def _class_lines(path: Path) -> dict[str, int]:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    return {n.name: n.end_lineno - n.lineno + 1
+            for n in tree.body if isinstance(n, ast.ClassDef)}
+
+
+def test_the_god_objects_do_not_grow():
+    """Move a panel out before adding to one of these."""
+    found = {}
+    found.update(_class_lines(WINDOW))
+    found.update(_class_lines(ROOT / "main.py"))
+    over = {name: found[name] for name, cap in CLASS_CEILINGS.items()
+            if name in found and found[name] > cap}
+    assert over == {}, (
+        "these classes are already the hardest files to read here; put the new "
+        f"code in a module of its own: {over}")
+
+
+def test_the_confirm_banner_is_its_own_module_now():
+    """The first class out of window.py, and the pattern for the next one."""
+    from ui import confirm_banner
+
+    assert hasattr(confirm_banner, "ConfirmBanner")
+    assert hasattr(confirm_banner, "_HudOverlay")
+    # and the window still offers both under the names the rest of the app uses
+    import ui
+    assert ui.ConfirmBanner is confirm_banner.ConfirmBanner
+
+
+def test_the_provider_panel_is_its_own_module_now():
+    """1,085 lines of widget that needed nothing from the window.
+
+    Checked before moving: no attribute of MainWindow is touched and `parent()`
+    is only ever Qt parenting. The names still resolve through `ui`, because
+    main.py and providers/_tests.py spell them that way.
+    """
+    from ui import providers_overlay
+
+    assert hasattr(providers_overlay, "ProvidersOverlay")
+    assert hasattr(providers_overlay, "_ScrollSafeCombo")
+
+    import ui
+    assert ui.ProvidersOverlay is providers_overlay.ProvidersOverlay
+    assert ui._ScrollSafeCombo is providers_overlay._ScrollSafeCombo
+
+
+def test_the_provider_panel_still_imports_nothing_heavy_at_module_level():
+    """The lazy imports are a measured fix, not tidiness.
+
+    A wake-word check once spent 2.104 seconds importing `openwakeword` on the
+    Qt thread and made the drawer look broken. Moving `ProvidersOverlay` into
+    its own module makes it easy to hoist `providers` or `memory.config_manager`
+    to the top — which would do the same thing again, at startup, for everyone
+    who never opens the panel.
+    """
+    tree = ast.parse((UI_PKG / "providers_overlay.py").read_text(encoding="utf-8"))
+    top_imports = set()
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            top_imports.update(a.name.split(".")[0] for a in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            top_imports.add(node.module.split(".")[0])
+
+    assert "providers" not in top_imports, (
+        "`providers` is imported at module level; it must stay inside __init__")
+    assert "memory" not in top_imports, (
+        "`memory.config_manager` is imported at module level; it must stay lazy")
+
+
+def test_the_hud_panels_are_their_own_module_now():
+    """Memory and clipboard panels: self-contained, so they left."""
+    from ui import hud_panels
+
+    assert hasattr(hud_panels, "MemoryOverlay")
+    assert hasattr(hud_panels, "ClipboardPanel")
+
+    import ui
+    assert ui.MemoryOverlay is hud_panels.MemoryOverlay
+    assert ui.ClipboardPanel is hud_panels.ClipboardPanel
+
+
+def test_the_assistant_name_helper_lives_below_ui():
+    """A panel must not import the whole window to get one string.
+
+    `_assistant_display` used to sit in ui/window.py. Moving the memory panel
+    out made that a circular import waiting to happen: ui/hud_panels.py would
+    need ui/window.py for a label. It lives in core/display_name.py now and
+    both sides import it from there.
+    """
+    from core import display_name
+
+    assert callable(display_name.assistant_display)
+    assert display_name.assistant_display()  # never empty, never raises
+
+    tree = ast.parse((UI_PKG / "hud_panels.py").read_text(encoding="utf-8"))
+    imported = {node.module for node in ast.walk(tree)
+                if isinstance(node, ast.ImportFrom) and node.module}
+    assert "ui.window" not in imported, (
+        "ui/hud_panels.py imports ui/window.py — that is the cycle this fixed")
+
+
+def test_the_hud_canvas_is_its_own_module_now():
+    """549 lines of QWidget that never touched the window."""
+    from ui import hud_canvas
+
+    assert hasattr(hud_canvas, "HudCanvas")
+    import ui
+    assert ui.HudCanvas is hud_canvas.HudCanvas
+
+
+def test_the_hud_canvas_takes_qsizepolicy_from_the_widgets_module():
+    """QSizePolicy is exported by BOTH QtCore and QtWidgets; take it from one.
+
+    Moving `HudCanvas` in, I imported it from `QtCore` because the neighbouring
+    imports came from there. That is a real PyQt6 module, so nothing failed at
+    import — it produced a DIFFERENT class object from the one the rest of the
+    app holds, and the mismatch only surfaced as 50 construction errors whose
+    traceback pointed at a widget's `__init__`. Pin the source.
+    """
+    tree = ast.parse((UI_PKG / "hud_canvas.py").read_text(encoding="utf-8"))
+    sources = {node.module: [a.name for a in node.names]
+               for node in ast.walk(tree)
+               if isinstance(node, ast.ImportFrom) and node.module in
+               ("PyQt6.QtCore", "PyQt6.QtWidgets")}
+    assert "QSizePolicy" not in sources.get("PyQt6.QtCore", []), (
+        "QSizePolicy must come from QtWidgets, the same module window.py uses")
+    assert "QSizePolicy" in sources.get("PyQt6.QtWidgets", [])
+
+
+def test_the_hud_canvas_survives_a_missing_avatar():
+    """Cosmetics must never stop the assistant starting.
+
+    `HoloAvatar` is imported under a bare except on purpose: a machine without
+    the avatar dependencies gets the orb instead of a traceback.
+    """
+    tree = ast.parse((UI_PKG / "hud_canvas.py").read_text(encoding="utf-8"))
+    guarded = any(
+        isinstance(node, ast.Try)
+        and any(isinstance(h.type, ast.Name) and h.type.id == "Exception"
+                for h in node.handlers)
+        and any(isinstance(sub, ast.ImportFrom) and sub.module == "core.avatar"
+                for sub in node.body)
+        for node in tree.body)
+    assert guarded, "the core.avatar import lost its guard"
+
+
+def test_the_audio_and_remote_key_overlays_are_their_own_modules_now():
+    """358 + 295 lines of overlay, neither of which touched the window."""
+    from ui import audio_devices, remote_keys
+
+    assert hasattr(audio_devices, "AudioDeviceOverlay")
+    assert hasattr(remote_keys, "RemoteKeyOverlay")
+
+    import ui
+    assert ui.AudioDeviceOverlay is audio_devices.AudioDeviceOverlay
+    assert ui.RemoteKeyOverlay is remote_keys.RemoteKeyOverlay
+
+
+def test_the_remote_key_panel_keeps_the_size_the_qt_smoke_test_sets():
+    """tools/check_security_qt.py imports this through `ui` and sizes it by
+    `_OW`/`_OH` before clicking the HTTPS button. Those are class attributes, so
+    they move with the class — but a test that only checks the name would not
+    notice them being dropped in a rewrite.
+    """
+    from ui.remote_keys import RemoteKeyOverlay
+
+    assert RemoteKeyOverlay._OW > 0 and RemoteKeyOverlay._OH > 0
+    assert hasattr(RemoteKeyOverlay, "_enable_https")
+
+
+def test_the_remote_key_panel_does_not_import_qrcode_at_module_level():
+    """`qrcode` is an optional dependency and this panel is built on a click."""
+    tree = ast.parse((UI_PKG / "remote_keys.py").read_text(encoding="utf-8"))
+    top = {a.name.split(".")[0] for node in tree.body if isinstance(node, ast.Import)
+           for a in node.names}
+    top |= {node.module.split(".")[0] for node in tree.body
+            if isinstance(node, ast.ImportFrom) and node.module}
+    assert "qrcode" not in top, "qrcode must stay inside _update_qr"

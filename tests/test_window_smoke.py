@@ -711,8 +711,21 @@ def window_module():
     saved = {k: v for k, v in sys.modules.items() if k == "PyQt6" or k.startswith("PyQt6.")}
     stubs = _install_qt()
     sys.modules.update(stubs)
-    for name in ("ui", "ui.window", "ui.audio", "ui.chat_log", "ui.video_fallback",
-                 "ui.theme", "ui.metrics", "ui.overlays"):
+    # EVERY `ui.*` module, not a list written by hand.
+    #
+    # The hand-written list had drifted: it named seven modules while `ui/` has
+    # twenty-nine, so whichever modules it did not name stayed cached from a
+    # REAL import. This fixture then put the Qt stub in place and imported
+    # `ui` again — and the stale children, holding the real PyQt6 classes,
+    # were reused against the stub. The symptom was 50 setup errors deep in
+    # `_EditFocusTracker.__init__` ("object.__init__() takes exactly one
+    # argument"), which reads like a broken widget and was actually a broken
+    # fixture. It stayed hidden only because in the default alphabetical order
+    # nothing imported `ui` before this file.
+    #
+    # Deriving the list from sys.modules means the next module added to `ui/`
+    # is purged automatically, which is the property the list was meant to have.
+    for name in [k for k in sys.modules if k == "ui" or k.startswith("ui.")]:
         sys.modules.pop(name, None)
     # `ui/__init__.py` imports the whole window and re-exports it; importing the
     # package is the path main.py takes, so this is the real thing.
@@ -1964,3 +1977,17 @@ def test_ssh_output_sharing_is_explicit_revocable_and_session_scoped(window_modu
     tab._share_output, tab._shared_output = True, 'secret'
     tab.disconnect_session()
     assert not tab._share_output and tab._shared_output == '' and tab._assist_session == ''
+
+
+def test_the_window_fixture_purges_every_ui_module_not_a_named_few():
+    """Guard on the guard: the purge must be derived, not enumerated.
+
+    A hand-written list is what broke above, and it broke silently — one new
+    module in `ui/` and the fixture starts reusing stale classes again.
+    """
+    # Read the source rather than the fixture object: pytest 9 no longer
+    # exposes `__pytest_wrapped__`, and the question here is what the code says.
+    src = Path(__file__).read_text(encoding="utf-8")
+    fixture_body = src[src.index("def window_module"):src.index("def window(")]
+    assert 'startswith("ui.")' in fixture_body, (
+        "the purge went back to a hand-written list of module names")

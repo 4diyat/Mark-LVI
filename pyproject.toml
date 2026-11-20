@@ -34,7 +34,7 @@ line-length = 100
 #     over 39,000 lines would produce a wall of findings nobody acts on, and a
 #     lint step that is ignored is worse than no lint step. CI runs them as an
 #     INFORMATIONAL job so the list stays visible and shrinks by choice.
-select = ["F", "E9", "B006"]
+select = ["F", "E9", "B006", "S110"]
 # B006 (mutable default argument) is the one exception to "F+E9 only": it is a
 # bug of exactly the kind F catches — a shared list/dict that one call mutates
 # for the next — and it currently reports ZERO findings in this tree, so it
@@ -49,12 +49,118 @@ select = ["F", "E9", "B006"]
 # They are reported by the informational CI job, where the number can be
 # watched down instead of argued about.
 
+# S110 — try-except-pass. The codebase has 140, and core/logbook.py says why
+# that is a problem: "Several have hidden a real bug — the Linux firewall branch
+# in dashboard/server.py was unreachable for a release because its NameError fell
+# into one." It is now ENFORCED BY DEFAULT, and the files below are the honest
+# backlog: each one already has silent handlers that predate the rule. A file on
+# this list may keep them; a file that is NOT on the list may not add one, which
+# is the part that stops the count growing while the backlog shrinks.
+#
+# Removing a name from this list is a small, self-contained change: turn each
+# `pass` into `_log(...).debug(...)` with a comment saying why silence is right,
+# then delete the name here. `actions/open_app.py` was the first one done.
+# THE LIST ITSELF IS IN [tool.ruff.lint.per-file-ignores] BELOW —
+# TOML cannot share a list between two tables, so it is written out
+# there, one line per file, with this comment explaining why.
+#
+#   the 41 files still carrying silent handlers:
+#     main.py
+#     ui/window.py
+#     ui/audio.py
+#     ui/theme.py
+#     ui/metrics.py
+#     ui/video_fallback.py
+#     dashboard/server.py
+#     actions/browser_control.py
+#     actions/code_helper.py
+#     actions/computer_control.py
+#     actions/computer_settings.py
+#     actions/desktop.py
+#     actions/dev_agent.py
+#     actions/file_controller.py
+#     actions/game_updater.py
+#     actions/reminder.py
+#     actions/send_message.py
+#     actions/system_monitor.py
+#     actions/video_player.py
+#     actions/weather_report.py
+#     actions/youtube_video.py
+#     core/_smoke_harness.py
+#     core/echo.py
+#     core/hotkey.py
+#     core/playback.py
+#     core/workspace_gesture.py
+#     memory/config_manager.py
+#     memory/memory_manager.py
+#     plugins/_gmail.py
+#     plugins/_mt5.py
+#     plugins/_prayer.py
+#     plugins/_template.py
+#     plugins/currency_rates.py
+#     plugins/gmail_inbox.py
+#     plugins/market_price.py
+#     plugins/mt5_orb.py
+#     plugins/prayer_times.py
+#     providers/engine_pipeline.py
+#     providers/llm_openai.py
+#     providers/tts_piper.py
+#     providers/tts_system.py
+
 [tool.ruff.lint.per-file-ignores]
 # The smoke harness and the provider self-test are diagnostics: they import
 # modules on purpose to prove they load, and print for a human reading output.
-"core/_smoke_harness.py" = ["F401", "F841"]
+"core/_smoke_harness.py" = ["F401", "F841", "S110"]
 "providers/_tests.py" = ["F401", "F841"]
 "setup.py" = ["F401"]
+"main.py" = ["S110"]
+"ui/window.py" = ["S110"]
+"ui/audio.py" = ["S110"]
+"ui/theme.py" = ["S110"]
+"ui/metrics.py" = ["S110"]
+"ui/providers_overlay.py" = ["S110"]
+"ui/hud_canvas.py" = ["S110"]
+"ui/audio_devices.py" = ["S110"]
+"ui/video_fallback.py" = ["S110"]
+"dashboard/server.py" = ["S110"]
+"actions/browser_control.py" = ["S110"]
+"actions/code_helper.py" = ["S110"]
+"actions/computer_control.py" = ["S110"]
+"actions/computer_settings.py" = ["S110"]
+"actions/desktop.py" = ["S110"]
+"actions/dev_agent.py" = ["S110"]
+"actions/file_controller.py" = ["S110"]
+"actions/game_updater.py" = ["S110"]
+"actions/reminder.py" = ["S110"]
+"actions/send_message.py" = ["S110"]
+"actions/system_monitor.py" = ["S110"]
+"actions/video_player.py" = ["S110"]
+"actions/weather_report.py" = ["S110"]
+"actions/youtube_video.py" = ["S110"]
+"core/echo.py" = ["S110"]
+"core/hotkey.py" = ["S110"]
+"core/playback.py" = ["S110"]
+"core/workspace_gesture.py" = ["S110"]
+"memory/config_manager.py" = ["S110"]
+"memory/memory_manager.py" = ["S110"]
+"plugins/_gmail.py" = ["S110"]
+"plugins/_mt5.py" = ["S110"]
+"plugins/_prayer.py" = ["S110"]
+"plugins/_template.py" = ["S110"]
+"plugins/currency_rates.py" = ["S110"]
+"plugins/gmail_inbox.py" = ["S110"]
+"plugins/market_price.py" = ["S110"]
+"plugins/mt5_orb.py" = ["S110"]
+"plugins/prayer_times.py" = ["S110"]
+"providers/engine_pipeline.py" = ["S110"]
+"providers/llm_openai.py" = ["S110"]
+"providers/tts_piper.py" = ["S110"]
+"providers/tts_system.py" = ["S110"]
+# Test harnesses: a stub that swallows an unrelated exception is part of building
+# a fake, not of deciding an outcome for the user.
+"tests/test_audio_bar.py" = ["S110"]
+"tests/test_logbook.py" = ["S110"]
+"tests/test_window_smoke.py" = ["S110"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
