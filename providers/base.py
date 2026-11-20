@@ -185,6 +185,8 @@ class Msg:
     server_content: Optional[ServerContent] = None
     tool_call: Optional[ToolCall] = None
     session_resumption_update: Any = None
+    # Local pipeline-only barrier, never sent by Gemini or an external provider.
+    interruption_id: Optional[int] = None
 
     # -- constructors for the five things an engine actually emits ------------
     @staticmethod

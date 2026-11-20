@@ -652,6 +652,7 @@ class JarvisLive:
         self._vision_last_time     = 0.0     # monotonic time of last screen_process call (cooldown guard)
         self._vision_busy          = False   # True while a vision capture/inject cycle is in flight
         self._interrupted          = False   # True while draining audio after user interrupt
+        self._interrupt_local_token = None   # ordered pipeline barrier, if any
         # Which engine is holding the conversation, and what it can do.
         # None means Gemini Live — the default and, unless somebody has gone to
         # the providers settings and chosen otherwise, always the case. Every
@@ -1202,9 +1203,10 @@ class JarvisLive:
         self._play_cursor = 0.0
         if self._turn_done_event:
             self._turn_done_event.clear()
+        self._interrupt_local_token = None
         if self._engine is not None:
             try:
-                self._engine.interrupt()
+                self._interrupt_local_token = self._engine.interrupt()
             except Exception:
                 pass
         self.ui.write_log("SYS: Interrupted — listening...")
@@ -1912,10 +1914,20 @@ class JarvisLive:
         try:
             while True:
                 async for response in self.session.receive():
-                    # Anything at all from the server proves the return path is
-                    # alive, so the stall clock stops here rather than in any of
-                    # the branches below — a tool call, a transcript or a bare
-                    # keepalive all count.
+                    # The local pipeline emits an ordered barrier after all
+                    # pre-interrupt messages. Older barriers cannot finish a
+                    # newer interrupt; ordinary turn ends cannot replace it.
+                    _barrier = getattr(response, "interruption_id", None)
+                    if _barrier is not None:
+                        if _barrier == self._interrupt_local_token:
+                            self._interrupt_local_token = None
+                            self._interrupted = False
+                            in_buf, out_buf = [], []
+                            self._visemes.reset()
+                        continue
+
+                    # An internal barrier is not provider traffic and must not
+                    # clear the deadline for a newly submitted request.
                     self._clear_stall()
 
                     # ── Session resumption ───────────────────────────────────
@@ -1970,17 +1982,17 @@ class JarvisLive:
                                 self._last_user_speech = time.monotonic()
 
                         if sc.turn_complete:
-                            if self._turn_done_event:
-                                self._turn_done_event.set()
-
-                            # If this turn_complete ends an interrupted response, clear the
-                            # flag and skip all further processing for that turn.
                             if self._interrupted:
-                                self._interrupted = False
-                                in_buf  = []
-                                out_buf = []
+                                # Gemini's turn end is its boundary. Local
+                                # pipeline events may have an older turn end
+                                # before the unique interruption barrier.
+                                if self._interrupt_local_token is None:
+                                    self._interrupted = False
+                                in_buf, out_buf = [], []
                                 self._visemes.reset()
                                 continue
+                            if self._turn_done_event:
+                                self._turn_done_event.set()
 
                             full_in = " ".join(in_buf).strip()
                             if full_in:
@@ -2795,6 +2807,7 @@ class JarvisLive:
                     self._vision_busy          = False
                     self._vision_last_time     = 0.0
                     self._interrupted          = False
+                    self._interrupt_local_token = None
 
                     print("[JARVIS] Connected.")
                     if _resumed_with:

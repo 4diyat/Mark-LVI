@@ -665,7 +665,24 @@ Backpressure dapat menunda penerimaan transkrip, tool call dan akhir giliran
 ketika pemutaran lambat; ini pilihan konservatif agar audio tidak hilang, bukan
 nonblocking tool execution. Pemutaran yang sudah diserahkan ke perangkat belum
 pasti berhenti seketika. Interupsi otomatis/barge-in, timeout dan pembatalan tool
-belum diselesaikan. Pada pipeline lokal, pembatalan generasi yang tidak
-menghasilkan penanda akhir giliran masih dapat meninggalkan status interrupt;
-perlu penanganan protokol dan uji tersendiri. Tidak ada uji mikrofon, speaker,
-provider atau jaringan nyata pada tahap ini.
+belum diselesaikan. Penanganan batas interrupt pipeline lokal dijelaskan pada
+bagian berikut. Tidak ada uji mikrofon, speaker, provider atau jaringan nyata
+pada tahap ini.
+
+
+### Batas interrupt pipeline lokal
+
+Pipeline lokal mengirim penanda internal bernomor setelah semua event yang sudah
+masuk antrean ketika interrupt ditekan. Penerima membuang audio lama sampai
+penanda terbaru, bahkan bila ada akhir giliran lama sebelumnya; penanda lama
+tidak dapat menyelesaikan interrupt yang lebih baru. Generasi yang dibatalkan
+tidak lagi menghalangi giliran baru, dan giliran yang sudah menunggu dilanjutkan
+setelah penanda. Penanda lokal tidak dihitung sebagai respons provider untuk
+watchdog. Ini memperbaiki kasus status interrupt yang sebelumnya tidak pulih
+ketika pembatalan tidak menghasilkan akhir giliran.
+
+Uji sintetis menjalankan pipeline nyata, antrean pemutaran penuh, dua interrupt,
+akhir giliran/transkrip/audio lama, dan giliran baru dengan audio baru. Ini
+tidak membatalkan tool yang sudah berjalan atau membuktikan respons pada
+provider/perangkat nyata. Respons Gemini Live tetap menggunakan batas giliran
+yang dikirim server; jika batas itu tidak datang, kasus tersebut belum tertangani.

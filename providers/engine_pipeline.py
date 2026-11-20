@@ -145,6 +145,7 @@ class PipelineEngine:
         self._queue: asyncio.Queue = asyncio.Queue()
         self._gen: Optional[asyncio.Task] = None
         self._closed = False
+        self._interrupt_id = 0
         # Tool calls handed out and not yet answered. A model that emits two
         # calls in one turn must have BOTH answered before the next generation,
         # or the second result arrives with no call to attach to and several
@@ -405,15 +406,25 @@ class PipelineEngine:
             await asyncio.gather(*jobs, return_exceptions=True)
 
     # ── interruption ─────────────────────────────────────────────────────────
-    def interrupt(self) -> None:
-        """Stop the current generation. Called when the user talks over it.
+    def interrupt(self) -> int | None:
+        """Cancel local generation and queue an ordered internal barrier.
 
-        The generation is cancelled but the history is left as it is: whatever
-        was already said was heard, and deleting it would make the assistant
-        deny having said something the user is replying to.
+        Called on the owning loop. Old queued events precede the marker; any
+        newly started generation follows it. A unique marker prevents an older
+        interrupt from clearing a newer one. This does not cancel running tools.
         """
+        if self._closed:
+            return None
         if self._gen and not self._gen.done():
             self._gen.cancel()
+            # A new user turn must not be parked behind a cancelled task.
+            self._gen = None
+        pending, self._followup = self._followup, False
+        self._interrupt_id += 1
+        self._queue.put_nowait(Msg(interruption_id=self._interrupt_id))
+        if pending:
+            self._queue_generation()
+        return self._interrupt_id
 
     # ── generation ───────────────────────────────────────────────────────────
     def _queue_generation(self) -> None:
