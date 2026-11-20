@@ -65,7 +65,7 @@ def load_class(name, namespace):
 
 def test_tabs_independent_and_bounded():
     ns = {'QWidget': Widget, 'QVBoxLayout': Layout, 'QHBoxLayout': Layout, 'QPushButton': Button,
-          'QTabWidget': Tabs, 'BrowserTab': FakeTab, '_t': lambda s: '{number}' if s == 'browser.tab' else s,
+          'QTabWidget': Tabs, 'BrowserTab': FakeTab, '_t': lambda s, **fields: f"Tab {fields['number']}" if s == 'browser.tab' else s,
           'workspace_stylesheet': lambda: ''}
     window = load_class('BrowserWindow', ns)(object(), 'https://example.com')
     assert window.tabs.corner is window.new_tab and window.tabs.scroll_buttons
@@ -95,7 +95,7 @@ def test_stale_vault_result_never_injects_password():
 
 
 def test_confirmation_does_not_apply_after_same_origin_navigation():
-    cls = load_class('BrowserTab', {'QWidget': Widget, 'pyqtSignal': Signal, '_t': lambda key: '{origin} {username}'})
+    cls = load_class('BrowserTab', {'QWidget': Widget, 'pyqtSignal': Signal, '_t': lambda key, **fields: '{origin} {username}'.format(**fields)})
     tab = cls.__new__(cls)
     tab._origin = lambda: 'https://example.com'
     tab.offer = types.SimpleNamespace(currentData=lambda: 'alice')
@@ -118,6 +118,7 @@ def test_browser_retranslation_preserves_selected_login_and_current_status():
         def setText(self, text): self.text = text
         def setPlaceholderText(self, text): self.placeholder = text
         def setAccessibleName(self, text): self.accessible_name = text
+        def setToolTip(self, text): self.tooltip = text
     class Combo:
         def __init__(self): self.items = [('', 'old no saved'), ('alice', 'alice')]; self.selected = 1
         def count(self): return len(self.items)
@@ -130,6 +131,7 @@ def test_browser_retranslation_preserves_selected_login_and_current_status():
     tab.retranslate()
     assert tab.status.text == 'id:browser.filled'
     assert tab.address.placeholder == 'id:browser.address_hint'
+    assert tab.back.accessible_name == tab.back.tooltip == 'id:browser.back'
     assert tab.offer.items == [('', 'id:browser.no_saved'), ('alice', 'alice')]
     assert tab.offer.selected == 1
 
@@ -149,3 +151,26 @@ def test_navigation_clears_previous_fill_status_and_saved_selection():
     assert tab._generation == 3 and not tab._loaded and not tab._busy
     assert tab.status.text == 'browser.privacy'
     assert tab.offer.items == [('browser.no_saved', '')]
+
+
+def test_tab_and_consent_text_use_formatted_localized_values():
+    from core.i18n import label
+    ns = {'QWidget': Widget, 'QVBoxLayout': Layout, 'QHBoxLayout': Layout, 'QPushButton': Button,
+          'QTabWidget': Tabs, 'BrowserTab': FakeTab, '_t': label, 'workspace_stylesheet': lambda: ''}
+    window = load_class('BrowserWindow', ns)(object())
+    assert window.tabs.labels[0] == label('browser.tab', number=1) + ' — example.com'
+    cls = load_class('BrowserTab', {'QWidget': Widget, 'pyqtSignal': Signal, '_t': label})
+    tab = cls.__new__(cls)
+    tab._origin = lambda: 'https://example.com'
+    tab.offer = types.SimpleNamespace(currentData=lambda: 'alice')
+    tab._busy, tab._generation = False, 1
+    confirmations, operations = [], []
+    tab._confirm = lambda title, text: confirmations.append((title, text)) or True
+    tab._work = lambda *args: operations.append(args)
+    tab.fill_login()
+    tab.delete_login()
+    assert confirmations == [
+        ('browser.fill', label('browser.fill_confirm', origin='https://example.com', username='alice')),
+        ('browser.delete', label('browser.delete_confirm', origin='https://example.com', username='alice'))]
+    assert all('bad-fields:' not in text for _, text in confirmations)
+    assert operations == [('get', 'https://example.com', 'alice'), ('delete', 'https://example.com', 'alice')]

@@ -490,3 +490,15 @@ folder secara otomatis: jika tidak ada, shortcut dinonaktifkan dan diperiksa
 kembali saat jendela ditampilkan atau navigasi terjadi. Pilihan favorit mengikuti
 riwayat Back/Forward; folder yang hilang menampilkan error dan tidak mengganti
 lokasi aktif. Perbedaan visual lain pada Files masih ada.
+
+### Penyelarasan awal browser
+
+Referensi `design/proposed-graphite-browser.png` dibandingkan dengan capture Qt
+browser kosong: sebelumnya tab menampilkan penanda kesalahan terjemahan dan
+navigasi memakai tombol teks, sedangkan konsep memakai ikon. Tab kini memformat
+nomornya dengan benar dan navigasi Back/Forward/Reload memakai ikon vektor,
+label aksesibel dan tooltip yang diterjemahkan. Format konfirmasi Fill/Delete
+juga diperbaiki agar origin dan username tampil tanpa penanda kesalahan. Aturan
+vault, persetujuan, URL dan izin WebEngine tidak diubah. Capture CI menggunakan
+alamat sintetik yang hanya diketik, tanpa memuat situs atau membaca kredensial;
+ini bukan verifikasi situs nyata atau klaim kesesuaian penuh dengan mockup.
