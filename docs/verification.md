@@ -706,3 +706,16 @@ Backpressure juga dapat memperlambat pengiriman tool call; ini bukan solusi
 untuk tool yang macet. Cancellation memerlukan provider kooperatif: kode atau
 thread eksternal yang mengabaikan cancellation tidak dijamin berhenti. Uji
 menggunakan provider sintetis, bukan TTS/provider atau perangkat nyata.
+
+### Provider yang mengabaikan pembatalan
+
+Pipeline memeriksa identitas generasi sebelum memproses event model, setelah
+TTS, dan setelah menunggu kapasitas audio. Jika generasi sudah diganti atau
+sesi ditutup, output terlambat tidak boleh menjadi transkrip, audio, tool call,
+riwayat, atau akhir giliran baru. Uji menggunakan model dan TTS sintetis yang
+sengaja menelan `CancelledError`, lalu mengembalikan output dan tool call lama.
+
+Ini pagar untuk **output pipeline yang datang setelah generasi diganti**, bukan
+jaminan menghentikan provider/thread eksternal. Tool call yang sudah dikeluarkan
+sebelum interrupt dan tool yang sudah berjalan tidak otomatis dibatalkan;
+tindakan eksternal tetap memerlukan mekanisme consent dan pembatalannya sendiri.
