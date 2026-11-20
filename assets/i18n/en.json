@@ -225,6 +225,7 @@
   "desktop.assistant": "Assistant",
   "desktop.voice_hint": "Push-to-talk: Ctrl+Space when enabled.",
   "desktop.initialising": "INITIALISING",
+  "desktop.avatar_tagline": "Your workspace assistant",
   "desktop.state_listening": "LISTENING",
   "desktop.state_speaking": "SPEAKING",
   "desktop.state_sleeping": "SLEEPING",

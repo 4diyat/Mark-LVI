@@ -225,6 +225,7 @@
   "desktop.assistant": "Asisten",
   "desktop.voice_hint": "Tekan untuk bicara: Ctrl+Space jika aktif.",
   "desktop.initialising": "MEMULAI",
+  "desktop.avatar_tagline": "Asisten ruang kerja Anda",
   "desktop.state_listening": "MENDENGARKAN",
   "desktop.state_speaking": "BERBICARA",
   "desktop.state_sleeping": "TIDUR",

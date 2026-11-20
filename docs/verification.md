@@ -509,3 +509,13 @@ aksesibel yang diterjemahkan. Tombol terikat pada identitas tab, bukan posisi,
 sehingga penutupan tetap tepat setelah tab dipindah; sesi private per tab tetap
 terpisah. Belum semua detail browser menyamai konsep, dan capture sintetis
 bukan uji layanan atau browser nyata pada perangkat pengguna.
+
+### Penyesuaian caption wajah desktop
+
+Caption wajah sekarang memiliki nama, keterangan asisten dan status HUD yang
+lebih jelas, seperti susunan konsep. Status tetap berasal dari HUD yang sama,
+termasuk keadaan mute; teks keterangan tidak menyatakan bahwa mikrofon atau
+layanan aktif. Tata letak dibatasi agar caption tidak bertumpuk dengan wajah
+atau keluar dari stage. Ini bukan perubahan model 3D maupun wajah fotorealistis.
+Tes geometri dan Qt offscreen memeriksa batas, bahasa dan status sintetis;
+kecocokan visual, aksesibilitas dan performa perangkat tetap perlu pemeriksaan.

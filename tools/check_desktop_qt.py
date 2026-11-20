@@ -14,7 +14,7 @@ from unittest.mock import patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtCore import QCoreApplication, QEvent, QFileInfo, QPoint, QTimer, Qt  # noqa: E402
-from PyQt6.QtGui import QColor, QImage, QTextCursor  # noqa: E402
+from PyQt6.QtGui import QColor, QImage, QPainter, QTextCursor  # noqa: E402
 from PyQt6.QtTest import QTest  # noqa: E402
 from PyQt6.QtWidgets import QApplication, QColorDialog, QComboBox, QDialog, QFileDialog, QLineEdit, QMessageBox, QPushButton, QScrollArea, QSizeGrip, QSlider, QSpinBox, QWidget  # noqa: E402
 
@@ -642,6 +642,38 @@ def main():
         assert window.hud.hud_style == "face"
         assert window.hud._avatar is not None
         assert mdi._avatar_stage.isVisible() and not mdi._emblem.isVisible()
+        # Check actual Qt paint calls: the caption is translated and the
+        # displayed state always reflects the live HUD, including muted.
+        import ui.desktop_workspace as workspace_module
+        original_painter = workspace_module.QPainter
+        painted_text = []
+        class RecordingPainter(QPainter):
+            def drawText(self, *args):
+                if len(args) == 3 and isinstance(args[-1], str):
+                    painted_text.append(args[-1])
+                return super().drawText(*args)
+        old_state, old_muted = window.hud.state, window.hud.muted
+        try:
+            workspace_module.QPainter = RecordingPainter
+            window.hud.state, window.hud.muted = 'LISTENING', False
+            assert not mdi._avatar_stage.grab().isNull()
+            assert translate('desktop.avatar_tagline') in painted_text
+            assert translate('desktop.state_listening') in painted_text
+            painted_text.clear()
+            window.hud.muted = True
+            assert not mdi._avatar_stage.grab().isNull()
+            assert translate('desktop.state_muted') in painted_text
+            assert translate('desktop.state_listening') not in painted_text
+            painted_text.clear()
+            set_locale('id')
+            window.hud.muted, window.hud.state = False, 'SPEAKING'
+            assert not mdi._avatar_stage.grab().isNull()
+            assert translate('desktop.avatar_tagline') in painted_text
+            assert translate('desktop.state_speaking') in painted_text
+        finally:
+            workspace_module.QPainter = original_painter
+            window.hud.state, window.hud.muted = old_state, old_muted
+            set_locale(previous_locale)
         face_geometry = mdi._avatar_stage.geometry()
         files_geometry = window._desktop_windows["files"].geometry()
         assistant_geometry = window._desktop_windows["assistant"].geometry()

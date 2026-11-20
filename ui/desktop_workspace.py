@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (QFileIconProvider, QHeaderView, QHBoxLayout, QLabel
                              QTreeView, QVBoxLayout, QWidget)
 
 from core.i18n import label as _t
+from core.workspace_avatar_layout import avatar_layout
 from ui.theme import C, workspace_stylesheet
 
 
@@ -73,9 +74,11 @@ class WorkspaceAvatar(QWidget):
             return
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         width, height = self.width(), self.height()
-        radius = max(1., min(width * .33, (height - 75) / (avatar.SPAN + .2)))
-        cx = width / 2
-        cy = max(radius + 5, (height - 75 - avatar.SPAN * radius) / 2 + radius)
+        layout = avatar_layout(width, height, avatar.SPAN)
+        if layout is None:
+            painter.end()
+            return
+        cx, cy, radius, name_y, tagline_y, state_y = layout
         aura = QRadialGradient(cx, cy, radius * 1.7)
         aura.setColorAt(0., QColor(36, 112, 176, 75))
         aura.setColorAt(.65, QColor(35, 136, 213, 55))
@@ -89,14 +92,17 @@ class WorkspaceAvatar(QWidget):
         if not self.hud.muted:
             color = color.lighter(135)
         avatar.paint(painter, cx, cy, radius, color, color, qcol(C.DESKTOP_BAR), wireframe=False)
-        bottom = min(height - 58, cy + (avatar.SPAN - 1) * radius + 5)
         painter.setPen(qcol(C.DESKTOP_TEXT))
-        painter.setFont(QFont("Arial", 19, QFont.Weight.Bold))
-        painter.drawText(QRectF(0, bottom, width, 28), Qt.AlignmentFlag.AlignCenter,
+        painter.setFont(QFont("Arial", 18, QFont.Weight.Bold))
+        painter.drawText(QRectF(0, name_y, width, 27), Qt.AlignmentFlag.AlignCenter,
                          (self.hud._assistant_name or 'JARVIS').upper())
         painter.setFont(QFont("Arial", 10, QFont.Weight.Normal))
+        painter.setPen(qcol(C.DESKTOP_MUTED))
+        painter.drawText(QRectF(0, tagline_y, width, 22), Qt.AlignmentFlag.AlignCenter,
+                         _t('desktop.avatar_tagline'))
+        painter.setFont(QFont("Arial", 13, QFont.Weight.Normal))
         painter.setPen(qcol(C.MUTED_C if self.hud.muted else C.PRI))
-        painter.drawText(QRectF(0, bottom + 29, width, 24), Qt.AlignmentFlag.AlignCenter,
+        painter.drawText(QRectF(0, state_y, width, 24), Qt.AlignmentFlag.AlignCenter,
                          state_label('MUTED' if self.hud.muted else self.hud.state))
         painter.end()
 
