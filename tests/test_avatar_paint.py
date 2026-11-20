@@ -106,6 +106,9 @@ class _Color:
     def setAlpha(self, a):
         self._a = int(a)
 
+    def alpha(self):
+        return self._a
+
     def rgb(self):
         return (self._rgb[0] << 16) | (self._rgb[1] << 8) | self._rgb[2]
 
@@ -120,6 +123,12 @@ class _Pen:
 
     def setWidthF(self, width):
         self.width = float(width)
+
+    def widthF(self):
+        return self.width
+
+    def color(self):
+        return self.args[0]
 
 
 class _Brush:
@@ -297,9 +306,11 @@ def test_desktop_surface_can_hide_wire_without_disabling_animation(avatar_module
     avatar.step(.05, .7, speaking=True, muted=False)
     plain = _paint(avatar_module, avatar, wireframe=False)
     assert plain.count("drawPolygon") > 100
-    assert plain.count("drawLines") == 2  # batched soft and bright silhouette, not wireframe
-    rim_widths = [p.width for p in plain.pens if isinstance(p, avatar_module.QPen)]
-    assert 5.0 in rim_widths and 1.1 in rim_widths
+    assert 2 <= plain.count("drawLines") <= 8  # batched rim, not the HUD wire
+    rim_pens = [p for p in plain.pens if isinstance(p, avatar_module.QPen)
+                and (abs(p.widthF() - 7.8) < 1e-5 or abs(p.widthF() - 1.6) < 1e-5)]
+    assert len(rim_pens) >= 4
+    assert len({p.color().alpha() for p in rim_pens}) > 2  # brighter lateral edges
     assert sum(bool(getattr(b, "gradient", lambda: None)()) for b in plain.brushes) > 1
     avatar.shaded = False
     wire = _paint(avatar_module, avatar, wireframe=False)

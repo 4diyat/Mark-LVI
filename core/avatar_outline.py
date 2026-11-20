@@ -38,3 +38,26 @@ def convex_outline(xs, ys):
 
     outline = chain(unique)[:-1] + chain(reversed(unique))[:-1]
     return [point[2] for point in outline] if len(outline) >= 3 else []
+
+
+def rim_segments(xs, ys, outline):
+    """Group outline edges by lateral light, independent of position and scale.
+
+    The projection's sides glow more brightly than the crown and chin, as in
+    the desktop concept. Returned pairs refer to the original mesh indices.
+    """
+    buckets = [[], [], [], []]
+    if len(outline) < 3:
+        return buckets
+    left = min(float(xs[i]) for i in outline)
+    right = max(float(xs[i]) for i in outline)
+    width = right - left
+    if not math.isfinite(width) or width <= 1e-9:
+        return buckets
+    centre = (left + right) * .5
+    for a, b in zip(outline, outline[1:] + outline[:1]):
+        x = (float(xs[a]) + float(xs[b])) * .5
+        strength = min(1.0, abs(x - centre) * 2 / width)
+        bucket = min(3, int(strength * 4))
+        buckets[bucket].append((a, b))
+    return buckets

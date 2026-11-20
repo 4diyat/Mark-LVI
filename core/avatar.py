@@ -41,7 +41,7 @@ from PyQt6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPen, QPolygo
 
 from core import avatar_face as _face
 from core.avatar_mesh import JAW_MAX, JAW_PIVOT, get_head_mesh
-from core.avatar_outline import convex_outline
+from core.avatar_outline import convex_outline, rim_segments
 
 # Perspective camera distance in head-half-heights. Large enough that the nose
 # does not balloon, small enough to keep a sense of depth.
@@ -568,23 +568,25 @@ class HoloAvatar:
         xs = cx + verts[:, 0] * k
         ys = cy - verts[:, 1] * k
 
-        # A restrained desktop-only holographic outline follows the projected
-        # head mesh. Compute once and batch its segments; leave the existing
-        # HUD wireframe and transparent mode unchanged.
+        # Desktop-only side lighting follows the moving projected silhouette.
+        # Quantized levels batch segments instead of changing the pen per edge.
         rim = []
         if self.shaded and not wireframe:
             indices = convex_outline(xs[:self._frames.n_head], ys[:self._frames.n_head])
-            if indices:
-                rim = [QLineF(float(xs[a]), float(ys[a]), float(xs[b]), float(ys[b]))
-                       for a, b in zip(indices, indices[1:] + indices[:1])]
-                p.setPen(_pen(_c(primary, 38), 5.0))
-                p.drawLines(rim)
+            for bucket in rim_segments(xs, ys, indices):
+                rim.append([QLineF(float(xs[a]), float(ys[a]), float(xs[b]), float(ys[b]))
+                            for a, b in bucket])
+            for level, lines in enumerate(rim):
+                if lines:
+                    p.setPen(_pen(_c(primary, 12 + level * 12), max(3.0, min(8.0, r * .065))))
+                    p.drawLines(lines)
         if self.shaded:
             self._paint_surface(p, xs, ys, norms, verts, primary, accent, bg, amp,
                                 smooth=not wireframe, head_only=floating_head and not wireframe)
-        if rim:
-            p.setPen(_pen(_c(primary, 145), 1.1))
-            p.drawLines(rim)
+        for level, lines in enumerate(rim):
+            if lines:
+                p.setPen(_pen(_c(primary, 55 + level * 55), max(.8, min(1.6, r * .014))))
+                p.drawLines(lines)
         if wireframe or not self.shaded:
             self._paint_wire(p, xs, ys, norms, verts, primary, bg, amp)
         self._paint_features(p, xs, ys, norms, r, primary, accent, bg, amp)
