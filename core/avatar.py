@@ -538,11 +538,13 @@ class HoloAvatar:
 
     def paint(self, p: QPainter, cx: float, cy: float, r: float,
               primary: QColor, accent: QColor, bg: QColor | None = None,
-              *, wireframe: bool = True) -> None:
+              *, wireframe: bool = True, floating_head: bool = False) -> None:
         """Draw the avatar with its head centre at (cx, cy).
 
         `r` is the head's half-height in pixels — the caller owns the layout, so
         the HUD can fit the head to whatever room the status line leaves it.
+        `floating_head` hides the neck only for a solid, wireless projection;
+        the default HUD and transparent wire rendering are unchanged.
         """
         if bg is None:
             bg = QColor(0, 0, 0)
@@ -579,7 +581,7 @@ class HoloAvatar:
                 p.drawLines(rim)
         if self.shaded:
             self._paint_surface(p, xs, ys, norms, verts, primary, accent, bg, amp,
-                                smooth=not wireframe)
+                                smooth=not wireframe, head_only=floating_head and not wireframe)
         if rim:
             p.setPen(_pen(_c(primary, 145), 1.1))
             p.drawLines(rim)
@@ -589,7 +591,7 @@ class HoloAvatar:
 
     def _paint_surface(self, p: QPainter, xs, ys, norms, verts,
                        primary: QColor, accent: QColor, bg: QColor,
-                       amp: float, *, smooth: bool = False) -> None:
+                       amp: float, *, smooth: bool = False, head_only: bool = False) -> None:
         """Fill the camera-facing triangles as lit, occluded, warm skin.
 
         The maths lives in `core.avatar_face` (Qt-free, so it can be tested);
@@ -616,7 +618,10 @@ class HoloAvatar:
         # of near-black across the cheek.
         area = np.abs((xs[b] - xs[a]) * (ys[c] - ys[a])
                       - (xs[c] - xs[a]) * (ys[b] - ys[a]))
-        vis = np.flatnonzero((nz > 0.015) & (area > 3.0))
+        visible = (nz > 0.015) & (area > 3.0)
+        if head_only:
+            visible &= self._fgroup == 1  # head; neck facets are group 0
+        vis = np.flatnonzero(visible)
         if vis.size == 0:
             return
 

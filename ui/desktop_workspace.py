@@ -74,7 +74,11 @@ class WorkspaceAvatar(QWidget):
             return
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         width, height = self.width(), self.height()
-        layout = avatar_layout(width, height, avatar.SPAN)
+        # The solid desktop projection is a floating head, like the concept;
+        # leave extra room for perspective and animated jaw movement. The
+        # transparent wire variant retains the full neck and original sizing.
+        floating = avatar.shaded
+        layout = avatar_layout(width, height, 2.2 if floating else avatar.SPAN)
         if layout is None:
             painter.end()
             return
@@ -91,7 +95,8 @@ class WorkspaceAvatar(QWidget):
         # preserve the user's hue and the distinct muted state.
         if not self.hud.muted:
             color = color.lighter(135)
-        avatar.paint(painter, cx, cy, radius, color, color, qcol(C.DESKTOP_BAR), wireframe=False)
+        avatar.paint(painter, cx, cy, radius, color, color, qcol(C.DESKTOP_BAR),
+                     wireframe=False, floating_head=floating)
         painter.setPen(qcol(C.DESKTOP_TEXT))
         painter.setFont(QFont("Arial", 18, QFont.Weight.Bold))
         painter.drawText(QRectF(0, name_y, width, 27), Qt.AlignmentFlag.AlignCenter,

@@ -306,6 +306,27 @@ def test_desktop_surface_can_hide_wire_without_disabling_animation(avatar_module
     assert wire.count("drawLines") >= 1  # transparent mode must remain visible
 
 
+
+def test_floating_desktop_head_excludes_neck_without_changing_hud(avatar_module, avatar, monkeypatch):
+    groups = []
+    original = avatar._paint_smooth_surface
+
+    def capture(p, xs, ys, vis, shading, table, nverts):
+        groups.append(set(avatar._fgroup[vis].tolist()))
+        return original(p, xs, ys, vis, shading, table, nverts)
+
+    monkeypatch.setattr(avatar, "_paint_smooth_surface", capture)
+    _paint(avatar_module, avatar, wireframe=False)
+    assert groups[-1] == {0, 1}
+    _paint(avatar_module, avatar, wireframe=False, floating_head=True)
+    assert groups[-1] == {1}
+    # Transparent wire and the default HUD do not lose their neck.
+    avatar.shaded = False
+    assert _paint(avatar_module, avatar, wireframe=False, floating_head=True).count("drawLines") >= 1
+    avatar.shaded = True
+    assert _paint(avatar_module, avatar, floating_head=True).count("drawLines") >= 1
+
+
 def test_the_surface_is_shaded_not_outlined(avatar_module, avatar):
     """A shaded head fills hundreds of facets; a wireframe-only head fills none.
 

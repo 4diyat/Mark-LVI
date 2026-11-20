@@ -656,7 +656,19 @@ def main():
         try:
             workspace_module.QPainter = RecordingPainter
             window.hud.state, window.hud.muted = 'LISTENING', False
-            assert not mdi._avatar_stage.grab().isNull()
+            avatar = window.hud._avatar
+            with patch.object(avatar, 'paint', wraps=avatar.paint) as paint_face:
+                assert not mdi._avatar_stage.grab().isNull()
+                assert paint_face.call_args.kwargs['floating_head'] is True
+                assert paint_face.call_args.kwargs['wireframe'] is False
+            # Transparent mode keeps the neck-sized wire projection.
+            avatar.shaded = False
+            try:
+                with patch.object(avatar, 'paint', wraps=avatar.paint) as paint_wire:
+                    assert not mdi._avatar_stage.grab().isNull()
+                    assert paint_wire.call_args.kwargs['floating_head'] is False
+            finally:
+                avatar.shaded = True
             assert translate('desktop.avatar_tagline') in painted_text
             assert translate('desktop.state_listening') in painted_text
             painted_text.clear()
