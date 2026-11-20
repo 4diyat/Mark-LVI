@@ -10,7 +10,7 @@ from core.i18n import label as _t
 from core.narrative_content import validate
 from ui.narrative_items import NarrativeItemDelegate
 from ui.theme import C, workspace_stylesheet
-from ui.visual_followup import draft
+from ui.visual_followup import draft, question_input, retranslate_input
 
 
 class NarrativeContent(QDialog):
@@ -74,6 +74,9 @@ class NarrativeContent(QDialog):
         self.detail = QPlainTextEdit()
         self.detail.setReadOnly(True)
         right.addWidget(self.detail, 1)
+        self.followup_input = question_input(self)
+        self.followup_input.textChanged.connect(lambda: self.notice.clear())
+        right.addWidget(self.followup_input)
         self.ask = QPushButton()
         self.ask.clicked.connect(self.draft_question)
         right.addWidget(self.ask)
@@ -91,6 +94,7 @@ class NarrativeContent(QDialog):
         self.items.setAccessibleName(_t('narrative.select_item'))
         self.detail.setAccessibleName(_t('narrative.detail'))
         self.ask.setText(_t('narrative.ask'))
+        retranslate_input(self.followup_input)
         observed = self.data['observed'] or _t('visual.unknown_time')
         self.source.setText(_t('visual.source', source=self.data['source']) + '  ·  '
                             + _t('visual.time', time=observed))
@@ -104,6 +108,7 @@ class NarrativeContent(QDialog):
         if not 0 <= row < len(self.data['items']):
             return
         item = self.data['items'][row]
+        self.notice.clear()
         self.item_title.setText(item['label'])
         self.item_time.setVisible(self.data['kind'] == 'timeline' or bool(item['when']))
         self.item_time.setText(item['when'] or _t('visual.unknown_time'))
@@ -115,4 +120,4 @@ class NarrativeContent(QDialog):
             return
         from core.visual_followup import narrative_snapshot
         draft(self.host, self.notice, _t('narrative.question'), 'content',
-              narrative_snapshot(self.data, row))
+              narrative_snapshot(self.data, row), self.followup_input.text())

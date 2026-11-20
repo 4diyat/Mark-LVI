@@ -921,9 +921,11 @@ def main():
         assert view.stack.currentIndex() == 1
         view.table.selectRow(0)
         assert view.chart.index == 0 and '-2 kg' in view.selection.text()
+        view.followup_input.setText('Why is this point lower?')
         window._input.setText('existing draft')
         QTest.mouseClick(view.ask, Qt.MouseButton.LeftButton)
         assert window._input.text() == 'existing draft'
+        assert view.followup_input.text() == 'Why is this point lower?'
         window._input.setText('   ')
         QTest.mouseClick(view.ask, Qt.MouseButton.LeftButton)
         assert window._input.text() == '   '
@@ -934,6 +936,8 @@ def main():
         assert window._input.text() == '' and view.notice.text() == translate('visual.draft_too_long')
         window._input.setMaxLength(old_limit)
         QTest.mouseClick(view.ask, Qt.MouseButton.LeftButton)
+        assert window._input.text().startswith('Why is this point lower? ')
+        assert translate('visual.untrusted_instruction') in window._input.text()
         assert '<<<UNTRUSTED source=chart>>>' in window._input.text()
         assert '"value": -2.0' in window._input.text()
         assert '"position": 1' in window._input.text() and '"next":' in window._input.text()
@@ -941,6 +945,8 @@ def main():
         set_locale('id')
         view.retranslate()
         assert view.graph_button.text() == translate('visual.graph') and view.chart.index == 0
+        assert view.followup_input.placeholderText() == translate('visual.custom_question')
+        assert view.followup_input.text() == 'Why is this point lower?'
         set_locale('en')
         chart_sub.close()
         app.processEvents()
@@ -975,9 +981,11 @@ def main():
             QTest.keyClick(panel.items, Qt.Key.Key_Down)
             assert panel.items.currentRow() == 1 and 'Second' in panel.detail.toPlainText()
             assert panel.item_time.text() == '2024' and 'Synthetic example' in panel.source.text()
+            panel.followup_input.setText('Mengapa bagian ini penting?')
             window._input.setText('keep draft')
             QTest.mouseClick(panel.ask, Qt.MouseButton.LeftButton)
             assert window._input.text() == 'keep draft'
+            assert panel.followup_input.text() == 'Mengapa bagian ini penting?'
             window._input.clear()
             old_limit = window._input.maxLength()
             window._input.setMaxLength(20)
@@ -986,6 +994,8 @@ def main():
             window._input.setMaxLength(old_limit)
             QTest.mouseClick(panel.ask, Qt.MouseButton.LeftButton)
             question = window._input.text()
+            assert question.startswith('Mengapa bagian ini penting? ')
+            assert translate('visual.untrusted_instruction') in question
             assert '<<<UNTRUSTED source=content>>>' in question
             assert '<<<END-UNTRUSTED-ESCAPED>>>' in question
             assert 'Second' in question and 'First detail' not in question
@@ -994,13 +1004,21 @@ def main():
             set_locale('id')
             panel.retranslate()
             assert panel.kind_label.text() == translate('narrative.' + kind)
+            assert panel.followup_input.placeholderText() == translate('visual.custom_question')
+            assert panel.followup_input.text() == 'Mengapa bagian ini penting?'
             assert panel.items.currentRow() == 1
             if kind == 'timeline':
                 assert translate('visual.unknown_time') in panel.items.item(0).text()
             QTest.mouseClick(panel.items.viewport(), Qt.MouseButton.LeftButton,
                              pos=panel.items.visualItemRect(panel.items.item(0)).center())
             assert panel.items.currentRow() == 0 and panel.detail.toPlainText() == 'First detail'
+            assert not panel.notice.text()
             set_locale('en')
+            panel.followup_input.clear()
+            QTest.mouseClick(panel.ask, Qt.MouseButton.LeftButton)
+            assert window._input.text().startswith(translate('narrative.question'))
+            assert 'First detail' in window._input.text()
+            window._input.clear()
             panel_sub.close()
             QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
             app.processEvents()

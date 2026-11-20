@@ -621,3 +621,12 @@ tetangga, karakter emoji dan penanda berbahaya; uji Qt offscreen CI memeriksa
 pengisian, batas input dan perlindungan draf untuk grafik serta ketiga bentuk
 konten. Konteks ini adalah snapshot pada saat tombol ditekan, bukan sinkronisasi
 pilihan secara langsung atau verifikasi kebenaran informasi.
+
+Pada grafik maupun konten penjelasan, kolom pertanyaan opsional memungkinkan
+pengguna menulis pertanyaan sendiri tanpa mengubah penanda konteks. Jika kosong,
+pertanyaan penjelasan standar dipakai. Tombol tetap hanya membuat draf untuk
+pemeriksaan di asisten, tidak mengirimnya. Saat pemilihan berubah, draf yang
+sudah dibuat tidak berubah; pengguna harus mengosongkan atau mengirim draf itu
+sebelum membuat snapshot baru. Pertanyaan yang ditulis tetap di kolom konten
+jika pembuatan draf gagal atau bahasa UI diganti. Pertanyaan pengguna sengaja
+berada di luar penanda untrusted; data tampilan tetap berada di dalamnya.

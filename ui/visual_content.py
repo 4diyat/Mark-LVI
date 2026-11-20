@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (QAbstractItemView, QDialog, QHBoxLayout, QLabel, QP
 from core.i18n import label as _t
 from core.visual_content import positions, validate
 from ui.theme import workspace_stylesheet
-from ui.visual_followup import draft
+from ui.visual_followup import draft, question_input, retranslate_input
 
 
 def number(value, unit):
@@ -130,6 +130,9 @@ class VisualContent(QDialog):
         self.selection.setTextFormat(Qt.TextFormat.PlainText)
         self.selection.setWordWrap(True)
         layout.addWidget(self.selection)
+        self.followup_input = question_input(self)
+        self.followup_input.textChanged.connect(lambda: self.notice.clear())
+        layout.addWidget(self.followup_input)
         self.ask = QPushButton()
         self.ask.clicked.connect(self.draft_question)
         layout.addWidget(self.ask)
@@ -146,6 +149,7 @@ class VisualContent(QDialog):
         self.graph_button.setText(_t('visual.graph'))
         self.table_button.setText(_t('visual.table'))
         self.ask.setText(_t('visual.ask'))
+        retranslate_input(self.followup_input)
         self.table.setHorizontalHeaderLabels([_t('visual.label'), _t('visual.value')])
         source = _t('visual.source', source=self.data['source'])
         observed = self.data['observed'] or _t('visual.unknown_time')
@@ -156,6 +160,8 @@ class VisualContent(QDialog):
     def select(self, index):
         if not 0 <= index < len(self.data['points']):
             return
+        if self.chart.index != index:
+            self.notice.clear()
         self.chart.index = index
         self.chart.update()
         if self.table.currentRow() != index:
@@ -167,4 +173,4 @@ class VisualContent(QDialog):
     def draft_question(self):
         from core.visual_followup import chart_snapshot
         draft(self.host, self.notice, _t('visual.question'), 'chart',
-              chart_snapshot(self.data, self.chart.index))
+              chart_snapshot(self.data, self.chart.index), self.followup_input.text())
