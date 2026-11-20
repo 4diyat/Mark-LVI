@@ -30,6 +30,16 @@ import i18n  # noqa: E402
 
 WINDOW = ROOT / "ui" / "window.py"
 
+# The window is no longer the only file that draws text: the panels that used to
+# live inside it (ui/hud_panels.py, ui/audio_devices.py, ui/remote_keys.py,
+# ui/providers_overlay.py, ui/confirm_banner.py, ui/hud_canvas.py) carry their
+# own `_t(...)` calls now. Checking only window.py would have quietly narrowed
+# these two tests to whatever was left behind — which, after the last
+# extraction, was nothing at all: window.py stopped calling `label()` entirely
+# and `test_every_key_the_window_asks_for_exists` failed on its own sanity
+# assertion. That was the test working; this is the fix.
+UI_FILES = sorted(p for p in WINDOW.parent.glob("*.py") if p.name != "__init__.py")
+
 
 def catalogue(locale: str) -> dict[str, str]:
     raw = json.loads((ROOT / "assets" / "i18n" / f"{locale}.json")
@@ -231,7 +241,14 @@ def hardcoded_labels() -> list[str]:
     label reaches the screen through, so log lines, dict values and
     strftime patterns are not mistaken for UI text.
     """
-    tree = ast.parse(WINDOW.read_text(encoding="utf-8"))
+    found = []
+    for path in UI_FILES:
+        found.extend(_hardcoded_in(path))
+    return found
+
+
+def _hardcoded_in(path: Path) -> list[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
     found = []
     for node in ast.walk(tree):
         if not (isinstance(node, ast.Call)
@@ -266,20 +283,26 @@ def test_the_window_has_no_hardcoded_user_visible_strings():
         "i18n.label() instead:\n  " + "\n  ".join(remaining))
 
 
-def test_every_key_the_window_asks_for_exists():
-    """The other direction: a key spelled wrong in the window is a ⟪…⟫ the
-    user sees and nobody tests."""
-    tree = ast.parse(WINDOW.read_text(encoding="utf-8"))
+def test_every_key_the_ui_asks_for_exists():
+    """The other direction: a key spelled wrong in a panel is a ⟪…⟫ the user
+    sees and nobody tests.
+
+    Over every module in `ui/`, not just the window — see UI_FILES. The aliases
+    are `_t` in the newer modules and a bare `label` in the older ones, so both
+    spellings are read.
+    """
     asked = set()
-    for node in ast.walk(tree):
-        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-                and node.func.id == "label" and node.args
-                and isinstance(node.args[0], ast.Constant)
-                and isinstance(node.args[0].value, str)):
-            asked.add(node.args[0].value)
-    assert asked, "window.py never calls label() — is the wiring missing?"
+    for path in UI_FILES:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                    and node.func.id in ("label", "_t") and node.args
+                    and isinstance(node.args[0], ast.Constant)
+                    and isinstance(node.args[0].value, str)):
+                asked.add(node.args[0].value)
+    assert asked, "no ui/ module calls label()/_t() — is the wiring missing?"
     missing = sorted(asked - set(catalogue(i18n.DEFAULT_LOCALE)))
-    assert missing == [], f"window.py asks for keys nobody wrote: {missing}"
+    assert missing == [], f"ui/ asks for keys nobody wrote: {missing}"
 
 
 def test_the_suite_passes_in_any_locale():

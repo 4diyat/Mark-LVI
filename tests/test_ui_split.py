@@ -25,7 +25,7 @@ WINDOW = UI_PKG / "window.py"
 # the sizes that made them unreadable. The ceiling came down from 7,400 to
 # 7,000 when the three setting panels moved to ui/overlays.py — a ratchet that
 # is only ever loosened is not a ratchet.
-WINDOW_CEILING = 4_900
+WINDOW_CEILING = 4_250
 MODULES = [UI_PKG / "__init__.py", UI_PKG / "theme.py", UI_PKG / "metrics.py",
            UI_PKG / "overlays.py"]
 
@@ -504,3 +504,37 @@ def test_the_hud_canvas_survives_a_missing_avatar():
                 for sub in node.body)
         for node in tree.body)
     assert guarded, "the core.avatar import lost its guard"
+
+
+def test_the_audio_and_remote_key_overlays_are_their_own_modules_now():
+    """358 + 295 lines of overlay, neither of which touched the window."""
+    from ui import audio_devices, remote_keys
+
+    assert hasattr(audio_devices, "AudioDeviceOverlay")
+    assert hasattr(remote_keys, "RemoteKeyOverlay")
+
+    import ui
+    assert ui.AudioDeviceOverlay is audio_devices.AudioDeviceOverlay
+    assert ui.RemoteKeyOverlay is remote_keys.RemoteKeyOverlay
+
+
+def test_the_remote_key_panel_keeps_the_size_the_qt_smoke_test_sets():
+    """tools/check_security_qt.py imports this through `ui` and sizes it by
+    `_OW`/`_OH` before clicking the HTTPS button. Those are class attributes, so
+    they move with the class — but a test that only checks the name would not
+    notice them being dropped in a rewrite.
+    """
+    from ui.remote_keys import RemoteKeyOverlay
+
+    assert RemoteKeyOverlay._OW > 0 and RemoteKeyOverlay._OH > 0
+    assert hasattr(RemoteKeyOverlay, "_enable_https")
+
+
+def test_the_remote_key_panel_does_not_import_qrcode_at_module_level():
+    """`qrcode` is an optional dependency and this panel is built on a click."""
+    tree = ast.parse((UI_PKG / "remote_keys.py").read_text(encoding="utf-8"))
+    top = {a.name.split(".")[0] for node in tree.body if isinstance(node, ast.Import)
+           for a in node.names}
+    top |= {node.module.split(".")[0] for node in tree.body
+            if isinstance(node, ast.ImportFrom) and node.module}
+    assert "qrcode" not in top, "qrcode must stay inside _update_qr"
