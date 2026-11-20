@@ -660,7 +660,9 @@ pemutar mendapat kesempatan membacanya.
 Uji offline mencakup antrean penuh, FIFO, cancellation, interrupt lintas thread,
 callback basi, serta jalur penerimaan sintetis yang membawa transkrip dan tool
 call. Batas ini hanya pada antrean PCM pemutar, bukan ukuran frame individual,
-antrean internal pipeline, jaringan, buffer perangkat, atau executor tool.
+event non-audio pipeline, frame individual provider, jaringan, buffer perangkat,
+atau executor tool. Antrean PCM internal pipeline kini juga dibatasi seperti
+dijelaskan di bawah.
 Backpressure dapat menunda penerimaan transkrip, tool call dan akhir giliran
 ketika pemutaran lambat; ini pilihan konservatif agar audio tidak hilang, bukan
 nonblocking tool execution. Pemutaran yang sudah diserahkan ke perangkat belum
@@ -686,3 +688,21 @@ akhir giliran/transkrip/audio lama, dan giliran baru dengan audio baru. Ini
 tidak membatalkan tool yang sudah berjalan atau membuktikan respons pada
 provider/perangkat nyata. Respons Gemini Live tetap menggunakan batas giliran
 yang dikirim server; jika batas itu tidak datang, kasus tersebut belum tertangani.
+
+
+### Batas PCM pipeline lokal
+
+Antrean event pipeline tetap membawa pesan kontrol tanpa membuangnya, tetapi
+audio yang menunggu di antrean dibatasi 100 potongan maksimum 2.400 byte
+(sekitar lima detik PCM). Blok TTS besar dipecah dan produser menunggu ruang.
+Penerima melepaskan kapasitas saat mengambil setiap potongan; urutan audio,
+transkrip, tool call dan penanda interrupt tetap mengikuti urutan event.
+Penghentian dan interrupt diuji saat antrean penuh, termasuk blok TTS lebih
+besar dari kapasitas dan pemberitahuan tool setelah ucapan pengantar.
+
+Batas ini tidak mencakup blok yang sudah dialokasikan oleh provider, event
+non-audio, buffer jaringan/perangkat, atau audio yang telah diambil penerima.
+Backpressure juga dapat memperlambat pengiriman tool call; ini bukan solusi
+untuk tool yang macet. Cancellation memerlukan provider kooperatif: kode atau
+thread eksternal yang mengabaikan cancellation tidak dijamin berhenti. Uji
+menggunakan provider sintetis, bukan TTS/provider atau perangkat nyata.

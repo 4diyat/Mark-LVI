@@ -51,6 +51,7 @@ from typing import Any, AsyncIterator, Optional
 
 from . import schema
 from .base import DEFAULT_CAPS, FunctionCall, Msg
+from core.playback_buffer import SLICE_BYTES
 
 # How much conversation to carry. Gemini Live compresses its own context with a
 # sliding window server-side; a stateless chat API has no such thing, so the
@@ -103,6 +104,18 @@ _VAD_ABSOLUTE_MIN = 0.006  # ...and never below this, so a silent room's own
 _MAX_TOOL_ROUNDS = 4
 
 
+# Bound audio separately from control events. A turn boundary, tool call or
+# interrupt barrier must never be rejected merely because speech filled up.
+_PIPELINE_AUDIO_SLICES = 100  # about five seconds at 24 kHz / 16-bit mono
+
+
+class _QueuedAudio:
+    __slots__ = ('message',)
+
+    def __init__(self, pcm):
+        self.message = Msg.audio(pcm)
+
+
 class PipelineEngine:
     """STT -> LLM -> TTS, wearing the Live session's interface."""
 
@@ -143,6 +156,7 @@ class PipelineEngine:
 
         self._history: list[dict] = []
         self._queue: asyncio.Queue = asyncio.Queue()
+        self._audio_slots = asyncio.BoundedSemaphore(_PIPELINE_AUDIO_SLICES)
         self._gen: Optional[asyncio.Task] = None
         self._closed = False
         self._interrupt_id = 0
@@ -377,6 +391,9 @@ class PipelineEngine:
             msg = await self._queue.get()
             if msg is None:
                 return
+            if isinstance(msg, _QueuedAudio):
+                self._audio_slots.release()
+                msg = msg.message
             yield msg
 
     async def close(self) -> None:
@@ -742,8 +759,19 @@ class PipelineEngine:
         traceback.print_exception(type(exc), exc, exc.__traceback__)
 
     async def _emit(self, msg: Msg) -> None:
-        if not self._closed:
-            await self._queue.put(msg)
+        if self._closed:
+            return
+        if msg.data:
+            # TTS providers may return a complete sentence in one large block.
+            # Split it before queueing so the count limit also bounds queued PCM.
+            for offset in range(0, len(msg.data), SLICE_BYTES):
+                await self._audio_slots.acquire()
+                if self._closed:
+                    self._audio_slots.release()
+                    return
+                self._queue.put_nowait(_QueuedAudio(msg.data[offset:offset + SLICE_BYTES]))
+        else:
+            self._queue.put_nowait(msg)
 
     # ── conversion ───────────────────────────────────────────────────────────
     def _to_content(self, parts: list) -> Any:
