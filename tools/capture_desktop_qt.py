@@ -40,6 +40,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--image-editor', action='store_true', help='capture the synthetic image editor instead')
     parser.add_argument('--visual-content', action='store_true', help='capture a fictional interactive chart')
+    parser.add_argument('--narrative-content', action='store_true', help='capture a fictional concept explanation')
     args = parser.parse_args()
     with tempfile.TemporaryDirectory() as tmp:
         os.environ['HOME'] = tmp
@@ -81,7 +82,21 @@ def main():
             window._log._next()
         QTest.qWait(300)
         app.processEvents()
-        if args.visual_content:
+        if args.narrative_content:
+            from ui.narrative_content import NarrativeContent
+            data = {'kind': 'steps', 'title': 'How plants make food',
+                    'source': 'Synthetic demonstration', 'summary': 'A fictional layout example.',
+                    'items': [{'label': 'Capture light', 'detail': 'Leaves absorb sunlight.'},
+                              {'label': 'Use water and carbon dioxide', 'detail': 'Plants use water and carbon dioxide in the process.'},
+                              {'label': 'Store energy', 'detail': 'The process produces sugar and releases oxygen.'}]}
+            view = NarrativeContent(window, data)
+            sub = show_document(window, view, 'narrative_content')
+            sub.setGeometry(180, 50, 820, 600)
+            view.items.setCurrentRow(1)
+            QTest.qWait(300)
+            app.processEvents()
+            emit_capture(sub, 'Narrative content capture')
+        elif args.visual_content:
             from ui.visual_content import VisualContent
             data = {'title': 'Expense analysis', 'source': 'Synthetic example', 'observed': 'Jan–Jun example',
                     'unit': 'million', 'points': [

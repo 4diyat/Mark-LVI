@@ -559,3 +559,22 @@ dan draf dengan Qt offscreen. CI mengambil gambar contoh sintetis untuk review.
 Diagram lain, penyimpanan/bagikan, pengambilan data otomatis, dan kesesuaian
 visual/DPI serta interaksi pada perangkat nyata belum diverifikasi atau belum
 tersedia. Model lokal dengan anggaran tool kecil dapat tidak menawarkan plugin.
+
+### Konten penjelasan, bukan hanya grafik
+
+Plugin `present_content` menerima konten terbatas dalam tiga bentuk: kartu
+konsep, langkah berurutan, atau linimasa. Ini adalah informasi interaktif,
+bukan rencana yang otomatis dijalankan. Item dapat dipilih dengan mouse atau
+keyboard untuk membaca detail dan menyiapkan pertanyaan pada kolom asisten;
+draf lama tidak ditimpa dan tidak ada pengiriman otomatis. Judul, sumber dan
+rincian ditampilkan sebagai teks biasa, tanpa menjalankan kode atau tautan.
+Sumber hanyalah keterangan yang diberikan dan tidak otomatis diverifikasi;
+tanggal kosong tetap tidak diketahui. Konten model dapat keliru dan penanda
+untrusted bukan jaminan keamanan terhadap prompt injection.
+
+`tests/test_narrative_content.py` memeriksa validasi dan pembatalan; CI menguji
+jalur plugin hingga widget Qt offscreen dan menangkap contoh sintetis. Ini
+belum menghasilkan semua jenis media, belum sinkron dengan setiap jawaban suara,
+dan belum membuktikan kualitas pemilihan bentuk oleh provider nyata atau
+penggunaan pada layar nyata. Tool dapat dihilangkan oleh provider beranggaran
+kecil. Browser tetap tidak dikerjakan dalam tahap ini.

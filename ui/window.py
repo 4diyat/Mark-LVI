@@ -718,6 +718,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
     _editor_assist_sig = pyqtSignal(object)
     _workspace_command_sig = pyqtSignal(object)  # worker request, completed on Qt thread
     _visual_content_sig = pyqtSignal(object)
+    _narrative_content_sig = pyqtSignal(object)
     _browser_read_sig = pyqtSignal(object)
     _reconfig_sig   = pyqtSignal()           # trigger setup overlay from any thread
     _camera_sig     = pyqtSignal(bytes)      # show camera frame preview (small overlay)
@@ -1089,6 +1090,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         self._plugins_ready_sig.connect(lambda: open_initial_editor(self))
         self._workspace_command_sig.connect(self._execute_workspace_command)
         self._visual_content_sig.connect(self._open_visual_content)
+        self._narrative_content_sig.connect(self._open_narrative_content)
         self._editor_assist_sig.connect(self._execute_editor_assist)
         self._ssh_assist_sig.connect(self._execute_ssh_assist)
         self._browser_read_sig.connect(self._execute_browser_read)
@@ -1152,21 +1154,13 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         from ui.browser_read import execute
         execute(self, request)
 
+    def _open_narrative_content(self, request):
+        from ui.visual_bridge import open_content
+        open_content(self, 'narrative', request)
+
     def _open_visual_content(self, request):
-        """Claim a worker request before opening anything on the Qt thread."""
-        if not request.claim():
-            return
-        try:
-            from core.visual_content import validate
-            from ui.visual_content import VisualContent
-            from ui.desktop_workspace import show_document
-            data = validate(request.command)
-            view = VisualContent(self, data)
-            show_document(self, view, "visual_content")
-            result = {"ok": True, "message": "Interactive chart and table opened. Source attribution is unverified."}
-        except Exception as exc:
-            result = {"ok": False, "message": f"Could not open the interactive chart: {type(exc).__name__}."}
-        request.finish(result)
+        from ui.visual_bridge import open_content
+        open_content(self, 'chart', request)
 
     def _execute_workspace_command(self, request):
         """Run on the Qt thread and always return an explicit outcome."""
@@ -4036,18 +4030,13 @@ class JarvisUI:
         """Thread-safe: draw the coding agent's live progress in the panel."""
         self._win._codejob_sig.emit(dict(job))
 
+    def show_narrative_content(self, payload: dict) -> dict:
+        from ui.visual_bridge import request
+        return request(self._win, 'narrative', payload)
+
     def show_visual_content(self, payload: dict) -> dict:
-        """Worker-only validated request; late unclaimed requests are cancelled."""
-        from core.visual_content import validate
-        from core.workspace_control import WorkspaceRequest
-        if threading.get_ident() == self._win._ui_thread_id:
-            return {"ok": False, "message": "Visual content must be requested from a worker."}
-        try:
-            request = WorkspaceRequest(validate(payload))
-        except ValueError as exc:
-            return {"ok": False, "message": str(exc)}
-        self._win._visual_content_sig.emit(request)
-        return request.wait(3.0)
+        from ui.visual_bridge import request
+        return request(self._win, 'chart', payload)
 
     def control_workspace(self, command: dict) -> dict:
         """Worker-only request to the desktop; timeout cancels unstarted work."""
