@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (QAbstractItemView, QDialog, QHBoxLayout, QLabel, QL
 from core import outcome
 from core.i18n import label as _t
 from core.narrative_content import validate
+from ui.narrative_items import NarrativeItemDelegate
 from ui.theme import C, workspace_stylesheet
 
 
@@ -47,12 +48,15 @@ class NarrativeContent(QDialog):
         self.items = QListWidget()
         self.items.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.items.setMinimumWidth(180)
-        for i, item in enumerate(self.data['items']):
-            prefix = f'{i + 1:02d}  ' if self.data['kind'] == 'steps' else '●  ' if self.data['kind'] == 'timeline' else '◇  '
-            caption = prefix + item['label']
-            if self.data['kind'] == 'timeline' and item['when']:
-                caption += '  ·  ' + item['when']
-            self.items.addItem(QListWidgetItem(caption))
+        self.items.setItemDelegate(NarrativeItemDelegate(self.data['kind'], self.items))
+        self.items.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        for item in self.data['items']:
+            caption = item['label']
+            if self.data['kind'] == 'timeline':
+                caption += ' · ' + (item['when'] or _t('visual.unknown_time'))
+            entry = QListWidgetItem(caption)
+            entry.setData(Qt.ItemDataRole.UserRole, item)
+            self.items.addItem(entry)
         self.items.currentRowChanged.connect(self.select)
         content.addWidget(self.items, 2)
         panel = QWidget()
@@ -92,6 +96,10 @@ class NarrativeContent(QDialog):
         observed = self.data['observed'] or _t('visual.unknown_time')
         self.source.setText(_t('visual.source', source=self.data['source']) + '  ·  '
                             + _t('visual.time', time=observed))
+        if self.data['kind'] == 'timeline':
+            for index, item in enumerate(self.data['items']):
+                self.items.item(index).setText(item['label'] + ' · ' + (item['when'] or _t('visual.unknown_time')))
+        self.items.viewport().update()
         self.select(self.items.currentRow())
 
     def select(self, row):
@@ -99,8 +107,8 @@ class NarrativeContent(QDialog):
             return
         item = self.data['items'][row]
         self.item_title.setText(item['label'])
-        self.item_time.setVisible(bool(item['when']))
-        self.item_time.setText(item['when'])
+        self.item_time.setVisible(self.data['kind'] == 'timeline' or bool(item['when']))
+        self.item_time.setText(item['when'] or _t('visual.unknown_time'))
         self.detail.setPlainText(item['detail'])
 
     def draft_question(self):

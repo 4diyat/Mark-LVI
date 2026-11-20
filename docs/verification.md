@@ -578,3 +578,9 @@ belum menghasilkan semua jenis media, belum sinkron dengan setiap jawaban suara,
 dan belum membuktikan kualitas pemilihan bentuk oleh provider nyata atau
 penggunaan pada layar nyata. Tool dapat dihilangkan oleh provider beranggaran
 kecil. Browser tetap tidak dikerjakan dalam tahap ini.
+
+Tampilan pilihan kini memakai kartu berpratinjau untuk konsep, nomor untuk
+langkah dan penanda linimasa untuk peristiwa. Pratinjau panjang dapat terpotong;
+teks lengkap tetap tersedia di panel detail. Waktu peristiwa yang tidak diberikan
+ditampilkan sebagai tidak diketahui, bukan diperkirakan. CI juga menguji pilihan
+dengan mouse dan keyboard serta perubahan bahasa di Qt offscreen.

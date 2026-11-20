@@ -957,6 +957,11 @@ def main():
             panel = panel_sub._document
             app.processEvents()
             assert panel.items.count() == 2 and panel.detail.toPlainText() == 'First detail'
+            assert panel.items.itemDelegate().kind == kind
+            assert panel.items.visualItemRect(panel.items.item(0)).height() >= 80
+            if kind == 'timeline':
+                assert panel.item_time.text() == translate('visual.unknown_time')
+                assert translate('visual.unknown_time') in panel.items.item(0).text()
             panel.items.setFocus()
             QTest.keyClick(panel.items, Qt.Key.Key_Down)
             assert panel.items.currentRow() == 1 and 'Second' in panel.detail.toPlainText()
@@ -975,6 +980,11 @@ def main():
             panel.retranslate()
             assert panel.kind_label.text() == translate('narrative.' + kind)
             assert panel.items.currentRow() == 1
+            if kind == 'timeline':
+                assert translate('visual.unknown_time') in panel.items.item(0).text()
+            QTest.mouseClick(panel.items.viewport(), Qt.MouseButton.LeftButton,
+                             pos=panel.items.visualItemRect(panel.items.item(0)).center())
+            assert panel.items.currentRow() == 0 and panel.detail.toPlainText() == 'First detail'
             set_locale('en')
             panel_sub.close()
             QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)

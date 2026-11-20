@@ -40,7 +40,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--image-editor', action='store_true', help='capture the synthetic image editor instead')
     parser.add_argument('--visual-content', action='store_true', help='capture a fictional interactive chart')
-    parser.add_argument('--narrative-content', action='store_true', help='capture a fictional concept explanation')
+    parser.add_argument('--narrative-content', choices=('cards', 'steps', 'timeline'), help='capture fictional explanatory content')
     args = parser.parse_args()
     with tempfile.TemporaryDirectory() as tmp:
         os.environ['HOME'] = tmp
@@ -84,10 +84,10 @@ def main():
         app.processEvents()
         if args.narrative_content:
             from ui.narrative_content import NarrativeContent
-            data = {'kind': 'steps', 'title': 'How plants make food',
+            data = {'kind': args.narrative_content, 'title': 'How plants make food',
                     'source': 'Synthetic demonstration', 'summary': 'A fictional layout example.',
                     'items': [{'label': 'Capture light', 'detail': 'Leaves absorb sunlight.'},
-                              {'label': 'Use water and carbon dioxide', 'detail': 'Plants use water and carbon dioxide in the process.'},
+                              {'label': 'Use water and carbon dioxide', 'detail': 'Plants use water and carbon dioxide in the process.', 'when': 'Example time'},
                               {'label': 'Store energy', 'detail': 'The process produces sugar and releases oxygen.'}]}
             view = NarrativeContent(window, data)
             sub = show_document(window, view, 'narrative_content')
@@ -95,7 +95,7 @@ def main():
             view.items.setCurrentRow(1)
             QTest.qWait(300)
             app.processEvents()
-            emit_capture(sub, 'Narrative content capture')
+            emit_capture(sub, 'Narrative ' + args.narrative_content + ' capture')
         elif args.visual_content:
             from ui.visual_content import VisualContent
             data = {'title': 'Expense analysis', 'source': 'Synthetic example', 'observed': 'Jan–Jun example',
