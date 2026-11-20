@@ -737,8 +737,8 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
     _audio_vol_sig   = pyqtSignal(float)
     _clipboard_sig  = pyqtSignal(str)        # clipboard text changed (thread-safe)
     _hand_menu_sig  = pyqtSignal(object)     # menu target captured on gesture thread
-    _confirm_sig    = pyqtSignal(str, str)   # (title, detail) — irreversible-action gate
-    _confirm_hide_sig = pyqtSignal()
+    _confirm_sig    = pyqtSignal(str, str, str)  # request ID, title, detail
+    _confirm_hide_sig = pyqtSignal(str)        # request ID
     _wake_dl_sig    = pyqtSignal(bool, str)  # wake-word install finished (ok, message)
     _quiz_sig       = pyqtSignal(str, object, object)  # (topic, questions, grader)
     _quiz_hide_sig  = pyqtSignal()
@@ -3517,32 +3517,37 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
 
     # ── Irreversible-action confirmation ─────────────────────────────────────
 
-    def _show_confirm_banner(self, title: str, detail: str):
+    def _show_confirm_banner(self, token: str, title: str, detail: str):
+        from core.confirm import is_pending
+        if not is_pending(token):
+            return  # a queued banner for an expired or replaced request
         if hasattr(self, "_hand_controller"):
             self._hand_controller.stop()
         if getattr(self, "_hand_menu", None) is not None:
             self._hand_menu.close()
         self._hide_confirm_banner()
         ov = ConfirmBanner(title, detail, parent=self.centralWidget())
-        ov.answered.connect(self._on_confirm_answered)
+        ov.answered.connect(lambda accepted: self._on_confirm_answered(token, accepted))
         self._centre_overlay(ov)
         self._confirm_overlay = ov
+        self._confirm_token = token
 
-    def _hide_confirm_banner(self):
+    def _hide_confirm_banner(self, token=None):
         ov = getattr(self, "_confirm_overlay", None)
-        if ov is not None:
+        if ov is not None and (token is None or token == getattr(self, "_confirm_token", None)):
             ov.hide()
             ov.deleteLater()
             self._confirm_overlay = None
+            self._confirm_token = None
 
-    def _on_confirm_answered(self, accepted: bool):
+    def _on_confirm_answered(self, token: str, accepted: bool):
         # Tear the banner down first: core.confirm.resolve() may be about to
         # shut the machine down, and a live widget mid-callback is not where you
         # want to be when that happens.
-        self._hide_confirm_banner()
+        self._hide_confirm_banner(token)
         try:
             from core.confirm import resolve
-            resolve(bool(accepted))
+            resolve(token, bool(accepted))
         except Exception as e:
             self._log.append_log(f"ERR: Confirmation failed — {e}")
 
@@ -3892,14 +3897,14 @@ class JarvisUI:
     def on_audio_device_change(self, cb):
         self._win.on_audio_device_change = cb
 
-    def show_confirm(self, title: str, detail: str) -> None:
+    def show_confirm(self, token: str, title: str, detail: str) -> None:
         """Thread-safe: raise the irreversible-action gate. Called from action
         handlers running in executor threads, so it goes through a signal."""
-        self._win._confirm_sig.emit(str(title)[:120], str(detail)[:300])
+        self._win._confirm_sig.emit(token, title, detail)
 
-    def hide_confirm(self) -> None:
-        """Thread-safe: take the gate down."""
-        self._win._confirm_hide_sig.emit()
+    def hide_confirm(self, token: str) -> None:
+        """Thread-safe: take down only the matching gate."""
+        self._win._confirm_hide_sig.emit(token)
 
     @property
     def get_plugins(self):

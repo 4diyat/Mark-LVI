@@ -799,6 +799,36 @@ def main():
         # Exercise the same worker -> Qt signal -> result path used by plugins.
         bridge = JarvisUI.__new__(JarvisUI)
         bridge._win = window
+        # Queue an obsolete banner and hide from a worker before the newer
+        # request is displayed. The old events and old answer must not affect it.
+        from core import confirm
+        executed = threading.Event()
+        tokens = []
+        def show_confirmation(token, title, detail):
+            tokens.append(token)
+            bridge.show_confirm(token, title, detail)
+        confirm.bind(show_confirmation, bridge.hide_confirm)
+        def queue_confirmations():
+            confirm.request("old", "Old action", "-", lambda: "old")
+            confirm.resolve(tokens[0], False)
+            confirm.request("new", "New action", "-", lambda: executed.set())
+        worker = threading.Thread(target=queue_confirmations)
+        worker.start()
+        worker.join(timeout=5)
+        assert not worker.is_alive() and len(tokens) == 2
+        app.processEvents()
+        assert window._confirm_overlay is not None and window._confirm_token == tokens[1]
+        window._on_confirm_answered(tokens[0], True)
+        app.processEvents()
+        assert not executed.is_set() and confirm.is_pending(tokens[1])
+        assert window._confirm_overlay is not None and window._confirm_token == tokens[1]
+        yes = next(button for button in window._confirm_overlay.findChildren(QPushButton)
+                   if button.text() == translate("ui.confirm.button"))
+        QTest.mouseClick(yes, Qt.MouseButton.LeftButton)
+        assert executed.wait(5)
+        app.processEvents()
+        assert window._confirm_overlay is None and not confirm.is_pending(tokens[1])
+        confirm.bind(None, None)
         assert not bridge.control_workspace({"action": "list"})["ok"]  # no waiting on Qt thread
 
         def command(payload):

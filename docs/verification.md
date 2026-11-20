@@ -519,3 +519,15 @@ layanan aktif. Tata letak dibatasi agar caption tidak bertumpuk dengan wajah
 atau keluar dari stage. Ini bukan perubahan model 3D maupun wajah fotorealistis.
 Tes geometri dan Qt offscreen memeriksa batas, bahasa dan status sintetis;
 kecocokan visual, aksesibilitas dan performa perangkat tetap perlu pemeriksaan.
+
+### Persetujuan tindakan umum
+
+Gerbang `core.confirm` menolak permintaan baru secara atomik saat ada
+persetujuan yang belum kedaluwarsa. Banner dan jawaban membawa ID permintaan
+acak; jawaban, tampilan, atau penutupan yang terlambat tidak dapat menyetujui
+atau menutup banner baru. Judul/detail yang melampaui batas tampilan ditolak,
+bukan dipotong diam-diam. `tests/test_confirm.py` menguji konkurensi, identitas,
+kedaluwarsa dan kegagalan callback; `tools/check_desktop_qt.py` menguji antrean
+sinyal dan tombol dengan Qt offscreen. Ini bukan audit semua jalur persetujuan,
+sandbox plugin, atau validasi interaksi pada perangkat nyata; gerbang MT5 dan
+SSH memiliki mekanisme dan pengujiannya sendiri.
