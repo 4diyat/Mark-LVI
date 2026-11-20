@@ -109,6 +109,8 @@
   "ui.apply": "▸  TERAPKAN",
   "ui.memory.heading": "🧠  YANG DIINGAT {name}",
   "visual.graph": "Grafik",
+  "visual.line": "Garis",
+  "visual.bar": "Batang",
   "narrative.cards": "Kartu konsep",
   "providers.visual_priority": "Utamakan tool konten visual",
   "providers.visual_priority_hint": "Saat tool dibatasi, tool lain bisa tidak tersedia. Sambungkan ulang untuk menerapkan.",

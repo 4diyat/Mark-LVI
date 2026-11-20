@@ -40,6 +40,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--image-editor', action='store_true', help='capture the synthetic image editor instead')
     parser.add_argument('--visual-content', action='store_true', help='capture a fictional interactive chart')
+    parser.add_argument('--bar-chart', action='store_true', help='show fictional numeric data as bars')
     parser.add_argument('--narrative-content', choices=('cards', 'steps', 'timeline'), help='capture fictional explanatory content')
     args = parser.parse_args()
     with tempfile.TemporaryDirectory() as tmp:
@@ -99,6 +100,7 @@ def main():
         elif args.visual_content:
             from ui.visual_content import VisualContent
             data = {'title': 'Expense analysis', 'source': 'Synthetic example', 'observed': 'Jan–Jun example',
+                    'chart_type': 'bar' if args.bar_chart else 'line',
                     'unit': 'million', 'points': [
                         {'label': name, 'value': value} for name, value in
                         [('Jan', 2.0), ('Feb', 2.4), ('Mar', 2.8), ('Apr', 4.2), ('May', 4.8), ('Jun', 3.4)]]}
@@ -108,7 +110,7 @@ def main():
             view.select(3)
             QTest.qWait(300)
             app.processEvents()
-            emit_capture(sub, 'Visual content capture')
+            emit_capture(sub, 'Bar chart capture' if args.bar_chart else 'Visual content capture')
         elif not args.image_editor:
             emit_capture(window, 'Desktop capture')
         else:

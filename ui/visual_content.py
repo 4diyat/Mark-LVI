@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (QAbstractItemView, QDialog, QHBoxLayout, QLabel, QP
                              QStackedWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
 
 from core.i18n import label as _t
-from core.visual_content import positions, validate
+from core.visual_content import bar_rectangles, positions, validate
 from ui.theme import workspace_stylesheet
 from ui.visual_followup import draft, question_input, retranslate_input
 
@@ -23,6 +23,7 @@ class Chart(QWidget):
         super().__init__()
         self.data = data
         self.index = 0
+        self.mode = data['chart_type']
         self.setMinimumSize(260, 180)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setAccessibleName(_t("visual.chart_accessible"))
@@ -30,6 +31,10 @@ class Chart(QWidget):
     def points(self):
         return positions(self.data['points'], 70, 28, max(1, self.width() - 100),
                          max(1, self.height() - 75))
+
+    def bars(self):
+        return bar_rectangles(self.data['points'], 70, 28, max(1, self.width() - 100),
+                              max(1, self.height() - 75))
 
     def paintEvent(self, event):
         del event
@@ -49,15 +54,30 @@ class Chart(QWidget):
             p.setPen(QColor('#adc0d4'))
             p.drawText(QRectF(0, y - 10, 62, 20), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
                        number(hi - (hi - lo) * i / 3, ''))
-        path = QPainterPath(QPointF(*coords[0]))
-        for point in coords[1:]:
-            path.lineTo(QPointF(*point))
-        p.setPen(QPen(QColor('#54aaff'), 2))
-        p.drawPath(path)
-        for i, (x, y) in enumerate(coords):
-            p.setPen(QPen(QColor('#a5d9ff'), 2) if i == self.index else Qt.PenStyle.NoPen)
-            p.setBrush(QColor('#3f9cec'))
-            p.drawEllipse(QPointF(x, y), 6 if i == self.index else 4, 6 if i == self.index else 4)
+        if self.mode == 'bar':
+            rects, baseline = self.bars()
+            p.setPen(QPen(QColor('#9cb8d3'), 1))
+            p.drawLine(QPointF(70, baseline), QPointF(self.width() - 30, baseline))
+            for i, (x, y, width, height) in enumerate(rects):
+                p.setPen(QPen(QColor('#a5d9ff'), 2) if i == self.index else Qt.PenStyle.NoPen)
+                p.setBrush(QColor('#3f9cec'))
+                if height:
+                    p.drawRect(QRectF(x, y, width, height))
+                else:
+                    # A zero-height bar is shown as a line, not a non-zero value.
+                    p.setPen(QPen(QColor('#a5d9ff' if i == self.index else '#3f9cec'), 2))
+                    p.drawLine(QPointF(x, baseline), QPointF(x + width, baseline))
+            coords = [(x + width / 2, y) for x, y, width, _ in rects]
+        else:
+            path = QPainterPath(QPointF(*coords[0]))
+            for point in coords[1:]:
+                path.lineTo(QPointF(*point))
+            p.setPen(QPen(QColor('#54aaff'), 2))
+            p.drawPath(path)
+            for i, (x, y) in enumerate(coords):
+                p.setPen(QPen(QColor('#a5d9ff'), 2) if i == self.index else Qt.PenStyle.NoPen)
+                p.setBrush(QColor('#3f9cec'))
+                p.drawEllipse(QPointF(x, y), 6 if i == self.index else 4, 6 if i == self.index else 4)
         # Labels stay readable for small series; the table always exposes all labels.
         if len(coords) <= 8:
             p.setPen(QColor('#adc0d4'))
@@ -69,12 +89,22 @@ class Chart(QWidget):
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             pos = event.position()
-            points = self.points()
-            nearest = min(range(len(points)), key=lambda i: (points[i][0] - pos.x()) ** 2 + (points[i][1] - pos.y()) ** 2)
-            if (points[nearest][0] - pos.x()) ** 2 + (points[nearest][1] - pos.y()) ** 2 <= 14 ** 2:
-                self.selected.emit(nearest)
-                self.setFocus()
-                return
+            if self.mode == 'bar':
+                rects, _ = self.bars()
+                for i, (x, y, width, height) in enumerate(rects):
+                    # Give zero a usable target without drawing it as non-zero.
+                    hit = QRectF(x, y, width, height).adjusted(0, -5, 0, 5)
+                    if hit.contains(pos):
+                        self.selected.emit(i)
+                        self.setFocus()
+                        return
+            else:
+                points = self.points()
+                nearest = min(range(len(points)), key=lambda i: (points[i][0] - pos.x()) ** 2 + (points[i][1] - pos.y()) ** 2)
+                if (points[nearest][0] - pos.x()) ** 2 + (points[nearest][1] - pos.y()) ** 2 <= 14 ** 2:
+                    self.selected.emit(nearest)
+                    self.setFocus()
+                    return
         super().mousePressEvent(event)
 
     def keyPressEvent(self, event):
@@ -91,7 +121,10 @@ class VisualContent(QDialog):
         self.host = host
         self.data = validate(payload)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
-        self.setStyleSheet(workspace_stylesheet())
+        self.setStyleSheet(workspace_stylesheet() + """
+            QPushButton#VisualMode:checked { background: #286dcc; color: #ffffff;
+                border: 1px solid #70b7ff; font-weight: bold; }
+        """)
         self.setWindowTitle(self.data['title'])
         self.resize(760, 550)
         layout = QVBoxLayout(self)
@@ -106,9 +139,11 @@ class VisualContent(QDialog):
         self.source.setWordWrap(True)
         layout.addWidget(self.source)
         bar = QHBoxLayout()
-        self.graph_button, self.table_button = QPushButton(), QPushButton()
-        bar.addWidget(self.graph_button)
-        bar.addWidget(self.table_button)
+        self.graph_button, self.bar_button, self.table_button = QPushButton(), QPushButton(), QPushButton()
+        for button in (self.graph_button, self.bar_button, self.table_button):
+            button.setObjectName('VisualMode')
+            button.setCheckable(True)
+            bar.addWidget(button)
         bar.addStretch()
         layout.addLayout(bar)
         self.stack = QStackedWidget()
@@ -140,13 +175,16 @@ class VisualContent(QDialog):
         self.notice.setWordWrap(True)
         self.notice.setTextFormat(Qt.TextFormat.PlainText)
         layout.addWidget(self.notice)
-        self.graph_button.clicked.connect(lambda: self.stack.setCurrentIndex(0))
-        self.table_button.clicked.connect(lambda: self.stack.setCurrentIndex(1))
+        self.graph_button.clicked.connect(lambda: self.show_chart('line'))
+        self.bar_button.clicked.connect(lambda: self.show_chart('bar'))
+        self.table_button.clicked.connect(self.show_table)
+        self.show_chart(self.data['chart_type'])
         self.retranslate()
         self.select(0)
 
     def retranslate(self):
-        self.graph_button.setText(_t('visual.graph'))
+        self.graph_button.setText(_t('visual.line'))
+        self.bar_button.setText(_t('visual.bar'))
         self.table_button.setText(_t('visual.table'))
         self.ask.setText(_t('visual.ask'))
         retranslate_input(self.followup_input)
@@ -156,6 +194,20 @@ class VisualContent(QDialog):
         self.source.setText(source + '  ·  ' + _t('visual.time', time=observed))
         self.chart.setAccessibleName(_t('visual.chart_accessible'))
         self.select(self.chart.index)
+
+    def show_chart(self, mode):
+        self.chart.mode = mode
+        self.chart.update()
+        self.stack.setCurrentIndex(0)
+        self.graph_button.setChecked(mode == 'line')
+        self.bar_button.setChecked(mode == 'bar')
+        self.table_button.setChecked(False)
+
+    def show_table(self):
+        self.stack.setCurrentIndex(1)
+        self.graph_button.setChecked(False)
+        self.bar_button.setChecked(False)
+        self.table_button.setChecked(True)
 
     def select(self, index):
         if not 0 <= index < len(self.data['points']):
@@ -173,4 +225,5 @@ class VisualContent(QDialog):
     def draft_question(self):
         from core.visual_followup import chart_snapshot
         draft(self.host, self.notice, _t('visual.question'), 'chart',
-              chart_snapshot(self.data, self.chart.index), self.followup_input.text())
+              chart_snapshot({**self.data, 'chart_type': self.chart.mode}, self.chart.index),
+              self.followup_input.text())

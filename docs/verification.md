@@ -630,3 +630,18 @@ sudah dibuat tidak berubah; pengguna harus mengosongkan atau mengirim draf itu
 sebelum membuat snapshot baru. Pertanyaan yang ditulis tetap di kolom konten
 jika pembuatan draf gagal atau bahasa UI diganti. Pertanyaan pengguna sengaja
 berada di luar penanda untrusted; data tampilan tetap berada di dalamnya.
+
+### Grafik batang untuk perbandingan
+
+`visualize_data` kini menerima `chart_type` opsional: `bar` untuk perbandingan
+kategori atau `line` untuk tren berurutan. Input lama tanpa tipe tetap memakai
+garis. Pengguna dapat beralih antara garis, batang, dan tabel tanpa kehilangan
+pilihan; draf pertanyaan menyertakan tipe grafik yang terakhir dipilih. Batang
+menggunakan nol sebagai dasar untuk nilai positif maupun negatif, dan nol tidak
+digambar sebagai batang bernilai non-nol. Tabel tetap menampilkan label dan
+angka lengkap ketika label grafik disingkat atau terlalu banyak untuk digambar.
+
+Uji geometri mencakup nilai campuran, nol, konstan dan nilai ekstrem dalam batas;
+CI Qt offscreen menguji pergantian jenis, mouse pada batang termasuk nol,
+keyboard, tabel dan draf. Pemilihan jenis oleh model tetap tidak dijamin benar;
+pengguna dapat menggantinya. Angka dan sumber yang dikirim tool tidak diverifikasi.

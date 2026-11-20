@@ -10,7 +10,8 @@ def guidance(names):
                      'that fits the information you are conveying. Do not invent facts, sources or dates.')
     if 'visualize_data' in names:
         lines.append('For numeric data actually supplied by the user or returned by a tool, '
-                     'visualize_data can show a chart and table; do not invent values or attribution.')
+                     'visualize_data can show a bar chart for categories or a line chart for ordered trends, '
+                     'and a table; do not invent values or attribution.')
     if lines:
         lines.append('Do not open content when the user declines it. Displayed material is not '
                      'automatically synchronized with speech; do not claim it is. Only say it opened '

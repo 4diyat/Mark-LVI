@@ -35,6 +35,7 @@ def test_chart_selected_value_and_neighbors_are_original_data():
     assert snapshot['previous'] == {'label': '0', 'value': 0.0}
     assert snapshot['next'] == {'label': '2', 'value': 6.0}
     assert snapshot['observed'] == '' and snapshot['position'] == 2 and snapshot['total'] == 4
+    assert chart_snapshot({**chart(), 'chart_type': 'bar'}, 1)['chart_type'] == 'bar'
 
 
 @pytest.mark.parametrize('index', [-1, 4, True, 0.0, None])

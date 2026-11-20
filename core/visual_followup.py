@@ -42,7 +42,7 @@ def chart_snapshot(payload, index):
     _check_index(index, items)
     return {
         'title': data['title'], 'source': data['source'], 'observed': data['observed'],
-        'unit': data['unit'], 'position': index + 1, 'total': len(items),
+        'unit': data['unit'], 'chart_type': data['chart_type'], 'position': index + 1, 'total': len(items),
         'selected': items[index], **_neighbors(items, index, dict),
     }
 

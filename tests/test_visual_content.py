@@ -51,3 +51,32 @@ def test_plugin_refuses_bad_data_and_reports_actual_ui_result():
     assert player.data == validate(sample())
     assert 'requires the JARVIS desktop' in visualize_data.run(sample())
     assert 'No chart was opened' in visualize_data.run({**sample(), 'source': ''}, player)
+
+
+def test_chart_type_defaults_and_rejects_invalid_values():
+    assert validate(sample())['chart_type'] == 'line'
+    assert validate({**sample(), 'chart_type': 'bar'})['chart_type'] == 'bar'
+    for bad in ('pie', '', None, [], True):
+        with pytest.raises(ValueError):
+            validate({**sample(), 'chart_type': bad})
+
+
+def test_bar_geometry_is_zero_based_for_mixed_positive_negative_and_zero():
+    from core.visual_content import bar_rectangles
+    values = [{'value': -2}, {'value': 4}, {'value': 0}]
+    rects, baseline = bar_rectangles(values, 0, 0, 300, 60)
+    assert baseline == 40
+    assert rects == [(15, 40, 70, 20), (115, 0, 70, 40), (215, 40, 70, 0)]
+    assert bar_rectangles([], 0, 0, 10, 10)[0] == []
+    assert bar_rectangles(values, 0, 0, 0, 10)[0] == []
+
+
+@pytest.mark.parametrize('values', [[0, 0], [-5, -5], [5, 5], [-1e12, 1e12]])
+def test_bar_geometry_edge_cases(values):
+    from core.visual_content import bar_rectangles
+    rects, baseline = bar_rectangles([{'value': v} for v in values], 10, 20, 100, 80)
+    assert 20 <= baseline <= 100
+    for x, y, width, height in rects:
+        assert all(math.isfinite(v) for v in (x, y, width, height))
+        assert 10 <= x and x + width <= 110 and width > 0
+        assert 20 <= y <= 100 and height >= 0 and y + height <= 100

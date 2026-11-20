@@ -895,9 +895,9 @@ def main():
 
         # Exercise real plugin -> worker -> Qt -> chart/table -> explicit draft.
         from plugins.visualize_data import run as visualize
-        data = {'title': 'Sample chart', 'source': 'Synthetic input', 'unit': 'kg',
+        data = {'title': 'Sample chart', 'source': 'Synthetic input', 'unit': 'kg', 'chart_type': 'bar',
                 'points': [{'label': 'A', 'value': -2}, {'label': 'B', 'value': 4},
-                           {'label': 'C', 'value': 1}]}
+                           {'label': 'C', 'value': 0}]}
         visual_result = []
         worker = threading.Thread(target=lambda: visual_result.append(visualize(data, bridge)))
         worker.start()
@@ -912,11 +912,31 @@ def main():
         assert 'Synthetic input' in view.source.text() and view.table.rowCount() == 3
         chart_sub.show()
         app.processEvents()
+        assert view.chart.mode == 'bar' and view.bar_button.isChecked()
+        QTest.mouseClick(view.graph_button, Qt.MouseButton.LeftButton)
+        assert view.chart.mode == 'line' and view.graph_button.isChecked()
         x, y = view.chart.points()[1]
         QTest.mouseClick(view.chart, Qt.MouseButton.LeftButton, pos=QPoint(round(x), round(y)))
         assert view.chart.index == 1 and 'B' in view.selection.text() and '4 kg' in view.selection.text()
         QTest.keyClick(view.chart, Qt.Key.Key_Right)
         assert view.chart.index == 2
+        QTest.mouseClick(view.bar_button, Qt.MouseButton.LeftButton)
+        assert view.chart.mode == 'bar' and view.chart.index == 2 and view.bar_button.isChecked()
+        rectangles, baseline = view.chart.bars()
+        x, y, width, height = rectangles[0]
+        QTest.mouseClick(view.chart, Qt.MouseButton.LeftButton,
+                         pos=QPoint(round(x + width / 2), round(y + height / 2)))
+        assert view.chart.index == 0 and view.table.currentRow() == 0
+        x, _, width, height = rectangles[2]
+        assert height == 0
+        QTest.mouseClick(view.chart, Qt.MouseButton.LeftButton,
+                         pos=QPoint(round(x + width / 2), round(baseline)))
+        assert view.chart.index == 2 and view.table.currentRow() == 2
+        QTest.keyClick(view.chart, Qt.Key.Key_Left)
+        assert view.chart.index == 1
+        QTest.mouseClick(view.graph_button, Qt.MouseButton.LeftButton)
+        assert view.chart.mode == 'line' and view.chart.index == 1 and view.graph_button.isChecked()
+        QTest.mouseClick(view.bar_button, Qt.MouseButton.LeftButton)
         QTest.mouseClick(view.table_button, Qt.MouseButton.LeftButton)
         assert view.stack.currentIndex() == 1
         view.table.selectRow(0)
@@ -941,10 +961,12 @@ def main():
         assert '<<<UNTRUSTED source=chart>>>' in window._input.text()
         assert '"value": -2.0' in window._input.text()
         assert '"position": 1' in window._input.text() and '"next":' in window._input.text()
+        assert '"chart_type": "bar"' in window._input.text()
         window._input.clear()
         set_locale('id')
         view.retranslate()
-        assert view.graph_button.text() == translate('visual.graph') and view.chart.index == 0
+        assert view.graph_button.text() == translate('visual.line') and view.chart.index == 0
+        assert view.bar_button.text() == translate('visual.bar') and view.table_button.isChecked()
         assert view.followup_input.placeholderText() == translate('visual.custom_question')
         assert view.followup_input.text() == 'Why is this point lower?'
         set_locale('en')
