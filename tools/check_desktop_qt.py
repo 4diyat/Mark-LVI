@@ -907,10 +907,10 @@ def main():
             QTest.qWait(20)
         worker.join(timeout=1)
         assert visual_result and 'opened' in visual_result[0].lower(), visual_result
-        sub = next(sub for kind, sub in window._workspace_documents.values() if kind == 'visual_content')
-        view = sub._document
+        chart_sub = next(item for kind, item in window._workspace_documents.values() if kind == 'visual_content')
+        view = chart_sub._document
         assert 'Synthetic input' in view.source.text() and view.table.rowCount() == 3
-        sub.show()
+        chart_sub.show()
         app.processEvents()
         x, y = view.chart.points()[1]
         QTest.mouseClick(view.chart, Qt.MouseButton.LeftButton, pos=QPoint(round(x), round(y)))
@@ -933,7 +933,7 @@ def main():
         view.retranslate()
         assert view.graph_button.text() == translate('visual.graph') and view.chart.index == 0
         set_locale('en')
-        sub.close()
+        chart_sub.close()
         app.processEvents()
 
         # Feed synthetic tracked hands on the Qt thread: no OS pointer is used.
