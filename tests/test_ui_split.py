@@ -25,7 +25,7 @@ WINDOW = UI_PKG / "window.py"
 # the sizes that made them unreadable. The ceiling came down from 7,400 to
 # 7,000 when the three setting panels moved to ui/overlays.py — a ratchet that
 # is only ever loosened is not a ratchet.
-WINDOW_CEILING = 5_450
+WINDOW_CEILING = 4_900
 MODULES = [UI_PKG / "__init__.py", UI_PKG / "theme.py", UI_PKG / "metrics.py",
            UI_PKG / "overlays.py"]
 
@@ -459,3 +459,48 @@ def test_the_assistant_name_helper_lives_below_ui():
                 if isinstance(node, ast.ImportFrom) and node.module}
     assert "ui.window" not in imported, (
         "ui/hud_panels.py imports ui/window.py — that is the cycle this fixed")
+
+
+def test_the_hud_canvas_is_its_own_module_now():
+    """549 lines of QWidget that never touched the window."""
+    from ui import hud_canvas
+
+    assert hasattr(hud_canvas, "HudCanvas")
+    import ui
+    assert ui.HudCanvas is hud_canvas.HudCanvas
+
+
+def test_the_hud_canvas_takes_qsizepolicy_from_the_widgets_module():
+    """QSizePolicy is exported by BOTH QtCore and QtWidgets; take it from one.
+
+    Moving `HudCanvas` in, I imported it from `QtCore` because the neighbouring
+    imports came from there. That is a real PyQt6 module, so nothing failed at
+    import — it produced a DIFFERENT class object from the one the rest of the
+    app holds, and the mismatch only surfaced as 50 construction errors whose
+    traceback pointed at a widget's `__init__`. Pin the source.
+    """
+    tree = ast.parse((UI_PKG / "hud_canvas.py").read_text(encoding="utf-8"))
+    sources = {node.module: [a.name for a in node.names]
+               for node in ast.walk(tree)
+               if isinstance(node, ast.ImportFrom) and node.module in
+               ("PyQt6.QtCore", "PyQt6.QtWidgets")}
+    assert "QSizePolicy" not in sources.get("PyQt6.QtCore", []), (
+        "QSizePolicy must come from QtWidgets, the same module window.py uses")
+    assert "QSizePolicy" in sources.get("PyQt6.QtWidgets", [])
+
+
+def test_the_hud_canvas_survives_a_missing_avatar():
+    """Cosmetics must never stop the assistant starting.
+
+    `HoloAvatar` is imported under a bare except on purpose: a machine without
+    the avatar dependencies gets the orb instead of a traceback.
+    """
+    tree = ast.parse((UI_PKG / "hud_canvas.py").read_text(encoding="utf-8"))
+    guarded = any(
+        isinstance(node, ast.Try)
+        and any(isinstance(h.type, ast.Name) and h.type.id == "Exception"
+                for h in node.handlers)
+        and any(isinstance(sub, ast.ImportFrom) and sub.module == "core.avatar"
+                for sub in node.body)
+        for node in tree.body)
+    assert guarded, "the core.avatar import lost its guard"
