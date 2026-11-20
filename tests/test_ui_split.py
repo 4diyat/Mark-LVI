@@ -25,7 +25,7 @@ WINDOW = UI_PKG / "window.py"
 # the sizes that made them unreadable. The ceiling came down from 7,400 to
 # 7,000 when the three setting panels moved to ui/overlays.py — a ratchet that
 # is only ever loosened is not a ratchet.
-WINDOW_CEILING = 5_750
+WINDOW_CEILING = 5_450
 MODULES = [UI_PKG / "__init__.py", UI_PKG / "theme.py", UI_PKG / "metrics.py",
            UI_PKG / "overlays.py"]
 
@@ -427,3 +427,35 @@ def test_the_provider_panel_still_imports_nothing_heavy_at_module_level():
         "`providers` is imported at module level; it must stay inside __init__")
     assert "memory" not in top_imports, (
         "`memory.config_manager` is imported at module level; it must stay lazy")
+
+
+def test_the_hud_panels_are_their_own_module_now():
+    """Memory and clipboard panels: self-contained, so they left."""
+    from ui import hud_panels
+
+    assert hasattr(hud_panels, "MemoryOverlay")
+    assert hasattr(hud_panels, "ClipboardPanel")
+
+    import ui
+    assert ui.MemoryOverlay is hud_panels.MemoryOverlay
+    assert ui.ClipboardPanel is hud_panels.ClipboardPanel
+
+
+def test_the_assistant_name_helper_lives_below_ui():
+    """A panel must not import the whole window to get one string.
+
+    `_assistant_display` used to sit in ui/window.py. Moving the memory panel
+    out made that a circular import waiting to happen: ui/hud_panels.py would
+    need ui/window.py for a label. It lives in core/display_name.py now and
+    both sides import it from there.
+    """
+    from core import display_name
+
+    assert callable(display_name.assistant_display)
+    assert display_name.assistant_display()  # never empty, never raises
+
+    tree = ast.parse((UI_PKG / "hud_panels.py").read_text(encoding="utf-8"))
+    imported = {node.module for node in ast.walk(tree)
+                if isinstance(node, ast.ImportFrom) and node.module}
+    assert "ui.window" not in imported, (
+        "ui/hud_panels.py imports ui/window.py — that is the cycle this fixed")
