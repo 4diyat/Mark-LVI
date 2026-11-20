@@ -764,3 +764,27 @@ def static_problems(folder: Path, written: dict[str, str], stack: dict) -> dict[
             for rel, p in prof.static(folder, written).items():
                 out[rel] = (out.get(rel, "") + " " + p).strip()
     return out
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  One public question: may this path be read into a prompt at all?
+# ─────────────────────────────────────────────────────────────────────────────
+def is_secret_path(path) -> bool:
+    """True when the path is one of the files a model must never be shown.
+
+    WHY THIS IS PUBLIC AND WHY IT IS ONLY A NAME TEST
+        `Protection` answers this for one project folder, because it has a
+        project to read a `.gitignore` from. The other caller — `actions/
+        code_helper.py`, which reads any file the user names — has no project:
+        it is handed an absolute path like `~/.ssh/id_rsa`, so the only thing it
+        can check is the NAME. That check already existed here and was enforced
+        for `dev_agent` and nowhere else, which is how the coding tool could be
+        asked to "explain" `config/api_keys.json` and send it to the model.
+
+    Deliberately name-only: a `.gitignore` rule cannot be applied to a path that
+    is not in a repository, and pretending otherwise would give a false sense of
+    coverage. `Protection` is what adds the gitignore layer when there IS a
+    project to ask.
+    """
+    text = str(path).replace("\\", "/")
+    return bool(_SECRET_RE.search(text))

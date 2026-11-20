@@ -1,5 +1,4 @@
 #computer_settings.py
-import json
 import re
 import sys
 import time
@@ -40,9 +39,22 @@ def _get_base_dir() -> Path:
     return Path(__file__).resolve().parent.parent
 
 def _get_api_key() -> str:
-    path = _get_base_dir() / "config" / "api_keys.json"
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)["gemini_api_key"]
+    """The Gemini key, through the module that knows where it lives.
+
+    A LOCAL COPY OF "open config/api_keys.json and read a field" IS A BUG
+        Ten modules had one. `core/keychain.py` can hold this key in the OS
+        keychain, and `memory/config_manager.py` marks the file with
+        `gemini_api_key_source` when the file is the authoritative copy. Those
+        copies read the file directly and understood neither rule — so a key
+        rotated in the panel could still be the old one here. This asks
+        `core.gemini.api_key()`, which asks the config manager, and returns ""
+        instead of raising when nothing is configured.
+    """
+    try:
+        from core.gemini import api_key
+        return api_key() or ""
+    except Exception:
+        return ""
 
 def _get_macos_wifi_interface() -> str:
     try:

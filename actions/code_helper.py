@@ -1,6 +1,5 @@
 import subprocess
 import sys
-import json
 import re
 import time
 from pathlib import Path
@@ -22,9 +21,22 @@ from core import gemini
 
 
 def _get_api_key() -> str:
-    with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)["gemini_api_key"]
+    """The Gemini key, through the module that knows where it lives.
 
+    A LOCAL COPY OF "open config/api_keys.json and read a field" IS A BUG
+        Ten modules had one. `core/keychain.py` can hold this key in the OS
+        keychain, and `memory/config_manager.py` marks the file with
+        `gemini_api_key_source` when the file is the authoritative copy. Those
+        copies read the file directly and understood neither rule — so a key
+        rotated in the panel could still be the old one here. This asks
+        `core.gemini.api_key()`, which asks the config manager, and returns ""
+        instead of raising when nothing is configured.
+    """
+    try:
+        from core.gemini import api_key
+        return api_key() or ""
+    except Exception:
+        return ""
 
 def _get_gemini(tier: str = gemini.SMART):
     """Writing and fixing code is the reasoning tier; a 60s deadline because a
@@ -44,6 +56,32 @@ def _clean_code(text: str) -> str:
     text = re.sub(r"^```[a-zA-Z]*\n?", "", text)
     text = re.sub(r"\n?```$", "", text)
     return text.strip()
+
+
+# Where this action is allowed to write. The user's own folders, and nowhere
+# else: `output_path` is a model-supplied string, and it used to be honoured
+# verbatim when absolute — so `/etc/cron.d/x`, `~/.bashrc` or an SSH
+# `authorized_keys` were all valid answers to "save this code".
+_WRITE_ROOTS = (
+    Path.home() / "Desktop",
+    Path.home() / "Documents",
+    Path.home() / "Downloads",
+)
+
+
+def _is_writable_path(path: Path) -> bool:
+    """True when `path` resolves inside one of the user's folders."""
+    try:
+        resolved = path.expanduser().resolve()
+    except OSError:
+        return False
+    for root in _WRITE_ROOTS:
+        try:
+            if resolved == root.resolve() or resolved.is_relative_to(root.resolve()):
+                return True
+        except OSError:
+            continue
+    return False
 
 
 def _resolve_save_path(output_path: str, language: str) -> Path:
@@ -66,9 +104,25 @@ def _resolve_save_path(output_path: str, language: str) -> Path:
 def _read_file(file_path: str) -> tuple[str, str]:
     if not file_path:
         return "", "No file path provided."
-    p = Path(file_path)
+    p = Path(file_path).expanduser()
     if not p.exists():
         return "", f"File not found: {file_path}"
+
+    # WHAT IS READ HERE GOES TO THE MODEL.
+    #
+    # This function takes any path the model names, and the content is then
+    # pasted into a prompt — so "explain my config" was a way to send
+    # config/api_keys.json, ~/.ssh/id_rsa or ~/.aws/credentials to a third
+    # party. `core/code_checks.py` has carried the rule that decides this since
+    # the api_keys.json incident, and it was enforced for dev_agent alone.
+    from core.code_checks import is_secret_path
+    if is_secret_path(p):
+        return "", (f"Refused to read {p.name} — it looks like a file of secrets "
+                    f"(keys, tokens, passwords), and its contents would be sent "
+                    f"to the model.")
+
+    if not p.is_file():
+        return "", f"Not a file: {file_path}"
     try:
         return p.read_text(encoding="utf-8"), ""
     except Exception as e:
@@ -76,6 +130,9 @@ def _read_file(file_path: str) -> tuple[str, str]:
 
 
 def _save_file(path: Path, content: str) -> str:
+    if not _is_writable_path(path):
+        return (f"Refused to save to {path} — I only write inside your Desktop, "
+                f"Documents and Downloads folders.")
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
@@ -218,8 +275,13 @@ def _run_file(path: Path, args: list, timeout: int) -> str:
         return f"No interpreter for {path.suffix}."
 
     try:
+        # `-` prefixed "arguments" are options to the interpreter, not to the
+        # program: `-c`/`-e` turn "run my file" into "run this string". They are
+        # dropped rather than forwarded.
+        extra = [str(a) for a in (args or []) if not str(a).startswith("-")]
+
         result = subprocess.run(
-            interp + [str(path)] + (args or []),
+            interp + [str(path)] + extra,
             capture_output=True, text=True,
             encoding="utf-8", errors="replace",
             timeout=timeout, cwd=str(path.parent)
@@ -372,12 +434,25 @@ Explanation:"""
 def _run_action(file_path, args, timeout, player) -> str:
     if not file_path:
         return "Please provide a file path to run, sir."
-    p = Path(file_path)
+    p = Path(file_path).expanduser()
     if not p.exists():
         return f"File not found: {file_path}"
     if player:
         player.write_log(f"[Code] Running {p.name}...")
-    return _run_file(p, args, timeout)
+
+    # Running a file executes whatever it contains, in this user's session.
+    # `core/confirm.py` exists for exactly this and was only wired to
+    # shutdown/restart; the token comes from the UI, never from the model.
+    from core import confirm
+    if confirm.pending_title():
+        return ("Another confirmation is already on screen, sir. Answer that "
+                "one first, then ask me again.")
+    return confirm.request(
+        key="code_run",
+        title=f"Run {p.name}?",
+        detail=f"Execute {p} with {p.suffix or 'its'} interpreter.",
+        run=lambda: _run_file(p, args, timeout),
+    )
 
 
 def _optimize_action(file_path, code, language, output_path, player) -> str:

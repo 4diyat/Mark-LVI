@@ -114,11 +114,65 @@ is how a "new project" could place a `.py` outside the project and then run it.
   `actions/dev_agent.py` before reading or writing anything.
 - `tests/test_paths.py` is the list of shapes that must be refused. Add to it
   when you find a new one.
+- `_safe_rel` must resolve BOTH sides (`folder.resolve()` too). Comparing a
+  resolved left side against an unresolved root rejected every path under a
+  symlinked or relative root; see the comment there and the symlink test.
+
+## Doing something the user cannot take back
+
+Anything that is irreversible, or that leaves the app's own folders, goes behind
+`core/confirm.request()` — the on-screen token is issued by the UI, never by the
+model.
+
+- Currently gated: shutdown/restart (`actions/computer_settings.py`), running a
+  file (`actions/code_helper.py`), pip installs from a plan or from a
+  `ModuleNotFoundError` (`actions/dev_agent.py`), and archive extraction
+  (`actions/file_processor.py`).
+- `confirm.request` returns the sentence to hand the model. Do not perform the
+  work first and ask afterwards: put the real work in `run=`, and let the
+  caller's AI turn end with "I need you to confirm that".
+- If the gated work is a step *inside* a longer job (the build → install → test
+  loop in `dev_agent`), the job must stop there and say so, not carry on and
+  report the project as working. See `_gated_install` in `_build_project`.
+- What is checked BEFORE the gate still matters: the banner must describe
+  exactly what the work will do. `_install_with_confirmation` computes the
+  accepted list once and passes it down, so the two cannot disagree.
+
+**File operations are NOT gated — they use `core/undo.py` instead.** That is a
+deliberate design (see its docstring: "act immediately, make it reversible"). The
+rule that follows from it:
+
+- If an operation has no reliable inverse, it must **decline** rather than run.
+  `shutil.move` and `shutil.copy2` silently replace an existing destination, and
+  the replaced file is unrecoverable — so `move_file`/`copy_file` refuse to
+  overwrite instead.
+- The inverse must not itself be destructive. Undoing a copy sends it to the
+  Trash (`_safe_trash`), never `rmtree`.
+- A name that came from a model is checked as a *name* (`_is_plain_name`), not
+  only as a path: `Path("/a/b") / "/etc/passwd"` is `/etc/passwd`, with the left
+  side discarded silently.
+
+## Running something a model chose
+
+- `run_command` is split with `shlex.split`, never `.split()`: a quoted path is
+  one argument.
+- A `pip install` argument must pass `_safe_requirement()` in
+  `actions/dev_agent.py`: a plain name, optional extras and specifier, nothing
+  beginning with `-`, no URL, no path. pip reads `--index-url` as an option.
+- A file to execute is executed by absolute interpreter path (`sys.executable`
+  for Python), and `-`-prefixed "arguments" are not forwarded — they are
+  interpreter options, not program arguments.
+- **Anything read here goes to the model.** `actions/code_helper._read_file`
+  takes any path the user names and pastes it into a prompt, so it asks
+  `core.code_checks.is_secret_path()` first. Add that check to any new
+  read-into-a-prompt path; `Protection` only covers the project folder, and a
+  tool handed an absolute path has no project to ask.
 
 ## Testing and lint before you hand work back
 
-- `ruff check .` must print "All checks passed!" — the enabled rules are `F` and
-  `E9` only (undefined names, unused imports and variables, syntax). An
+- `ruff check .` must print "All checks passed!" — the enabled rules are `F`,
+  `E9` and `B006` only (undefined names, unused imports and variables, syntax,
+  mutable default arguments). An
   undefined name is not a style issue here: it is a branch that can never run,
   and the Linux firewall path in `dashboard/server.py` was nine of them.
 - `python -m pytest -q` must be green. No test may need an API key, a

@@ -60,7 +60,17 @@ def _get_os() -> str:
 
 
 def _get_api_key() -> str:
-    return _load_config().get("gemini_api_key", "")
+    """The Gemini key through `core.gemini`, never out of the raw file.
+
+    `_load_config()` here reads `api_keys.json` for the OS name and other
+    non-secret settings; the KEY is different — it may live in the OS keychain
+    and the file carries a marker saying which copy wins.
+    """
+    try:
+        from core.gemini import api_key
+        return api_key() or ""
+    except Exception:
+        return ""
 
 _SAFE_SCREENSHOT_ROOTS = (
     Path.home(),

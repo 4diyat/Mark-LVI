@@ -18,8 +18,8 @@ Supported types:
 
 import re
 import json
-import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -27,10 +27,22 @@ from pathlib import Path
 from core import gemini
 
 def _get_api_key() -> str:
-    config_path = Path(__file__).resolve().parent.parent / "config" / "api_keys.json"
-    with open(config_path, "r", encoding="utf-8") as f:
-        return json.load(f)["gemini_api_key"]
+    """The Gemini key, through the module that knows where it lives.
 
+    A LOCAL COPY OF "open config/api_keys.json and read a field" IS A BUG
+        Ten modules had one. `core/keychain.py` can hold this key in the OS
+        keychain, and `memory/config_manager.py` marks the file with
+        `gemini_api_key_source` when the file is the authoritative copy. Those
+        copies read the file directly and understood neither rule — so a key
+        rotated in the panel could still be the old one here. This asks
+        `core.gemini.api_key()`, which asks the config manager, and returns ""
+        instead of raising when nothing is configured.
+    """
+    try:
+        from core.gemini import api_key
+        return api_key() or ""
+    except Exception:
+        return ""
 
 def _gemini_client(tier: str = gemini.SMART):
     """Summarising documents and reading images — the reasoning tier, with a
@@ -464,7 +476,7 @@ def _process_code(path: Path, action: str, params: dict, speak=None) -> str:
         if ext == "py":
             try:
                 result = subprocess.run(
-                    ["python", str(path)],
+                    [sys.executable, str(path)],
                     capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30
                 )
                 out = result.stdout or result.stderr
@@ -735,15 +747,137 @@ def _process_archive(path: Path, action: str, params: dict, speak=None) -> str:
             return f"List failed: {e}"
 
     if action == "extract":
-        dest = Path(params.get("destination", str(path.parent / path.stem)))
-        dest.mkdir(parents=True, exist_ok=True)
-        try:
-            shutil.unpack_archive(path, dest)
-            return f"Extracted to: {dest}"
-        except Exception as e:
-            return f"Extract failed: {e}"
+        return _extract_with_confirmation(path, params.get("destination", ""))
 
     return f"Unknown archive action: '{action}'. Try: list, extract"
+
+
+def _extract_with_confirmation(path: Path, destination: str) -> str:
+    """Ask before an archive writes a tree of files somewhere.
+
+    WHY THIS IS GATED WHEN `list` IS NOT
+        `_extract_archive` already refuses escaping member names, links and an
+        oversized expansion — but it cannot judge whether this archive should be
+        unpacked at all. A .zip from an email is a set of files the user has not
+        looked at, being written into their folders: that is a decision to make
+        on screen, not one to take because a model read a filename.
+    """
+    from core import confirm
+    if confirm.pending_title():
+        return ("Another confirmation is already on screen, sir. Answer that "
+                "one first, then ask me to extract this archive.")
+
+    where = destination.strip() or str(path.parent / path.stem)
+    return confirm.request(
+        key="file_extract",
+        title=f"Extract {path.name}?",
+        detail=f"Unpack every file in {path.name} into {where}.",
+        run=lambda: _extract_archive(path, destination),
+    )
+
+
+# How much an archive is allowed to expand to. A few kilobytes of zip can be
+# gigabytes of zeros; without a ceiling, "extract this" is a way to fill the
+# user's disk from a source they did not read.
+_MAX_EXTRACT_BYTES = 512 * 1024 * 1024
+
+
+def _is_safe_member_name(name: str) -> bool:
+    """Is this archive member a plain relative path with no way out?
+
+    Pure, so the tests can hand it the exact strings an attacker uses.
+    """
+    text = str(name or "").replace("\\", "/")
+    if not text or text.startswith("/") or "\x00" in text:
+        return False
+    if re.match(r"^[A-Za-z]:", text):      # C:\… or C:/…
+        return False
+    return ".." not in Path(text).parts
+
+
+def _extract_archive(path: Path, destination: str) -> str:
+    """Extract into a checked folder, refusing any member that escapes it.
+
+    WHY THIS IS NOT ONE `shutil.unpack_archive` CALL
+        It was exactly that:
+            dest = Path(params.get("destination", …))   # from the model
+            dest.mkdir(parents=True, exist_ok=True)
+            shutil.unpack_archive(path, dest)
+        `destination` was whatever the model said and no member name was ever
+        looked at. On Python 3.11 (this project supports 3.11) `tarfile` has no
+        default extraction filter, so a tar member called `../x` is written
+        OUTSIDE `dest` — reproduced, not theorised. The `filter=` argument that
+        fixes it exists from 3.12; 3.11.4+ accepts it with a warning, and older
+        3.11 raises TypeError, so it is passed only when the running tarfile
+        understands it.
+
+    Three separate guards, because they fail differently:
+      1. the destination must be inside the archive's own folder or the user's
+         home — the same rule `file_controller` already applies to writes;
+      2. every member name is checked before a byte is written;
+      3. the total uncompressed size is capped.
+    """
+    import tarfile
+    import zipfile
+
+    parent = path.parent.resolve()
+    raw = (destination or "").strip()
+    dest = Path(raw).expanduser() if raw else (path.parent / path.stem)
+    try:
+        dest = dest.resolve()
+    except OSError as e:
+        return f"Extract failed: unusable destination ({e})."
+
+    allowed_roots = (parent, Path.home().resolve())
+    if not any(dest == root or dest.is_relative_to(root) for root in allowed_roots):
+        return (f"Refused to extract into {dest} — that is outside the archive's "
+                f"folder and outside your home directory.")
+
+    suffix = path.suffix.lower()
+    try:
+        if suffix == ".zip":
+            with zipfile.ZipFile(path) as z:
+                members = [(i.filename, i.file_size) for i in z.infolist()]
+        elif path.name.lower().endswith((".tar", ".tar.gz", ".tgz", ".tar.bz2",
+                                         ".tbz2", ".tar.xz", ".txz", ".gz",
+                                         ".bz2", ".xz")):
+            with tarfile.open(path) as t:
+                bad = [m.name for m in t.getmembers()
+                       if not (m.isfile() or m.isdir())]
+                if bad:
+                    return ("Refused to extract: the archive contains links or "
+                            f"special files ({', '.join(bad[:3])}).")
+                members = [(m.name, m.size) for m in t.getmembers()]
+        else:
+            return f"Unsupported archive format: {suffix}"
+    except Exception as e:
+        return f"Extract failed while reading the archive: {e}"
+
+    unsafe = [name for name, _ in members if not _is_safe_member_name(name)]
+    if unsafe:
+        return ("Refused to extract: the archive contains paths that leave the "
+                f"destination ({', '.join(unsafe[:3])}).")
+    total = sum(size for _, size in members)
+    if total > _MAX_EXTRACT_BYTES:
+        return (f"Refused to extract: {total // (1024 * 1024)} MB uncompressed "
+                f"exceeds the {_MAX_EXTRACT_BYTES // (1024 * 1024)} MB limit.")
+
+    try:
+        dest.mkdir(parents=True, exist_ok=True)
+        if suffix == ".zip":
+            with zipfile.ZipFile(path) as z:
+                z.extractall(dest)
+        else:
+            with tarfile.open(path) as t:
+                try:
+                    t.extractall(dest, filter="data")   # 3.12+, and 3.11.4+
+                except TypeError:
+                    # tarfile older than 3.11.4: no filter= parameter. The
+                    # member names were already checked above.
+                    t.extractall(dest)
+        return f"Extracted to: {dest}"
+    except Exception as e:
+        return f"Extract failed: {e}"
 
 def _process_pptx(path: Path, action: str, params: dict, speak=None) -> str:
     action = action or "summarize"

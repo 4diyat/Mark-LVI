@@ -53,8 +53,8 @@ playwright>=1.40,<2
 yt-dlp
 
 # ── Automation / input control ────────────────────────────────────────────────
-pyautogui
-pyperclip
+pyautogui>=0.9.54,<1
+pyperclip>=1.8,<2
 
 # ── Vision & media ────────────────────────────────────────────────────────────
 pillow>=10,<13
@@ -70,8 +70,8 @@ mss>=9,<11
 
 # ── System, files & documents ─────────────────────────────────────────────────
 psutil>=5.9,<8
-send2trash                   # file_controller — recoverable deletes
-python-pptx                  # file_processor — presentation reading
+send2trash>=1.8,<2          # file_controller — recoverable deletes
+python-pptx>=0.6.23,<2      # file_processor — presentation reading
 
 # ── Remote dashboard (control from your phone) ────────────────────────────────
 fastapi>=0.110,<1
@@ -86,15 +86,15 @@ qrcode[pil]>=7,<9
 # it work on the next launch, not send you back to pip. Every one of these is
 # imported inside a try/except at the point of use, so an uninstalled extra
 # disables exactly one plugin and never touches the rest of the app.
-google-api-python-client     # Gmail and Calendar APIs
-google-auth-httplib2          # authorized, bounded Calendar HTTP
-httplib2                      # Calendar HTTP transport
-google-auth-oauthlib         # gmail_control, calendar_control — OAuth
-tinytuya                     # home_assistant — Tuya / Smart Life bulbs
-paho-mqtt                    # printer_control — MQTT printers
-openpyxl                     # excel_writer — spreadsheet output
-youtube-transcript-api       # youtube_video — transcript fetch for summaries
-pygetwindow                  # game_updater, chat_takeover — window geometry
+google-api-python-client>=2.100,<3   # Gmail and Calendar APIs
+google-auth-httplib2>=0.1.1,<1  # authorized, bounded Calendar HTTP
+httplib2>=0.22,<1           # Calendar HTTP transport
+google-auth-oauthlib>=1.1,<2  # gmail_control, calendar_control — OAuth
+tinytuya>=1.13,<2            # home_assistant — Tuya / Smart Life bulbs
+paho-mqtt>=1.6,<3            # printer_control — MQTT printers
+openpyxl>=3.1,<4             # excel_writer — spreadsheet output
+youtube-transcript-api>=0.6,<2  # youtube_video — transcript fetch for summaries
+pygetwindow>=0.0.9,<1        # game_updater, chat_takeover — window geometry
 
 # ── Windows-only (pip skips these automatically on macOS / Linux) ─────────────
 comtypes;   sys_platform == "win32"
@@ -113,10 +113,10 @@ pywinauto;  sys_platform == "win32"
 ddgs>=9,<10                  # web_search — the maintained successor to
                              # duckduckgo-search, which is tried first and
                              # falls back to the old name automatically
-pdfplumber                   # file_processor — PDF text and tables
-PyPDF2                       # file_processor — PDF fallback reader
-python-docx                  # file_processor — .docx reading
-pynvml                       # system_monitor + the HUD's GPU meter (NVIDIA)
+pdfplumber>=0.10,<1          # file_processor — PDF text and tables
+PyPDF2>=3.0,<4               # file_processor — PDF fallback reader
+python-docx>=1.1,<2          # file_processor — .docx reading
+pynvml>=11,<13               # system_monitor + the HUD's GPU meter (NVIDIA)
 
 # ── Optional: heavy extras, install only if you want the feature ──────────────
 # Left out on purpose — together they are several hundred megabytes, which is a

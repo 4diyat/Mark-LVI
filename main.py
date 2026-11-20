@@ -38,7 +38,6 @@ import asyncio
 import re
 import threading
 import time
-import json
 import sys
 import traceback
 from contextlib import asynccontextmanager
@@ -345,8 +344,17 @@ def _render_prompt(template: str, values: dict) -> str:
 
 
 def _get_api_key() -> str:
-    with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)["gemini_api_key"]
+    """The one accessor, through the config manager and the keychain.
+
+    This used to read the file directly — and it is the copy the live session
+    calls on every connect, so a key rotated in the panel could still be the old
+    one on the wire, and a keychain-stored key was never consulted here.
+    """
+    try:
+        from core.gemini import api_key
+        return api_key() or ""
+    except Exception:
+        return ""
 
 
 def _load_system_prompt() -> str:
@@ -1219,9 +1227,13 @@ class JarvisLive:
     def _build_config(self) -> types.LiveConnectConfig:
         from datetime import datetime
 
-        # Load customization from config
+        # Load customization from config — through the config manager, so a
+        # keychain-backed or mid-write file is read the same way everywhere
+        # else. The inline `open(...).read()` also left the handle to the
+        # garbage collector on every reconnect.
         try:
-            _cfg = json.loads(open(API_CONFIG_PATH, encoding="utf-8").read())
+            from memory.config_manager import load_api_keys
+            _cfg = load_api_keys()
             self._asst_name = (_cfg.get("assistant_name") or "JARVIS").strip()
             _user_name = (_cfg.get("user_name") or "").strip()
         except Exception:

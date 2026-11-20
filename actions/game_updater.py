@@ -268,10 +268,20 @@ def _handle_steam_profile_selection() -> bool:
         if not is_small and white_pixels <= 100:
             print("[GameUpdater] ℹ️ No profile dialog — Steam is already logged in")
             return False
-    except ImportError:
-        pass
-    except Exception:
-        pass
+    except ImportError as e:
+        # THE DETECTION DID NOT RUN, SO "NOTHING TO DO" IS NOT A CONCLUSION.
+        #
+        # This fell into a bare `pass` that ran straight into the code below,
+        # which announces "Profile selection detected" and clicks the middle of
+        # the Steam window. Without pyautogui or numpy — a normal install on a
+        # headless or Linux box — a blind click was reported as a detected
+        # profile. Refusing to guess is the honest answer.
+        print(f"[GameUpdater] ⚠️ Cannot inspect the window (missing {e}); "
+              f"leaving the profile dialog to the user")
+        return False
+    except Exception as e:
+        print(f"[GameUpdater] ⚠️ Profile detection failed: {e}")
+        return False
 
     print("[GameUpdater] 👤 Profile selection detected — clicking the first profile")
     return _click_first_profile_by_screenshot()

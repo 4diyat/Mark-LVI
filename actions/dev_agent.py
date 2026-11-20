@@ -1,3 +1,5 @@
+import os
+import shlex
 import subprocess
 import sys
 import hashlib
@@ -26,9 +28,22 @@ MODEL_PLANNER    = gemini.SMART
 MODEL_WRITER     = gemini.SMART
 
 def _get_api_key() -> str:
-    with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)["gemini_api_key"]
+    """The Gemini key, through the module that knows where it lives.
 
+    A LOCAL COPY OF "open config/api_keys.json and read a field" IS A BUG
+        Ten modules had one. `core/keychain.py` can hold this key in the OS
+        keychain, and `memory/config_manager.py` marks the file with
+        `gemini_api_key_source` when the file is the authoritative copy. Those
+        copies read the file directly and understood neither rule — so a key
+        rotated in the panel could still be the old one here. This asks
+        `core.gemini.api_key()`, which asks the config manager, and returns ""
+        instead of raising when nothing is configured.
+    """
+    try:
+        from core.gemini import api_key
+        return api_key() or ""
+    except Exception:
+        return ""
 
 def _coding_provider() -> str:
     """The service chosen under ENGINE & PROVIDERS → CODING, or ''."""
@@ -267,13 +282,120 @@ Code for {file_path}:"""
             raise RateLimitError(str(e))
         raise
 
+# A dependency string that reaches pip as an ARGUMENT, not as a requirement.
+#
+# WHY THIS EXISTS
+#     `dependencies` comes out of the planner's JSON, and this file used to do
+#     `[sys.executable, "-m", "pip", "install"] + to_install` with those strings
+#     verbatim. pip parses anything beginning with `-` as an OPTION, so a plan
+#     containing "--index-url https://attacker/simple" (or "-r /etc/reqs.txt",
+#     or a direct URL, or a local path) made the assistant install from a source
+#     the user never chose — with the user's privileges, unattended.
+#
+#     So a requirement is validated as a NAME first:
+#       * a PEP 508 name: letters, digits, `.`, `_`, `-`, starting alphanumeric;
+#       * an optional version/extras specifier after it, and nothing else;
+#       * no whitespace, no `/`, `\\`, `@`, `:`, or leading `-`.
+#     Anything that fails is dropped and reported rather than passed on.
+_REQ_RE = re.compile(
+    r"^(?P<name>[A-Za-z0-9][A-Za-z0-9._-]*)"
+    r"(?P<extras>\[[A-Za-z0-9._,-]+\])?"
+    r"(?P<spec>(\s*(==|>=|<=|~=|!=|>|<)\s*[A-Za-z0-9._*+!-]+)+)?$"
+)
+_MAX_DEPS = 25
+
+
+def _install_with_confirmation(dependencies: list[str], project_dir: Path) -> str:
+    """Ask the user before pip installs anything into this interpreter.
+
+    WHY THIS IS A HUMAN DECISION AND NOT A PATH CHECK
+        `_safe_requirement` already stops an option, a URL or a path from being
+        passed to pip. What it cannot judge is whether *this* package is the one
+        the user wanted — installing runs setup.py with the user's privileges,
+        and a generated "project" is not a reason to trust a name. So the plan's
+        dependency list is shown, and the install happens only after CONFIRM.
+
+    The accepted list is computed HERE and again inside `_install_dependencies`,
+    so a banner cannot describe one thing while pip installs another.
+    """
+    accepted, rejected = _safe_dependency_list(dependencies)
+    dropped = (f" ({len(rejected)} entr"
+               f"{'y' if len(rejected) == 1 else 'ies'} refused as unsafe)")
+    if not accepted:
+        return ("No dependency was a plain package name, so nothing was "
+                "installed." + dropped)
+
+    from core import confirm
+    if confirm.pending_title():
+        return ("I need to install " + ", ".join(accepted) + ", but another "
+                "confirmation is already on screen. Answer that one first.")
+
+    title = f"Install {len(accepted)} package{'s' if len(accepted) != 1 else ''}?"
+    detail = (f"pip install {' '.join(accepted)} — into the Python running "
+              f"JARVIS, for the project in {project_dir.name}/.{dropped}")
+    return confirm.request(
+        key="dev_agent_install",
+        title=title,
+        detail=detail,
+        run=lambda: _install_dependencies(accepted, project_dir),
+    )
+
+
+def _safe_requirement(dep: str) -> str | None:
+    """The requirement as a valid pip argument, or None if it is not one.
+
+    Pure and importable, so `tests/test_dev_agent_deps.py` can prove that an
+    option, a URL or a path never gets through.
+    """
+    req = str(dep or "").strip()
+    if not req or len(req) > 128:
+        return None
+    if req.startswith("-") or any(ch in req for ch in "/\\@:"):
+        return None
+    match = _REQ_RE.match(req)
+    if not match:
+        return None
+    # Normalise "requests >= 2" to "requests>=2": still one argument, still a
+    # requirement, but free of the spaces that made the old code ambiguous.
+    return re.sub(r"\s+", "", req)
+
+
+def _safe_dependency_list(dependencies: list[str]) -> tuple[list[str], list[str]]:
+    """(accepted, rejected) — the split that decides what reaches pip."""
+    accepted: list[str] = []
+    rejected: list[str] = []
+    for dep in dependencies or []:
+        safe = _safe_requirement(dep)
+        if safe is None:
+            rejected.append(str(dep)[:60])
+            continue
+        if safe not in accepted and len(accepted) < _MAX_DEPS:
+            accepted.append(safe)
+    return accepted, rejected
+
+
 def _install_dependencies(dependencies: list[str], project_dir: Path) -> str:
+    """Validate, then install. The caller must have asked the user first."""
     if not dependencies:
         return "No external dependencies."
 
+    accepted, rejected = _safe_dependency_list(dependencies)
+    for bad in rejected:
+        print(f"[DevAgent] ⛔ Refused an unsafe dependency entry: {bad!r}"[:200])
+
+    note = ""
+    if rejected:
+        note = (f" Ignored {len(rejected)} entr"
+                f"{'y' if len(rejected) == 1 else 'ies'} that were not plain "
+                f"package names: {', '.join(rejected)}.")
+
+    if not accepted:
+        return ("No dependency was a plain package name, so nothing was "
+                "installed." + note)
+
     to_install = []
-    for dep in dependencies:
-        pkg_name = re.split(r"[>=<!]", dep)[0].strip()
+    for dep in accepted:
+        pkg_name = re.split(r"[>=<!\[~]", dep)[0].strip()
         result = subprocess.run(
             [sys.executable, "-m", "pip", "show", pkg_name],
             capture_output=True, text=True
@@ -284,19 +406,19 @@ def _install_dependencies(dependencies: list[str], project_dir: Path) -> str:
             print(f"[DevAgent] ✓ Already installed: {pkg_name}")
 
     if not to_install:
-        return f"All dependencies already installed: {', '.join(dependencies)}"
+        return f"All dependencies already installed: {', '.join(accepted)}.{note}"
 
     print(f"[DevAgent] 📦 Installing: {to_install}")
     try:
         result = subprocess.run(
-            [sys.executable, "-m", "pip", "install"] + to_install,
+            [sys.executable, "-m", "pip", "install", "--no-input"] + to_install,
             capture_output=True, text=True,
             encoding="utf-8", errors="replace",
             timeout=120, cwd=str(project_dir)
         )
         if result.returncode == 0:
-            return f"Installed: {', '.join(to_install)}"
-        return f"Install warning (non-fatal): {result.stderr[:200]}"
+            return f"Installed: {', '.join(to_install)}.{note}"
+        return f"Install warning (non-fatal): {result.stderr[:200]}{note}"
     except subprocess.TimeoutExpired:
         return "Dependency install timed out (non-fatal)."
     except Exception as e:
@@ -336,11 +458,63 @@ def _open_vscode(project_dir: Path) -> bool:
             continue
     return False
 
+def _unquote(token: str) -> str:
+    """`'"my app.py"'` → `'my app.py'`; anything else unchanged."""
+    if len(token) >= 2 and token[0] == token[-1] and token[0] in ("'", '"'):
+        return token[1:-1]
+    return token
+
+
+def _split_command(run_command: str) -> list[str] | None:
+    """The plan's `run_command` as an argument vector, or None.
+
+    WHY NOT `.split()`
+        It was `.split()`, which is whitespace, not quoting: a plan saying
+        `python "my app.py"` became `["python", '"my', 'app.py"']` and the run
+        failed with a message about a file that does not exist. `shlex` splits
+        the way a shell does, minus the shell.
+
+    WHY NOT JUST `shlex.split(posix=False)` EITHER
+        Neither POSIX mode works alone on Windows, and the first attempt at this
+        fix shipped the second half of the problem:
+
+          posix=True   `python "my app.py"`      → correct, quotes stripped
+                       `python C:\\Users\\me\\a.py` → `C:Usersmea.py`, backslashes
+                                                  eaten, because POSIX treats `\\`
+                                                  as an escape
+          posix=False  keeps the backslashes, but keeps the QUOTES too:
+                       `"my app.py"` arrives at subprocess as a filename with
+                       quote characters in it, and the app looks for a file
+                       called `"my app.py"`.
+
+        So: non-POSIX (backslashes are paths, not escapes) and then the
+        surrounding quotes are removed per token. Windows CI found this; the
+        sandbox could not, because it is not Windows.
+    """
+    text = (run_command or "").strip()
+    if not text:
+        return None
+    try:
+        tokens = shlex.split(text, posix=(os.name != "nt"))
+    except ValueError:
+        return None
+    # subprocess takes a list and does its own quoting, so the quotes a user
+    # typed to group a path must not survive into the argument.
+    parts = [p for p in (_unquote(t) for t in tokens) if p]
+    return parts or None
+
+
 def _run_project(run_command: str, project_dir: Path, timeout: int = 30) -> str:
     print(f"[DevAgent] 🚀 Running: {run_command}")
+    parts = _split_command(run_command)
+    if parts is None:
+        # Before this check `parts[0]` raised IndexError and the caller turned
+        # it into "Run error: list index out of range" — a bug report the user
+        # cannot act on. An empty plan command is a planning failure, spelled.
+        return ("No run command was produced for this project, so there was "
+                "nothing to run.")
     try:
-        parts = run_command.split()
-        if parts[0].lower() == "python":
+        if parts[0].lower() in ("python", "python3"):
             parts[0] = sys.executable
 
         result = subprocess.run(
@@ -369,8 +543,27 @@ def _run_project(run_command: str, project_dir: Path, timeout: int = 30) -> str:
     except Exception as e:
         return f"Run error: {e}"
 
+def _missing_module(error_output: str) -> str:
+    """The package name a traceback is missing, validated. '' when there is none."""
+    pattern = re.compile(
+        r"No module named ['\"]([a-zA-Z0-9_\-\.]+)['\"]", re.IGNORECASE
+    )
+    match = pattern.search(error_output or "")
+    if not match:
+        return ""
+    return _safe_requirement(
+        match.group(1).replace("_", "-").split(".")[0]) or ""
+
+
 def _try_auto_install(error_output: str, project_dir: Path) -> bool:
-    """If there is a ModuleNotFoundError, tries to auto-install the missing package."""
+    """If there is a ModuleNotFoundError, tries to auto-install the missing package.
+
+    THE NAME COMES FROM THE PROJECT'S OWN STDERR, SO IT IS CHECKED TWICE
+        This runs unattended, up to MAX_FIX_ATTEMPTS times, on text a generated
+        program printed. `_safe_requirement` rejects anything that is not a
+        plain package name, and the result is a single argument after `pip
+        install` — never an option, never a URL.
+    """
     pattern = re.compile(
         r"No module named ['\"]([a-zA-Z0-9_\-\.]+)['\"]", re.IGNORECASE
     )
@@ -378,11 +571,16 @@ def _try_auto_install(error_output: str, project_dir: Path) -> bool:
     if not match:
         return False
 
-    pkg = match.group(1).replace("_", "-").split(".")[0]
+    pkg = _safe_requirement(match.group(1).replace("_", "-").split(".")[0])
+    if pkg is None:
+        print("[DevAgent] ⛔ A missing module named something that is not a "
+              "package name; not installing it.")
+        return False
+
     print(f"[DevAgent] 🔧 Auto-installing missing package: {pkg}")
     try:
         result = subprocess.run(
-            [sys.executable, "-m", "pip", "install", pkg],
+            [sys.executable, "-m", "pip", "install", "--no-input", pkg],
             capture_output=True, text=True,
             encoding="utf-8", errors="replace",
             timeout=60, cwd=str(project_dir)
@@ -580,9 +778,22 @@ def _build_project(
 
     if dependencies:
         _update("installing")
-        log(f"Installing {', '.join(dependencies)}...")
-        install_result = _install_dependencies(dependencies, project_dir)
+        log(f"Dependencies requested: {', '.join(dependencies)}")
+        # Parks the install behind the on-screen CONFIRM. Returns the sentence
+        # to speak, so the project is left built and uninstalled until the user
+        # answers — which is the honest state, and the one the HUD can show.
+        install_result = _install_with_confirmation(dependencies, project_dir)
         log(install_result)
+        _gated_install = install_result.startswith("[CONFIRMATION_PENDING]")
+    else:
+        _gated_install = False
+
+    if _gated_install:
+        msg = (f"Project '{proj_name}' is written in {project_dir}, sir. I need "
+               f"you to confirm the dependencies before I can run it.")
+        log(msg)
+        if speak: speak(msg)
+        return msg
 
     _open_vscode(project_dir)
 
@@ -609,6 +820,20 @@ def _build_project(
 
         error_type = _classify_error(last_output)
         if error_type == "dependency_error" and auto_installs < 3:
+            # The package NAME is scraped from the project's own stderr, so it
+            # goes through the same gate as a planned dependency: validated, and
+            # shown to the user before pip runs. Not installing it silently is
+            # the whole point — the previous version did, five times.
+            missing = _missing_module(last_output)
+            if missing:
+                gated = _install_with_confirmation([missing], project_dir)
+                log(gated)
+                if gated.startswith("[CONFIRMATION_PENDING]"):
+                    msg = (f"'{proj_name}' needs the package '{missing}', sir. "
+                           f"Confirm it on the HUD and I will install it and "
+                           f"finish testing the project.")
+                    if speak: speak(msg)
+                    return msg
             installed = _try_auto_install(last_output, project_dir)
             if installed:
                 auto_installs += 1
@@ -941,7 +1166,17 @@ def _safe_rel(folder: Path, rel: str) -> str | None:
     if ".." in parts or any(p in _SKIP_DIRS for p in parts):
         return None
     try:
-        (folder / rel).resolve().relative_to(folder)
+        # BOTH SIDES RESOLVED. It used to be
+        #     (folder / rel).resolve().relative_to(folder)
+        # where `folder` was left as written. `.resolve()` expands symlinks and
+        # makes the path absolute, so the left side was absolute-and-expanded
+        # while the right side was whatever the caller passed — and
+        # `relative_to` compares the two literally. A relative root
+        # (Path("demo")) or a root reached through a symlink (/tmp on macOS is
+        # /private/tmp) therefore raised ValueError for every single file, and
+        # the agent refused to write anything at all. The failure looked like a
+        # model problem, not a path problem.
+        (folder / rel).resolve().relative_to(folder.resolve())
     except (ValueError, OSError):
         return None
     return Path(rel).as_posix()

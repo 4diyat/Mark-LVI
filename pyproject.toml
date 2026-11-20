@@ -34,7 +34,20 @@ line-length = 100
 #     over 39,000 lines would produce a wall of findings nobody acts on, and a
 #     lint step that is ignored is worse than no lint step. CI runs them as an
 #     INFORMATIONAL job so the list stays visible and shrinks by choice.
-select = ["F", "E9"]
+select = ["F", "E9", "B006"]
+# B006 (mutable default argument) is the one exception to "F+E9 only": it is a
+# bug of exactly the kind F catches — a shared list/dict that one call mutates
+# for the next — and it currently reports ZERO findings in this tree, so it
+# cannot become a wall of noise. A rule with no backlog is free to enforce.
+#
+# NOT enabled yet, and the count is why:
+#   BLE001   blind-except            663  (a bare `except Exception`; see
+#                                          core/logbook.py for the ones that
+#                                          hid a real bug for a release)
+#   S110     try-except-pass         149
+#   PLC0415  import-outside-top-level 752 (mostly deliberate lazy imports)
+# They are reported by the informational CI job, where the number can be
+# watched down instead of argued about.
 
 [tool.ruff.lint.per-file-ignores]
 # The smoke harness and the provider self-test are diagnostics: they import

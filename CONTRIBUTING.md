@@ -16,6 +16,12 @@ pip install -r requirements-dev.txt
 pre-commit install              # optional, runs the same checks as CI
 ```
 
+### Found a security problem?
+
+Do not open a public issue — see [SECURITY.md](SECURITY.md) for the private
+channel and for what the project already treats as by-design (the opt-in
+dashboard TLS, in-process plugins).
+
 Python **3.11 or newer** — the code uses `X | Y` type syntax and `TaskGroup`.
 The app is tested on 3.11 and 3.12, on Windows, macOS and Linux; CI proves all
 six combinations on every push.
