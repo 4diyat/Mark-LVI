@@ -131,6 +131,10 @@ from ui.metrics import (        # noqa: F401 — same object as ui/metrics._metr
 # and every plugin that names it keep working.
 from ui.audio import AudioMixin, qurl_for
 from ui.video_fallback import VideoFallbackMixin
+from ui.confirm_banner import (   # noqa: F401 — re-exported through the package
+    ConfirmBanner,
+    _HudOverlay,
+)
 from ui.overlays import (      # noqa: F401 — re-exported through the package
     CustomizeOverlay,
     HueWheel,
@@ -1244,105 +1248,6 @@ class SetupOverlay(QWidget):
             return
         self.done.emit(key, self._sel_os)
 
-class _HudOverlay(QWidget):
-    """Base for the floating panels placed by hand over the HUD.
-
-    They are children of the central widget but sit in no layout, so Qt never
-    invalidates the region they occupy when they hide or shrink: the HUD keeps
-    painting around them and their last frame stays on screen as a ghost. Any
-    overlay positioned with _centre_overlay needs this."""
-
-    def hideEvent(self, e):
-        p = self.parentWidget()
-        if p is not None:
-            # Repaint exactly what we were covering, before we stop covering it.
-            p.update(self.geometry())
-        super().hideEvent(e)
-
-    def closeEvent(self, e):
-        p = self.parentWidget()
-        if p is not None:
-            p.update(self.geometry())
-        super().closeEvent(e)
-
-class ConfirmBanner(_HudOverlay):
-    """The gate in front of an action that cannot be taken back.
-
-    The old confirmation was a tool parameter the model filled in itself, which
-    means it confirmed its own shutdown requests. This is the interface asking,
-    and the answer travels from a human finger to core/confirm.py without the
-    model in the loop. Nothing blocks while it is up: the assistant keeps
-    talking, so this costs no latency — unlike the old gate, which spent two
-    tool round trips on every power command."""
-
-    answered = pyqtSignal(bool)
-    _OW = 430
-
-    def __init__(self, title: str, detail: str, parent=None):
-        super().__init__(parent)
-        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setStyleSheet(f"""
-            ConfirmBanner {{
-                background: rgba(14, 3, 0, 250);
-                border: 1px solid {C.ACC};
-                border-radius: 6px;
-            }}
-        """)
-        self.setFixedWidth(self._OW)
-
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(20, 16, 20, 16)
-        lay.setSpacing(8)
-
-        hdr = QLabel(_t("ui.confirm.heading"))
-        hdr.setFont(QFont("Courier New", 11, QFont.Weight.Bold))
-        hdr.setStyleSheet(f"color: {C.ACC}; background: transparent;")
-        lay.addWidget(hdr)
-
-        ttl = QLabel(title)
-        ttl.setWordWrap(True)
-        ttl.setFont(QFont("Courier New", 10, QFont.Weight.Bold))
-        ttl.setStyleSheet(f"color: {C.TEXT}; background: transparent;")
-        lay.addWidget(ttl)
-
-        if detail:
-            dtl = QLabel(detail)
-            dtl.setWordWrap(True)
-            dtl.setFont(QFont("Courier New", 8))
-            dtl.setStyleSheet(f"color: {C.TEXT_MED}; background: transparent;")
-            lay.addWidget(dtl)
-
-        row = QHBoxLayout(); row.setSpacing(8)
-
-        yes = QPushButton(_t("ui.confirm.button"))
-        yes.setFixedHeight(32)
-        yes.setFont(QFont("Courier New", 9, QFont.Weight.Bold))
-        yes.setCursor(Qt.CursorShape.PointingHandCursor)
-        yes.setStyleSheet(f"""
-            QPushButton {{ background: transparent; color: {C.ACC};
-                border: 1px solid {C.ACC}; border-radius: 3px; }}
-            QPushButton:hover {{ background: rgba(255,107,0,40); }}
-        """)
-        yes.clicked.connect(lambda: self.answered.emit(True))
-        row.addWidget(yes)
-
-        no = QPushButton(_t("ui.cancel"))
-        no.setFixedHeight(32)
-        no.setFont(QFont("Courier New", 9))
-        no.setCursor(Qt.CursorShape.PointingHandCursor)
-        no.setStyleSheet(f"""
-            QPushButton {{ background: transparent; color: {C.TEXT_MED};
-                border: 1px solid {C.BORDER}; border-radius: 3px; }}
-            QPushButton:hover {{ color: {C.TEXT}; border-color: {C.BORDER_B}; }}
-        """)
-        no.clicked.connect(lambda: self.answered.emit(False))
-        row.addWidget(no)
-        lay.addLayout(row)
-
-        # Default focus on CANCEL: if someone hits Enter without reading, the
-        # safe answer wins.
-        no.setDefault(True)
-        no.setFocus()
 
 
 class AudioDeviceOverlay(_HudOverlay):

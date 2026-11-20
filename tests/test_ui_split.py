@@ -25,7 +25,7 @@ WINDOW = UI_PKG / "window.py"
 # the sizes that made them unreadable. The ceiling came down from 7,400 to
 # 7,000 when the three setting panels moved to ui/overlays.py — a ratchet that
 # is only ever loosened is not a ratchet.
-WINDOW_CEILING = 7_000
+WINDOW_CEILING = 6_850
 MODULES = [UI_PKG / "__init__.py", UI_PKG / "theme.py", UI_PKG / "metrics.py",
            UI_PKG / "overlays.py"]
 
@@ -345,3 +345,45 @@ def test_filesystem_model_is_imported_from_qtgui():
               if isinstance(node, ast.ImportFrom)
               and any(alias.name == "QFileSystemModel" for alias in node.names)]
     assert owners == ["PyQt6.QtGui"]
+
+
+# ── the class ceilings ──────────────────────────────────────────────────────
+#
+# A file ceiling is not enough on its own: `MainWindow` is 3,066 lines and lives
+# in a 6,800-line file, so the file could shrink around it for years while the
+# actual god object stayed. These cap the classes instead, which is where the
+# reading cost is.
+
+CLASS_CEILINGS = {
+    "MainWindow": 3_100,       # 3,066 today
+    "JarvisLive": 2_400,       # main.py, 2,357 today
+}
+
+
+def _class_lines(path: Path) -> dict[str, int]:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    return {n.name: n.end_lineno - n.lineno + 1
+            for n in tree.body if isinstance(n, ast.ClassDef)}
+
+
+def test_the_god_objects_do_not_grow():
+    """Move a panel out before adding to one of these."""
+    found = {}
+    found.update(_class_lines(WINDOW))
+    found.update(_class_lines(ROOT / "main.py"))
+    over = {name: found[name] for name, cap in CLASS_CEILINGS.items()
+            if name in found and found[name] > cap}
+    assert over == {}, (
+        "these classes are already the hardest files to read here; put the new "
+        f"code in a module of its own: {over}")
+
+
+def test_the_confirm_banner_is_its_own_module_now():
+    """The first class out of window.py, and the pattern for the next one."""
+    from ui import confirm_banner
+
+    assert hasattr(confirm_banner, "ConfirmBanner")
+    assert hasattr(confirm_banner, "_HudOverlay")
+    # and the window still offers both under the names the rest of the app uses
+    import ui
+    assert ui.ConfirmBanner is confirm_banner.ConfirmBanner

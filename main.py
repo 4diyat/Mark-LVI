@@ -52,7 +52,7 @@ from ui import JarvisUI
 from memory.memory_manager import (
     load_memory, update_memory, format_memory_for_prompt,
     save_session_summary, pop_last_session,
-    search_memory, set_trim_notifier,
+    set_trim_notifier,
 )
 
 # The file-backed tools (open_app, web_search, browser_control, …) are no longer
@@ -64,10 +64,10 @@ from memory.memory_manager import (
 from core import outcome
 from core.action_loader import strip_meta
 from actions.screen_processor  import _capture_camera, _capture_pointed_screen, _capture_screen
-from actions.system_monitor    import SystemMonitor, get_system_status
+from actions.system_monitor    import SystemMonitor
 from actions.proactive         import ProactiveEngine
 from actions.background_monitor import (
-    add_monitor, remove_monitor, list_monitors, check_all as monitor_check_all,
+    list_monitors, check_all as monitor_check_all,
 )
 from actions.web_search        import _news as _fetch_news_sync
 from memory.config_manager     import (
@@ -78,7 +78,7 @@ from memory.config_manager     import (
 )
 from core                     import gemini as _gemini
 from core.plugin_loader        import discover_plugins
-from core                      import undo as undo_stack
+from core                      import tool_dispatch as _dispatch
 from core                      import confirm as confirm_gate
 from core                      import audio_devices
 from core.action_loader        import discover_actions
@@ -1482,21 +1482,8 @@ class JarvisLive:
         result = "Done."
 
         try:
-            if name == "recall_memory":
-                # Local file search: no network, no second model. Kept out of
-                # the executor deliberately — it is a dictionary scan over a few
-                # hundred short strings, and a thread hop would cost more than
-                # the work itself.
-                result = search_memory(args.get("query", ""), limit=8)
-
-            elif name == "undo":
-                if str(args.get("action", "")).lower().strip() == "list":
-                    items = undo_stack.history()
-                    result = ("Things I can undo, most recent first:\n"
-                              + "\n".join(f"{i+1}. {t}" for i, t in enumerate(items))
-                              ) if items else "I have not changed anything I can undo yet."
-                else:
-                    result = await loop.run_in_executor(None, undo_stack.undo_last)
+            if _dispatch.handles(name):
+                result = await _dispatch.dispatch(name, args)
 
             elif name == "screen_process":
                 import time as _t_mod
@@ -1546,23 +1533,6 @@ class JarvisLive:
             elif name == "close_camera":
                 self.ui.stop_camera_stream()
                 result = "Camera closed."
-
-            elif name == "system_status":
-                r = await loop.run_in_executor(None, get_system_status)
-                result = str(r)
-
-            elif name == "manage_monitor":
-                action = args.get("action", "").lower().strip()
-                topic  = args.get("topic", "").strip()
-                if action == "add" and topic:
-                    result = await asyncio.to_thread(add_monitor, topic)
-                elif action == "remove" and topic:
-                    result = await asyncio.to_thread(remove_monitor, topic)
-                elif action == "list":
-                    topics = await asyncio.to_thread(list_monitors)
-                    result = ("Monitoring: " + ", ".join(topics)) if topics else "No topics are being monitored."
-                else:
-                    result = "Specify action (add/remove/list) and a topic."
 
             elif name == "shutdown_jarvis":
                 self.ui.write_log("SYS: Shutdown requested.")
