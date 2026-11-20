@@ -843,49 +843,6 @@ def main():
             assert result, "workspace request did not complete"
             return result[0]
 
-        # Exercise real plugin -> worker -> Qt -> chart/table -> explicit draft.
-        from plugins.visualize_data import run as visualize
-        data = {'title': 'Sample chart', 'source': 'Synthetic input', 'unit': 'kg',
-                'points': [{'label': 'A', 'value': -2}, {'label': 'B', 'value': 4},
-                           {'label': 'C', 'value': 1}]}
-        visual_result = []
-        worker = threading.Thread(target=lambda: visual_result.append(visualize(data, bridge)))
-        worker.start()
-        for _ in range(100):
-            if not worker.is_alive():
-                break
-            QTest.qWait(20)
-        worker.join(timeout=1)
-        assert visual_result and 'opened' in visual_result[0].lower(), visual_result
-        sub = next(sub for kind, sub in window._workspace_documents.values() if kind == 'visual_content')
-        view = sub._document
-        assert 'Synthetic input' in view.source.text() and view.table.rowCount() == 3
-        sub.show()
-        app.processEvents()
-        x, y = view.chart.points()[1]
-        QTest.mouseClick(view.chart, Qt.MouseButton.LeftButton, pos=QPoint(round(x), round(y)))
-        assert view.chart.index == 1 and 'B' in view.selection.text() and '4 kg' in view.selection.text()
-        QTest.keyClick(view.chart, Qt.Key.Key_Right)
-        assert view.chart.index == 2
-        QTest.mouseClick(view.table_button, Qt.MouseButton.LeftButton)
-        assert view.stack.currentIndex() == 1
-        view.table.selectRow(0)
-        assert view.chart.index == 0 and '-2 kg' in view.selection.text()
-        window._input.setText('existing draft')
-        QTest.mouseClick(view.ask, Qt.MouseButton.LeftButton)
-        assert window._input.text() == 'existing draft'
-        window._input.clear()
-        QTest.mouseClick(view.ask, Qt.MouseButton.LeftButton)
-        assert '<<<UNTRUSTED source=chart>>>' in window._input.text()
-        assert '"value": -2.0' in window._input.text()
-        window._input.clear()
-        set_locale('id')
-        view.retranslate()
-        assert view.graph_button.text() == translate('visual.graph') and view.chart.index == 0
-        set_locale('en')
-        sub.close()
-        app.processEvents()
-
         listing = command({"action": "list"})
         assert listing["ok"] and any(item["id"] == "files" for item in listing["windows"])
         assert command({"action": "navigate", "text": tmp})["ok"]
@@ -935,6 +892,49 @@ def main():
         assert files.isHidden()
         assert command({"action": "open", "target": "files"})["ok"]
         assert not files.isHidden()
+
+        # Exercise real plugin -> worker -> Qt -> chart/table -> explicit draft.
+        from plugins.visualize_data import run as visualize
+        data = {'title': 'Sample chart', 'source': 'Synthetic input', 'unit': 'kg',
+                'points': [{'label': 'A', 'value': -2}, {'label': 'B', 'value': 4},
+                           {'label': 'C', 'value': 1}]}
+        visual_result = []
+        worker = threading.Thread(target=lambda: visual_result.append(visualize(data, bridge)))
+        worker.start()
+        for _ in range(100):
+            if not worker.is_alive():
+                break
+            QTest.qWait(20)
+        worker.join(timeout=1)
+        assert visual_result and 'opened' in visual_result[0].lower(), visual_result
+        sub = next(sub for kind, sub in window._workspace_documents.values() if kind == 'visual_content')
+        view = sub._document
+        assert 'Synthetic input' in view.source.text() and view.table.rowCount() == 3
+        sub.show()
+        app.processEvents()
+        x, y = view.chart.points()[1]
+        QTest.mouseClick(view.chart, Qt.MouseButton.LeftButton, pos=QPoint(round(x), round(y)))
+        assert view.chart.index == 1 and 'B' in view.selection.text() and '4 kg' in view.selection.text()
+        QTest.keyClick(view.chart, Qt.Key.Key_Right)
+        assert view.chart.index == 2
+        QTest.mouseClick(view.table_button, Qt.MouseButton.LeftButton)
+        assert view.stack.currentIndex() == 1
+        view.table.selectRow(0)
+        assert view.chart.index == 0 and '-2 kg' in view.selection.text()
+        window._input.setText('existing draft')
+        QTest.mouseClick(view.ask, Qt.MouseButton.LeftButton)
+        assert window._input.text() == 'existing draft'
+        window._input.clear()
+        QTest.mouseClick(view.ask, Qt.MouseButton.LeftButton)
+        assert '<<<UNTRUSTED source=chart>>>' in window._input.text()
+        assert '"value": -2.0' in window._input.text()
+        window._input.clear()
+        set_locale('id')
+        view.retranslate()
+        assert view.graph_button.text() == translate('visual.graph') and view.chart.index == 0
+        set_locale('en')
+        sub.close()
+        app.processEvents()
 
         # Feed synthetic tracked hands on the Qt thread: no OS pointer is used.
         window._hand_timer.stop()
