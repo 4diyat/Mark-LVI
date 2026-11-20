@@ -25,7 +25,7 @@ WINDOW = UI_PKG / "window.py"
 # the sizes that made them unreadable. The ceiling came down from 7,400 to
 # 7,000 when the three setting panels moved to ui/overlays.py — a ratchet that
 # is only ever loosened is not a ratchet.
-WINDOW_CEILING = 6_850
+WINDOW_CEILING = 5_750
 MODULES = [UI_PKG / "__init__.py", UI_PKG / "theme.py", UI_PKG / "metrics.py",
            UI_PKG / "overlays.py"]
 
@@ -387,3 +387,43 @@ def test_the_confirm_banner_is_its_own_module_now():
     # and the window still offers both under the names the rest of the app uses
     import ui
     assert ui.ConfirmBanner is confirm_banner.ConfirmBanner
+
+
+def test_the_provider_panel_is_its_own_module_now():
+    """1,085 lines of widget that needed nothing from the window.
+
+    Checked before moving: no attribute of MainWindow is touched and `parent()`
+    is only ever Qt parenting. The names still resolve through `ui`, because
+    main.py and providers/_tests.py spell them that way.
+    """
+    from ui import providers_overlay
+
+    assert hasattr(providers_overlay, "ProvidersOverlay")
+    assert hasattr(providers_overlay, "_ScrollSafeCombo")
+
+    import ui
+    assert ui.ProvidersOverlay is providers_overlay.ProvidersOverlay
+    assert ui._ScrollSafeCombo is providers_overlay._ScrollSafeCombo
+
+
+def test_the_provider_panel_still_imports_nothing_heavy_at_module_level():
+    """The lazy imports are a measured fix, not tidiness.
+
+    A wake-word check once spent 2.104 seconds importing `openwakeword` on the
+    Qt thread and made the drawer look broken. Moving `ProvidersOverlay` into
+    its own module makes it easy to hoist `providers` or `memory.config_manager`
+    to the top — which would do the same thing again, at startup, for everyone
+    who never opens the panel.
+    """
+    tree = ast.parse((UI_PKG / "providers_overlay.py").read_text(encoding="utf-8"))
+    top_imports = set()
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            top_imports.update(a.name.split(".")[0] for a in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            top_imports.add(node.module.split(".")[0])
+
+    assert "providers" not in top_imports, (
+        "`providers` is imported at module level; it must stay inside __init__")
+    assert "memory" not in top_imports, (
+        "`memory.config_manager` is imported at module level; it must stay lazy")
