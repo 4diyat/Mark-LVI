@@ -187,11 +187,12 @@ class Msg:
     session_resumption_update: Any = None
     # Local pipeline-only barrier, never sent by Gemini or an external provider.
     interruption_id: Optional[int] = None
+    speech_caption: Optional[str] = None  # local sentence associated with first PCM slice
 
     # -- constructors for the five things an engine actually emits ------------
     @staticmethod
-    def audio(pcm: bytes) -> "Msg":
-        return Msg(data=pcm)
+    def audio(pcm: bytes, caption: str | None = None) -> "Msg":
+        return Msg(data=pcm, speech_caption=caption)
 
     @staticmethod
     def said(text: str) -> "Msg":

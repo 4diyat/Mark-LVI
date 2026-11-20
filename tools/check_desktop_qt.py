@@ -799,6 +799,28 @@ def main():
         # Exercise the same worker -> Qt signal -> result path used by plugins.
         bridge = JarvisUI.__new__(JarvisUI)
         bridge._win = window
+        # Captions arrive via the thread-safe bridge and use playback-time timers.
+        caption = window._speech_caption
+        threading.Thread(target=lambda: bridge.speech_caption(
+            {'kind': 'caption', 'epoch': 20, 'at': time.time(), 'text': '<spoken & plain>'})).start()
+        QTest.qWait(40)
+        assert caption.text.toPlainText() == '<spoken & plain>' and not caption.isHidden()
+        bridge.speech_caption({'kind': 'caption', 'epoch': 20, 'at': time.time() + .08, 'text': 'stale'})
+        bridge.speech_caption({'kind': 'reset', 'epoch': 21})
+        QTest.qWait(120)
+        assert caption.text.toPlainText() == '' and caption.isHidden()
+        bridge.speech_caption({'kind': 'caption', 'epoch': 20, 'at': time.time(), 'text': 'old epoch'})
+        bridge.speech_caption({'kind': 'caption', 'epoch': 21, 'at': time.time(), 'text': 'new'})
+        QTest.qWait(30)
+        assert caption.text.toPlainText() == 'new'
+        set_locale('id')
+        caption.retranslate()
+        assert caption.heading.text() == translate('speech.caption_heading')
+        assert caption.text.toPlainText() == 'new'
+        set_locale('en')
+        bridge.speech_caption({'kind': 'reset', 'epoch': 22})
+        QTest.qWait(20)
+        assert caption.isHidden()
         # Queue an obsolete banner and hide from a worker before the newer
         # request is displayed. The old events and old answer must not affect it.
         from core import confirm

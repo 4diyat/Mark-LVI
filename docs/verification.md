@@ -719,3 +719,26 @@ Ini pagar untuk **output pipeline yang datang setelah generasi diganti**, bukan
 jaminan menghentikan provider/thread eksternal. Tool call yang sudah dikeluarkan
 sebelum interrupt dan tool yang sudah berjalan tidak otomatis dibatalkan;
 tindakan eksternal tetap memerlukan mekanisme consent dan pembatalannya sendiri.
+
+### Sinkronisasi awal ucapan dan visual
+
+Pipeline lokal kini menempelkan teks yang benar-benar diserahkan ke TTS pada
+potongan PCM pertama setiap segmen ucapan. Penanda ikut antrean audio dan
+asisten menampilkan teks tersebut ketika pemutar memperkirakan segmen mulai
+terdengar, bukan ketika model selesai menulis transkrip. Segmen berikutnya
+tidak digabung ke batch sebelumnya; tampilan dibersihkan setelah antrean selesai.
+Interrupt dan koneksi ulang mengganti epoch agar timer lama tidak memunculkan
+teks basi. Teks polos hanya ditampilkan di JARVIS, tanpa markup, dan potongan
+lebih dari 1.200 karakter ditandai terpotong.
+
+Uji sintetis mencakup beberapa kalimat, TTS yang menghasilkan beberapa blok,
+backpressure, urutan potongan dan perkiraan waktu playback; Qt offscreen menguji
+penundaan, interrupt, timer basi, teks polos dan pergantian bahasa. Ini adalah
+sinkronisasi **perkiraan per segmen** untuk pipeline lokal dengan TTS yang
+menghasilkan PCM, bukan word-level alignment, tidak membuktikan suara benar-benar
+terdengar pada perangkat, dan dapat berbeda akibat latensi perangkat/remote.
+Gemini Live belum menyediakan pemetaan transkrip-ke-PCM yang dapat diandalkan di
+jalur ini sehingga tidak diberi klaim sinkronisasi palsu. Konten kartu, langkah,
+linimasa dan grafik juga belum otomatis berpindah mengikuti kalimat; tidak ada
+pencocokan topik spekulatif yang dapat memilih konten salah. Pembaruan konten
+terstruktur terikat giliran dan pengujian provider/perangkat nyata masih perlu.

@@ -709,6 +709,7 @@ class SetupOverlay(QWidget):
 
 class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
     _log_sig        = pyqtSignal(str)
+    _speech_caption_sig = pyqtSignal(object)
     _phone_connected_sig = pyqtSignal()
     _state_sig      = pyqtSignal(str)
     _content_sig    = pyqtSignal(str, str)   # (title, text) — thread-safe content display
@@ -1082,6 +1083,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         self._update_metrics()
 
         self._log_sig.connect(self._log.append_log)
+        self._speech_caption_sig.connect(self._speech_caption.handle)
         self._phone_connected_sig.connect(self.notify_phone_connected)
         self._state_sig.connect(self._apply_state)
         self._content_sig.connect(self._show_content)
@@ -4014,6 +4016,9 @@ class JarvisUI:
 
     def set_state(self, state: str):
         self._win._state_sig.emit(state)
+
+    def speech_caption(self, event):
+        self._win._speech_caption_sig.emit(event)
 
     def write_log(self, text: str):
         self._win._log_sig.emit(text)

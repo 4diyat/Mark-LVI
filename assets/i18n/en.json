@@ -109,6 +109,7 @@
   "ui.apply": "▸  APPLY",
   "ui.memory.heading": "🧠  WHAT {name} REMEMBERS",
   "visual.graph": "Graph",
+  "speech.caption_heading": "Spoken segment · approximate timing",
   "visual.line": "Line",
   "visual.bar": "Bar",
   "narrative.cards": "Concept cards",

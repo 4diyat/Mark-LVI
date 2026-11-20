@@ -5,7 +5,7 @@ from pathlib import Path
 import threading
 from types import SimpleNamespace
 
-from core import playback_buffer
+from core import playback_buffer, speech_sync
 
 
 def test_bounded_backpressure_preserves_fifo_and_releases_producer():
@@ -64,7 +64,7 @@ def interrupt_methods():
     cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'JarvisLive')
     nodes = [n for n in cls.body if isinstance(n, ast.FunctionDef)
              and n.name in ('interrupt', '_interrupt_on_loop')]
-    ns = {'playback_buffer': playback_buffer}
+    ns = {'playback_buffer': playback_buffer, 'speech_sync': speech_sync}
     exec(compile(ast.Module(body=nodes, type_ignores=[]), str(path), 'exec'), ns)
     return ns
 

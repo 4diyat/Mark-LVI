@@ -112,8 +112,8 @@ _PIPELINE_AUDIO_SLICES = 100  # about five seconds at 24 kHz / 16-bit mono
 class _QueuedAudio:
     __slots__ = ('message',)
 
-    def __init__(self, pcm):
-        self.message = Msg.audio(pcm)
+    def __init__(self, pcm, caption=None):
+        self.message = Msg.audio(pcm, caption)
 
 
 class PipelineEngine:
@@ -652,6 +652,7 @@ class PipelineEngine:
         language = getattr(self._stt, "detected_language", "")
         if language and _accepts_language(self._tts):
             kwargs["language"] = language
+        caption_pending = True
         try:
             async for pcm in self._tts.speak(text, **kwargs):
                 if generation is not None and not self._current_generation(generation):
@@ -660,7 +661,8 @@ class PipelineEngine:
                     if first is None:
                         first = time.monotonic() - t0
                     total += len(pcm)
-                    await self._emit(Msg.audio(pcm), generation=generation)
+                    await self._emit(Msg.audio(pcm, text if caption_pending else None), generation=generation)
+                    caption_pending = False
                     if generation is not None and not self._current_generation(generation):
                         return
         except asyncio.CancelledError:
@@ -791,7 +793,8 @@ class PipelineEngine:
                 if self._closed or (generation is not None and not self._current_generation(generation)):
                     self._audio_slots.release()
                     return
-                self._queue.put_nowait(_QueuedAudio(msg.data[offset:offset + SLICE_BYTES]))
+                self._queue.put_nowait(_QueuedAudio(msg.data[offset:offset + SLICE_BYTES],
+                                                  msg.speech_caption if offset == 0 else None))
         else:
             self._queue.put_nowait(msg)
 

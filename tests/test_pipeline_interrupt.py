@@ -4,7 +4,7 @@ import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 
-from core import playback_buffer
+from core import playback_buffer, speech_sync
 from providers.base import Msg
 from providers.engine_pipeline import PipelineEngine
 
@@ -62,7 +62,7 @@ def _main_methods():
     cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'JarvisLive')
     nodes = [n for n in cls.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
              and n.name in ('_receive_audio', '_interrupt_on_loop')]
-    ns = {'asyncio': asyncio, 'playback_buffer': playback_buffer,
+    ns = {'asyncio': asyncio, 'playback_buffer': playback_buffer, 'speech_sync': speech_sync,
           '_clean_transcript': lambda text: text, '_is_repeat_chunk': lambda *_: False,
           '_REPEAT_MIN': 5}
     exec(compile(ast.Module(body=nodes, type_ignores=[]), str(source), 'exec'), ns)
@@ -109,7 +109,7 @@ def test_main_pipeline_interrupt_barrier_discards_old_audio_not_next_answer():
         await engine.send_client_content(turns={'parts': [{'text': 'new'}]})
         await asyncio.wait_for(logged.wait(), 1)
         assert not obj._interrupted and obj._interrupt_local_token is None
-        assert queue.get_nowait() == b'fresh'  # old audio never plays, new audio does
+        assert queue.get_nowait() == playback_buffer.CaptionedChunk(b'fresh', 'Fresh answer.')
         assert queue.empty()
         assert obj._session_log == ['JARVIS: Fresh answer.']
         assert len(traffic) == 8  # two local barriers are not provider traffic

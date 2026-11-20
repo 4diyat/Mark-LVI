@@ -63,6 +63,7 @@ from memory.memory_manager import (
 # system_status).
 from core import outcome
 from core import playback_buffer
+from core import speech_sync
 from core.action_loader import strip_meta
 from actions.screen_processor  import _capture_camera, _capture_pointed_screen, _capture_screen
 from actions.system_monitor    import SystemMonitor
@@ -1195,6 +1196,7 @@ class JarvisLive:
         if queue is not self.audio_in_queue:
             return
         self._interrupted = True
+        speech_sync.reset(self)
         drained = playback_buffer.drain(queue)
         if drained:
             print(f"[JARVIS] ✋ Interrupted — {drained} audio chunks discarded")
@@ -1953,7 +1955,8 @@ class JarvisLive:
                             # silently dropping or splicing a spoken response.
                             await playback_buffer.enqueue(
                                 self.audio_in_queue, response.data,
-                                lambda: self._interrupted)
+                                lambda: self._interrupted,
+                                caption=getattr(response, "speech_caption", None))
 
                     if response.server_content:
                         sc = response.server_content
@@ -2103,6 +2106,7 @@ class JarvisLive:
         except Exception:
             pass
 
+        from core import playback_buffer as _playback, speech_sync as _speech_sync
         try:
             while True:
                 try:
@@ -2118,15 +2122,22 @@ class JarvisLive:
                     ):
                         self.set_speaking(False)
                         self._turn_done_event.clear()
+                        if getattr(self, "_engine", None) is not None:
+                            _speech_sync.schedule(self, "", max(time.time(), self._play_cursor))
                     continue
 
+                caption = chunk.caption if isinstance(chunk, _playback.CaptionedChunk) else None
+                if caption is not None:
+                    chunk = chunk.data
                 self.set_speaking(True)
 
                 # Batch all immediately-available chunks into one write to reduce
                 # thread-pool round-trips (was one asyncio.to_thread per 50ms slice).
                 # Cap at ~200 ms so interrupt() still stops audio within ~200 ms.
                 batch = bytearray(chunk)
-                while len(batch) < 9600:   # 9600 bytes ≈ 200 ms at 24 kHz / 16-bit mono
+                # A pipeline sentence boundary must not be batched into the
+                # previous sentence. Live has no such PCM-aligned metadata.
+                while len(batch) < 9600 and getattr(self, "_engine", None) is None:
                     try:
                         batch.extend(self.audio_in_queue.get_nowait())
                     except asyncio.QueueEmpty:
@@ -2167,6 +2178,8 @@ class JarvisLive:
                     if not (now <= self._play_cursor <= now + horizon):
                         self._play_cursor = now + _FIRST_SOUND
                     at = self._play_cursor
+                    if caption:
+                        _speech_sync.schedule(self, caption, at)
                     # Advance by the batch's own duration whether or not it
                     # yielded frames, so a block too short to analyse cannot
                     # shift everything after it out of step with the audio.
@@ -2808,6 +2821,7 @@ class JarvisLive:
                     self._vision_last_time     = 0.0
                     self._interrupted          = False
                     self._interrupt_local_token = None
+                    speech_sync.reset(self)
 
                     print("[JARVIS] Connected.")
                     if _resumed_with:
