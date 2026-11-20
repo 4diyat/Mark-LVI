@@ -41,6 +41,7 @@ from PyQt6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPen, QPolygo
 
 from core import avatar_face as _face
 from core.avatar_mesh import JAW_MAX, JAW_PIVOT, get_head_mesh
+from core.avatar_outline import convex_outline, rim_segments
 
 # Perspective camera distance in head-half-heights. Large enough that the nose
 # does not balloon, small enough to keep a sense of depth.
@@ -537,11 +538,13 @@ class HoloAvatar:
 
     def paint(self, p: QPainter, cx: float, cy: float, r: float,
               primary: QColor, accent: QColor, bg: QColor | None = None,
-              *, wireframe: bool = True) -> None:
+              *, wireframe: bool = True, floating_head: bool = False) -> None:
         """Draw the avatar with its head centre at (cx, cy).
 
         `r` is the head's half-height in pixels — the caller owns the layout, so
         the HUD can fit the head to whatever room the status line leaves it.
+        `floating_head` hides the neck only for a solid, wireless projection;
+        the default HUD and transparent wire rendering are unchanged.
         """
         if bg is None:
             bg = QColor(0, 0, 0)
@@ -565,16 +568,32 @@ class HoloAvatar:
         xs = cx + verts[:, 0] * k
         ys = cy - verts[:, 1] * k
 
+        # Desktop-only side lighting follows the moving projected silhouette.
+        # Quantized levels batch segments instead of changing the pen per edge.
+        rim = []
+        if self.shaded and not wireframe:
+            indices = convex_outline(xs[:self._frames.n_head], ys[:self._frames.n_head])
+            for bucket in rim_segments(xs, ys, indices):
+                rim.append([QLineF(float(xs[a]), float(ys[a]), float(xs[b]), float(ys[b]))
+                            for a, b in bucket])
+            for level, lines in enumerate(rim):
+                if lines:
+                    p.setPen(_pen(_c(primary, 12 + level * 12), max(3.0, min(8.0, r * .065))))
+                    p.drawLines(lines)
         if self.shaded:
             self._paint_surface(p, xs, ys, norms, verts, primary, accent, bg, amp,
-                                smooth=not wireframe)
+                                smooth=not wireframe, head_only=floating_head and not wireframe)
+        for level, lines in enumerate(rim):
+            if lines:
+                p.setPen(_pen(_c(primary, 55 + level * 55), max(.8, min(1.6, r * .014))))
+                p.drawLines(lines)
         if wireframe or not self.shaded:
             self._paint_wire(p, xs, ys, norms, verts, primary, bg, amp)
         self._paint_features(p, xs, ys, norms, r, primary, accent, bg, amp)
 
     def _paint_surface(self, p: QPainter, xs, ys, norms, verts,
                        primary: QColor, accent: QColor, bg: QColor,
-                       amp: float, *, smooth: bool = False) -> None:
+                       amp: float, *, smooth: bool = False, head_only: bool = False) -> None:
         """Fill the camera-facing triangles as lit, occluded, warm skin.
 
         The maths lives in `core.avatar_face` (Qt-free, so it can be tested);
@@ -601,7 +620,10 @@ class HoloAvatar:
         # of near-black across the cheek.
         area = np.abs((xs[b] - xs[a]) * (ys[c] - ys[a])
                       - (xs[c] - xs[a]) * (ys[b] - ys[a]))
-        vis = np.flatnonzero((nz > 0.015) & (area > 3.0))
+        visible = (nz > 0.015) & (area > 3.0)
+        if head_only:
+            visible &= self._fgroup == 1  # head; neck facets are group 0
+        vis = np.flatnonzero(visible)
         if vis.size == 0:
             return
 

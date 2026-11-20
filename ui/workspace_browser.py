@@ -1,18 +1,19 @@
 """Tabbed embedded browser. All web content is untrusted."""
 import threading
 
-from PyQt6.QtCore import Qt, QUrl, pyqtSignal
+from PyQt6.QtCore import QSize, Qt, QUrl, pyqtSignal
 from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineScript, QWebEngineSettings
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import (QComboBox, QDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
-                             QMessageBox, QPushButton, QTabWidget, QVBoxLayout, QWidget)
+                             QMessageBox, QPushButton, QTabBar, QTabWidget, QToolButton, QVBoxLayout, QWidget)
 
 from core.browser_autofill import fill_script
 from core.browser_url import https_origin, validate_browser_url
 from core.browser_vault import BrowserVault
 from core.i18n import label as _t
 from ui.desktop_workspace import show_document
-from ui.theme import workspace_stylesheet
+from ui.theme import C, workspace_stylesheet
+from ui.browser_icons import browser_nav_icon
 
 
 def plugin_allowed(host):
@@ -63,7 +64,15 @@ class BrowserTab(QWidget):
         self._generation, self._loaded, self._live, self._busy = 0, False, True, False
         layout = QVBoxLayout(self)
         controls = QHBoxLayout()
-        self.back, self.forward, self.reload_btn = (QPushButton(_t(k)) for k in ('browser.back', 'browser.forward', 'browser.reload'))
+        self.back, self.forward, self.reload_btn = (QPushButton() for _ in range(3))
+        for button, kind, key in ((self.back, 'back', 'browser.back'),
+                                  (self.forward, 'forward', 'browser.forward'),
+                                  (self.reload_btn, 'reload', 'browser.reload')):
+            button.setIcon(browser_nav_icon(kind))
+            button.setIconSize(QSize(20, 20))
+            button.setFixedSize(38, 38)
+            button.setToolTip(_t(key))
+            button.setAccessibleName(_t(key))
         self.address = QLineEdit()
         self.address.setPlaceholderText(_t('browser.address_hint'))
         self.address.setAccessibleName(_t('browser.address_hint'))
@@ -123,9 +132,11 @@ class BrowserTab(QWidget):
 
     def retranslate(self):
         for widget, key in ((self.back, 'browser.back'), (self.forward, 'browser.forward'),
-                            (self.reload_btn, 'browser.reload'), (self.go, 'browser.go'),
-                            (self.fill_btn, 'browser.fill'), (self.save_btn, 'browser.save'),
-                            (self.delete_btn, 'browser.delete')):
+                            (self.reload_btn, 'browser.reload')):
+            widget.setToolTip(_t(key))
+            widget.setAccessibleName(_t(key))
+        for widget, key in ((self.go, 'browser.go'), (self.fill_btn, 'browser.fill'),
+                            (self.save_btn, 'browser.save'), (self.delete_btn, 'browser.delete')):
             widget.setText(_t(key))
         self.address.setPlaceholderText(_t('browser.address_hint'))
         self.address.setAccessibleName(_t('browser.address_hint'))
@@ -283,14 +294,14 @@ class BrowserTab(QWidget):
     def fill_login(self):
         origin, user, generation = self._origin(), self.offer.currentData(), self._generation
         if (origin and user and not self._busy
-                and self._confirm('browser.fill', _t('browser.fill_confirm').format(origin=origin, username=user))
+                and self._confirm('browser.fill', _t('browser.fill_confirm', origin=origin, username=user))
                 and generation == self._generation and self._origin() == origin):
             self._work('get', origin, user)
 
     def delete_login(self):
         origin, user, generation = self._origin(), self.offer.currentData(), self._generation
         if (origin and user and not self._busy
-                and self._confirm('browser.delete', _t('browser.delete_confirm').format(origin=origin, username=user))
+                and self._confirm('browser.delete', _t('browser.delete_confirm', origin=origin, username=user))
                 and generation == self._generation and self._origin() == origin):
             self._work('delete', origin, user)
 
@@ -311,10 +322,24 @@ class BrowserWindow(QWidget):
         self.setStyleSheet(workspace_stylesheet())
         layout = QVBoxLayout(self)
         self.tabs = QTabWidget()
+        self.tabs.setObjectName('BrowserTabs')
+        self.tabs.setStyleSheet(f"""
+            QTabWidget#BrowserTabs::pane {{ border: 1px solid {C.DESKTOP_BORDER};
+                border-radius: 6px; background: {C.DESKTOP_PANEL}; }}
+            QTabBar::tab {{ background: {C.DESKTOP_SIDEBAR}; color: {C.DESKTOP_MUTED};
+                border: 1px solid {C.DESKTOP_BORDER}; border-bottom: 2px solid transparent;
+                border-top-left-radius: 7px; border-top-right-radius: 7px;
+                margin-right: 3px; padding: 6px 8px; min-height: 24px; }}
+            QTabBar::tab:selected {{ background: {C.DESKTOP_PANEL}; color: {C.DESKTOP_TEXT};
+                border-bottom: 2px solid {C.PRI}; }}
+            QTabBar::tab:hover {{ color: {C.DESKTOP_TEXT}; }}
+        """)
         self.new_tab = QPushButton(_t('browser.new_tab'))
         self.new_tab.clicked.connect(self.add_tab)
         self.tabs.setCornerWidget(self.new_tab)
-        self.tabs.setTabsClosable(True)
+        # Explicit close buttons are bound to tab identity, not the original
+        # index, so moving tabs cannot close a different session.
+        self.tabs.setTabsClosable(False)
         self.tabs.setMovable(True)
         self.tabs.setUsesScrollButtons(True)
         self.tabs.tabCloseRequested.connect(self.close_tab)
@@ -329,7 +354,18 @@ class BrowserWindow(QWidget):
         tab = BrowserTab(self._host, url)
         tab.number = self._next
         self._next += 1
-        idx = self.tabs.addTab(tab, _t('browser.tab').format(number=tab.number))
+        idx = self.tabs.addTab(tab, _t('browser.tab', number=tab.number))
+        close = QToolButton()
+        close.setIcon(browser_nav_icon('close'))
+        close.setIconSize(QSize(16, 16))
+        close.setFixedSize(24, 24)
+        close.setStyleSheet(f"QToolButton {{ background: transparent; border: 1px solid transparent; "
+                            f"border-radius: 5px; }} QToolButton:hover {{ background: {C.DESKTOP_DOCK}; }} "
+                            f"QToolButton:focus {{ border: 1px solid {C.PRI}; }}")
+        close.clicked.connect(lambda _checked=False: self.close_tab(self.tabs.indexOf(tab)))
+        tab._close_button = close
+        self._label_close_button(tab)
+        self.tabs.tabBar().setTabButton(idx, QTabBar.ButtonPosition.RightSide, close)
         tab.page_changed.connect(lambda: self._title(tab))
         self.tabs.setCurrentIndex(idx)
         self.new_tab.setEnabled(self.tabs.count() < self.MAX_TABS)
@@ -343,11 +379,18 @@ class BrowserWindow(QWidget):
             tab = self.tabs.widget(index)
             tab.retranslate()
             self._title(tab)
+            self._label_close_button(tab)
+
+    @staticmethod
+    def _label_close_button(tab):
+        name = _t('browser.close_tab', number=tab.number)
+        tab._close_button.setToolTip(name)
+        tab._close_button.setAccessibleName(name)
 
     def _title(self, tab):
         index = self.tabs.indexOf(tab)
         if index >= 0:
-            title = _t('browser.tab').format(number=tab.number)
+            title = _t('browser.tab', number=tab.number)
             host = tab.view.url().host()
             self.tabs.setTabText(index, title + (' — ' + host[:45] if host else ''))
 

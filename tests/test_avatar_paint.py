@@ -106,6 +106,9 @@ class _Color:
     def setAlpha(self, a):
         self._a = int(a)
 
+    def alpha(self):
+        return self._a
+
     def rgb(self):
         return (self._rgb[0] << 16) | (self._rgb[1] << 8) | self._rgb[2]
 
@@ -120,6 +123,12 @@ class _Pen:
 
     def setWidthF(self, width):
         self.width = float(width)
+
+    def widthF(self):
+        return self.width
+
+    def color(self):
+        return self.args[0]
 
 
 class _Brush:
@@ -297,11 +306,36 @@ def test_desktop_surface_can_hide_wire_without_disabling_animation(avatar_module
     avatar.step(.05, .7, speaking=True, muted=False)
     plain = _paint(avatar_module, avatar, wireframe=False)
     assert plain.count("drawPolygon") > 100
-    assert plain.count("drawLines") == 0
+    assert 2 <= plain.count("drawLines") <= 8  # batched rim, not the HUD wire
+    rim_pens = [p for p in plain.pens if isinstance(p, avatar_module.QPen)
+                and (abs(p.widthF() - 7.8) < 1e-5 or abs(p.widthF() - 1.6) < 1e-5)]
+    assert len(rim_pens) >= 4
+    assert len({p.color().alpha() for p in rim_pens}) > 2  # brighter lateral edges
     assert sum(bool(getattr(b, "gradient", lambda: None)()) for b in plain.brushes) > 1
     avatar.shaded = False
     wire = _paint(avatar_module, avatar, wireframe=False)
     assert wire.count("drawLines") >= 1  # transparent mode must remain visible
+
+
+
+def test_floating_desktop_head_excludes_neck_without_changing_hud(avatar_module, avatar, monkeypatch):
+    groups = []
+    original = avatar._paint_smooth_surface
+
+    def capture(p, xs, ys, vis, shading, table, nverts):
+        groups.append(set(avatar._fgroup[vis].tolist()))
+        return original(p, xs, ys, vis, shading, table, nverts)
+
+    monkeypatch.setattr(avatar, "_paint_smooth_surface", capture)
+    _paint(avatar_module, avatar, wireframe=False)
+    assert groups[-1] == {0, 1}
+    _paint(avatar_module, avatar, wireframe=False, floating_head=True)
+    assert groups[-1] == {1}
+    # Transparent wire and the default HUD do not lose their neck.
+    avatar.shaded = False
+    assert _paint(avatar_module, avatar, wireframe=False, floating_head=True).count("drawLines") >= 1
+    avatar.shaded = True
+    assert _paint(avatar_module, avatar, floating_head=True).count("drawLines") >= 1
 
 
 def test_the_surface_is_shaded_not_outlined(avatar_module, avatar):

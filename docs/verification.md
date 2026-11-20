@@ -490,3 +490,32 @@ folder secara otomatis: jika tidak ada, shortcut dinonaktifkan dan diperiksa
 kembali saat jendela ditampilkan atau navigasi terjadi. Pilihan favorit mengikuti
 riwayat Back/Forward; folder yang hilang menampilkan error dan tidak mengganti
 lokasi aktif. Perbedaan visual lain pada Files masih ada.
+
+### Penyelarasan awal browser
+
+Referensi `design/proposed-graphite-browser.png` dibandingkan dengan capture Qt
+browser kosong: sebelumnya tab menampilkan penanda kesalahan terjemahan dan
+navigasi memakai tombol teks, sedangkan konsep memakai ikon. Tab kini memformat
+nomornya dengan benar dan navigasi Back/Forward/Reload memakai ikon vektor,
+label aksesibel dan tooltip yang diterjemahkan. Format konfirmasi Fill/Delete
+juga diperbaiki agar origin dan username tampil tanpa penanda kesalahan. Aturan
+vault, persetujuan, URL dan izin WebEngine tidak diubah. Capture CI menggunakan
+alamat sintetik yang hanya diketik, tanpa memuat situs atau membaca kredensial;
+ini bukan verifikasi situs nyata atau klaim kesesuaian penuh dengan mockup.
+
+Bar tab browser kini memakai permukaan gelap dan garis tab aktif, dengan tombol
+penutup vektor yang dapat dioperasikan lewat keyboard dan memiliki nama
+aksesibel yang diterjemahkan. Tombol terikat pada identitas tab, bukan posisi,
+sehingga penutupan tetap tepat setelah tab dipindah; sesi private per tab tetap
+terpisah. Belum semua detail browser menyamai konsep, dan capture sintetis
+bukan uji layanan atau browser nyata pada perangkat pengguna.
+
+### Penyesuaian caption wajah desktop
+
+Caption wajah sekarang memiliki nama, keterangan asisten dan status HUD yang
+lebih jelas, seperti susunan konsep. Status tetap berasal dari HUD yang sama,
+termasuk keadaan mute; teks keterangan tidak menyatakan bahwa mikrofon atau
+layanan aktif. Tata letak dibatasi agar caption tidak bertumpuk dengan wajah
+atau keluar dari stage. Ini bukan perubahan model 3D maupun wajah fotorealistis.
+Tes geometri dan Qt offscreen memeriksa batas, bahasa dan status sintetis;
+kecocokan visual, aksesibilitas dan performa perangkat tetap perlu pemeriksaan.
