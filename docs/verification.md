@@ -603,3 +603,21 @@ semula tetap berlaku. Ini bukan pemilihan tool berdasarkan permintaan per gilira
 prioritas berlaku sepanjang sesi. Seperti perilaku budget yang sudah ada, tool
 pertama yang sendirian melebihi batas karakter tetap dapat lolos; batas jumlah
 tool tetap berlaku. Model kecil mungkin tetap gagal memakai tool.
+
+### Draf pertanyaan dari pilihan visual
+
+Draf kini membawa salinan bagian yang dipilih, posisi/jumlah bagian, ringkasan
+(jika ada), sumber dan waktu yang diberikan, serta konteks tetangga terbatas:
+judul/waktu untuk konten penjelasan atau label/nilai untuk grafik. Tidak ada
+rincian bagian lain atau seluruh dataset yang diam-diam ditambahkan. Semua
+konteks itu terlihat di kolom masukan untuk diperiksa/diedit sebelum dikirim,
+dibungkus sebagai data tak tepercaya dan tidak otomatis dikirim. Penanda ini
+bukan sandbox, dan pengguna tetap dapat mengubahnya saat mengedit draf.
+
+Draf yang sudah ada, termasuk hanya spasi, tidak diganti. Jika konteks lengkap
+melampaui batas `QLineEdit` dalam unit UTF-16, tidak ada draf parsial yang
+dimasukkan; pesan menjelaskan kegagalan. Uji unit meliputi batas pilihan,
+tetangga, karakter emoji dan penanda berbahaya; uji Qt offscreen CI memeriksa
+pengisian, batas input dan perlindungan draf untuk grafik serta ketiga bentuk
+konten. Konteks ini adalah snapshot pada saat tombol ditekan, bukan sinkronisasi
+pilihan secara langsung atau verifikasi kebenaran informasi.

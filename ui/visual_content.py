@@ -1,17 +1,15 @@
 """Native, non-executable interactive chart and table for the JARVIS workspace."""
 from __future__ import annotations
 
-import json
-
 from PyQt6.QtCore import QPointF, QRectF, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
 from PyQt6.QtWidgets import (QAbstractItemView, QDialog, QHBoxLayout, QLabel, QPushButton,
                              QStackedWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
 
-from core import outcome
 from core.i18n import label as _t
 from core.visual_content import positions, validate
 from ui.theme import workspace_stylesheet
+from ui.visual_followup import draft
 
 
 def number(value, unit):
@@ -167,18 +165,6 @@ class VisualContent(QDialog):
                                   value=number(item['value'], self.data['unit'])))
 
     def draft_question(self):
-        # Explicit button, then a second deliberate Send action. Never overwrite
-        # a draft or treat supplied labels/source as instructions to the model.
-        if self.host._input.text().strip():
-            self.notice.setText(_t('visual.draft_busy'))
-            return
-        item = self.data['points'][self.chart.index]
-        content = json.dumps({'title': self.data['title'], 'source': self.data['source'],
-                              'observed': self.data['observed'], 'unit': self.data['unit'],
-                              'selected': item}, ensure_ascii=False)
-        self.host._input.setText(_t('visual.question') + ' ' + outcome.untrusted('chart', content).replace('\n', ' '))
-        self.notice.setText(_t('visual.drafted'))
-        assistant = self.host._desktop_windows['assistant']
-        assistant.showNormal()
-        self.host._desktop_mdi.setActiveSubWindow(assistant)
-        self.host._input.setFocus()
+        from core.visual_followup import chart_snapshot
+        draft(self.host, self.notice, _t('visual.question'), 'chart',
+              chart_snapshot(self.data, self.chart.index))

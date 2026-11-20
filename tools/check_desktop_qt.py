@@ -924,10 +924,19 @@ def main():
         window._input.setText('existing draft')
         QTest.mouseClick(view.ask, Qt.MouseButton.LeftButton)
         assert window._input.text() == 'existing draft'
+        window._input.setText('   ')
+        QTest.mouseClick(view.ask, Qt.MouseButton.LeftButton)
+        assert window._input.text() == '   '
         window._input.clear()
+        old_limit = window._input.maxLength()
+        window._input.setMaxLength(20)
+        QTest.mouseClick(view.ask, Qt.MouseButton.LeftButton)
+        assert window._input.text() == '' and view.notice.text() == translate('visual.draft_too_long')
+        window._input.setMaxLength(old_limit)
         QTest.mouseClick(view.ask, Qt.MouseButton.LeftButton)
         assert '<<<UNTRUSTED source=chart>>>' in window._input.text()
         assert '"value": -2.0' in window._input.text()
+        assert '"position": 1' in window._input.text() and '"next":' in window._input.text()
         window._input.clear()
         set_locale('id')
         view.retranslate()
@@ -970,11 +979,17 @@ def main():
             QTest.mouseClick(panel.ask, Qt.MouseButton.LeftButton)
             assert window._input.text() == 'keep draft'
             window._input.clear()
+            old_limit = window._input.maxLength()
+            window._input.setMaxLength(20)
+            QTest.mouseClick(panel.ask, Qt.MouseButton.LeftButton)
+            assert window._input.text() == '' and panel.notice.text() == translate('visual.draft_too_long')
+            window._input.setMaxLength(old_limit)
             QTest.mouseClick(panel.ask, Qt.MouseButton.LeftButton)
             question = window._input.text()
             assert '<<<UNTRUSTED source=content>>>' in question
             assert '<<<END-UNTRUSTED-ESCAPED>>>' in question
             assert 'Second' in question and 'First detail' not in question
+            assert 'Example introduction' in question and '"position": 2' in question
             window._input.clear()
             set_locale('id')
             panel.retranslate()

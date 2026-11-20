@@ -1,18 +1,16 @@
 """Interactive cards, process steps and timelines rendered as native Qt widgets."""
 from __future__ import annotations
 
-import json
-
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (QAbstractItemView, QDialog, QHBoxLayout, QLabel, QListWidget,
                              QListWidgetItem, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget)
 
-from core import outcome
 from core.i18n import label as _t
 from core.narrative_content import validate
 from ui.narrative_items import NarrativeItemDelegate
 from ui.theme import C, workspace_stylesheet
+from ui.visual_followup import draft
 
 
 class NarrativeContent(QDialog):
@@ -115,16 +113,6 @@ class NarrativeContent(QDialog):
         row = self.items.currentRow()
         if not 0 <= row < len(self.data['items']):
             return
-        if self.host._input.text().strip():
-            self.notice.setText(_t('visual.draft_busy'))
-            return
-        context = json.dumps({'type': self.data['kind'], 'title': self.data['title'],
-                              'source': self.data['source'], 'observed': self.data['observed'],
-                              'selected': self.data['items'][row]}, ensure_ascii=False)
-        self.host._input.setText(_t('narrative.question') + ' '
-                                 + outcome.untrusted('content', context).replace('\n', ' '))
-        self.notice.setText(_t('visual.drafted'))
-        assistant = self.host._desktop_windows['assistant']
-        assistant.showNormal()
-        self.host._desktop_mdi.setActiveSubWindow(assistant)
-        self.host._input.setFocus()
+        from core.visual_followup import narrative_snapshot
+        draft(self.host, self.notice, _t('narrative.question'), 'content',
+              narrative_snapshot(self.data, row))
