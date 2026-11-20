@@ -191,21 +191,49 @@ def _process_pdf(path: Path, action: str, params: dict, speak=None) -> str:
     action = action or "summarize"
 
     def _extract_pdf_text(max_chars=50000) -> str:
+        """Page text from pdfplumber, or from pypdf when that is unavailable.
+
+        TWO BUGS IN THE OLD VERSION
+            The fallback sat inside `except ImportError`, so it only ran when
+            pdfplumber was NOT INSTALLED. A corrupt or encrypted PDF — the case
+            a fallback exists for — raised out of pdfplumber and was never
+            retried. And `page.extract_text() + "\n"` assumed a string:
+            pypdf returns None for a page with no text layer, and None + "\n"
+            is a TypeError on the user's scanned document.
+
+            PyPDF2 is also unmaintained; the maintained successor is `pypdf`.
+            It is only a fallback, so a machine without it still works.
+        """
         text = ""
+        errors: list[str] = []
+
         try:
             import pdfplumber
-            with pdfplumber.open(path) as pdf:
-                for page in pdf.pages:
-                    text += (page.extract_text() or "") + "\n"
         except ImportError:
+            errors.append("pdfplumber not installed")
+        else:
             try:
-                import PyPDF2
-                with open(path, "rb") as f:
-                    reader = PyPDF2.PdfReader(f)
-                    for page in reader.pages:
-                        text += page.extract_text() + "\n"
+                with pdfplumber.open(path) as pdf:
+                    for page in pdf.pages:
+                        text += (page.extract_text() or "") + "\n"
+            except Exception as e:        # noqa: BLE001 — try the other reader
+                errors.append(f"pdfplumber: {e}")
+
+        if not text.strip():
+            try:
+                import pypdf
             except ImportError:
-                return ""
+                errors.append("pypdf not installed")
+            else:
+                try:
+                    with open(path, "rb") as f:
+                        for page in pypdf.PdfReader(f).pages:
+                            text += (page.extract_text() or "") + "\n"
+                except Exception as e:    # noqa: BLE001 — report, do not raise
+                    errors.append(f"pypdf: {e}")
+
+        if not text.strip() and errors:
+            print(f"[FileProcessor] ⚠️ PDF text extraction failed: {'; '.join(errors)}")
         return text[:max_chars]
 
     if action in ("summarize", "extract_text", "translate_hint", "analyze", "reformat"):
