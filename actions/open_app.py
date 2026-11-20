@@ -38,6 +38,9 @@ import os
 import platform
 import shutil
 import subprocess
+
+from core.logbook import get as _logger
+
 import threading
 import time
 
@@ -136,8 +139,8 @@ def _launch_macos(app_name: str) -> bool:
             )
             if result.returncode == 0:
                 return True
-        except Exception:
-            pass
+        except Exception as e:      # noqa: BLE001 — try the next candidate
+            _logger("open_app").debug("open -a %s failed: %s", candidate, e)
 
     binary = shutil.which(app_name) or shutil.which(app_name.lower())
     if binary:
@@ -146,8 +149,8 @@ def _launch_macos(app_name: str) -> bool:
                 [binary], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
             )
             return True
-        except Exception:
-            pass
+        except Exception as e:      # noqa: BLE001 — fall through to the desktop search
+            _logger("open_app").debug("could not start %s directly: %s", binary, e)
 
     return _desktop_search(app_name)
 
@@ -185,8 +188,8 @@ def _launch_linux(app_name: str) -> bool:
                 [binary], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
             )
             return True
-        except Exception:
-            pass
+        except Exception as e:      # noqa: BLE001 — try gtk-launch next
+            _logger("open_app").debug("could not start %s directly: %s", binary, e)
 
     for name in (
         app_name.lower(),
@@ -200,9 +203,9 @@ def _launch_linux(app_name: str) -> bool:
             if result.returncode == 0:
                 return True
         except FileNotFoundError:
-            break
-        except Exception:
-            pass
+            break          # gtk-launch is not on this machine at all
+        except Exception as e:      # noqa: BLE001 — try the next desktop name
+            _logger("open_app").debug("gtk-launch %s failed: %s", name, e)
 
     try:
         result = subprocess.run(
@@ -210,8 +213,8 @@ def _launch_linux(app_name: str) -> bool:
         )
         if result.returncode == 0:
             return True
-    except Exception:
-        pass
+    except Exception as e:      # noqa: BLE001 — fall through to the desktop search
+        _logger("open_app").debug("xdg-open %s failed: %s", app_name, e)
 
     return _desktop_search(app_name)
 
@@ -230,16 +233,16 @@ def _log(player, message: str) -> None:
     if player:
         try:
             player.write_log(message)
-        except Exception:
-            pass
+        except Exception as e:      # noqa: BLE001 — the HUD is not the task
+            _logger("open_app").debug("write_log failed: %s", e)
 
 
 def _say(player, instruction: str) -> None:
     if player and hasattr(player, "request_say"):
         try:
             player.request_say(instruction)
-        except Exception:
-            pass
+        except Exception as e:      # noqa: BLE001 — speech is not the task
+            _logger("open_app").debug("request_say failed: %s", e)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
