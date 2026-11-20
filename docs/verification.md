@@ -584,3 +584,22 @@ langkah dan penanda linimasa untuk peristiwa. Pratinjau panjang dapat terpotong;
 teks lengkap tetap tersedia di panel detail. Waktu peristiwa yang tidak diberikan
 ditampilkan sebagai tidak diketahui, bukan diperkirakan. CI juga menguji pilihan
 dengan mouse dan keyboard serta perubahan bahasa di Qt offscreen.
+
+### Pemilihan visual dan batas tool model
+
+Panduan visual ditambahkan ke instruksi model hanya bila tool yang bersangkutan
+benar-benar ditawarkan setelah penyaringan dan anggaran. Model diminta memilih
+bentuk yang sesuai, menghormati penolakan, dan tidak mengklaim tampilan berhasil
+sebelum hasil tool mengonfirmasinya. Ini adalah panduan, bukan pemaksa atau
+jaminan model akan memanggil tool maupun menyelaraskan tampilan dengan ucapan.
+
+Untuk pipeline OpenAI-compatible, pengaturan lanjutan **Prioritize visual
+content tools** bersifat opt-in dan perlu sambung ulang. Saat ada batas tool,
+`present_content` lalu `visualize_data` diprioritaskan hanya jika aktif dan ada
+pada daftar; tool lain, termasuk tool inti, dapat tergeser. Tool yang tidak
+ditawarkan tetap dicatat dalam activity log. Pilihan ini tidak menaikkan
+anggaran dan tidak mengaktifkan plugin yang dinonaktifkan. Tanpa batas, urutan
+semula tetap berlaku. Ini bukan pemilihan tool berdasarkan permintaan per giliran:
+prioritas berlaku sepanjang sesi. Seperti perilaku budget yang sudah ada, tool
+pertama yang sendirian melebihi batas karakter tetap dapat lolos; batas jumlah
+tool tetap berlaku. Model kecil mungkin tetap gagal memakai tool.

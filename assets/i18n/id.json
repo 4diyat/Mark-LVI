@@ -110,6 +110,8 @@
   "ui.memory.heading": "🧠  YANG DIINGAT {name}",
   "visual.graph": "Grafik",
   "narrative.cards": "Kartu konsep",
+  "providers.visual_priority": "Utamakan tool konten visual",
+  "providers.visual_priority_hint": "Saat tool dibatasi, tool lain bisa tidak tersedia. Sambungkan ulang untuk menerapkan.",
   "narrative.steps": "Langkah proses",
   "narrative.timeline": "Linimasa",
   "narrative.select_item": "Pilih bagian",

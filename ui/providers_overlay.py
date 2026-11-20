@@ -738,6 +738,9 @@ class ProvidersOverlay(_HudOverlay):
                     str(entry.get("values", {}).get("backend")
                         or stored.get(f.key, f.default) or "")), f)
                 continue
+            if f.key == "prioritize_visual_tools":
+                f = replace(f, label=_t("providers.visual_priority"),
+                            hint=_t("providers.visual_priority_hint"))
             w = self._make_widget(pid, f, stored.get(f.key, f.default))
             if f.advanced:
                 advanced.append((f, w))

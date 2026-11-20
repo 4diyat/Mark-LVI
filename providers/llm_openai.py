@@ -376,6 +376,7 @@ class OpenAICompatLLM:
             "vision": bool(cfg.get("vision", False)),
             "max_tools": max_tools,
             "max_tool_chars": max_chars,
+            "prioritize_visual_tools": str(cfg.get("prioritize_visual_tools", "")).lower() in ("1", "true"),
         })
 
         # A proxy configured for the whole machine must not be used to reach a
@@ -689,6 +690,9 @@ PROVIDER = {
         Field("vision", "Can see images", kind="bool",
               default=False, required=False, advanced=True,
               hint="Set automatically when you press TEST"),
+        Field("prioritize_visual_tools", "Prioritize visual content tools", kind="bool", default=False,
+              required=False, advanced=True,
+              hint="Under a tool limit this can replace other tools; reconnect to apply"),
         Field("max_tools", "Tool limit", kind="number", default=0,
               required=False, advanced=True,
               hint="0 = no limit. Small models choose badly past about 12"),

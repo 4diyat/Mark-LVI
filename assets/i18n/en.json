@@ -110,6 +110,8 @@
   "ui.memory.heading": "🧠  WHAT {name} REMEMBERS",
   "visual.graph": "Graph",
   "narrative.cards": "Concept cards",
+  "providers.visual_priority": "Prioritize visual content tools",
+  "providers.visual_priority_hint": "With a tool limit, other tools may be omitted. Reconnect to apply.",
   "narrative.steps": "Process steps",
   "narrative.timeline": "Timeline",
   "narrative.select_item": "Choose an item",

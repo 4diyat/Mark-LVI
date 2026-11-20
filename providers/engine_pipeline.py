@@ -121,6 +121,7 @@ class PipelineEngine:
             "tool_format": llm_caps.get("tool_format"),
             "max_tools": llm_caps.get("max_tools"),
             "max_tool_chars": llm_caps.get("max_tool_chars"),
+            "prioritize_visual_tools": bool(llm_caps.get("prioritize_visual_tools")),
             "vision": bool(llm_caps.get("vision")),
             "audio_out": tts is not None,
             # A local pipeline has no server deciding when the user has started
@@ -187,6 +188,7 @@ class PipelineEngine:
             decls,
             max_tools=self.caps.get("max_tools"),
             max_chars=self.caps.get("max_tool_chars"),
+            preferred_names=(schema.VISUAL_TOOLS if self.caps.get("prioritize_visual_tools") else ()),
         )
         fmt = self.caps.get("tool_format")
         if not self.caps.get("tools") or not self._declarations:

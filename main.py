@@ -1312,7 +1312,8 @@ class JarvisLive:
             from providers import schema as _schema
             _offered = _schema.budget(_all_decls,
                                       max_tools=self._engine_caps.get("max_tools"),
-                                      max_chars=self._engine_caps.get("max_tool_chars"))
+                                      max_chars=self._engine_caps.get("max_tool_chars"),
+                                      preferred_names=(_schema.VISUAL_TOOLS if self._engine_caps.get("prioritize_visual_tools") else ()))
             _kept_names = {d.get("name") if isinstance(d, dict) else getattr(d, "name", "")
                            for d in _offered}
             _omitted = [d.get("name") if isinstance(d, dict) else getattr(d, "name", "")
@@ -1338,6 +1339,11 @@ class JarvisLive:
                 has_mic=not self._deaf,
             ),
         })
+
+        from core.visual_guidance import guidance as _visual_guidance
+        _visual_notes = _visual_guidance(_names)
+        if _visual_notes:
+            sys_prompt += "\n\n[VISUAL EXPLANATIONS]\n" + _visual_notes
 
         parts = [time_ctx, identity_ctx]
         if mem_str:
