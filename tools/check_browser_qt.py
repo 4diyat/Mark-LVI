@@ -39,6 +39,9 @@ def main():
     i18n.set_locale('id')
     window.retranslate()
     assert window.new_tab.text() == i18n.label('browser.new_tab')
+    assert first._close_button.accessibleName() == i18n.label('browser.close_tab', number=1)
+    assert second._close_button.toolTip() == i18n.label('browser.close_tab', number=2)
+    assert not first._close_button.icon().isNull()
     assert first.fill_btn.text() == i18n.label('browser.fill')
     assert first.back.accessibleName() == first.back.toolTip() == i18n.label('browser.back')
     assert window.tabs.tabText(0) == i18n.label('browser.tab', number=1)
@@ -49,8 +52,13 @@ def main():
     assert first.page.createWindow(None) is None and first.page.chooseFiles(None, [], []) == []
     host.enabled = False
     assert not first.page.acceptNavigationRequest(QUrl('https://example.com'), None, True)
-    window.close_tab(1)
+    # A moved tab must retain its own close action and session ownership.
+    window.tabs.tabBar().moveTab(1, 0)
+    assert window.tabs.widget(0) is second and window.tabs.widget(1) is first
+    second._close_button.setFocus()
+    QTest.keyClick(second._close_button, Qt.Key.Key_Space)
     assert not second._live and first._live and window.tabs.count() == 1
+    assert window.tabs.widget(0) is first
     window.close()
     assert not first._live
     app.processEvents()

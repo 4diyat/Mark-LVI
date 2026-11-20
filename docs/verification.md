@@ -502,3 +502,10 @@ juga diperbaiki agar origin dan username tampil tanpa penanda kesalahan. Aturan
 vault, persetujuan, URL dan izin WebEngine tidak diubah. Capture CI menggunakan
 alamat sintetik yang hanya diketik, tanpa memuat situs atau membaca kredensial;
 ini bukan verifikasi situs nyata atau klaim kesesuaian penuh dengan mockup.
+
+Bar tab browser kini memakai permukaan gelap dan garis tab aktif, dengan tombol
+penutup vektor yang dapat dioperasikan lewat keyboard dan memiliki nama
+aksesibel yang diterjemahkan. Tombol terikat pada identitas tab, bukan posisi,
+sehingga penutupan tetap tepat setelah tab dipindah; sesi private per tab tetap
+terpisah. Belum semua detail browser menyamai konsep, dan capture sintetis
+bukan uji layanan atau browser nyata pada perangkat pengguna.

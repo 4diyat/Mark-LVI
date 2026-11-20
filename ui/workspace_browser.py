@@ -5,14 +5,14 @@ from PyQt6.QtCore import QSize, Qt, QUrl, pyqtSignal
 from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineScript, QWebEngineSettings
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import (QComboBox, QDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
-                             QMessageBox, QPushButton, QTabWidget, QVBoxLayout, QWidget)
+                             QMessageBox, QPushButton, QTabBar, QTabWidget, QToolButton, QVBoxLayout, QWidget)
 
 from core.browser_autofill import fill_script
 from core.browser_url import https_origin, validate_browser_url
 from core.browser_vault import BrowserVault
 from core.i18n import label as _t
 from ui.desktop_workspace import show_document
-from ui.theme import workspace_stylesheet
+from ui.theme import C, workspace_stylesheet
 from ui.browser_icons import browser_nav_icon
 
 
@@ -322,10 +322,24 @@ class BrowserWindow(QWidget):
         self.setStyleSheet(workspace_stylesheet())
         layout = QVBoxLayout(self)
         self.tabs = QTabWidget()
+        self.tabs.setObjectName('BrowserTabs')
+        self.tabs.setStyleSheet(f"""
+            QTabWidget#BrowserTabs::pane {{ border: 1px solid {C.DESKTOP_BORDER};
+                border-radius: 6px; background: {C.DESKTOP_PANEL}; }}
+            QTabBar::tab {{ background: {C.DESKTOP_SIDEBAR}; color: {C.DESKTOP_MUTED};
+                border: 1px solid {C.DESKTOP_BORDER}; border-bottom: 2px solid transparent;
+                border-top-left-radius: 7px; border-top-right-radius: 7px;
+                margin-right: 3px; padding: 6px 8px; min-height: 24px; }}
+            QTabBar::tab:selected {{ background: {C.DESKTOP_PANEL}; color: {C.DESKTOP_TEXT};
+                border-bottom: 2px solid {C.PRI}; }}
+            QTabBar::tab:hover {{ color: {C.DESKTOP_TEXT}; }}
+        """)
         self.new_tab = QPushButton(_t('browser.new_tab'))
         self.new_tab.clicked.connect(self.add_tab)
         self.tabs.setCornerWidget(self.new_tab)
-        self.tabs.setTabsClosable(True)
+        # Explicit close buttons are bound to tab identity, not the original
+        # index, so moving tabs cannot close a different session.
+        self.tabs.setTabsClosable(False)
         self.tabs.setMovable(True)
         self.tabs.setUsesScrollButtons(True)
         self.tabs.tabCloseRequested.connect(self.close_tab)
@@ -341,6 +355,17 @@ class BrowserWindow(QWidget):
         tab.number = self._next
         self._next += 1
         idx = self.tabs.addTab(tab, _t('browser.tab', number=tab.number))
+        close = QToolButton()
+        close.setIcon(browser_nav_icon('close'))
+        close.setIconSize(QSize(16, 16))
+        close.setFixedSize(24, 24)
+        close.setStyleSheet(f"QToolButton {{ background: transparent; border: 1px solid transparent; "
+                            f"border-radius: 5px; }} QToolButton:hover {{ background: {C.DESKTOP_DOCK}; }} "
+                            f"QToolButton:focus {{ border: 1px solid {C.PRI}; }}")
+        close.clicked.connect(lambda _checked=False: self.close_tab(self.tabs.indexOf(tab)))
+        tab._close_button = close
+        self._label_close_button(tab)
+        self.tabs.tabBar().setTabButton(idx, QTabBar.ButtonPosition.RightSide, close)
         tab.page_changed.connect(lambda: self._title(tab))
         self.tabs.setCurrentIndex(idx)
         self.new_tab.setEnabled(self.tabs.count() < self.MAX_TABS)
@@ -354,6 +379,13 @@ class BrowserWindow(QWidget):
             tab = self.tabs.widget(index)
             tab.retranslate()
             self._title(tab)
+            self._label_close_button(tab)
+
+    @staticmethod
+    def _label_close_button(tab):
+        name = _t('browser.close_tab', number=tab.number)
+        tab._close_button.setToolTip(name)
+        tab._close_button.setAccessibleName(name)
 
     def _title(self, tab):
         index = self.tabs.indexOf(tab)

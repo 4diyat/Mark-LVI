@@ -26,6 +26,11 @@ def browser_nav_icon(kind):
         path.moveTo(head, 7)
         path.lineTo(end, 12)
         path.lineTo(head, 17)
+    elif kind == 'close':
+        path.moveTo(7, 7)
+        path.lineTo(17, 17)
+        path.moveTo(17, 7)
+        path.lineTo(7, 17)
     elif kind == 'reload':
         path.arcMoveTo(QRectF(4, 4, 16, 16), 40)
         path.arcTo(QRectF(4, 4, 16, 16), 40, 280)

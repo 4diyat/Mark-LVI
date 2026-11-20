@@ -528,6 +528,7 @@
   "browser.fill_confirm": "Fill login for {username} on {origin}? Only continue if you trust this site. The site can read the filled values.",
   "browser.delete_confirm": "Delete the saved login for {username} on {origin}?",
   "browser.new_tab": "New tab",
+  "browser.close_tab": "Close tab {number}",
   "browser.tab": "Tab {number}",
   "browser.unavailable": "The browser needs PyQt6-WebEngine. Install the requirements and restart.",
   "ssh.title": "SSH Manager",
