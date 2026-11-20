@@ -131,9 +131,7 @@ class MemoryOverlay(_HudOverlay):
 
         rows = all_entries_for_ui()
 
-        cap = QLabel(f"{len(rows)} stored facts — newest first. "
-                     f"Nothing here is sent anywhere; it lives in "
-                     f"memory/long_term.json on this machine.")
+        cap = QLabel(_t("ui.memory.storage_notice", count=len(rows)))
         cap.setWordWrap(True)
         cap.setFont(QFont("Courier New", 7))
         cap.setStyleSheet(f"color: {C.DESKTOP_MUTED}; background: transparent;")
@@ -213,7 +211,15 @@ class MemoryOverlay(_HudOverlay):
 
     def _forget(self, category: str, key: str):
         from memory.memory_manager import forget
-        forget(key, category)
+        try:
+            forget(key, category)
+        except (OSError, RuntimeError):
+            error = QLabel(_t("ui.memory.save_error"))
+            error.setWordWrap(True)
+            error.setStyleSheet(f"color: {C.RED}; background: transparent;")
+            self._lay.addWidget(error)
+            self._settle(self.geometry())
+            return
         # Rebuild on the NEXT event-loop turn, not inside this click handler.
         # The rebuild destroys the very ✕ button that emitted this signal, and
         # Qt is entitled to touch the sender after a slot returns; tearing it

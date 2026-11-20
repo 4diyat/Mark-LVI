@@ -1468,15 +1468,18 @@ class JarvisLive:
             category = args.get("category", "notes")
             key      = args.get("key", "")
             value    = args.get("value", "")
-            if key and value:
-                update_memory({category: {key: {"value": value}}})
-                print(f"[Memory] 💾 save_memory: {category}/{key} = {value}")
+            try:
+                if not key or not value:
+                    raise ValueError("a key and value are required")
+                await asyncio.to_thread(update_memory, {category: {key: {"value": value}}})
+                result = {"result": "ok", "silent": True}
+            except Exception as e:
+                self.ui.write_log("ERR: Memory could not be saved; existing data was not replaced.")
+                print(f"[Memory] Save failed: {type(e).__name__}")
+                result = {"result": "Memory could not be saved. Tell the user it was not saved."}
             if not self.ui.muted:
                 self.ui.set_state("LISTENING")
-            return types.FunctionResponse(
-                id=fc.id, name=name,
-                response={"result": "ok", "silent": True}
-            )
+            return types.FunctionResponse(id=fc.id, name=name, response=result)
 
         loop   = asyncio.get_event_loop()
         result = "Done."

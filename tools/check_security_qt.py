@@ -8,12 +8,13 @@ from __future__ import annotations
 import os
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtCore import Qt  # noqa: E402
 from PyQt6.QtTest import QTest  # noqa: E402
-from PyQt6.QtWidgets import QApplication, QMessageBox, QWidget  # noqa: E402
+from PyQt6.QtWidgets import QApplication, QLabel, QMessageBox, QWidget  # noqa: E402
 
 import memory.config_manager as config  # noqa: E402
 from core import i18n, trade_gate  # noqa: E402
@@ -33,8 +34,20 @@ def main():
         parent = QWidget()
         parent.resize(820, 580)
         parent.show()
+        from memory import memory_manager
+        from ui.hud_panels import MemoryOverlay
+        memory_manager.MEMORY_PATH = Path(tmp) / "long_term.json"
+        memory_manager.update_memory({"notes": {"example": "kept"}})
         for locale in ("en", "id"):
             i18n.set_locale(locale)
+            memory_view = MemoryOverlay(parent)
+            memory_view.show()
+            with patch.object(memory_manager.os, 'replace', side_effect=OSError("blocked")):
+                memory_view._forget("notes", "example")
+            assert memory_manager.load_memory()["notes"]["example"]["value"] == "kept"
+            assert any(label.text() == i18n.label("ui.memory.save_error")
+                       for label in memory_view.findChildren(QLabel))
+            memory_view.close()
             assert config.set_config_values(dashboard_https=False, sentinel="preserved")
             overlay = RemoteKeyOverlay("http://192.0.2.10:8000", "ABCDEFGH", parent=parent)
             overlay.setGeometry(0, 0, overlay._OW, overlay._OH)

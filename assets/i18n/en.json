@@ -109,6 +109,8 @@
   "ui.apply": "▸  APPLY",
   "ui.memory.heading": "🧠  WHAT {name} REMEMBERS",
   "ui.memory.empty": "Nothing stored yet.",
+  "ui.memory.storage_notice": "{count} stored facts. Stored locally; relevant memory may be sent to the selected AI provider.",
+  "ui.memory.save_error": "Could not update memory. The existing file was not replaced.",
   "ui.engine.heading": "🔌  ENGINE  &  PROVIDERS",
   "ui.engine.button": "🔌  ENGINE && PROVIDERS",
   "ui.engine.intro": "Choose what powers the conversation. Gemini is the default and needs nothing set up here.",

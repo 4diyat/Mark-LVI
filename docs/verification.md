@@ -531,3 +531,12 @@ kedaluwarsa dan kegagalan callback; `tools/check_desktop_qt.py` menguji antrean
 sinyal dan tombol dengan Qt offscreen. Ini bukan audit semua jalur persetujuan,
 sandbox plugin, atau validasi interaksi pada perangkat nyata; gerbang MT5 dan
 SSH memiliki mekanisme dan pengujiannya sendiri.
+
+### Keandalan memori
+
+Pembaruan, penghapusan dan ringkasan sesi diserialisasi dalam satu proses dan
+ditulis melalui file sementara di direktori yang sama lalu `os.replace`. Jika
+file memori rusak/tidak terbaca, operasi perubahan menolak menimpanya. Tes
+mencakup penulisan bersamaan dan kegagalan penggantian; smoke Qt memeriksa pesan
+kegagalan hapus. Ini bukan lock antarproses, enkripsi memori, jaminan pemulihan
+setelah setiap kegagalan perangkat keras, atau pengujian pada perangkat nyata.

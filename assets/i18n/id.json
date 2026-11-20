@@ -109,6 +109,8 @@
   "ui.apply": "▸  TERAPKAN",
   "ui.memory.heading": "🧠  YANG DIINGAT {name}",
   "ui.memory.empty": "Belum ada yang disimpan.",
+  "ui.memory.storage_notice": "{count} fakta tersimpan. Disimpan lokal; memori yang relevan dapat dikirim ke penyedia AI yang dipilih.",
+  "ui.memory.save_error": "Memori tidak dapat diperbarui. File yang ada tidak diganti.",
   "ui.engine.heading": "🔌  MESIN  &  PENYEDIA",
   "ui.engine.button": "🔌  MESIN && PENYEDIA",
   "ui.engine.intro": "Pilih yang menjalankan percakapan. Gemini adalah bawaan dan tidak perlu diatur di sini.",
