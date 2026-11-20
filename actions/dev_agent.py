@@ -458,6 +458,13 @@ def _open_vscode(project_dir: Path) -> bool:
             continue
     return False
 
+def _unquote(token: str) -> str:
+    """`'"my app.py"'` → `'my app.py'`; anything else unchanged."""
+    if len(token) >= 2 and token[0] == token[-1] and token[0] in ("'", '"'):
+        return token[1:-1]
+    return token
+
+
 def _split_command(run_command: str) -> list[str] | None:
     """The plan's `run_command` as an argument vector, or None.
 
@@ -466,15 +473,34 @@ def _split_command(run_command: str) -> list[str] | None:
         `python "my app.py"` became `["python", '"my', 'app.py"']` and the run
         failed with a message about a file that does not exist. `shlex` splits
         the way a shell does, minus the shell.
+
+    WHY NOT JUST `shlex.split(posix=False)` EITHER
+        Neither POSIX mode works alone on Windows, and the first attempt at this
+        fix shipped the second half of the problem:
+
+          posix=True   `python "my app.py"`      → correct, quotes stripped
+                       `python C:\\Users\\me\\a.py` → `C:Usersmea.py`, backslashes
+                                                  eaten, because POSIX treats `\\`
+                                                  as an escape
+          posix=False  keeps the backslashes, but keeps the QUOTES too:
+                       `"my app.py"` arrives at subprocess as a filename with
+                       quote characters in it, and the app looks for a file
+                       called `"my app.py"`.
+
+        So: non-POSIX (backslashes are paths, not escapes) and then the
+        surrounding quotes are removed per token. Windows CI found this; the
+        sandbox could not, because it is not Windows.
     """
     text = (run_command or "").strip()
     if not text:
         return None
     try:
-        # posix=False keeps Windows paths with backslashes intact.
-        parts = shlex.split(text, posix=(os.name != "nt"))
+        tokens = shlex.split(text, posix=(os.name != "nt"))
     except ValueError:
-        parts = []
+        return None
+    # subprocess takes a list and does its own quoting, so the quotes a user
+    # typed to group a path must not survive into the argument.
+    parts = [p for p in (_unquote(t) for t in tokens) if p]
     return parts or None
 
 

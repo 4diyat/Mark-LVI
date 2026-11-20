@@ -92,6 +92,27 @@ def test_a_windows_path_survives_splitting():
     assert parts is not None
     assert parts[1].endswith("app.py")
     assert "\\" in parts[1]
+    assert '"' not in parts[1]
+
+
+@pytest.mark.parametrize("os_name", ["nt", "posix"])
+def test_both_platforms_agree_on_a_quoted_argument(monkeypatch, os_name):
+    """The split must give the same argv whether or not this is Windows.
+
+    The first version of this fix passed on Linux and failed on Windows:
+    `shlex.split(posix=False)` keeps the quotes, so subprocess was handed a
+    filename containing quote characters. A test that only ran on the machine
+    it was written on could not see it.
+    """
+    monkeypatch.setattr("actions.dev_agent.os.name", os_name, raising=False)
+    assert _split_command('python "my app.py"') == ["python", "my app.py"]
+
+
+@pytest.mark.parametrize("os_name", ["nt", "posix"])
+def test_both_platforms_keep_windows_backslashes(monkeypatch, os_name):
+    monkeypatch.setattr("actions.dev_agent.os.name", os_name, raising=False)
+    parts = _split_command(r'python "C:\Program Files\app.py"')
+    assert parts == ["python", "C:\\Program Files\\app.py"]
 
 
 @pytest.mark.parametrize("given", ["", "   ", "\t\n"])
