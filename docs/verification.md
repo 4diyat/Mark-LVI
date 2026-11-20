@@ -645,3 +645,27 @@ Uji geometri mencakup nilai campuran, nol, konstan dan nilai ekstrem dalam batas
 CI Qt offscreen menguji pergantian jenis, mouse pada batang termasuk nol,
 keyboard, tabel dan draf. Pemilihan jenis oleh model tetap tidak dijamin benar;
 pengguna dapat menggantinya. Angka dan sumber yang dikirim tool tidak diverifikasi.
+
+### Batas antrean audio keluaran
+
+Antrean potongan PCM menuju pemutar desktop dibatasi 200 potongan, masing-masing
+maksimal 2.400 byte (sekitar 10 detik total pada 24 kHz, mono, 16-bit). Saat
+penuh, penerimaan menunggu ruang: potongan tetap berurutan dan tidak diam-diam
+dibuang. Tombol interrupt kini menjadwalkan pengosongan antrean dan pembatalan
+pipeline pada event loop pemiliknya, bukan menyentuh `asyncio.Queue` dari thread
+Qt; callback dari koneksi lama tidak mengganggu antrean koneksi pengganti. Jika
+producer baru saja terbangun setelah interrupt, potongan lama dibuang sebelum
+pemutar mendapat kesempatan membacanya.
+
+Uji offline mencakup antrean penuh, FIFO, cancellation, interrupt lintas thread,
+callback basi, serta jalur penerimaan sintetis yang membawa transkrip dan tool
+call. Batas ini hanya pada antrean PCM pemutar, bukan ukuran frame individual,
+antrean internal pipeline, jaringan, buffer perangkat, atau executor tool.
+Backpressure dapat menunda penerimaan transkrip, tool call dan akhir giliran
+ketika pemutaran lambat; ini pilihan konservatif agar audio tidak hilang, bukan
+nonblocking tool execution. Pemutaran yang sudah diserahkan ke perangkat belum
+pasti berhenti seketika. Interupsi otomatis/barge-in, timeout dan pembatalan tool
+belum diselesaikan. Pada pipeline lokal, pembatalan generasi yang tidak
+menghasilkan penanda akhir giliran masih dapat meninggalkan status interrupt;
+perlu penanganan protokol dan uji tersendiri. Tidak ada uji mikrofon, speaker,
+provider atau jaringan nyata pada tahap ini.
