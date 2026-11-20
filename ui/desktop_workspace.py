@@ -96,12 +96,12 @@ class WorkspaceAvatar(QWidget):
         painter.setFont(QFont("Arial", 18, QFont.Weight.Bold))
         painter.drawText(QRectF(0, name_y, width, 27), Qt.AlignmentFlag.AlignCenter,
                          (self.hud._assistant_name or 'JARVIS').upper())
-        painter.setFont(QFont("Arial", 10, QFont.Weight.Normal))
-        painter.setPen(qcol(C.DESKTOP_MUTED))
+        painter.setFont(QFont("Arial", 11, QFont.Weight.Normal))
+        painter.setPen(qcol(C.DESKTOP_TEXT))
         painter.drawText(QRectF(0, tagline_y, width, 22), Qt.AlignmentFlag.AlignCenter,
                          _t('desktop.avatar_tagline'))
         painter.setFont(QFont("Arial", 13, QFont.Weight.Normal))
-        painter.setPen(qcol(C.MUTED_C if self.hud.muted else C.PRI))
+        painter.setPen(qcol(C.MUTED_C if self.hud.muted else C.PRI).lighter(145))
         painter.drawText(QRectF(0, state_y, width, 24), Qt.AlignmentFlag.AlignCenter,
                          state_label('MUTED' if self.hud.muted else self.hud.state))
         painter.end()
