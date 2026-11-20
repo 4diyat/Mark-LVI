@@ -26,6 +26,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 WINDOW = ROOT / "ui" / "window.py"
+VIDEO_MIXIN = ROOT / "ui" / "video_fallback.py"
 AUDIO = ROOT / "ui" / "audio.py"
 TOOL = ROOT / "actions" / "video_player.py"
 
@@ -78,9 +79,22 @@ def main_window(window):
     return _class(window, "MainWindow")
 
 
+@pytest.fixture(scope="module")
+def video_mixin():
+    """Where the `_on_video_*` handlers live now.
+
+    They were MainWindow methods in window.py; they are `VideoFallbackMixin`
+    methods in ui/video_fallback.py, next to the fallback queue and the stream
+    swapper they call. The wiring questions below are unchanged — only the
+    class they are asked of moved, and asking them of MainWindow would now
+    answer "not found" whether the wiring were right or wrong.
+    """
+    return _class(_tree(VIDEO_MIXIN), "VideoFallbackMixin")
+
+
 # ── the signal nobody listened for ──────────────────────────────────────────
 
-def test_a_finished_video_is_actually_noticed(main_window):
+def test_a_finished_video_is_actually_noticed(main_window, video_mixin):
     """THE BUG. Nothing was connected to `mediaStatusChanged`, so EndOfMedia
     went nowhere: the HUD stayed on the last frame, `video_is_playing()` kept
     answering yes, and the microphone closed for the soundtrack stayed closed
@@ -89,48 +103,48 @@ def test_a_finished_video_is_actually_noticed(main_window):
     src = ast.unparse(init)
     assert "mediaStatusChanged" in src, "no status handler is connected"
     assert "_on_video_status" in src
-    assert "_on_video_status" in _method_names(main_window)
+    assert "_on_video_status" in _method_names(video_mixin)
 
 
-def test_the_separate_soundtrack_reports_its_own_failure(main_window):
+def test_the_separate_soundtrack_reports_its_own_failure(main_window, video_mixin):
     """The soundtrack is a second URL resolved on its own, so it fails on its
     own. Without this connection the result is a silent video whose bar still
     says SOUND ON — indistinguishable from a video with no audio."""
     src = ast.unparse(_method(main_window, "__init__"))
     assert "errorOccurred" in src
     assert "_on_video_sound_error" in src
-    assert "_on_video_sound_error" in _method_names(main_window)
+    assert "_on_video_sound_error" in _method_names(video_mixin)
 
 
 # ── the rules are consulted, not re-derived ─────────────────────────────────
 
-def test_closing_a_video_can_be_told_to_give_the_microphone_back(main_window):
+def test_closing_a_video_can_be_told_to_give_the_microphone_back(video_mixin):
     """`_sync_mic_for_video` reads the mute switch — and after a video ends the
     switch may still say "muted", so the microphone would stay closed. The close
     path takes the answer from the rule instead of re-deriving it."""
-    close = _method(main_window, "_on_video_close")
+    close = _method(video_mixin, "_on_video_close")
     assert "mic_from_rule" in ast.unparse(close)
 
 
-def test_the_status_handler_uses_the_tested_rules(main_window):
+def test_the_status_handler_uses_the_tested_rules(video_mixin):
     """The decision lives in core/playback, where it has tests. If the window
     grew its own copy of the rule, those tests would be guarding dead code."""
-    handler = _method(main_window, "_on_video_status")
+    handler = _method(video_mixin, "_on_video_status")
     calls = _calls(handler)
     assert "should_open_from_ended" in calls or "ended_video_effect" in calls
 
 
-def test_opening_a_video_tears_the_previous_one_down(main_window):
+def test_opening_a_video_tears_the_previous_one_down(video_mixin):
     """A second video opened over a YouTube one left the first soundtrack
     playing underneath it, and the mute button then controlled the wrong
     output."""
-    opener = _method(main_window, "_on_video_open")
+    opener = _method(video_mixin, "_on_video_open")
     calls = _calls(opener)
     assert "opening_while_playing" in calls
     assert "stop" in calls, "nothing is stopped before the new source loads"
 
 
-def test_the_source_is_classified_once(main_window):
+def test_the_source_is_classified_once(video_mixin):
     """A quoted path, a `file://` URL, a bare host and a `m.youtube.com` link
     all have to arrive at the player as the right kind of thing — through the
     one function that knows how, not through `Path(source).exists()`.
@@ -142,7 +156,7 @@ def test_the_source_is_classified_once(main_window):
     `tests/test_window_smoke.py` proves it against a QUrl that behaves like
     Qt's; this asserts the wiring cannot quietly go back.
     """
-    opener = _method(main_window, "_on_video_open")
+    opener = _method(video_mixin, "_on_video_open")
     classes = _calls(opener)
     assert "qurl_for" in classes, (
         "the video source is built with QUrl(...) again — a Windows path will "
@@ -226,14 +240,14 @@ def test_the_tool_declares_the_actions_it_implements():
             f"{action} is missing from the action enum"
 
 
-def test_the_window_wires_video_fallback_and_retry(main_window):
+def test_the_window_wires_video_fallback_and_retry(main_window, video_mixin):
     """Forbidden or invalid video streams must try fallback candidates and
     trigger alternative-source search rather than giving up immediately."""
     bases = [ast.unparse(b) for b in main_window.bases]
     assert "VideoFallbackMixin" in bases, f"MainWindow bases are {bases}"
-    assert "_try_next_video_source" in _calls(_method(main_window, "_on_video_error"))
-    assert "_try_next_video_source" in _calls(_method(main_window, "_on_video_status"))
-    assert "_try_next_video_sound" in _calls(_method(main_window, "_on_video_sound_error"))
-    assert "_set_video_fallbacks" in _calls(_method(main_window, "_on_video_open"))
-    assert "_clear_video_fallbacks" in _calls(_method(main_window, "_on_video_close"))
+    assert "_try_next_video_source" in _calls(_method(video_mixin, "_on_video_error"))
+    assert "_try_next_video_source" in _calls(_method(video_mixin, "_on_video_status"))
+    assert "_try_next_video_sound" in _calls(_method(video_mixin, "_on_video_sound_error"))
+    assert "_set_video_fallbacks" in _calls(_method(video_mixin, "_on_video_open"))
+    assert "_clear_video_fallbacks" in _calls(_method(video_mixin, "_on_video_close"))
 

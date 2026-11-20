@@ -30,7 +30,7 @@ os.environ.setdefault("QT_LOGGING_RULES", "qt.multimedia.*=false")
 # at runtime (PyQt6 loads them for the classes that ARE used) and they cost a
 # reader: an import that suggests a feature that is not there.
 from PyQt6.QtCore import (
-    QPointF, QPoint, QRectF, QSizeF, Qt, QTimer, QUrl, pyqtSignal,
+    QPointF, QPoint, QRectF, QSizeF, Qt, QTimer, pyqtSignal,
 )
 from PyQt6.QtGui import (
     QBrush, QCursor, QDragEnterEvent, QDropEvent, QFont,
@@ -126,7 +126,7 @@ from ui.metrics import (        # noqa: F401 — same object as ui/metrics._metr
 # labels) and because this file was at its size ceiling with the language row
 # still unwritten. Re-exported through the package, so `ui.CustomizeOverlay`
 # and every plugin that names it keep working.
-from ui.audio import AudioMixin, qurl_for
+from ui.audio import AudioMixin
 from ui.video_fallback import VideoFallbackMixin
 from ui.audio_devices import (      # noqa: F401 — re-exported through the package
     AudioDeviceOverlay,
@@ -1273,64 +1273,6 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
     # Everything below runs on the Qt thread. Plugins and the assistant reach it
     # through the signals above, the same way every other panel is driven, so a
     # background thread never touches a widget.
-    def _on_video_open(self, source: str, title: str, muted: bool,
-                       audio_source: str = "", fallbacks=None,
-                       on_exhausted=None) -> None:
-        if not HAVE_VIDEO or not self._video_player:
-            self.write_log("SYS: Video playback is not available in this Qt "
-                           "install.")
-            return
-        from ui.video_controls import reset as reset_video_controls
-        reset_video_controls(self)
-        self._video_seq = getattr(self, "_video_seq", 0) + 1
-
-        # ── opening over something ─────────────────────────────────────────
-        # The previous version simply loaded a new source over the old one. If
-        # the old one was a YouTube video, its separate sound player was never
-        # stopped: the previous video's voice kept talking underneath the new
-        # file, and the mute button controlled the new (silent) output while the
-        # old one was the thing making noise.
-        plan = _pb.opening_while_playing(self._video_on, self._video_split)
-        self._video_swapping = True
-        try:
-            if plan["stop_timer"] and self._video_sync:
-                self._video_sync.stop()
-            for player, kill in ((self._video_player, plan["stop_video"]),
-                                 (self._video_sound, plan["stop_audio"])):
-                if player and kill:
-                    try:
-                        player.stop()
-                        player.setSource(QUrl())
-                    except Exception:
-                        pass
-            if plan["release_mic"]:
-                self._release_video_mic()
-
-            self._video_title.setText(_t("ui.video.title", title=(title or "VIDEO")[:44].upper()))
-            self._video_split = bool(audio_source)
-            self._video_ended = False
-            self._video_sound_failed = False
-            self._set_video_fallbacks(audio_source, fallbacks, on_exhausted)
-            self._set_video_muted(bool(muted))
-
-            # THROUGH `qurl_for`, NOT `QUrl(...)`. This line is why local
-            # videos did not play: `QUrl(r"C:\\clips\\a b.mp4")` reads "C:" as
-            # a scheme. See ui/audio.py for the measurements.
-            self._video_player.setSource(qurl_for(source))
-            if self._video_split:
-                self._video_sound.setSource(qurl_for(audio_source))
-            self._video_on = True
-            from ui.desktop_workspace import show_video
-            show_video(self)
-        finally:
-            self._video_swapping = False
-        # Re-run now that the video counts as playing: _set_video_muted ran
-        # before this line and saw no video, so its mic check was a no-op.
-        self._sync_mic_for_video()
-        self._video_player.play()
-        if self._video_split:
-            self._video_sound.play()
-            self._video_sync.start()
 
     def _fit_video(self, *_a) -> None:
         """Size the picture to the panel, keeping its shape."""
@@ -1350,38 +1292,6 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         except Exception:
             pass
 
-    def _on_video_close(self, mic_from_rule: bool | None = None) -> None:
-        """Stop and hide the video window.
-
-        `mic_from_rule` is how a finished video says "the microphone was closed
-        for the sound, so it must open again even though the mute switch has
-        already moved". Left as None for a plain close, where the mute rule is
-        enough. The signal carries no argument, so Qt's own call to this slot
-        arrives with the default — which is the right behaviour for the close
-        button and for a stop from a tool.
-        """
-        self._video_swapping = True
-        try:
-            if self._video_sync:
-                self._video_sync.stop()
-            for p in (self._video_player, self._video_sound):
-                if p:
-                    p.stop()
-                    p.setSource(QUrl())
-        finally:
-            self._video_swapping = False
-        self._video_split = False
-        self._video_on = False
-        self._video_ended = False
-        self._clear_video_fallbacks()
-        if HAVE_VIDEO:
-            from ui.video_controls import reset as reset_video_controls
-            reset_video_controls(self)
-        from ui.desktop_workspace import hide_video
-        hide_video(self)
-        if mic_from_rule:
-            self._release_video_mic()
-        self._sync_mic_for_video()      # gives the microphone back
 
     def _set_video_muted(self, muted: bool) -> None:
         """Silence whichever output is carrying the sound for this video."""
@@ -1395,8 +1305,6 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         self._sync_video_mute_btn()
         self._sync_mic_for_video()
 
-    def _on_video_mute(self, muted: bool) -> None:
-        self._set_video_muted(muted)
 
     def _sync_mic_for_video(self) -> None:
         """Close the microphone while the video is making sound.
@@ -1452,19 +1360,6 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         """
         self._log_sig.emit(text)
 
-    def _on_video_error(self, *_a) -> None:
-        if getattr(self, "_video_swapping", False):
-            return
-        err = _a[1] if len(_a) > 1 and isinstance(_a[1], str) else ""
-        if not err:
-            try:
-                err = self._video_player.errorString()
-            except Exception:
-                pass
-        if self._try_next_video_source(err):
-            return
-        self._report_video_failure(self._video_player, err)
-        self._on_video_close()
 
     # ── what a finished video does ─────────────────────────────────────────
     #
@@ -1488,53 +1383,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         except Exception:
             return "playing"
 
-    def _on_video_status(self, status) -> None:
-        """The picture's status. EndOfMedia is the one that mattered."""
-        if getattr(self, "_video_swapping", False):
-            return
-        word = self._status_word(status)
-        if not _pb.should_open_from_ended(word):
-            return
-        sound_was_on = bool(not self._video_muted_state())
-        effect = _pb.ended_video_effect(word, sound_was_on)
-        if word == "ended":
-            self.write_log(_t("ui.video.finished"))
-        elif word in ("invalid", "no_media"):
-            if not self._video_on:
-                return
-            err = ""
-            try:
-                err = self._video_player.errorString()
-            except Exception:
-                pass
-            if self._try_next_video_source(err or word):
-                return
-            self._report_video_failure(self._video_player, err)
-            self._on_video_close()
-            return
-        if effect["close"]:
-            self._on_video_close(mic_from_rule=effect["release_mic"])
 
-    def _on_video_sound_error(self, *_a) -> None:
-        """The soundtrack failed, the picture did not.
-
-        A separate stream can fail on its own: an expired YouTube signature, a
-        codec the machine lacks, a network drop in the middle. Silence is not an
-        acceptable answer, because it is indistinguishable from a video that has
-        no audio at all — so the bar stops claiming sound and the log says why.
-        """
-        if getattr(self, "_video_swapping", False):
-            return
-        detail = _a[1] if len(_a) > 1 and isinstance(_a[1], str) else ""
-        if not detail:
-            try:
-                detail = self._video_sound.errorString()
-            except Exception:
-                pass
-        if self._try_next_video_sound(detail):
-            return
-        self._video_sound_failed = True
-        self._report_video_failure(self._video_sound, detail, sound_only=True)
 
     def _report_video_failure(self, player, detail: str = "",
                               sound_only: bool = False) -> None:
