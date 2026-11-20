@@ -218,3 +218,74 @@ def test_extract_does_not_stack_two_banners(workdir):
         confirm.pending_title = original
 
     assert "already on screen" in out
+
+
+# ── the PDF fallback: reached when the FIRST reader fails, not just when
+#    it is absent, and safe on a page with no text layer ────────────────────
+
+def _pdf_stub(tmp_path, name="doc.pdf") -> Path:
+    p = tmp_path / name
+    p.write_bytes(b"%PDF-1.4 not really a pdf")
+    return p
+
+
+def test_pdf_falls_back_when_pdfplumber_raises(tmp_path, monkeypatch):
+    """The old code only fell back on ImportError — a corrupt PDF raised out."""
+    import sys, types
+
+    class Boom:
+        def open(self, *a, **k):
+            raise OSError("broken xref table")
+
+    class Page:
+        def extract_text(self):
+            return "hello from pypdf"
+
+    class Reader:
+        def __init__(self, fh):
+            self.pages = [Page()]
+
+    monkeypatch.setitem(sys.modules, "pdfplumber", types.SimpleNamespace(open=Boom().open))
+    monkeypatch.setitem(sys.modules, "pypdf", types.SimpleNamespace(PdfReader=Reader))
+
+    from actions.file_processor import _process_pdf
+    doc = _pdf_stub(tmp_path)
+    out = _process_pdf(doc, "extract_text", {"save": False})
+
+    # extract_text writes beside the source rather than returning the body
+    assert "Text extracted" in out
+    assert "hello from pypdf" in (tmp_path / "doc_text.txt").read_text()
+
+
+def test_a_page_with_no_text_layer_does_not_crash(tmp_path, monkeypatch):
+    """`page.extract_text()` returns None on a scanned page; None + "\n" is a
+    TypeError, which is how a scanned PDF used to fail instead of saying so."""
+    import sys, types
+
+    class Page:
+        def extract_text(self):
+            return None
+
+    class Reader:
+        def __init__(self, fh):
+            self.pages = [Page()]
+
+    monkeypatch.setitem(sys.modules, "pypdf", types.SimpleNamespace(PdfReader=Reader))
+    monkeypatch.setitem(sys.modules, "pdfplumber", None)
+
+    from actions.file_processor import _process_pdf
+    out = _process_pdf(_pdf_stub(tmp_path), "extract_text", {"save": False})
+
+    assert "Could not extract text" in out
+    assert "TypeError" not in out
+
+
+def test_neither_reader_installed_says_so_instead_of_raising(tmp_path, monkeypatch):
+    import sys
+    monkeypatch.setitem(sys.modules, "pdfplumber", None)
+    monkeypatch.setitem(sys.modules, "pypdf", None)
+
+    from actions.file_processor import _process_pdf
+    out = _process_pdf(_pdf_stub(tmp_path), "extract_text", {"save": False})
+
+    assert "Could not extract text" in out
