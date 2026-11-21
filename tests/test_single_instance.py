@@ -199,13 +199,14 @@ def test_a_second_launch_writes_a_request_instead_of_a_lock(lock, monkeypatch):
 
 def test_the_running_copy_consumes_the_request_once(lock):
     si.request_foreground(lock)
-    assert si.take_foreground_request(lock) is True
-    assert si.take_foreground_request(lock) is False, (
+    first = si.take_foreground_request(lock)
+    assert first is not None, "a request must be answered"
+    assert si.take_foreground_request(lock) is None, (
         "a request that was already answered must not summon twice")
 
 
 def test_no_request_means_no_summon(lock):
-    assert si.take_foreground_request(lock) is False
+    assert si.take_foreground_request(lock) is None
 
 
 def test_a_failed_request_write_is_reported_not_raised(lock, monkeypatch):
@@ -418,12 +419,14 @@ def test_a_second_launch_asks_the_running_copy_and_then_exits(tmp_path, monkeypa
         raise si.AlreadyRunning({"pid": 4242})
 
     monkeypatch.setattr(si, "acquire", _taken)
-    monkeypatch.setattr(si, "request_foreground", lambda: asked.append(True))
+    # Takes `text=` since a link's words travel with the request.
+    monkeypatch.setattr(si, "request_foreground",
+                        lambda lock=None, text="": asked.append(text))
 
     with pytest.raises(SystemExit) as exited:
         namespace["_claim_single_instance"]()
     assert exited.value.code == 0, "being a second copy is not an error"
-    assert asked == [True], "the running copy must be asked to come forward"
+    assert asked == [""], "the running copy must be asked to come forward"
     assert "Already running" in capsys.readouterr().out
 
 
@@ -447,7 +450,7 @@ def test_a_second_launch_says_where_the_lock_is_when_it_cannot_ask(tmp_path,
     monkeypatch.setattr(si, "acquire",
                         lambda program="": (_ for _ in ()).throw(
                             si.AlreadyRunning({"pid": 4242})))
-    monkeypatch.setattr(si, "request_foreground", lambda: False)
+    monkeypatch.setattr(si, "request_foreground", lambda lock=None, text="": False)
     monkeypatch.setattr(si, "lock_path", lambda: tmp_path / "instance.lock")
 
     with pytest.raises(SystemExit):
@@ -466,9 +469,9 @@ def test_the_window_summons_itself_when_another_launch_is_requested(tmp_path,
     summoned = []
     monkeypatch.setattr(lifecycle, "summon", lambda shell: summoned.append(shell))
 
-    request = {"pending": True}
+    request = {"pending": {"text": ""}}
     monkeypatch.setattr(si, "take_foreground_request",
-                        lambda lock=None: request.pop("pending", False))
+                        lambda lock=None: request.pop("pending", None))
 
     timers = []
 
@@ -555,4 +558,97 @@ def test_the_lock_can_be_given_as_a_string_or_a_path(tmp_path, no_live_pid, as_s
 def test_a_string_path_works_for_the_request_file_too(tmp_path):
     lock = str(tmp_path / "instance.lock")
     assert si.request_foreground(lock) is True
-    assert si.take_foreground_request(lock) is True
+    assert si.take_foreground_request(lock) is not None
+
+
+# ── the request carries words, not just a signal ───────────────────────────
+
+def test_a_request_can_carry_the_link_text(lock):
+    """A `jarvis://ask` opened while JARVIS is running must not lose its words.
+
+    The second process is refused (correct) and the first is told "somebody
+    wants you" — which, without this, would be all that survived of a link that
+    said something specific.
+    """
+    si.request_foreground(lock, text="remind me at four")
+    assert si.take_foreground_request(lock) == {"text": "remind me at four"}
+
+
+def test_a_request_without_words_is_still_a_request(lock):
+    si.request_foreground(lock)
+    assert si.take_foreground_request(lock) == {"text": ""}
+
+
+def test_text_written_by_something_else_is_still_bounded(lock):
+    """The request file lives in a shared per-user folder.
+
+    Anything that can write there can put anything in it, so the 500-character
+    ceiling from the URL parser is applied here too. The two channels are not
+    differently trustworthy just because one of them is a file.
+    """
+    want = lock.with_name(lock.name + ".want")
+    want.write_text(json.dumps({"pid": 1, "text": "a" * 501}), encoding="utf-8")
+    assert si.take_foreground_request(lock) == {"text": ""}
+
+    want.write_text(json.dumps({"pid": 1, "text": 12345}), encoding="utf-8")
+    assert si.take_foreground_request(lock) == {"text": ""}
+
+
+def test_a_half_written_request_still_brings_the_window_forward(lock):
+    """Losing the words is a smaller failure than losing the summon."""
+    want = lock.with_name(lock.name + ".want")
+    want.write_text("{not json", encoding="utf-8")
+    assert si.take_foreground_request(lock) == {"text": ""}
+
+
+def test_a_link_opened_while_jarvis_runs_says_its_words(tmp_path, monkeypatch):
+    """The whole reason the request file carries text.
+
+    `jarvis://ask?text=…` opened while the assistant is already running: the
+    second process refuses to start (correct), the first is told "somebody wants
+    you" — and without the text travelling with it, the sentence is gone and the
+    user sees a window appear for no stated reason.
+    """
+    import ast
+
+    tree = _main_ast()
+    fn = next(n for n in tree.body
+              if isinstance(n, ast.FunctionDef) and n.name == "_claim_single_instance")
+    namespace: dict = {"Path": si.Path, "__name__": "main_under_test",
+                       "__file__": str(si.Path(__file__).resolve().parent.parent / "main.py")}
+    exec(compile(ast.Module(body=[fn], type_ignores=[]), "main.py", "exec"), namespace)
+
+    asked = []
+    monkeypatch.setattr(si, "acquire",
+                        lambda program="": (_ for _ in ()).throw(
+                            si.AlreadyRunning({"pid": 4242})))
+    monkeypatch.setattr(si, "request_foreground",
+                        lambda lock=None, text="": asked.append(text))
+
+    from core import deeplink as dl
+    with pytest.raises(SystemExit):
+        namespace["_claim_single_instance"](dl.Request("ask", "remind me at four"))
+    assert asked == ["remind me at four"]
+
+
+def test_a_summon_link_sends_no_words(tmp_path, monkeypatch):
+    import ast
+
+    tree = _main_ast()
+    fn = next(n for n in tree.body
+              if isinstance(n, ast.FunctionDef) and n.name == "_claim_single_instance")
+    namespace: dict = {"Path": si.Path, "__name__": "main_under_test",
+                       "__file__": str(si.Path(__file__).resolve().parent.parent / "main.py")}
+    exec(compile(ast.Module(body=[fn], type_ignores=[]), "main.py", "exec"), namespace)
+
+    asked = []
+    monkeypatch.setattr(si, "acquire",
+                        lambda program="": (_ for _ in ()).throw(
+                            si.AlreadyRunning({"pid": 4242})))
+    monkeypatch.setattr(si, "request_foreground",
+                        lambda lock=None, text="": asked.append(text))
+
+    from core import deeplink as dl
+    with pytest.raises(SystemExit):
+        namespace["_claim_single_instance"](dl.Request("summon"))
+    assert asked == [""]

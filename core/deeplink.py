@@ -247,3 +247,214 @@ def mac_info_plist(app_name: str = "JARVIS") -> str:
         f"  <key>CFBundleURLIconFile</key><string>{app_name}</string>\n"
         "</dict></array>\n"
     )
+
+
+# ── actually registering it ────────────────────────────────────────────────
+#
+# The text builders above describe the entries; these write them. Split for the
+# same reason `core/autostart.py` is split: the format can be asserted on any
+# machine, and the write is one small function per platform that a test can
+# point at a temporary directory.
+
+import os
+import platform
+import subprocess
+import sys
+from pathlib import Path
+
+# Windows: HKCU\Software\Classes\jarvis. Per-user, no elevation — the same rule
+# as auto-start, and for the same reason: an assistant that asks for
+# administrator rights to be reachable is one most people will not install.
+_WIN_CLASSES = r"Software\Classes"
+
+
+def _win_registry(*args):
+    import winreg
+    return winreg, args
+
+
+def _enable_windows_scheme(script: str) -> None:
+    winreg, _ = _win_registry()
+    root = winreg.HKEY_CURRENT_USER
+    base = f"{_WIN_CLASSES}\\{SCHEME}"
+
+    def _set(path: str, name: str, value: str) -> None:
+        with winreg.CreateKeyEx(root, path, 0, winreg.KEY_WRITE) as key:
+            winreg.SetValueEx(key, name, 0, winreg.REG_SZ, value)
+
+    # `URL Protocol` (a value with an EMPTY name) is what makes Windows treat
+    # the key as a protocol handler rather than a file extension. Without it
+    # the registration is accepted, appears correct in regedit, and the scheme
+    # does nothing at all — which is the failure this project keeps fixing.
+    _set(base, "", f"URL:{SCHEME} protocol")
+    _set(base, "URL Protocol", "")
+    _set(f"{base}\\DefaultIcon", "", f'"{script}",0')
+    _set(f"{base}\\shell\\open\\command", "", windows_command(script))
+
+
+def _disable_windows_scheme() -> None:
+    import winreg
+    try:
+        winreg.DeleteKey(winreg.HKEY_CURRENT_USER,
+                         f"{_WIN_CLASSES}\\{SCHEME}\\shell\\open\\command")
+        winreg.DeleteKey(winreg.HKEY_CURRENT_USER,
+                         f"{_WIN_CLASSES}\\{SCHEME}\\shell\\open")
+        winreg.DeleteKey(winreg.HKEY_CURRENT_USER,
+                         f"{_WIN_CLASSES}\\{SCHEME}\\shell")
+        winreg.DeleteKey(winreg.HKEY_CURRENT_USER,
+                         f"{_WIN_CLASSES}\\{SCHEME}\\DefaultIcon")
+        winreg.DeleteKey(winreg.HKEY_CURRENT_USER, f"{_WIN_CLASSES}\\{SCHEME}")
+    except FileNotFoundError:
+        pass              # already gone: disabling twice is not an error
+
+
+def applications_path(script: str | Path | None = None) -> "object":
+    """Where a Linux handler lives: `$XDG_DATA_HOME/applications`.
+
+    Not `.local/share/autostart` and not `/usr/share/applications`: the first
+    is for things that start with the session, and the second needs root. The
+    per-user applications folder is the one `update-desktop-database` reads for
+    the person who installed this.
+    """
+    env = os.environ.get("XDG_DATA_HOME")
+    base = Path(env) if env else Path.home() / ".local" / "share"
+    return base / "applications" / f"{SCHEME}-handler.desktop"
+
+
+def _enable_linux_scheme(script: str | Path) -> None:
+    path = applications_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(linux_desktop_text(str(Path(script).resolve())), encoding="utf-8")
+    try:
+        path.chmod(0o755)
+    except OSError:
+        pass
+    # Two commands, both of which only rebuild a cache — a missing one is not a
+    # failure, because the handler file itself is already correct and the
+    # desktop reads it on next login.
+    for command in (["update-desktop-database", str(path.parent)],
+                    ["xdg-mime", "default", f"{SCHEME}-handler.desktop",
+                     f"x-scheme-handler/{SCHEME}"]):
+        try:
+            subprocess.run(command, capture_output=True, timeout=10, check=False)
+        except (OSError, subprocess.SubprocessError):
+            continue
+
+
+def _enable_mac_scheme(script: str | Path) -> None:
+    """The bundle has to exist before it can claim a scheme.
+
+    A `.app` is the only thing macOS will register a URL type from, so this
+    writes a minimal one whose launcher runs the real interpreter and script.
+    `LSUIElement` is deliberately absent: the app may show a window.
+    """
+    script = Path(script).resolve()
+    app = Path.home() / "Applications" / "J.A.R.V.I.S.app"
+    contents = app / "Contents"
+    macos = contents / "MacOS"
+    macos.mkdir(parents=True, exist_ok=True)
+
+    launcher = macos / "JARVIS"
+    launcher.write_text(
+        "#!/usr/bin/env bash\n"
+        f'exec "{sys.executable}" "{script}" "$@"\n'
+    )
+    launcher.chmod(0o755)
+    (contents / "Info.plist").write_text(
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
+        '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+        '<plist version="1.0"><dict>\n'
+        '  <key>CFBundleExecutable</key><string>JARVIS</string>\n'
+        '  <key>CFBundleIdentifier</key><string>com.jarvis.assistant</string>\n'
+        '  <key>CFBundleName</key><string>J.A.R.V.I.S</string>\n'
+        '  <key>CFBundlePackageType</key><string>APPL</string>\n'
+        + mac_info_plist()
+        + '</dict></plist>\n',
+        encoding="utf-8",
+    )
+    # macOS caches the association; re-registering the bundle is what makes a
+    # freshly written Info.plist take effect without a logout.
+    try:
+        subprocess.run(["/System/Library/Frameworks/CoreServices.framework/"
+                        "Frameworks/LaunchServices.framework/Support/lsregister",
+                        "-f", str(app)], capture_output=True, timeout=20, check=False)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def register(script: str | Path, os_name: str | None = None) -> bool:
+    """Make `jarvis://` reach `script`. True when it is registered afterwards."""
+    os_name = os_name or platform.system()
+    script = str(script)
+    try:
+        if os_name == "Windows":
+            _enable_windows_scheme(script)
+        elif os_name == "Darwin":
+            _enable_mac_scheme(script)
+        else:
+            _enable_linux_scheme(script)
+    except Exception as e:                          # noqa: BLE001
+        from core.logbook import get as _log
+        _log(__name__).debug("could not register %s: %s", SCHEME, e)
+        return False
+    return registered(os_name)
+
+
+def unregister(os_name: str | None = None) -> bool:
+    """Remove the association. `registered()` afterwards is the answer."""
+    os_name = os_name or platform.system()
+    try:
+        if os_name == "Windows":
+            _disable_windows_scheme()
+        elif os_name == "Darwin":
+            app = Path.home() / "Applications" / "J.A.R.V.I.S.app"
+            if app.exists():
+                import shutil
+                shutil.rmtree(app, ignore_errors=True)
+        else:
+            applications_path().unlink(missing_ok=True)
+    except Exception as e:                          # noqa: BLE001
+        from core.logbook import get as _log
+        _log(__name__).debug("could not unregister %s: %s", SCHEME, e)
+    return not registered(os_name)
+
+
+def registered(os_name: str | None = None) -> bool:
+    """Whether the scheme is registered — READ BACK, never remembered.
+
+    The same rule as the auto-start toggle, and for the same reason: a settings
+    panel that says "registered" because it just called a writer is a panel
+    that lies when the write was refused. On Linux "registered" also means the
+    handler file is executable, because a `.desktop` that is not is one the
+    desktop ignores.
+    """
+    os_name = os_name or platform.system()
+    try:
+        if os_name == "Windows":
+            import winreg
+            key = f"{_WIN_CLASSES}\\{SCHEME}"
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key, 0, winreg.KEY_READ) as k:
+                try:
+                    winreg.QueryValueEx(k, "URL Protocol")
+                except FileNotFoundError:
+                    return False
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                                f"{key}\\shell\\open\\command", 0,
+                                winreg.KEY_READ) as k:
+                value, _ = winreg.QueryValueEx(k, "")
+            return bool(value) and "%1" in str(value)
+        if os_name == "Darwin":
+            plist = Path.home() / "Applications" / "J.A.R.V.I.S.app" / "Contents" / "Info.plist"
+            if not plist.is_file():
+                return False
+            return f"<string>{SCHEME}</string>" in plist.read_text(encoding="utf-8",
+                                                                  errors="replace")
+        path = applications_path()
+        if not path.is_file():
+            return False
+        text = path.read_text(encoding="utf-8", errors="replace")
+        return (f"x-scheme-handler/{SCHEME}" in text
+                and os.access(path, os.X_OK))
+    except Exception:                 # noqa: BLE001 — a probe may never crash a caller
+        return False

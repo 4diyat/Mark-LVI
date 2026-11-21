@@ -652,5 +652,7 @@
   "ui.iface.bubble": "🫧  ANTARMUKA: WAJAH DI DESKTOP",
   "ui.notify.on": "🔔  NOTIFIKASI: AKTIF",
   "ui.notify.off": "🔕  NOTIFIKASI: NONAKTIF",
-  "ui.notify.hint": "Di mode ambient, tampilkan pemberitahuan desktop saat jawaban tiba. Diam saat jendela sedang terlihat."
+  "ui.notify.hint": "Di mode ambient, tampilkan pemberitahuan desktop saat jawaban tiba. Diam saat jendela sedang terlihat.",
+  "ui.deeplink.on": "◉  TAUTAN jarvis://: AKTIF",
+  "ui.deeplink.off": "○  TAUTAN jarvis://: NONAKTIF"
 }

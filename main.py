@@ -3121,7 +3121,7 @@ def _parse_args(argv: list[str] | None = None) -> tuple[LaunchOptions, list[str]
     return options, keep
 
 
-def _claim_single_instance():
+def _claim_single_instance(link=None):
     """One JARVIS per user, and a second launch means "come to the front".
 
     WHY THIS IS THE FIRST THING `main()` DOES
@@ -3141,14 +3141,20 @@ def _claim_single_instance():
 
     Returns the claim on success, or exits the process. Never returns None in
     the "somebody else is running" case, because continuing would be the bug.
+
+    `link` is the parsed `jarvis://` request when this launch came from one.
+    Its `ask` text travels WITH the request: a link opened while JARVIS is
+    already running would otherwise be reduced to "bring the window forward"
+    and the sentence would be lost.
     """
     from core import single_instance
 
+    text = getattr(link, "text", "") if getattr(link, "verb", "") == "ask" else ""
     try:
         return single_instance.acquire(program=str(Path(__file__).resolve()))
     except single_instance.AlreadyRunning as e:
         holder = e.holder or {}
-        if single_instance.request_foreground():
+        if single_instance.request_foreground(text=text):
             print(f"[JARVIS] Already running (pid {holder.get('pid', '?')}) — "
                   "bringing it to the front.")
         else:
@@ -3167,7 +3173,7 @@ def main():
     options, qt_argv = _parse_args()
     # Before anything is built: a second copy must not open a microphone, a
     # window, or a Gemini session on its way to finding out it is redundant.
-    _instance = _claim_single_instance()     # noqa: F841 — held for the process
+    _instance = _claim_single_instance(options.link)   # noqa: F841 — held for the process
     ui = JarvisUI("face.png", launch=options, argv=qt_argv)
     # The file to launch at login, recorded here because this is the only place
     # that knows it. `ui/window.py` used to derive it from `__file__` and got

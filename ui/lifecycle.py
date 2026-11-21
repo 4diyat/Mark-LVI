@@ -58,8 +58,16 @@ def watch_for_another_launch(shell: "JarvisUI", interval_ms: int = 800) -> None:
 
     def _check() -> None:
         try:
-            if single_instance.take_foreground_request():
-                summon(shell)
+            request = single_instance.take_foreground_request()
+            if request is None:
+                return
+            summon(shell)
+            text = request.get("text") or ""
+            if text:
+                # The link said something. Delivered through the same door as a
+                # typed message — `run_deeplink` owns that, and reusing it keeps
+                # one place where "say this" is defined.
+                _deliver_text(shell, text)
         except Exception as e:                      # noqa: BLE001
             # A poll that raises would stop the timer's usefulness silently.
             # Reported once, then the timer is left to try again.
@@ -72,6 +80,28 @@ def watch_for_another_launch(shell: "JarvisUI", interval_ms: int = 800) -> None:
     timer.timeout.connect(_check)
     timer.start()
     shell._launch_watch = timer
+
+
+def _deliver_text(shell: "JarvisUI", text: str) -> bool:
+    """Say something into the session, on a thread. False when there is none.
+
+    One function, because there are now two ways to arrive here — a link at
+    launch and a link sent to a copy that was already running — and two copies
+    of "how to talk to the session" is how they drift apart.
+    """
+    send = getattr(shell, "on_text_command", None)
+    if not callable(send):
+        note(shell, "A link tried to send a message before the session was ready.")
+        return False
+    try:
+        import threading
+        # On a thread, exactly as a typed message is: the caller is a Qt slot
+        # and the send blocks on the session.
+        threading.Thread(target=send, args=(text,), daemon=True).start()
+        return True
+    except Exception as e:                          # noqa: BLE001
+        note(shell, f"could not deliver a link — {type(e).__name__}: {e}")
+        return False
 
 
 def run_deeplink(shell: "JarvisUI") -> bool:
@@ -101,25 +131,11 @@ def run_deeplink(shell: "JarvisUI") -> bool:
         note(shell, f"A link was refused — {error}")
         return False
 
-    def _ask(text: str) -> bool:
-        send = getattr(shell, "on_text_command", None)
-        if not callable(send):
-            note(shell, "A link tried to send a message before the session was ready.")
-            return False
-        try:
-            import threading
-            # On a thread, exactly as a typed message is: the caller here is a
-            # Qt slot and the send blocks on the session.
-            threading.Thread(target=send, args=(text,), daemon=True).start()
-            return True
-        except Exception as e:                      # noqa: BLE001
-            note(shell, f"could not deliver a link — {type(e).__name__}: {e}")
-            return False
-
     from core import deeplink
     try:
         delivered = deeplink.dispatch(link, summon=lambda: summon(shell),
-                                      hide=lambda: dismiss(shell), ask=_ask)
+                                      hide=lambda: dismiss(shell),
+                                      ask=lambda text: _deliver_text(shell, text))
     except Exception as e:                          # noqa: BLE001
         note(shell, f"a link failed — {type(e).__name__}: {e}")
         return False

@@ -386,3 +386,177 @@ def test_hide_and_summon_links_are_the_trays_own_two_actions():
     shell._launch = SimpleNamespace(link=dl.Request("hide"), link_error="")
     assert lifecycle.run_deeplink(shell) is True
     assert called == ["summon", "dismiss"]
+
+
+# ── registering the scheme, not just describing it ─────────────────────────
+#
+# The text builders above are asserted byte-for-byte. These write real files on
+# the one platform this sandbox is, and stand in for the registry and the
+# bundle on the other two — the same split `core/autostart.py` uses, for the
+# same reason: the format is the part that can be checked anywhere.
+
+@pytest.fixture()
+def data_home(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "share"))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    return tmp_path / "share"
+
+
+@pytest.fixture()
+def no_subprocess(monkeypatch):
+    """Record the cache-rebuild commands instead of running them."""
+    calls = []
+    monkeypatch.setattr(dl.subprocess, "run",
+                        lambda argv, **kw: calls.append(argv))
+    return calls
+
+
+def test_the_linux_handler_is_written_where_the_desktop_reads_it(data_home, no_subprocess, tmp_path):
+    script = tmp_path / "main.py"
+    script.write_text("", encoding="utf-8")
+
+    assert dl.register(script, os_name="Linux") is True
+
+    path = data_home / "applications" / "jarvis-handler.desktop"
+    assert path.is_file()
+    assert dl.registered("Linux") is True
+    # Rebuilt caches, both best-effort. The file is the part that must be right.
+    assert any("update-desktop-database" in argv[0] for argv in no_subprocess)
+    assert any(argv[:2] == ["xdg-mime", "default"] for argv in no_subprocess)
+
+
+def test_the_linux_handler_is_executable(data_home, no_subprocess, tmp_path):
+    """A `.desktop` without the bit is one the desktop silently ignores."""
+    script = tmp_path / "main.py"
+    script.write_text("", encoding="utf-8")
+    dl.register(script, os_name="Linux")
+    assert dl.registered("Linux") is True
+    (data_home / "applications" / "jarvis-handler.desktop").chmod(0o644)
+    assert dl.registered("Linux") is False, "not executable, so not registered"
+
+
+def test_register_and_unregister_leave_no_trace(data_home, no_subprocess, tmp_path):
+    script = tmp_path / "main.py"
+    script.write_text("", encoding="utf-8")
+    dl.register(script, os_name="Linux")
+    assert dl.unregister(os_name="Linux") is True
+    assert dl.registered("Linux") is False
+    assert not (data_home / "applications" / "jarvis-handler.desktop").exists()
+
+
+def test_unregistering_something_that_was_never_registered_is_not_an_error(data_home, no_subprocess):
+    assert dl.unregister(os_name="Linux") is True
+
+
+def test_a_missing_update_desktop_database_does_not_fail_the_registration(data_home, tmp_path, monkeypatch):
+    """The handler file is already correct; the cache rebuild is optional.
+
+    `update-desktop-database` is not installed on every system, and a shell-out
+    that raises must not report the whole registration as failed.
+    """
+    def _missing(argv, **kw):
+        raise FileNotFoundError(argv[0])
+
+    monkeypatch.setattr(dl.subprocess, "run", _missing)
+    script = tmp_path / "main.py"
+    script.write_text("", encoding="utf-8")
+    assert dl.register(script, os_name="Linux") is True
+
+
+def test_the_mac_bundle_gets_a_launcher_and_a_url_type(tmp_path, monkeypatch):
+    """macOS only registers a URL type from a `.app`, so one has to be written."""
+    home = tmp_path / "home"
+    monkeypatch.setattr(dl.Path, "home", classmethod(lambda cls: home))
+    calls = []
+    monkeypatch.setattr(dl.subprocess, "run", lambda argv, **kw: calls.append(argv))
+
+    script = tmp_path / "main.py"
+    script.write_text("", encoding="utf-8")
+    assert dl.register(script, os_name="Darwin") is True
+
+    app = home / "Applications" / "J.A.R.V.I.S.app"
+    plist = (app / "Contents" / "Info.plist").read_text()
+    assert "CFBundleURLTypes" in plist and "<string>jarvis</string>" in plist
+    launcher = (app / "Contents" / "MacOS" / "JARVIS").read_text()
+    assert str(script) in launcher and '"$@"' in launcher, (
+        "the launcher must forward the URL it was opened with")
+    assert any("lsregister" in " ".join(argv) for argv in calls), (
+        "a freshly written Info.plist needs the bundle re-registered")
+    assert dl.registered("Darwin") is True
+
+
+def test_the_windows_registration_marks_the_key_as_a_protocol(tmp_path, monkeypatch):
+    """`URL Protocol` — an EMPTY-named value — is what makes Windows treat the
+    key as a scheme. Without it regedit looks right and nothing happens."""
+    written = {}
+
+    class _Key:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    import types
+    fake = types.ModuleType("winreg")
+    fake.HKEY_CURRENT_USER = 1
+    fake.KEY_WRITE = 2
+    fake.KEY_READ = 4
+    fake.REG_SZ = 1
+    fake.CreateKeyEx = lambda root, path, r, access: _Key()
+    fake.SetValueEx = lambda key, name, r, kind, value: written.__setitem__(
+        (path_of(key), name), value)
+    fake.OpenKey = lambda *a, **k: _Key()
+    fake.QueryValueEx = lambda key, name: (written.get((_CURRENT[0], name), ""), 1)
+
+    path_of = lambda key: _CURRENT[0]  # noqa: E731
+    _CURRENT = [""]
+
+    def _create(root, path, r, access):
+        _CURRENT[0] = path
+        return _Key()
+
+    fake.CreateKeyEx = _create
+    monkeypatch.setitem(__import__("sys").modules, "winreg", fake)
+
+    script = tmp_path / "main.py"
+    script.write_text("", encoding="utf-8")
+    dl._enable_windows_scheme(str(script))
+
+    key = r"Software\Classes\jarvis"
+    assert written[(key, "URL Protocol")] == ""
+    assert written[(key + r"\shell\open\command", "")].endswith('"%1"')
+    assert written[(key, "")] == "URL:jarvis protocol"
+
+
+def test_the_setup_drawer_offers_the_scheme_and_reads_it_back():
+    """The button is the only way a user turns this on.
+
+    Two things must hold: it exists in the SETUP drawer next to auto-start, and
+    its label comes from `deeplink.registered()` — a fact on disk — not from a
+    flag the app remembers. A remembered flag would say ON after the OS entry
+    was deleted by hand, which is exactly the failure auto-start had.
+    """
+    import ast
+
+    from pathlib import Path
+    # Read, do not import: `ui/window.py` needs PyQt6, which is absent here.
+    src = (Path(__file__).resolve().parent.parent / "ui" / "window.py").read_text()
+    tree = ast.parse(src)
+    names = {n.name: n for n in ast.walk(tree)
+             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    assert "_toggle_deeplink" in names and "_update_link_btn" in names
+
+    toggle = ast.get_source_segment(src, names["_toggle_deeplink"])
+    assert "registered()" in toggle
+    assert "unregister()" in toggle
+    assert "register(" in toggle
+    # The running program's path, never a path derived from __file__.
+    assert "program_path(" in toggle
+    assert "__file__" not in toggle
+
+    upd = ast.get_source_segment(src, names["_update_link_btn"])
+    assert "registered()" in upd
+
+    # Wired: the button is created and connected somewhere.
+    assert "_link_btn.clicked.connect(self._toggle_deeplink)" in src
