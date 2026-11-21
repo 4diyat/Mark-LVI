@@ -2,6 +2,8 @@
 import ast
 import asyncio
 from pathlib import Path
+
+from core import mic_status
 from types import SimpleNamespace
 
 SOURCE = Path(__file__).resolve().parents[1] / "main.py"
@@ -12,7 +14,12 @@ def methods(*names, extra=None):
     cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "JarvisLive")
     nodes = [n for n in cls.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
              and n.name in names]
+    # `_listen_audio` reads its sentences from core/mic_status.py now, and the
+    # method is exec'd out of main.py — so every module-level name it uses has
+    # to be handed to it. The REAL module is used, not a stub: the sentences are
+    # part of what the test asserts.
     ns = {"asyncio": asyncio, "SEND_SAMPLE_RATE": 16000,
+          "_mic_status": mic_status,
           "types": SimpleNamespace(Blob=lambda **kw: kw)}
     ns.update(extra or {})
     exec(compile(ast.Module(body=nodes, type_ignores=[]), str(SOURCE), "exec"), ns)
@@ -162,6 +169,7 @@ def test_open_mic_forwards_captured_pcm_to_queue():
                               _is_speaking=False, _tail_active=lambda: False,
                               _echo=SimpleNamespace(_hist=[]), _ptt_enabled=False,
                               _phone_active=False, out_queue=queue, _mic_recovered=False, _deaf=False,
+                              _mic_recovered_first=True,
                               ui=SimpleNamespace(muted=False, write_log=lambda _: None,
                                                  set_audio_level=lambda _: None),
                               _apply_listening_state=lambda: states.append("LISTENING"))

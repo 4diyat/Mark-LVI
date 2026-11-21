@@ -251,11 +251,18 @@ def test_going_deaf_changes_what_the_user_sees():
     """"LISTENING" over a machine with no microphone is the screen lying about
     the one thing the user is trying to fix."""
     source = MAIN.read_text(encoding="utf-8")
-    assert 'self.ui.set_state("NO MIC")' in source
+    # The state NAME lives in core/mic_status.py now; main.py must still paint
+    # it from there. Asserting the old literal would have frozen the wording in
+    # main.py, which is exactly what this mark is moving out.
+    assert "_mic_status.NO_MIC" in source
     assert "def _apply_listening_state" in source
     # ...and recovery must respect the wake gate rather than always claiming to
-    # listen to someone it is still ignoring.
-    assert '"LISTENING" if self._awake else "SLEEPING"' in source
+    # listen to someone it is still ignoring. That decision moved to
+    # `core/mic_status.state_for()`, so the assertion follows the decision, not
+    # the spelling it used to have.
+    assert "_mic_status.state_for(self._awake)" in source
+    assert '"LISTENING" if self._awake else "SLEEPING"' not in source, \
+        "main.py is deciding the listening state itself again"
 
 
 # ── the window ─────────────────────────────────────────────────────────────
