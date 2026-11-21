@@ -281,6 +281,50 @@ def test_a_second_change_within_the_hold_off_is_not_reported(config, frames, mon
     assert len(cam.recent()) == 1
 
 
+def test_a_fresh_process_starts_without_a_hold_off():
+    """The value that matters is the one a NEW process has, before anything
+    calls `reset()`.
+
+    Tested in a subprocess because that is the only way to see the module's
+    initial state: the fixture calls `reset()`, which sets the sentinel itself,
+    so a test in this process would pass even with the bug put back — which is
+    exactly what happened when I first wrote it.
+    """
+    import subprocess
+
+    code = ("import json\n"
+            "from core import security_camera as c\n"
+            "print(json.dumps(c._last_report))\n")
+    out = subprocess.run([sys.executable, "-c", code], cwd=str(ROOT),
+                         capture_output=True, text=True, timeout=120)
+
+    assert out.returncode == 0, out.stderr[-400:]
+    assert out.stdout.strip() == "null", (
+        "a fresh process starts with a numeric hold-off timestamp, which "
+        "swallows the first change on any machine up for less than the hold-off")
+
+
+def test_the_first_change_is_reported_on_a_freshly_booted_machine(config, frames, monkeypatch):
+    """`time.monotonic()` counts from BOOT on Linux and macOS.
+
+    The hold-off used to compare against an initial `0.0`, so on a machine that
+    had been up for less than two minutes — a CI runner, or the user's own PC
+    straight after a restart — the first real change looked like it happened
+    inside the hold-off and was swallowed. The camera would have been "on" and
+    silent for two minutes, which is the worst possible way to fail.
+    """
+    monkeypatch.setattr(cam, "enabled", lambda: True)
+    monkeypatch.setattr(cam, "time", types.SimpleNamespace(monotonic=lambda: 3.0))
+    state = {"value": [0] * 100}
+    monkeypatch.setattr(cam, "_decode_and_fingerprint", lambda image: state["value"])
+    frames["images"].append(b"x")
+
+    cam.tick()                      # baseline at t=3s since boot
+    state["value"] = [255] * 100
+
+    assert cam.tick().changed is True, "the first change was swallowed by the hold-off"
+
+
 def test_a_fingerprint_failure_does_not_report_a_change(config, frames, monkeypatch):
     """Without numpy/cv2 there is nothing to compare, and claiming otherwise
     would be worse than saying nothing."""

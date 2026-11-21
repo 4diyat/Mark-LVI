@@ -84,7 +84,12 @@ _MAX_RECENT = 60
 _recent: deque = deque(maxlen=_MAX_RECENT)
 
 _state_lock = threading.RLock()
-_last_report = 0.0
+# `None`, not 0.0. The hold-off compares against `time.monotonic()`, which on
+# Linux counts from BOOT — so on a machine that started two minutes ago the
+# first real change would look like it happened inside the hold-off and be
+# swallowed. Found by CI on a freshly booted runner; the same thing would have
+# happened on the user's own PC right after a restart.
+_last_report: float | None = None
 _baseline = None
 _baseline_at = 0.0
 _fingerprint_failed = False
@@ -242,7 +247,8 @@ def tick() -> Frame | None:
             else:
                 difference = _difference(_baseline, fingerprint)
                 changed = difference >= _CHANGE_THRESHOLD
-                if changed and (now - _last_report) >= _HOLD_OFF_SECONDS:
+                if changed and (_last_report is None
+                                or (now - _last_report) >= _HOLD_OFF_SECONDS):
                     _last_report = now
                     # The baseline moves to what was just seen, so the same
                     # change is not reported again after the hold-off expires.
@@ -316,7 +322,7 @@ def reset() -> None:
     """
     global _last_report, _baseline, _baseline_at, _fingerprint_failed
     with _state_lock:
-        _last_report = 0.0
+        _last_report = None
         _baseline = None
         _baseline_at = 0.0
         _fingerprint_failed = False
