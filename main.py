@@ -710,6 +710,9 @@ class JarvisLive:
         self._ptt                  = None    # core.hotkey.PushToTalk
         self._out_level            = 0.0     # level of the audio being played right now
         self._echo                 = EchoGuard()
+        from core.voice_interrupt import VoiceInterrupt
+        # Shares the echo guard: "is this the user" has one answer, not two.
+        self._barge_in = VoiceInterrupt(self._echo)
         # `stream.write()` returns when the buffer accepts the audio, not when the
         # speaker has finished with it, so sound is still in the room after the
         # speaking flag drops. Streaming the microphone during that gap is how an
@@ -1119,6 +1122,8 @@ class JarvisLive:
     def set_speaking(self, value: bool):
         with self._speaking_lock:
             self._is_speaking = value
+        from core.voice_interrupt import arm_for
+        arm_for(getattr(self, "_barge_in", None), value)   # zeroed per answer
         if value:
             self._tail_until = 0.0
         else:
@@ -1736,14 +1741,11 @@ class JarvisLive:
             # the echo of what we are playing right now", sustained long enough
             # that a cough or a keystroke cannot trigger it.
             if jarvis_speaking:
-                # Nothing is streamed while JARVIS talks.
-                #
-                # Interrupting by voice used to live here: `EchoGuard` can pick a
-                # user out from under our own echo, and `core/echo.py` still does
-                # that for the tail below. Re-enabling is small — classify each
-                # block here and call interrupt() after `required_blocks` of
-                # agreement — but it depends on the listener's room, so it stays
-                # out until it can be tried on real hardware.
+                # Not streamed while talking, but still heard: talking over
+                # the answer stops it. The decision is in voice_interrupt.py.
+                from core.voice_interrupt import barge_in
+                barge_in(self._barge_in, indata, SEND_SAMPLE_RATE,
+                         _pcm_level(indata), self.interrupt)
                 return
 
             # ── Echo tail ────────────────────────────────────────────────────

@@ -205,15 +205,31 @@ def test_a_detection_clears_the_models_own_buffers(detector_factory):
     openwakeword keeps ~10 s of audio and ~30 frames of predictions inside the
     model, so without a reset the next predict() can still see the phrase it
     just heard and fire twice.
+
+    Driven BY HAND, not through the inference thread — the same correction the
+    ordering test above already carries. This version used to push three frames
+    into a live thread and wait for `resets == 1`; on a runner slow enough for
+    the thread to start late, it read zero, and on a runner fast enough to do
+    both passes before the assertion it read two. CI saw `assert 2 == 1` on
+    ubuntu/py3.12 with no change to this file. Calling the pass once makes the
+    count a fact about the code instead of about the machine.
     """
     detector = detector_factory()
-    detector.start()
-    model = detector._model
-    for frame in frames(3):
-        detector.feed(frame)
+    model = FakeModel()
+    detector._model = model
+    detector._running = True
 
-    _wait(lambda: model.resets > 0, "the model was never reset after a detection")
+    for frame in frames(2):
+        detector._queue.put_nowait(frame)
+
+    detector._run_one_pass()          # the fake scores this as a hit
+
+    # Exactly one: a detection resets the model once, and the frame that is
+    # left in the queue must NOT produce a second reset — that is the whole
+    # point of draining, and it is invisible if the count is read while a
+    # thread is still chewing through the backlog.
     assert model.resets == 1
+    assert detector._queue.qsize() == 0, "the rest of the phrase was not dropped"
 
 
 def test_the_model_is_not_reset_on_ordinary_frames(detector_factory):
@@ -259,3 +275,25 @@ def _wait(predicate, message, timeout=3.0):
             return
         time.sleep(0.02)
     pytest.fail(message)
+
+
+def test_ordinary_listening_never_resets_the_model(detector_factory):
+    """`_drain(reset_model=False)` is the default for a reason.
+
+    Resetting is what makes the model forget the phrase it just heard, and it
+    costs the rolling context it keeps for everything else — ~10 s of audio and
+    ~30 frames of predictions. Doing it on ordinary drained frames would make
+    the detector worse at hearing the wake word at all, and nothing in the
+    queue would look wrong while it happened.
+    """
+    detector = detector_factory()
+    model = FakeModel()
+    detector._model = model
+    detector._running = True
+    for frame in frames(3):
+        detector._queue.put_nowait(frame)
+
+    detector._drain()                 # the default: drop the frames only
+
+    assert detector._queue.qsize() == 0, "the frames were not dropped"
+    assert model.resets == 0, "listening must not reset the model"
