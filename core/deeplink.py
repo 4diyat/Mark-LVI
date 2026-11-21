@@ -217,16 +217,27 @@ def linux_desktop_text(script: str, python: str | None = None,
     """
     from core.autostart import _exec_value
 
+    from core.app_identity import icon_path, startup_wm_class
+
+    # The handler's own icon, in the same folder the tray draws to. A `.desktop`
+    # pointing at a path that does not exist gets a generic icon, and the user
+    # has no way to tell it is the app's fault.
+    icon = icon_path(Path(script).resolve().parent)
     exe = _exec_value(script, python, args=("%u",))
+    # Only when the file is really there: a `.desktop` pointing at a missing
+    # icon gets a generic one anyway, and an empty `Icon=` is worse than none.
+    icon_line = f"Icon={icon}\n" if icon.is_file() else ""
     return (
         "[Desktop Entry]\n"
         "Type=Application\n"
         f"Name={name}\n"
         f"Exec={exe}\n"
         "Terminal=false\n"
+        f"StartupWMClass={startup_wm_class()}\n"
         "NoDisplay=true\n"          # a handler is not something to launch from a menu
         f"MimeType=x-scheme-handler/{SCHEME};\n"
         "Categories=Utility;\n"
+        + icon_line
     )
 
 
@@ -237,10 +248,12 @@ def mac_info_plist(app_name: str = "JARVIS") -> str:
     owns that file. `CFBundleURLName` must be unique across the system, which is
     why it is a reverse-DNS identifier rather than the scheme itself.
     """
+    from core.app_identity import APP_ID
+
     return (
         "<key>CFBundleURLTypes</key>\n"
         "<array><dict>\n"
-        f"  <key>CFBundleURLName</key><string>com.jarvis.assistant</string>\n"
+        f"  <key>CFBundleURLName</key><string>{APP_ID}</string>\n"
         "  <key>CFBundleURLSchemes</key>\n"
         f"  <array><string>{SCHEME}</string></array>\n"
         f"  <key>CFBundleTypeRole</key><string>Viewer</string>\n"
@@ -348,8 +361,10 @@ def _enable_mac_scheme(script: str | Path) -> None:
     writes a minimal one whose launcher runs the real interpreter and script.
     `LSUIElement` is deliberately absent: the app may show a window.
     """
+    from core.app_identity import APP_ID, APP_NAME, icon_path
+
     script = Path(script).resolve()
-    app = Path.home() / "Applications" / "J.A.R.V.I.S.app"
+    app = Path.home() / "Applications" / f"{APP_NAME}.app"
     contents = app / "Contents"
     macos = contents / "MacOS"
     macos.mkdir(parents=True, exist_ok=True)
@@ -366,13 +381,24 @@ def _enable_mac_scheme(script: str | Path) -> None:
         '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
         '<plist version="1.0"><dict>\n'
         '  <key>CFBundleExecutable</key><string>JARVIS</string>\n'
-        '  <key>CFBundleIdentifier</key><string>com.jarvis.assistant</string>\n'
-        '  <key>CFBundleName</key><string>J.A.R.V.I.S</string>\n'
+        f'  <key>CFBundleIdentifier</key><string>{APP_ID}</string>\n'
+        f'  <key>CFBundleName</key><string>{APP_NAME}</string>\n'
         '  <key>CFBundlePackageType</key><string>APPL</string>\n'
         + mac_info_plist()
         + '</dict></plist>\n',
         encoding="utf-8",
     )
+    # The bundle's own icon, copied rather than referenced: macOS reads
+    # `CFBundleIconFile` from inside the bundle and nowhere else.
+    ico = icon_path(script.parent)
+    if ico.is_file():
+        (contents / "Resources").mkdir(parents=True, exist_ok=True)
+        try:
+            import shutil
+            shutil.copyfile(ico, contents / "Resources" / f"{APP_NAME}.ico")
+        except OSError:
+            pass
+
     # macOS caches the association; re-registering the bundle is what makes a
     # freshly written Info.plist take effect without a logout.
     try:
@@ -408,7 +434,8 @@ def unregister(os_name: str | None = None) -> bool:
         if os_name == "Windows":
             _disable_windows_scheme()
         elif os_name == "Darwin":
-            app = Path.home() / "Applications" / "J.A.R.V.I.S.app"
+            from core.app_identity import APP_NAME
+            app = Path.home() / "Applications" / f"{APP_NAME}.app"
             if app.exists():
                 import shutil
                 shutil.rmtree(app, ignore_errors=True)
@@ -445,7 +472,9 @@ def registered(os_name: str | None = None) -> bool:
                 value, _ = winreg.QueryValueEx(k, "")
             return bool(value) and "%1" in str(value)
         if os_name == "Darwin":
-            plist = Path.home() / "Applications" / "J.A.R.V.I.S.app" / "Contents" / "Info.plist"
+            from core.app_identity import APP_NAME
+            plist = (Path.home() / "Applications" / f"{APP_NAME}.app"
+                     / "Contents" / "Info.plist")
             if not plist.is_file():
                 return False
             return f"<string>{SCHEME}</string>" in plist.read_text(encoding="utf-8",

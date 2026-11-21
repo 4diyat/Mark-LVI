@@ -132,6 +132,22 @@ from ui.audio_devices import (      # noqa: F401 — re-exported through the pac
 )
 from ui.hud_canvas import HudCanvas   # noqa: F401 — re-exported
 from ui.icons import build_jarvis_icon
+
+
+def _app_icon():
+    """The window icon: the arc reactor, from the one path that owns it.
+
+    Qt's default icon is the generic `python3` diamond, and a window with that
+    icon is a window the user cannot pick out of a taskbar list. Drawn on
+    demand rather than shipped, and an empty icon when Pillow is missing — a
+    cosmetically wrong icon must never be a reason the app fails to start.
+    """
+    from PyQt6.QtGui import QIcon
+    from core import app_identity
+    path = app_identity.icon_path(Path(__file__).resolve().parent.parent)
+    if not path.exists():
+        build_jarvis_icon(path)
+    return QIcon(str(path))
 from ui.hud_panels import (        # noqa: F401 — re-exported through the package
     ClipboardPanel,
     MemoryOverlay,
@@ -3265,6 +3281,13 @@ class JarvisUI:
 
     def __init__(self, face_path: str, size=None, launch=None, argv=None):
         _apply_ui_scale()
+        # The OS identity is a PROCESS-wide fact, so it is set before the
+        # QApplication exists: Windows freezes the taskbar group when the
+        # window is created, and setting the AppUserModelID later leaves the
+        # button in python.exe's group.
+        if QApplication.instance() is None:
+            from core import app_identity
+            app_identity.apply_os()
         if QApplication.instance() is None:
             QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
         # `argv` is what main.py left after removing THIS app's flags. Qt is
@@ -3275,6 +3298,14 @@ class JarvisUI:
         self._app = QApplication.instance() or QApplication(
             list(sys.argv if argv is None else argv))
         self._app.setStyle("Fusion")
+        # WHAT THE OS CALLS THIS PROGRAM, before a single window exists. Qt
+        # reads the application name and desktop file name when windows are
+        # created and the OS reads them when it groups the taskbar, so doing
+        # this afterwards renames nothing that is already on screen. Until now
+        # JARVIS pinned as `python3` with python's icon on every platform.
+        from core import app_identity as _identity
+        _identity.apply_qt(self._app)
+        self._app.setWindowIcon(_app_icon())
         self._win = MainWindow(face_path)
         self.root = _RootShim(self._app)
         self._tray = None
