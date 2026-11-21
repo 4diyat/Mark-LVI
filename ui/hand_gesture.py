@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (QAbstractButton, QAbstractScrollArea, QApplication,
 
 from core import pointer_ring as _ring
 from core.i18n import label as _t
+from core import workspace_gesture as _workspace_gesture
 from core.workspace_gesture import ClapTracker, WorkspaceHandController, dwell_matches
 from core.workspace_transform import FlickTracker, bounded_flick, transform_window
 from ui.desktop_workspace import WindowTitleBar
@@ -496,10 +497,6 @@ def setup(window):
         if controller.status == 'error' and controller.error:
             message += ' ' + controller.error
         samples = controller.sample() if running else ()
-        gestures.update(samples)
-        # The SAME samples, one frame later, offered to the desktop. The
-        # workspace acts first on purpose: if a gesture is ambiguous, moving a
-        # card here is recoverable and clicking something there may not be.
         bridge = getattr(window, '_gesture_os', None)
         if bridge is not None:
             if running:
@@ -508,6 +505,37 @@ def setup(window):
             else:
                 bridge.release()
                 _ring_hide(window)
+        # ── ONE HAND, ONE PLACE ──────────────────────────────────────────────
+        # The desktop goes first, and the workspace stands down while it is
+        # driving. It used to be the other way round and unconditionally: a
+        # hand moving the OS pointer ALSO dragged cards in the workspace
+        # underneath, because both were fed the same samples in the same frame.
+        # `os_owns_the_hand` is the rule, in core/workspace_gesture.py.
+        owns = bridge is not None and _workspace_gesture.os_owns_the_hand(
+            bridge.enabled, not bridge.frozen)
+        # A switch left ON in a previous run must not lie at startup: tracking
+        # may begin workspace-only, while the drawer still says HAND → OS is on.
+        # Say it once, where the loop can see it, then let the refresh carry on.
+        if running and owns and not getattr(window, "_gesture_os_announced", False):
+            window._gesture_os_announced = True
+            try:
+                window.write_log("SYS: " + _t("ui.gesture_os.on"))
+            except Exception as e:               # noqa: BLE001
+                # A closing window has no log. Logged rather than swallowed:
+                # ruff's S110 ban is right, a silent failure here would be a
+                # switch that lies with no way to find out why.
+                from core import logbook
+                logbook.get(__name__).debug("could not announce OS mode: %s", e)
+        elif not running:
+            window._gesture_os_announced = False
+        if owns:
+            # Reset rather than freeze: a half-finished drag left in the
+            # workspace would resume the moment the pointer froze (JARVIS takes
+            # focus), and the widget would jump.
+            gestures.reset()
+            gestures.show_cursors(())
+        else:
+            gestures.update(samples)
         mode_key = {'move': 'gesture.mode_move', 'resize': 'gesture.mode_transform',
                     'click': 'gesture.mode_click', 'slider': 'gesture.mode_slider',
                     'claw': 'gesture.mode_claw'}.get(gestures.mode)

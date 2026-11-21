@@ -1,4 +1,18 @@
-"""Local camera tracking for the JARVIS workspace; never generates OS input."""
+"""Local camera tracking for the JARVIS workspace; never generates OS input.
+
+WHERE THE HAND IS ALLOWED TO ACT — THE ONE RULE THAT IS ABOUT MODE
+    OS control (`core/gesture_os.py`) and the workspace gestures both run from
+    the SAME tracked samples, in the same frame. Before `os_owns_the_hand()` the
+    workspace ran unconditionally, so a hand driving the desktop pointer was
+    also dragging cards in the workspace underneath it — the user moved the
+    cursor across the screen and their Documents window came with it.
+
+    The rule this module holds: the workspace acts only when the desktop is not
+    being driven. It is a function here rather than a condition in
+    `ui/hand_gesture.py` because it is the kind of decision that gets lost in a
+    refresh loop, and because it has to be testable without a camera, a display
+    or a window.
+"""
 import itertools
 import math
 import platform
@@ -307,3 +321,24 @@ class ClapTracker:
         except (TypeError, ValueError, OverflowError):
             self.reset()
             return False
+
+
+def os_owns_the_hand(os_mode_enabled, os_mode_actually_driving) -> bool:
+    """Is the desktop, rather than this workspace, being driven right now?
+
+    BOTH ARGUMENTS ARE NEEDED, and they are not the same question:
+
+      * `os_mode_enabled` is the user's switch in `CONTROLS`. While it is on,
+        the workspace must not act at all — moving a card and moving the
+        desktop pointer from one pose is not a choice the user made.
+      * `os_mode_actually_driving` is whether the pointer is FREE this frame.
+        While JARVIS has focus, or a confirmation is up, `core/gesture_os.py`
+        freezes the desktop pointer on purpose (rule 2), and during that freeze
+        the workspace gestures are exactly what should still work — otherwise
+        turning OS mode on would silently disable the workspace whenever the
+        user came back to the window.
+
+    So: enabled AND free means the workspace stands down. Enabled but frozen
+    means the workspace carries on, because nothing else is happening.
+    """
+    return bool(os_mode_enabled) and bool(os_mode_actually_driving)
