@@ -219,6 +219,13 @@ def start_interface(shell: "JarvisUI") -> None:
             shell._win._log_sig.emit(
                 "SYS: Face bubble unavailable; staying in the tray.")
 
+    # The orb and the command bar are ambient-only and independent of the
+    # bubble: the orb says "the assistant is here", the bar is how you reach it
+    # without the window. Both degrade to the tray on their own, so neither can
+    # take the mode down with it.
+    start_orb(shell)
+    start_command_bar(shell)
+
 
 # The summon chord. Ctrl+Shift+J is what does this INSIDE the window; the
 # global version is the same shape so there is one thing to remember.
@@ -317,6 +324,144 @@ def start_bubble(shell: "JarvisUI") -> bool:
     return True
 
 
+def start_orb(shell: "JarvisUI") -> bool:
+    """Show the ring in the corner. False if this desktop will not have it.
+
+    Started AFTER the tray, always: the orb is the least capable surface here,
+    and a machine that cannot draw a 96 px window can still hold an icon. It is
+    also started with the saved presence mode already applied, so a user who
+    left the assistant in Senyap does not see it light up for a frame first.
+    """
+    from ui.orb_overlay import OrbOverlay
+
+    try:
+        from core import presence_mode
+        mode = presence_mode.current()
+    except Exception:                               # noqa: BLE001
+        mode = "active"
+
+    orb = OrbOverlay(mode=mode, on_click=lambda: open_command_bar(shell))
+    if not orb.start():
+        note(shell, f"Orb unavailable ({orb.error}); the tray is still there.")
+        return False
+    shell._orb = orb
+    return True
+
+
+# Ctrl+Space: the chord the artboard promises, and the one thing about this
+# feature a user is told. Kept next to the bar's own code rather than in
+# `core.hotkey`, because that module's DEFAULT_CHORD is push-to-talk's.
+BAR_CHORD = ("ctrl", "space")
+
+
+def start_bar_hotkey(shell: "JarvisUI") -> str:
+    """Bind Ctrl+Space to the bar. Returns the scope actually achieved.
+
+    Separate from the summon chord: that one brings the WINDOW back, this one
+    opens a line without it. Two chords because they answer two different
+    wishes, and collapsing them would make the bar unreachable in `hud` mode.
+    """
+    from core.hotkey import HotkeyTap
+
+    tap = HotkeyTap(lambda: toggle_command_bar(shell), chord=BAR_CHORD)
+    try:
+        scope = tap.start()
+    except Exception as e:                          # noqa: BLE001
+        note(shell, f"command bar shortcut unavailable — {type(e).__name__}: {e}")
+        return "window"
+    shell._bar_hotkey = tap
+    return scope
+
+
+def stop_bar_hotkey(shell: "JarvisUI") -> None:
+    tap = getattr(shell, "_bar_hotkey", None)
+    if tap is None:
+        return
+    tap.stop()
+    shell._bar_hotkey = None
+
+
+def toggle_command_bar(shell: "JarvisUI") -> None:
+    """Ctrl+Space: open the bar, or close it if it is already up."""
+    bar = getattr(shell, "_command_bar", None)
+    if bar is not None and bar.is_open:
+        bar.close()
+        return
+    open_command_bar(shell)
+
+
+def start_command_bar(shell: "JarvisUI") -> bool:
+    """Create the bar, unshown, and its chord. False if the chord cannot bind.
+
+    The bar is built now and opened later: building a window on the first
+    keystroke would put Qt's construction cost on the user's first Ctrl+Space,
+    which is the one moment the feature is being judged.
+    """
+    from ui.command_bar import CommandBar
+
+    bar = CommandBar(on_submit=lambda text: submit_from_bar(shell, text))
+    shell._command_bar = bar
+    scope = start_bar_hotkey(shell)
+    if scope != "global":
+        note(shell, "the command bar shortcut only works while the orb or the "
+                    "interface has focus — this desktop offers no global hook.")
+    return bar is not None
+
+
+def open_command_bar(shell: "JarvisUI") -> bool:
+    """Open the bar over whatever the user is doing. The orb's click lands here.
+
+    `previous` is the window the assistant can see, not the one the user is
+    typing in — Qt cannot see another application's window, and pretending
+    otherwise would make Esc restore focus to the wrong program. On a desktop
+    where the assistant has no window of its own, the ledger honestly records
+    "nothing to restore".
+    """
+    bar = getattr(shell, "_command_bar", None)
+    if bar is None:
+        from ui.command_bar import CommandBar
+        bar = CommandBar(on_submit=lambda text: submit_from_bar(shell, text))
+        shell._command_bar = bar
+    previous = getattr(shell, "_win", None)
+    if previous is not None and not previous.isVisible():
+        previous = None
+    if not bar.open(previous):
+        note(shell, f"Command bar unavailable ({bar.error}).")
+        return False
+    return True
+
+
+def submit_from_bar(shell: "JarvisUI", text: str) -> None:
+    """Hand one line to the assistant, the same way typing into the HUD does."""
+    try:
+        shell._win._submit_text(text)
+    except Exception as e:                          # noqa: BLE001
+        note(shell, f"the command bar could not send: {type(e).__name__}: {e}")
+
+
+def apply_presence_mode(shell: "JarvisUI", mode: str) -> bool:
+    """Switch Aktif / Fokus / Senyap and dim the orb to match.
+
+    This is the wiring behind the answered product question: Fokus and Senyap
+    dim the ORB, not only the notifications. The mode itself is held in
+    `core.presence_mode` so the scheduler thread, which has no widget, reads the
+    same value the panel writes.
+    """
+    from core import presence_mode
+    from memory.config_manager import save_presence_mode
+
+    if not presence_mode.set_mode(mode):
+        return False
+    try:
+        save_presence_mode(presence_mode.current())
+    except Exception as e:                          # noqa: BLE001
+        note(shell, f"presence mode not saved: {type(e).__name__}: {e}")
+    orb = getattr(shell, "_orb", None)
+    if orb is not None:
+        orb.set_mode(presence_mode.current())
+    return True
+
+
 # ── summon / dismiss ──────────────────────────────────────────────────────
 
 def summon(shell: "JarvisUI") -> None:
@@ -391,7 +536,12 @@ def set_interface_mode(shell: "JarvisUI", mode: str) -> bool:
     mode = str(mode or "").strip().lower()
     if mode == "hud":
         _stop_bubble(shell)
+        _stop_orb(shell)
         stop_summon_hotkey(shell)
+        # The bar's chord goes with the orb: in HUD mode the window is the way
+        # in, and a Ctrl+Space that still opened a floating line would be a
+        # second, unexplained surface over a full-screen interface.
+        stop_bar_hotkey(shell)
         if getattr(shell, "_tray", None) is not None:
             shell._tray.stop()
             shell._tray = None
@@ -407,6 +557,9 @@ def set_interface_mode(shell: "JarvisUI", mode: str) -> bool:
     # mode this machine cannot have.
     if getattr(shell, "_tray", None) is None and not start_tray(shell):
         return False
+
+    start_orb(shell)
+    start_command_bar(shell)
 
     if mode == "bubble":
         if getattr(shell, "_bubble", None) is None and not start_bubble(shell):
@@ -460,6 +613,14 @@ def raise_window(shell: "JarvisUI") -> None:
         shell._win.activateWindow()
     except Exception as e:                          # noqa: BLE001
         note(shell, f"could not raise the window — {type(e).__name__}: {e}")
+
+
+def _stop_orb(shell) -> None:
+    orb = getattr(shell, "_orb", None)
+    if orb is None:
+        return
+    orb.stop()
+    shell._orb = None
 
 
 def _stop_bubble(shell) -> None:

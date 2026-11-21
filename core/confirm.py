@@ -75,6 +75,21 @@ def bind(show, hide, log=None) -> None:
     _show_cb, _hide_cb, _log_cb = show, hide, log
 
 
+def _audit(title: str, outcome: str) -> None:
+    """Record the decision in the audit log, not only in the diagnostic log.
+
+    Imported lazily: `core.audit_log` imports nothing from here, but keeping the
+    import inside the call means a broken audit module can never stop a
+    confirmation from being shown. A missing audit line is a gap; a missing
+    dialog is an action the user never got to refuse.
+    """
+    try:
+        from core import audit_log
+        audit_log.record("confirm", "risky", outcome, title)
+    except Exception as e:                          # noqa: BLE001
+        logbook.get("confirm").debug("audit write failed: %s", e)
+
+
 def _log(msg: str) -> None:
     if _log_cb:
         try:
@@ -121,6 +136,7 @@ def request(key: str, title: str, detail: str, run: Callable[[], str]) -> str:
         return f"Could not ask for confirmation: {e}. Nothing was done."
 
     _log(f"SYS: Awaiting confirmation — {title}")
+    _audit(title, "awaiting")
     return (
         f"[CONFIRMATION_PENDING] I have put a confirmation on screen for: {title}. "
         f"Say ONE short sentence in the user's own language telling them you need "
@@ -159,18 +175,22 @@ def resolve(token: str, accepted: bool) -> None:
 
     if time.monotonic() - p.at > TIMEOUT_SECONDS:
         _log(f"SYS: Confirmation expired — {p.title}")
+        _audit(p.title, "expired")
         return
 
     if not accepted:
         _log(f"SYS: Cancelled — {p.title}")
+        _audit(p.title, "cancelled")
         return
 
     def _worker():
         try:
             result = p.run() or "Done."
             _log(f"SYS: Confirmed — {p.title}. {result}")
+            _audit(p.title, "confirmed")
         except Exception as e:
             _log(f"ERR: {p.title} failed — {e}")
+            _audit(p.title, "failed")
 
     threading.Thread(target=_worker, daemon=True,
                      name=f"confirm-{p.key}").start()

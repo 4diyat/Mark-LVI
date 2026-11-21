@@ -356,6 +356,13 @@ def save_hud_style(style: str) -> None:
 # and a bool stored by phase 1 would have had to be migrated to add it.
 UI_MODES = ("hud", "ambient", "bubble")
 
+# Three answers to "how much of the assistant is allowed right now", separate
+# from UI_MODES because they are separate questions: UI_MODES says where the
+# interface lives, this says how loudly the assistant may interrupt. A user may
+# want the window up AND the assistant quiet, which one settings key could not
+# express.
+PRESENCE_MODES = ("active", "focus", "quiet")
+
 
 def get_desktop_notifications() -> bool:
     """Whether an answer should raise a desktop notification in ambient mode.
@@ -387,6 +394,23 @@ def save_ui_mode(mode: str) -> bool:
     if s not in UI_MODES:
         return False
     return set_config_values(ui_mode=s)
+
+
+def get_presence_mode() -> str:
+    """Aktif / Fokus / Senyap. Defaults to "active".
+
+    Read by `core.presence_mode` through a bound reader, so the scheduler thread
+    and the tray panel agree without either owning the value.
+    """
+    v = str(load_api_keys().get("presence_mode", "active")).strip().lower()
+    return v if v in PRESENCE_MODES else "active"
+
+
+def save_presence_mode(mode: str) -> bool:
+    s = str(mode or "").strip().lower()
+    if s not in PRESENCE_MODES:
+        return False
+    return set_config_values(presence_mode=s)
 
 
 def get_ui_scale() -> float:

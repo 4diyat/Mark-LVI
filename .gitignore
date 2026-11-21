@@ -11,6 +11,9 @@ config/whatsapp_web/          # a LINKED WhatsApp session — committing it hand
                               # somebody your WhatsApp account, not just a key
 **/token*.json                # Google OAuth tokens (Gmail / Calendar plugins)
 config/.calendar-token-*      # temporary OAuth token during an atomic save
+config/audit.jsonl            # the action audit log — names files and decisions the
+                              # user made. Personal by definition; erase from the app.
+config/suggestions.json       # today's suggestion count; meaningless once committed
 **/client_secret*.json        # Google OAuth client secrets
 *credentials*.json
 .env

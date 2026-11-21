@@ -10,6 +10,25 @@ Dua berkas, satu sumber:
 Artboard **tidak** memuat penjelasan desain. Semua asumsi, rasio kontras, dan alasan
 ada di bagian Ringkasan **di dalam** HTML, setelah artboard 22.
 
+## Tambahan: shell ambient (Fase 1)
+
+Artboard **1–6** dan **23–28** menggambar perilaku jendela sesuai spesifikasi Tauri:
+
+| # | Artboard | Yang ditunjukkan |
+|---|---|---|
+| 1 | Orb overlay | Overlay ±150 px transparan, hanya orb 56 px yang menerima klik |
+| 2 | Toast | Tiga toast menumpuk, sisanya antre, batas 3 saran/hari |
+| 3 | Command bar | Ctrl+Space, input fokus, Esc kembali ke jendela sebelumnya |
+| 4 | Orb | Klik kiri/kanan/seret, empat status dibaca dari isi orb |
+| 5 | Panel baki | Mengikuti taskbar, segmented Aktif/Fokus/Senyap |
+| 6 | Overlay suara + kamera | Glow tepi hanya saat aktif, preview gestur kecil |
+| 23 | Fokus | Toast **ditahan**, bukan dibuang — jumlahnya bisa dilihat |
+| 24 | Senyap | Orb menyusut 28→18 px, glow hilang, cincin jadi titik |
+| 25 | Konfirmasi risiko | Dirender UI tepercaya, tombol besar, ada asal permintaan |
+| 26 | Riwayat tugas | Urungkan/ulang, audit log bertimestamp, ekspor |
+| 27 | Izin & Privasi | Indikator mikon/kamera/layar, izin eksplisit, mode tamu |
+| 28 | Tema terang | Panel baki versi terang dengan token terang |
+
 ## Ringkasan isi
 
 | Kelompok | Artboard |
@@ -68,6 +87,14 @@ Spesifikasi tidak memberi angka untuk ini; saya pilih dan catat di ringkasan HTM
   langkah masing-masing; polanya bisa dipakai ulang.
 - Isi plugin pihak ketiga: belum ada di kode, jadi artboard 16 hanya memuat baris generik.
 
+## Batasan shell
+
+- Mockup ini **stack-neutral**: digambar dari perilaku (frameless, transparan, always-on-top),
+  bukan dari API-nya, sehingga tetap valid untuk Tauri maupun PyQt6.
+- Spesifikasi Tauri 2 + React + TypeScript adalah **aplikasi baru**; repo ini 354 berkas
+  Python + PyQt6. Menulis ulang shell bukan bagian dari lembar ini.
+- Panel baki memakai 460×660 (bukan 640) karena tiga baris izin + input butuh 20 px ekstra.
+
 ## Batasan
 
 - Lembar ini **konsep**, belum kode. Tidak ada berkas `core/` atau `ui/` yang disentuh.
@@ -75,3 +102,70 @@ Spesifikasi tidak memberi angka untuk ini; saya pilih dan catat di ringkasan HTM
   berbeda), jadi gambar pratinjau bisa sedikit berbeda dari peramban. Geometri, warna,
   dan teks sudah diperiksa secara terprogram: 22 artboard valid, tanpa elemen meluber,
   tanpa bentuk berukuran nol.
+
+## Target implementasi: repo ini, Python + PyQt6
+
+Keputusan perilaku yang menyertai modul pertama ada di
+[`EXECUTION-PATH.md`](EXECUTION-PATH.md): tiga tingkat risiko, jalur konfirmasi
+yang tidak bisa dipalsukan model, dan janji "3 tertahan" pada mode Fokus.
+
+
+Keputusan: **tidak** ditulis ulang ke Tauri/React. Artboard shell (1–6, 23–28) digambar
+stack-neutral dan berlaku apa adanya untuk implementasi Python.
+
+### Bagian spesifikasi yang **sudah ada** di repo
+
+| Kebutuhan spesifikasi | Modul yang ada | Baris |
+|---|---|---|
+| Tray + 6 item menu | `ui/tray.py` | 271 |
+| Notifikasi + kebijakan 45 s | `core/notify.py` | 242 |
+| Global hotkey (Ctrl+Space dst.) | `core/hotkey.py` | 532 |
+| Gestur tangan | `core/hand_gesture.py`, `core/gesture_os.py` | 325 |
+| Konfirmasi yang tidak bisa dipalsukan model | `core/confirm.py` | — |
+| Riwayat percakapan/tugas | `core/history.py` | — |
+| Memori personal | `memory/memory_manager.py` | 486 |
+| STT lokal (faster-whisper, Vosk) | `core/stt.py` | 93 |
+| Wake word | `core/wake_word.py` | — |
+| TTS | `core/tts.py` | 442 |
+| Plugin + manifest izin | `core/plugin_manifest.py`, `plugins/` | — |
+| Clipboard | `actions/computer_control.py` (pyperclip, lazy) | — |
+
+### Yang **belum** ada dan perlu modul baru
+
+| Kebutuhan | Modul | Status |
+|---|---|---|
+| Tool registry | `core/tool_registry.py` | **belum** — sementara `risk_policy.register()` sudah bisa dipakai untuk mendeklarasikan tingkat |
+
+### Sudah dikerjakan (dan diuji)
+
+| Kebutuhan | Modul | Tes |
+|---|---|---|
+| Toast berantre + kapasitas + hitungan yang dibuang | `ui/toast_queue.py` | `tests/test_toast_queue.py` |
+| Batas 3 saran/hari | `core/suggestion_quota.py` | `tests/test_suggestion_quota.py` |
+| Risiko 3 tingkat, default `risky` | `core/risk_policy.py` | `tests/test_risk_policy.py` |
+| Audit log terpisah dari `logs/jarvis.log` | `core/audit_log.py` | `tests/test_audit_log.py` |
+| Mode Aktif/Fokus/Senyap | `core/presence_mode.py` | `tests/test_presence_mode.py` |
+| Gerbang eksekusi: klasifikasi → catat → jalan/tahan | `core/action_gate.py` | `tests/test_action_gate.py` |
+| Tingkat per panggilan (`computer_settings` ≠ satu tingkat) | `core/tool_risk.py` | `tests/test_tool_risk.py` |
+| Sambungan gate ke `main.py` + daftar aksi berpagar sendiri | `main.py` | `tests/test_gate_wiring.py` |
+| Orb overlay 96 px, meredup di Fokus/Senyap | `ui/orb_overlay.py` | `tests/test_orb_overlay.py` |
+| Command bar Ctrl+Space, Esc mengembalikan fokus | `ui/command_bar.py` | `tests/test_command_bar.py` |
+| Sambungan mode → orb, chord, dan baki | `ui/lifecycle.py`, `memory/config_manager.py` | `tests/test_presence_wiring.py` |
+
+`core/undo_journal.py` **tidak dibuat**: `core/undo.py` sudah melakukan itu
+(`push_undo`/`undo_last`, kedalaman 10). Menambah modul kedua hanya akan menjadi
+salinan yang berbeda perilaku.
+
+### Batasan platform yang harus diuji di Windows
+
+- Orb **tidak** click-through, dan itu disengaja: ia satu-satunya permukaan yang
+  bisa diklik di mode ambient, jadi klik di luar cincin ditolak oleh hit test
+  (`inside_hit_region`), bukan oleh flag jendela. Yang belum bisa dibuktikan:
+  apakah jendela frameless benar-benar mengabaikan klik di area transparannya di
+  setiap window manager.
+- Fokus kembali setelah Esc bergantung pada window manager; `FocusLedger`
+  mencatat permintaan dan hasilnya, tetapi `activateWindow()` tidak melaporkan
+  apakah berhasil.
+- **Keputusan pemilik repo:** Fokus dan Senyap **meredupkan orb**, bukan hanya
+  menahan notifikasi. Board 24 (28→18 px, cincin titik-titik) sekarang menjadi
+  perilaku yang diuji, bukan asumsi.
