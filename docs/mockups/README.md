@@ -52,10 +52,23 @@ Karena itu lembar acuan dibagi dua:
 |---|---|---|
 | **A2** | Panggilan memakai jendela tersimpan, bukan `showMaximized()` | Membuat ambient benar-benar berbeda dari hud |
 | **A4** | Ikon tray berubah warna per keadaan | Status terbaca tanpa hover |
+| **A5** | Cincin di bubble dibuat 180°-simetris (2/4/2/4/2 busur) | Hanya bubble, bukan HUD |
+| **A6** | Bubble menjepret ke tengah / ke margin 24 px saat dilepas | Menghormati posisi pilihan pengguna |
+| **A7** | Ikon tray dua garis cermin | Mengganti huruf “J” yang asimetris |
 | **A1** | `hud` dan `bubble` dihapus dari `UI_MODES` | 8 berkas tes, i18n, tray, `--hidden`/`--show` |
-| **A3** | Wajah melayang dihapus | Status hanya dari tray |
 
-Urutan: **A2 → A4 → A1 → A3**.
+Urutan: **A2 → A5 → A6 → A4 → A1**. **A3 dicabut** — wajah melayang tetap ada atas keputusan Anda.
+
+## Simetris — apa yang sebenarnya tidak simetris
+
+Dua hal berbeda, dan keduanya nyata:
+
+1. **Posisi.** `_place()` memakai margin 24 px dari sudut kanan bawah, jadi bubble memang tidak
+   pernah di tengah. `_on_release()` tidak menjepret apa pun, sehingga melepas bubble dekat
+   tengah meninggalkannya beberapa piksel melenceng.
+2. **Gambar.** Cincin HUD punya lima baris busur dengan `count` 2 / 3 / 1 / 4 / 2
+   (`ui/hud_canvas.py:431-435`). Hanya `count` **genap** yang otomatis simetris terhadap pusat;
+   baris 3 dan 1 tidak. Artboard 5 memperlihatkan keduanya berdampingan.
 
 ### Usulan jendela (ditangguhkan selama ambient-only)
 
