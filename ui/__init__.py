@@ -16,7 +16,10 @@ WHAT IS WHERE, AND WHAT THAT MEANS FOR YOU
     ui/theme.py    the palette (`C`) and the accent code — the only writer
     ui/metrics.py  the sampler thread: CPU, memory, network, GPU, temperature
     ui/overlays.py the setting panels, and the labels they translate
-    ui/window.py   the widgets and the window (still large; that is the next job)
+    ui/metric_bar.py, ui/drop_zone.py, ui/camera_preview.py, ui/setup_overlay.py
+                   the widgets that only ever needed Qt and their own signal
+    ui/window.py   the window itself, and the widgets that are still entangled
+                   with it (smaller every time; that is the ongoing job)
 
     `ui.C`, `ui.qcol`, `ui.MainWindow`, `ui.JarvisUI`, `ui._metrics` all keep
     working: they are re-exported here, because plugins and main.py written

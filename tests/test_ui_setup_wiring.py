@@ -18,8 +18,10 @@ WHY THIS IS A SOURCE CHECK AND NOT A WIDGET TEST
                            the thing that was missing, and which no amount of
                            careful reading caught the first time.
 
-    When ui/window.py is split further into ui/overlays/, SetupOverlay becomes
-    constructible on its own and this becomes a normal widget test.
+    `SetupOverlay` has since moved to ui/setup_overlay.py and IS constructible
+    on its own — tests/test_ui_split_widgets.py builds one. This file still
+    reads the window, because the bug it covers was in the wiring around the
+    panel: storing it, connecting it, and settling `_ready` when it closes.
 """
 from __future__ import annotations
 
