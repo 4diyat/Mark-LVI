@@ -19,6 +19,8 @@ WHY MOST OF THIS FILE IS ABOUT REJECTION
 """
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from core import deeplink as dl
@@ -425,6 +427,10 @@ def test_the_linux_handler_is_written_where_the_desktop_reads_it(data_home, no_s
     assert any(argv[:2] == ["xdg-mime", "default"] for argv in no_subprocess)
 
 
+@pytest.mark.skipif(os.name == "nt",
+                    reason="POSIX permission bits do not exist on Windows, so "
+                           "chmod cannot take the bit away and the assertion "
+                           "would test nothing")
 def test_the_linux_handler_is_executable(data_home, no_subprocess, tmp_path):
     """A `.desktop` without the bit is one the desktop silently ignores."""
     script = tmp_path / "main.py"
@@ -541,7 +547,10 @@ def test_the_setup_drawer_offers_the_scheme_and_reads_it_back():
 
     from pathlib import Path
     # Read, do not import: `ui/window.py` needs PyQt6, which is absent here.
-    src = (Path(__file__).resolve().parent.parent / "ui" / "window.py").read_text()
+    # Explicit encoding: Windows defaults to cp1252 and `ui/window.py` is
+    # full of glyphs, which is exactly how this test first went red in CI.
+    src = (Path(__file__).resolve().parent.parent / "ui" / "window.py").read_text(
+        encoding="utf-8")
     tree = ast.parse(src)
     names = {n.name: n for n in ast.walk(tree)
              if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
