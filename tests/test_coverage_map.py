@@ -58,6 +58,7 @@ TESTED = {
     "core/audit_log.py":      "tests/test_audit_log.py",
     "core/presence_mode.py":  "tests/test_presence_mode.py",
     "core/action_gate.py":    "tests/test_action_gate.py",
+    "ui/toast_queue.py":      "tests/test_toast_queue.py",
     "core/confirm.py":        "tests/test_confirm.py",
     "core/echo.py":           "tests/test_echo.py",
     "core/hotkey.py":         "tests/test_hotkey.py",
