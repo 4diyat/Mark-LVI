@@ -250,6 +250,29 @@ def _show_bubble(bubble) -> None:
         note_quiet(f"could not show the face — {type(e).__name__}: {e}")
 
 
+def raise_window(shell: "JarvisUI") -> None:
+    """Bring the window up without touching the mode.
+
+    Raises BEFORE `raise_()` on purpose: `summon` also sets `_ambient` and hides
+    the bubble, and `raise_` is the one call a window manager may refuse. Doing
+    the mode change first would leave the shell believing it had summoned a
+    window that is not on screen.
+    """
+    try:
+        shell._win.showMaximized()
+    except Exception:                          # noqa: BLE001
+        raise                                  # the caller reports it
+    bubble = getattr(shell, "_bubble", None)
+    if bubble is not None and bubble.available:
+        _hide_bubble(bubble)
+    shell._ambient = False
+    try:
+        shell._win.raise_()
+        shell._win.activateWindow()
+    except Exception as e:                          # noqa: BLE001
+        note(shell, f"could not raise the window — {type(e).__name__}: {e}")
+
+
 def _stop_bubble(shell) -> None:
     bubble = getattr(shell, "_bubble", None)
     if bubble is None:
@@ -339,6 +362,84 @@ def quit_app(shell: "JarvisUI") -> None:
         if tray is not None:
             tray.stop()
             shell._tray = None
+
+
+def needs_attention(shell: "JarvisUI", why: str) -> bool:
+    """Bring the window out because something is WAITING for the user.
+
+    THE RULE THIS ENFORCES: a surface that blocks must be visible.
+        Ambient mode hides the window, and two things inside it are not
+        decoration — they are the only way to finish what the assistant started:
+
+          * the confirmation banner, for shutdown, restart and anything else
+            irreversible. `core/confirm` holds the action open for 90 seconds
+            and then REFUSES it. Hidden, that is silent: the user is told to
+            confirm something they cannot see, and 90 seconds later nothing has
+            happened for no stated reason.
+          * the setup screen, shown when the API key is rejected. `main.py`
+            waits in `while not self._win._ready` — that is an unbounded wait,
+            so the assistant simply stops answering, forever, with no visible
+            cause.
+
+        Both are worse than the window this mode was supposed to replace. So
+        the mode yields: the window is shown, the banner is on it, and putting
+        it away again is one keystroke or one tray click.
+
+    Returns whether the window was actually raised, so the caller can log the
+    difference between "shown" and "should have been".
+    """
+    # Already on screen: in hud mode the banner simply appears, and raising a
+    # window the user is looking at would move it (showMaximized on a windowed
+    # HUD would also change the mode they were in). Nothing to do.
+    try:
+        if shell._win.isVisible():
+            return True
+    except Exception as e:                          # noqa: BLE001
+        note(shell, f"could not check visibility — {type(e).__name__}: {e}")
+    try:
+        raise_window(shell)
+    except Exception as e:                          # noqa: BLE001
+        note(shell, f"could not show the interface for {why} — "
+                    f"{type(e).__name__}: {e}")
+        return False
+    try:
+        visible = bool(shell._win.isVisible())
+    except Exception as e:                          # noqa: BLE001
+        note(shell, f"could not show the interface for {why} — "
+                    f"{type(e).__name__}: {e}")
+        return False
+    if visible:
+        note(shell, f"The interface opened because {why}. "
+                    "Press Ctrl+Shift+J or use the tray to put it away again.")
+    return visible
+
+
+def window_needs_attention(window, why: str) -> None:
+    """Called by a widget inside the window that is about to BLOCK the user.
+
+    THE SHORT VERSION OF THE RULE, AND WHY IT LIVES HERE
+        Ambient mode hides the window. Anything inside it that waits for the
+        user — the confirmation banner (90 s, then refuses) and the setup screen
+        (unbounded, `while not self._win._ready`) — would then wait invisibly.
+        Both callers want the identical three lines, and `ui/window.py` is at
+        4,245 of a 4,250-line ceiling, so they share this instead of each
+        spelling it out: the ceiling said "extract", and it was right.
+
+    `window` is a `MainWindow`; it reaches its shell through `_shell`. A window
+    built without one (the widget tests do exactly that) is left alone — it is
+    already on screen in those cases by construction.
+    """
+    shell = getattr(window, "_shell", None)
+    if shell is None or window.isVisible():
+        return
+    try:
+        needs_attention(shell, why)
+    except Exception as e:                          # noqa: BLE001
+        try:
+            window.write_log(f"ERR: could not show the interface for {why} — "
+                             f"{type(e).__name__}: {e}")
+        except Exception:                           # noqa: BLE001
+            note_quiet(f"could not show the interface for {why} — {e}")
 
 
 def note(shell: "JarvisUI", text: str) -> None:
