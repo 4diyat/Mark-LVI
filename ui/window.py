@@ -1565,8 +1565,8 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         from ui.notify_row import build_notifications_button
         self._notify_btn = build_notifications_button(
             lay, _row, on_toggled=self._on_notifications_toggled)
-        from ui.file_access_row import build_file_access_button
-        self._file_access_btn = build_file_access_button(lay, _row)
+        from ui.permission_rows import build_permission_rows
+        self._permission_rows = build_permission_rows(lay, _row)
 
         w.adjustSize()
         return w

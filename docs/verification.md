@@ -21,6 +21,7 @@ semua komputer. Hasil uji lokal tidak otomatis menjadi hasil CI atau rilis.
 | Interupsi suara (barge-in) | Palet keputusan murni: kapan memotong, kapan mengabaikan, gema sendiri, jeda, ruang bising, guard belum terkalibrasi; pemanggilan di callback mikrofon dan penekanannya per jawaban | Apakah memotong benar-benar terasa nyaman dengan mikrofon dan speaker sungguhan: berapa lama jeda sebelum berhenti, apakah tersela gema di ruang bergema, dan apakah suara latar memicu pemotongan |
 | Obsidian | Penemuan vault dari `obsidian.json`, penelusuran yang melewati `.obsidian`/`.trash`, pencarian dan kutipan baris, append yang menjaga CRLF, penolakan menimpa, penolakan symlink keluar, uji sumber yang melarang penghapusan | Vault Obsidian **sungguhan** milik pengguna: apakah Obsidian membaca ulang perubahan tanpa konflik, apakah nama catatan dengan spasi/emoji bekerja, dan apakah vault yang disinkronkan (Obsidian Sync/iCloud) tidak bentrok |
 | Akses file penuh | Kebijakan murni: default = home saja, opt-in hanya dari `true` literal, penolakan kredensial (`~/.ssh`, `System32`, penyimpan sandi browser) meski folder induknya diizinkan, penolakan kunci milik aplikasi sendiri, resolusi symlink sebelum pemeriksaan, alasan penolakan, dan uji AST yang memastikan tidak ada tool/plugin yang bisa memanggil `save`/`disable` | Folder **sungguhan** di Windows (`C:\`), macOS (`~/Library`) dan Linux (`/`): apakah folder sistem benar-benar tertolak, apakah reparse point/junction Windows dan symlink OneDrive/Dropbox tidak menyelinap, dan apakah dialog pemilih folder mengembalikan path yang bisa disimpan |
+| Kamera keamanan | Kebijakan murni dan tanpa gambar: default mati, `tick()` tanpa parameter override, hanya `true` literal yang menyalakan, catatan perubahan di memori (bukan disk), deteksi perbedaan dan hold-off, uji AST yang melarang unggahan ke sesi dan penulisan file, serta uji bahwa tidak ada tool/plugin yang bisa menyalakan kamera | Kamera **sungguhan**: apakah lampu perangkat benar-benar padam saat fitur mati, apakah `core/camera_lease.py` berebut perangkat dengan pratinjau langsung dan kontrol tangan, berapa detik untuk membuka/menutup perangkat tiap 20 detik, dan apakah deteksi perbedaan tidak menyala karena kipas, tirai, atau TV |
 
 Fitur kontrol tangan dan order MT5 tetap **eksperimental**. Smoke offscreen
 memverifikasi interaksi yang diprogram, bukan kesesuaian visual, performa nyata,
@@ -223,6 +224,29 @@ perilaku shell yang sebenarnya, dan itu tidak dapat disimulasikan.
       file di luar home. Harus tetap ditolak dan aplikasi tetap bisa dipakai.
 - [ ] Coba minta asisten "memberi dirinya akses ke C:\". Ia tidak punya tool untuk
       itu; jawabannya harus menjelaskan bahwa Anda yang harus menekan tombolnya.
+
+### Kamera keamanan
+
+- [ ] Biarkan **MATI**. Perhatikan lampu kamera (atau indikator privasi OS) selama
+      beberapa menit: harus tetap padam. Ini janji utama fitur ini.
+- [ ] Minta asisten "apa yang berubah?" saat mati. Ia harus menjawab bahwa pemantau
+      mati, dan lampu kamera harus tetap padam.
+- [ ] Nyalakan lewat baris **SECURITY CAMERA**. Lampu kamera akan berkedip tiap
+      ~20 detik — catat berapa lama perangkat terbuka setiap kali (harus < 2 detik).
+- [ ] Lewatkan tangan di depan kamera sekali. Harus muncul **satu** baris di log dan
+      **satu** notifikasi, bukan baris tiap tick. Diam di depan kamera tidak boleh
+      memicu apa pun setelah itu.
+- [ ] Nyalakan kipas angin atau TV di depan kamera selama beberapa menit. Catat
+      apakah ia melaporkan "perubahan" terus-menerus; kalau ya, ambang `_CHANGE_THRESHOLD`
+      (0.18) perlu dinaikkan untuk ruangan itu.
+- [ ] Nyalakan pratinjau kamera JARVIS, lalu biarkan pemantau aktif. Harus ada pesan
+      "kamera sibuk", bukan dua-duanya berebut perangkat.
+- [ ] Minta asisten "nyalakan kamera keamanan". Ia harus menolak dan mengarahkan ke
+      drawer — bukan menyalakannya.
+- [ ] Matikan lagi, lalu cek `config/api_keys.json`: bagian `security_camera` harus
+      **hilang**, bukan bernilai `false`.
+- [ ] Tutup aplikasi, buka lagi: daftar perubahan sebelumnya harus kosong (memang
+      disimpan di memori saja).
 
 ### Remote HTTPS
 

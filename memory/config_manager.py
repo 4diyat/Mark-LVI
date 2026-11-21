@@ -142,6 +142,9 @@ def update_config(mutate) -> bool:
     This is the only function in the codebase that should write api_keys.json.
     """
     with _WRITE_LOCK:
+        # `CONFIG_FILE` is read at CALL time, never captured at import: the
+        # patched-in-tests contract depends on that, and capturing it here
+        # would send a test's throw-away config to the user's real one.
         data = _read_unlocked()
         try:
             out = mutate(data)
