@@ -31,6 +31,7 @@ WHAT IT DELIBERATELY DOES NOT DO
 from __future__ import annotations
 
 from pathlib import Path
+
 from typing import Callable, Mapping
 
 # The menu, in order. Kept as data so the test can assert the items and their
@@ -43,8 +44,16 @@ MENU_ITEMS = (
     ("wake", "Wake up"),
     ("sleep", "Go to sleep"),
     ("settings", "Settings"),
+    ("autostart", "Start with this computer"),
     ("quit", "Quit"),
 )
+
+# The items that are a CHECKBOX rather than a plain action. Only one today, and
+# it is the item whose label lies if it is not: "Start with this computer" next
+# to a tick that is not there is the difference between reading a switch and
+# guessing at one. The tray still decides nothing — the caller supplies
+# `checked` for these keys and gets the toggle back.
+CHECKABLE_ITEMS = frozenset({"autostart"})
 
 
 def icon_path() -> Path:
@@ -70,8 +79,13 @@ class TrayIcon:
     """
 
     def __init__(self, actions: Mapping[str, Callable[[], None]], app=None,
-                 logger: Callable[[str], None] | None = None):
+                 logger: Callable[[str], None] | None = None,
+                 checked: Callable[[str], bool] | None = None):
         self._actions = dict(actions)
+        # Asked once, while the menu is built, for every key in CHECKABLE_ITEMS.
+        # A callable rather than a dict because the answer can change between
+        # two builds of the menu, and the tray must not cache a stale tick.
+        self._checked = checked
         self._app = app
         self._logger = logger
         self._tray = None
@@ -157,7 +171,15 @@ class TrayIcon:
             menu = QMenu()
             for key, label in MENU_ITEMS:
                 action = menu.addAction(label)
-                action.triggered.connect(self._make_handler(key))
+                if key in CHECKABLE_ITEMS:
+                    action.setCheckable(True)
+                    try:
+                        action.setChecked(bool(self._checked(key)) if self._checked else False)
+                    except Exception:              # noqa: BLE001
+                        # A probe that throws must not cost the user the whole
+                        # menu; the tick is simply not set.
+                        action.setChecked(False)
+                action.triggered.connect(self._make_handler(key, action))
 
             tray = QSystemTrayIcon(icon, app)
             tray.setToolTip(self._tooltip())
@@ -211,13 +233,21 @@ class TrayIcon:
 
     # ── internals ────────────────────────────────────────────────────────────
 
-    def _make_handler(self, key: str):
+    def _make_handler(self, key: str, action=None):
         def _fire(*_args) -> None:
+            # A CHECKABLE action has already flipped its own tick by the time
+            # this runs, and Qt's default position is "it worked". It may not
+            # have: a registry write can be refused, a LaunchAgent folder can
+            # be unwritable. So for those items the callback's return value is
+            # what the tick is set to — `core.autostart.enable/disable` report
+            # the truth by reading the entry back.
             cb = self._actions.get(key)
             if cb is None:
                 return
             try:
-                cb()
+                result = cb()
+                if action is not None and key in CHECKABLE_ITEMS and isinstance(result, bool):
+                    action.setChecked(result)
             except Exception as e:                  # noqa: BLE001
                 # A failing menu item must not take the icon down with it — the
                 # icon is how the user gets back to a working interface. Said
@@ -226,6 +256,8 @@ class TrayIcon:
                 # The TYPE as well as the message: an exception with a bare
                 # message ("no", "None") is what makes a log line useless.
                 self._note(f"the {key!r} menu item failed — {type(e).__name__}: {e}")
+                if action is not None and key in CHECKABLE_ITEMS:
+                    action.setChecked(False)      # never show a tick for a failure
         return _fire
 
     def _on_activated(self, reason) -> None:

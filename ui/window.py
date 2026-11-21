@@ -2285,86 +2285,50 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
     # ── Auto-start ──────────────────────────────────────────────────────────────
 
     def _check_autostart(self) -> bool:
-        """Returns True if auto-start is currently registered on this OS."""
-        try:
-            if _OS == "Windows":
-                import winreg
-                key = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
-                    r"Software\Microsoft\Windows\CurrentVersion\Run", 0, winreg.KEY_READ)
-                try:
-                    winreg.QueryValueEx(key, "JARVIS_AI")
-                    return True
-                except FileNotFoundError:
-                    return False
-                finally:
-                    winreg.CloseKey(key)
-            elif _OS == "Darwin":
-                return (Path.home() / "Library" / "LaunchAgents"
-                        / "com.jarvis.assistant.plist").exists()
-            else:
-                return (Path.home() / ".config" / "autostart" / "jarvis.desktop").exists()
-        except Exception:
-            return False
+        """Whether auto-start is registered AND would actually start something.
+
+        The whole three-OS branch that used to be here is `core/autostart.py`
+        now, for one reason: it computed the program path from `__file__`,
+        which is this file — `ui/main.py`, a path that has never existed. The
+        write always succeeded and the launch never did, on all three
+        platforms, invisibly until the next login. The path comes from the
+        shell now (main.py records the file it was run as), and a `broken`
+        entry — registered, pointing at nothing — reads as off.
+        """
+        from ui import lifecycle
+        state = lifecycle.autostart_state()
+        return bool(state["enabled"]) and not state["broken"]
 
     def _toggle_autostart(self):
-        currently_on = self._check_autostart()
+        from ui import lifecycle
         try:
-            script = str(Path(__file__).resolve().parent / "main.py")
-            if _OS == "Windows":
-                import winreg
-                reg = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
-                    r"Software\Microsoft\Windows\CurrentVersion\Run", 0, winreg.KEY_ALL_ACCESS)
-                if currently_on:
-                    winreg.DeleteValue(reg, "JARVIS_AI")
-                else:
-                    pythonw = Path(sys.executable).parent / "pythonw.exe"
-                    exe = str(pythonw if pythonw.exists() else sys.executable)
-                    winreg.SetValueEx(reg, "JARVIS_AI", 0, winreg.REG_SZ,
-                                      f'"{exe}" "{script}"')
-                winreg.CloseKey(reg)
-            elif _OS == "Darwin":
-                plist_dir = Path.home() / "Library" / "LaunchAgents"
-                plist_dir.mkdir(parents=True, exist_ok=True)
-                plist = plist_dir / "com.jarvis.assistant.plist"
-                if currently_on:
-                    plist.unlink(missing_ok=True)
-                else:
-                    plist.write_text(
-                        '<?xml version="1.0" encoding="UTF-8"?>\n'
-                        '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
-                        '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
-                        '<plist version="1.0"><dict>\n'
-                        '  <key>Label</key><string>com.jarvis.assistant</string>\n'
-                        '  <key>ProgramArguments</key><array>\n'
-                        f'    <string>{sys.executable}</string>\n'
-                        f'    <string>{script}</string>\n'
-                        '  </array>\n'
-                        '  <key>RunAtLoad</key><true/>\n'
-                        '</dict></plist>\n'
-                    )
-            else:
-                desk_dir = Path.home() / ".config" / "autostart"
-                desk_dir.mkdir(parents=True, exist_ok=True)
-                desk = desk_dir / "jarvis.desktop"
-                if currently_on:
-                    desk.unlink(missing_ok=True)
-                else:
-                    desk.write_text(
-                        "[Desktop Entry]\n"
-                        f"Name={self._assistant_name}\n"
-                        f"Exec={sys.executable} {script}\n"
-                        "Type=Application\nTerminal=false\n"
-                        "X-GNOME-Autostart-enabled=true\n"
-                    )
-            enabled = not currently_on
-            self._update_autostart_btn(enabled)
-            self._log.append_log(
-                f"SYS: Auto-start {'enabled' if enabled else 'disabled'}.")
-        except Exception as e:
+            enabled = lifecycle.toggle_autostart(self._shell)
+        except Exception as e:                  # noqa: BLE001 — it runs from a button
             self._log.append_log(f"ERR: Auto-start failed — {e}")
+            return
+        self._update_autostart_btn(enabled)
 
     def _update_autostart_btn(self, enabled: bool):
         if not hasattr(self, '_autostart_btn'):
+            return
+        try:
+            from ui import lifecycle
+            broken = lifecycle.autostart_state()["broken"]
+        except Exception:                       # noqa: BLE001 — cosmetics only
+            broken = False
+        if broken and not enabled:
+            # The one state worth shouting about: an entry exists, so the user
+            # believes auto-start is on, and it points at a file that is gone.
+            # This was the real state on every platform for the whole life of
+            # the old toggle, and nothing ever said so.
+            self._autostart_btn.setText(_t("ui.autostart.broken"))
+            self._autostart_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background: #1a0d00; color: {C.ACC};
+                    border: 1px solid {C.ACC}; border-radius: 3px;
+                }}
+                QPushButton:hover {{ background: #221200; }}
+            """)
             return
         if enabled:
             self._autostart_btn.setText(_t("ui.autostart.on"))
@@ -3264,6 +3228,9 @@ class JarvisUI:
         self._notifier = None
         self._face_path = face_path
         self._ambient = False
+        # Which file to launch at login. `main.py` overwrites this with its own
+        # path; the default is only so a test double is never None.
+        self._program_path = ""
         # The window's closeEvent has to be able to tell "put it away" from
         # "quit", and only this object knows whether a tray exists. It reaches
         # back through this one attribute rather than being handed a callback

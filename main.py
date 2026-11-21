@@ -3033,6 +3033,11 @@ def main():
     if _LOG_PATH:
         print(f"[JARVIS] Log: {_LOG_PATH}")
     ui = JarvisUI("face.png")
+    # The file to launch at login, recorded here because this is the only place
+    # that knows it. `ui/window.py` used to derive it from `__file__` and got
+    # `ui/main.py` — a path that has never existed, registered silently by the
+    # auto-start toggle on every platform and failing at the next login.
+    ui._program_path = str(Path(__file__).resolve())
 
     def runner():
         ui.wait_for_api_key()

@@ -29,6 +29,8 @@
   "ui.wake.minutes": "menit",
   "ui.autostart.on": "◉  AUTOSTART: AKTIF",
   "ui.autostart.off": "◉  AUTOSTART: MATI",
+  "tray.autostart": "Jalankan saat komputer menyala",
+  "ui.autostart.broken": "◉  AUTOSTART: RUSAK",
   "ui.brief.on": "☀  RINGKASAN PAGI: AKTIF",
   "ui.brief.off": "☀  RINGKASAN PAGI: MATI",
   "ui.mic.muted": "🔇  MIKROFON BISU",

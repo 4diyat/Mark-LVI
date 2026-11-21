@@ -69,6 +69,7 @@ TESTED = {
     "core/lazyimport.py":     "tests/test_lazyimport.py",
     "core/logbook.py":        "tests/test_logbook.py",
     "core/platform_support.py": "tests/test_platform_support.py",
+    "core/autostart.py":      "tests/test_autostart.py",
     "memory/config_manager.py": "tests/test_config.py",
     "memory/memory_manager.py": "tests/test_memory.py",
 }

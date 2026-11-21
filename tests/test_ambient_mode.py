@@ -52,14 +52,38 @@ class _Signal:
 
 
 class _Action:
+    """Mirrors the QAction API `ui/tray.py` uses — including the checkable half.
+
+    A stub that only knows `text()` and `triggered` passes for every menu that
+    is a list of verbs, and fails the moment one of them is a SWITCH. The
+    auto-start item is a switch, and Qt's own behaviour is copied here: a
+    checkable action flips its state before `triggered` fires.
+    """
+
     def __init__(self, text):
         self._text = text
         self.triggered = _Signal()
+        self._checkable = False
+        self._checked = False
 
     def text(self):
         return self._text
 
+    def setCheckable(self, value):
+        self._checkable = bool(value)
+
+    def isCheckable(self):
+        return self._checkable
+
+    def setChecked(self, value):
+        self._checked = bool(value)
+
+    def isChecked(self):
+        return self._checked
+
     def fire(self):
+        if self._checkable:
+            self._checked = not self._checked     # Qt does this before the signal
         self.triggered.emit()
 
 
@@ -162,6 +186,11 @@ def tray_module(monkeypatch):
     return _install_tray_qt(monkeypatch)
 
 
+def _menu_label(module, key: str) -> str:
+    """The label `MENU_ITEMS` gives a key, so a reworded item does not break a test."""
+    return dict(module.MENU_ITEMS)[key]
+
+
 # ── the tray itself ───────────────────────────────────────────────────────
 
 def test_the_icon_reports_available_once_it_is_on_screen(tray_module):
@@ -243,6 +272,57 @@ def test_a_left_click_summons_and_a_right_click_does_not(tray_module):
     assert calls == ["show"]
     icon.activated.emit(2)                        # Context — Qt opens the menu
     assert calls == ["show"], "a right click must not also summon a window"
+
+
+def test_the_autostart_item_is_a_switch_that_shows_the_real_state(tray_module):
+    """The tick is only worth drawing if it is read from disk, not remembered.
+
+    `checked` is a CALLABLE precisely so the menu can be built again after the
+    setting changes; caching it in the tray would show yesterday's answer.
+    """
+    asked = []
+
+    def _checked(key):
+        asked.append(key)
+        return True
+
+    tray = tray_module.TrayIcon({}, checked=_checked)
+    assert tray.start() is True
+    assert asked == ["autostart"], "exactly the checkable item should be asked"
+    action = next(a for a in _Tray.created[-1].menu.actions
+                  if a.text() == _menu_label(tray_module, "autostart"))
+    assert action.isCheckable() is True
+    assert action.isChecked() is True
+
+
+def test_a_switch_whose_callback_fails_is_not_left_ticked(tray_module):
+    """Qt flips the tick before the callback runs; a failed toggle must flip back.
+
+    A tick that says "on" over a registry write that was refused is the exact
+    class of lie this whole change set out to remove.
+    """
+    def _boom():
+        raise OSError("registry refused")
+
+    tray = tray_module.TrayIcon({"autostart": _boom}, checked=lambda key: False)
+    assert tray.start() is True
+    action = next(a for a in _Tray.created[-1].menu.actions
+                  if a.text() == _menu_label(tray_module, "autostart"))
+    action.fire()
+    assert action.isChecked() is False, "a failed toggle must not stay ticked"
+    assert tray.notes, "and it must say so somewhere"
+
+
+def test_a_switch_reports_what_the_callback_actually_did(tray_module):
+    """The callback's return value wins, because it read the state back."""
+    tray = tray_module.TrayIcon({"autostart": lambda: False},
+                                checked=lambda key: True)
+    assert tray.start() is True
+    action = next(a for a in _Tray.created[-1].menu.actions
+                  if a.text() == _menu_label(tray_module, "autostart"))
+    action.fire()
+    assert action.isChecked() is False, (
+        "the toggle tried, and reported back that it is NOT on")
 
 
 def test_the_tooltip_follows_the_assistant_state(tray_module):
