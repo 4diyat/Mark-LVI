@@ -17,6 +17,7 @@ semua komputer. Hasil uji lokal tidak otomatis menjadi hasil CI atau rilis.
 | Provider suara, mikrofon & speaker | Tes logika dan mock; pilihan perangkat | Perangkat audio, driver, privasi dan koneksi provider yang dipakai |
 | Plugin dan layanan eksternal | Discovery/manifest dan tes plugin menggunakan fixture/mock | Kredensial, perubahan API, izin, kuota, jaringan dan akun yang dipakai |
 | Integrasi OS (auto-start, `jarvis://`, identitas aplikasi) | Format entri Windows/LaunchAgent/`.desktop`, quoting path berspasi, round-trip tulis-baca, parser `jarvis://` dan penolakannya, urutan pemasangan identitas; registry Windows diuji lewat shell palsu | Klik `jarvis://` sungguhan, grup dan ikon taskbar Windows, entri login setelah restart, dock/`StartupWMClass` Linux, dialog "buka dengan" macOS |
+| Riwayat percakapan | Penulisan/format JSONL, batas ukuran dan retensi, baris terpotong, pembersihan per hari, tool `recall_history` dengan argumen aneh | Isi transkrip dari sesi suara nyata: apakah setiap giliran benar-benar tercatat, dan apakah pertanyaan "tadi kita bicarakan apa" dijawab dari transkrip, bukan dari memori |
 
 Fitur kontrol tangan dan order MT5 tetap **eksperimental**. Smoke offscreen
 memverifikasi interaksi yang diprogram, bukan kesesuaian visual, performa nyata,
@@ -155,6 +156,19 @@ perilaku shell yang sebenarnya, dan itu tidak dapat disimulasikan.
       Ulangi di Wayland dan catat apa yang memang tidak didukung.
 - [ ] **macOS.** Setelah `jarvis://` didaftarkan, pastikan dialog "buka dengan"
       menyebut J.A.R.V.I.S, dan bundle di `~/Applications` memakai ikon aplikasi.
+
+### Riwayat percakapan
+
+- [ ] Lakukan satu percakapan suara nyata (minimal 3 giliran), lalu buka
+      `logs/history/YYYY-MM-DD.jsonl` dengan editor teks: setiap giliran harus
+      ada, satu baris per giliran, dan teksnya sama dengan yang tampil di HUD.
+- [ ] Tanya "tadi kita bicarakan apa" pada sesi **baru** dan pastikan jawabannya
+      berasal dari transkrip. Ini menguji `recall_history`, bukan memori.
+- [ ] Hentikan JARVIS paksa (kill) saat sedang berbicara, lalu buka filenya:
+      baris terakhir boleh rusak, tapi giliran sebelumnya harus tetap utuh.
+- [ ] Periksa ukuran folder dan pastikan pemangkasan 30 hari berjalan sesuai
+      yang tertulis, serta bahwa menghapus file hari itu tidak membuat aplikasi
+      gagal start.
 
 ### Remote HTTPS
 

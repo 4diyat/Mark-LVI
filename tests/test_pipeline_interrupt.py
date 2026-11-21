@@ -1,6 +1,7 @@
 """Local interrupt barriers separate cancelled output from the next user turn."""
 import ast
 import asyncio
+import traceback
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -64,6 +65,12 @@ def _main_methods():
              and n.name in ('_receive_audio', '_interrupt_on_loop')]
     ns = {'asyncio': asyncio, 'playback_buffer': playback_buffer, 'speech_sync': speech_sync,
           '_clean_transcript': lambda text: text, '_is_repeat_chunk': lambda *_: False,
+          # The method is exec'd out of main.py, so it sees exactly the
+          # globals given here — every module-level name it uses must be one of
+          # them. `keep_turn` is the transcript writer; `traceback` was already
+          # missing and only ever surfaced as a NameError raised from inside
+          # the except block, which hid the real error.
+          'keep_turn': lambda role, text: None, 'traceback': traceback,
           '_REPEAT_MIN': 5}
     exec(compile(ast.Module(body=nodes, type_ignores=[]), str(source), 'exec'), ns)
     return ns

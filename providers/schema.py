@@ -91,6 +91,7 @@ CORE_TOOLS: tuple[str, ...] = (
     "screen_process",
     "save_memory",
     "recall_memory",
+    "recall_history",
     "undo",
     "reminder",
     "video_player",

@@ -50,11 +50,13 @@ import numpy as np
 from google import genai
 from google.genai import types
 from ui import JarvisUI
+from core.history import keep_turn
 from memory.memory_manager import (
     load_memory, update_memory, format_memory_for_prompt,
     save_session_summary, pop_last_session,
     set_trim_notifier,
 )
+
 
 # The file-backed tools (open_app, web_search, browser_control, …) are no longer
 # imported or declared here — they self-describe via a TOOL dict in their own
@@ -534,6 +536,35 @@ TOOL_DECLARATIONS = [
                         "Keyword to search for — a name, a topic, a category "
                         "(e.g. 'ayse', 'coffee', 'projects'). "
                         "Leave empty to list everything stored."
+                    ),
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "recall_history",
+        "description": (
+            "Read back what was actually said, recently — the transcript, not "
+            "the memory. Call this when the user refers to something from "
+            "earlier ('what did we talk about', 'the thing I asked before', "
+            "'the file from yesterday') and it is not in this conversation. "
+            "This is a local file read: instant, free, no network. "
+            "It returns what was SAID, never stored facts — for those use "
+            "recall_memory instead."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "turns": {
+                    "type": "INTEGER",
+                    "description": "How many recent turns to read back (default 20, max 200).",
+                },
+                "days": {
+                    "type": "INTEGER",
+                    "description": (
+                        "How many days back to include (default 1 = today only). "
+                        "Use 2-3 for 'yesterday' or 'the other day'."
                     ),
                 },
             },
@@ -2008,6 +2039,7 @@ class JarvisLive:
                                 self._last_out_logged = ""   # new exchange
                                 self.ui.write_log(f"You: {full_in}")
                                 self._session_log.append(f"User: {full_in}")
+                                keep_turn("user", full_in)
                                 if self._dashboard:
                                     asyncio.create_task(self._dashboard.broadcast({
                                         "type": "log", "speaker": "user",
@@ -2027,6 +2059,7 @@ class JarvisLive:
                                 self._last_out_logged = full_out
                                 self.ui.write_log(f"{self._asst_name}: {full_out}")
                                 self._session_log.append(f"{self._asst_name}: {full_out}")
+                                keep_turn("assistant", full_out)
                                 if self._dashboard:
                                     asyncio.create_task(self._dashboard.broadcast({
                                         "type": "log", "speaker": "jarvis",
