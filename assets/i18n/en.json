@@ -647,5 +647,8 @@
   "ui.iface.hint": "Ambient hides the window: JARVIS lives in the tray and answers by voice until you summon it.",
   "ui.iface.unavailable": "This desktop has no notification area, so the window has to stay.",
   "ui.iface.saved": "SYS: Interface mode — {mode}. Takes effect now.",
-  "ui.iface.bubble": "🫧  INTERFACE: FACE ON DESKTOP"
+  "ui.iface.bubble": "🫧  INTERFACE: FACE ON DESKTOP",
+  "ui.notify.on": "🔔  NOTIFICATIONS: ON",
+  "ui.notify.off": "🔕  NOTIFICATIONS: OFF",
+  "ui.notify.hint": "In ambient mode, show a desktop banner when an answer arrives. Silent while the window is on screen."
 }

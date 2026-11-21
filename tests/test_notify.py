@@ -297,3 +297,60 @@ def test_notifications_can_be_switched_off(isolated_config):
     assert isolated_config.get_desktop_notifications() is True   # default on
     assert isolated_config.save_desktop_notifications(False) is True
     assert isolated_config.get_desktop_notifications() is False
+
+
+# ── the row that makes the setting reachable ──────────────────────────────
+
+def test_the_notification_row_toggles_the_saved_setting(isolated_config):
+    """A setting nobody can reach is the same as no setting.
+
+    The button lives in `ui/notify_row.py` rather than on `MainWindow` because
+    adding it there took `ui/window.py` past its ceiling.
+    """
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "notify_row", ROOT / "ui" / "notify_row.py")
+    module = importlib.util.module_from_spec(spec)
+
+    # The module imports PyQt6 and theme at module scope; the policy under test
+    # is the save/repaint pair, so those two are stubbed rather than installed.
+    import types
+    gui = types.ModuleType("PyQt6.QtGui")
+    gui.QFont = lambda *a, **k: None
+    widgets = types.ModuleType("PyQt6.QtWidgets")
+    widgets.QPushButton = type("QPushButton", (), {"setStyleSheet": lambda s, v: None,
+                                                   "setText": lambda s, v: None,
+                                                   "setToolTip": lambda s, v: None,
+                                                   "setFont": lambda s, v: None})
+    saved = {name: sys.modules.get(name) for name in ("PyQt6", "PyQt6.QtGui",
+                                                      "PyQt6.QtWidgets", "ui.theme")}
+    # A fake `ui.theme` rather than the real one: it imports the whole PyQt6
+    # colour stack, and this test is about the save/repaint pair.
+    theme = types.ModuleType("ui.theme")
+    theme.C = types.SimpleNamespace(GREEN="#0f0", GREEN_D="#080", TEXT="",
+                                    TEXT_DIM="", WHITE="", BORDER="", BORDER_B="")
+    sys.modules.update({"PyQt6": types.ModuleType("PyQt6"),
+                        "PyQt6.QtGui": gui, "PyQt6.QtWidgets": widgets,
+                        "ui.theme": theme})
+    spec.loader.exec_module(module)
+    try:
+        button = module.QPushButton()
+        assert isolated_config.get_desktop_notifications() is True
+        assert module.toggle(button) is False
+        assert isolated_config.get_desktop_notifications() is False
+        seen = []
+        assert module.toggle(button, on_toggled=seen.append) is True
+        assert seen == [True], "the caller was not told what the new value was"
+    finally:
+        for name, value in saved.items():
+            if value is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = value
+
+
+def test_the_row_is_built_from_the_drawers_own_helper():
+    """`row_factory` is passed in, not imported: it carries the drawer's font and
+    padding, and a second copy here would let the two drift apart."""
+    source = (ROOT / "ui" / "notify_row.py").read_text(encoding="utf-8")
+    assert "row_factory(QPushButton())" in source
