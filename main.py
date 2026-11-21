@@ -67,6 +67,7 @@ from memory.memory_manager import (
 from core import deeplink as _deeplink
 from core import outcome
 from core import playback_buffer
+from core import session_policy as _session_policy
 from core import speech_sync
 from core.action_loader import strip_meta
 from actions.screen_processor  import _capture_camera, _capture_pointed_screen, _capture_screen
@@ -2978,78 +2979,60 @@ class JarvisLive:
                 print(f"[JARVIS] Error ({type(e).__name__}): {e}")
                 traceback.print_exc()
 
-                # Out of quota, or this model is not available to this key —
-                # step down the ladder and reconnect straight away. This is the
-                # difference between "JARVIS is quieter today" and "JARVIS does
-                # not start today": one model means one daily limit, and the
-                # limit always arrives mid-conversation.
-                if _gemini.note_live_failure(live_model, err_str):
-                    nxt = _gemini.live_model()
-                    self.ui.write_log(
-                        f"SYS: Switching to {nxt.split('/')[-1]} — the previous "
-                        f"model is out of quota."
-                        if nxt != live_model else
-                        "SYS: Every live model is rate-limited — retrying.")
-                    self._conn_backoff = 0 if nxt != live_model else 15
-                    if nxt == live_model:
-                        await asyncio.sleep(self._conn_backoff)
+                # ── what to do about it ───────────────────────────────────
+                # ONE decision, taken in `core/session_policy.py` and tested
+                # there without a session, a network or a model. This block used
+                # to be five stacked `if`s whose ORDER was load-bearing and
+                # invisible: quota before network meant a transient timeout
+                # could be read as an exhausted quota, step the model ladder
+                # down, and leave the user on the last rung all day.
+                quota_next = (
+                    _gemini.live_model()
+                    if _gemini.note_live_failure(live_model, err_str) else "")
+                verdict = _session_policy.decide(_session_policy.Failure(
+                    message=err_str,
+                    tuned=self._tuned_live,
+                    proactive=self._enhanced_live,
+                    live_model=live_model,
+                    previous_backoff=self._conn_backoff,
+                    quota_laddered_by=("" if quota_next in ("", live_model)
+                                       else quota_next),
+                ))
+                if verdict.note:
+                    self.ui.write_log(verdict.note)
+
+                if verdict.kind == _session_policy.LADDER_STEP:
+                    self._conn_backoff = verdict.delay
+                    if verdict.must_sleep:
+                        await asyncio.sleep(verdict.delay)
                     continue
 
-                # Turn-taking / media / thinking knobs rejected by the server
-                # (preview API drift) — drop them first, because they are the
-                # newest fields and the cheapest to lose. Proactive audio is
-                # tried again on the next pass if the error persists.
-                if self._tuned_live and (
-                    "INVALID_ARGUMENT" in err_str
-                    or "Unknown name" in err_str
-                    or "unexpected keyword" in err_str
-                    or "realtime_input" in err_str.lower()
-                    or "media_resolution" in err_str.lower()
-                    or "thinking" in err_str.lower()
-                ):
+                if verdict.kind == _session_policy.DROP_TUNING:
                     self._tuned_live = False
                     print("[JARVIS] Live tuning rejected — reconnecting without it.")
                     continue
 
-                # Proactive audio rejected by the server (preview API drift) —
-                # drop it and reconnect with the plain config.
-                if self._enhanced_live and (
-                    "INVALID_ARGUMENT" in err_str
-                    or "proactiv" in err_str.lower()
-                    or "Unknown name" in err_str
-                    or "unexpected keyword" in err_str
-                ):
+                if verdict.kind == _session_policy.DROP_PROACTIVE:
                     self._enhanced_live = False
-                    self.ui.write_log(
-                        "SYS: Proactive audio unavailable — reconnecting without it."
-                    )
                     continue
 
-                # Invalid API key — stop hammering the API, prompt re-configuration
-                if _is_invalid_api_key(err_str):
-                    self.ui.write_log("ERR: API key invalid — please re-enter your key.")
+                if verdict.kind == _session_policy.NEEDS_KEY:
                     self.ui.set_state("SLEEPING")
                     self.ui.prompt_reconfig()
                     while not self.ui._win._ready:
                         await asyncio.sleep(1)
                     print("[JARVIS] New API key saved — reconnecting...")
-                    _conn_backoff = 3
+                    self._conn_backoff = verdict.delay
                     continue
 
-                # Network / timeout errors — log clearly and back off
-                is_net_err = any(k in err_str for k in (
-                    "TimeoutError", "timed out", "getaddrinfo", "CancelledError",
-                    "ConnectionRefusedError", "OSError", "Cannot connect",
-                ))
-                if is_net_err:
-                    _conn_backoff = min(getattr(self, "_conn_backoff", 3) * 2, 60)
-                    self._conn_backoff = _conn_backoff
+                # BACKOFF: transient, or an error nobody recognises. Never a
+                # ladder step — one unknown error must not cost the user their
+                # model for the day.
+                self._conn_backoff = verdict.delay
+                if _session_policy.looks_like_network(err_str):
                     self.ui.write_log(
-                        f"NET: Connection failed — retrying in {_conn_backoff}s. "
-                        "(a VPN may be required)"
-                    )
-                else:
-                    self._conn_backoff = 3
+                        f"NET: Connection failed — retrying in {verdict.delay}s. "
+                        "(a VPN may be required)")
             finally:
                 self.session = None
                 # Only save if there was a real conversation (≥3 turns)

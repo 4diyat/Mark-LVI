@@ -776,6 +776,30 @@ It is held in memory only, deliberately: writing it to disk would make a fresh l
 | *shared* | The last five above also shipped to LIII, LIV and LV at the same time — moving up a Mark never loses them |
 | **LVII+** | ~~Interrupt by voice~~ · ~~conversation history~~ · ~~Obsidian~~ · ~~full file access~~ · security camera |
 | **LVIII** | ~~Floating widgets~~ · ~~bare-hand gestures that reach the OS~~ · ~~floating plugin windows~~ |
+| **LIX** | ~~Reconnect policy as data~~ · ~~a network blip no longer costs you your model~~ · `main.py` → smaller pieces |
+
+**A network blip used to cost you your model for the rest of the day.** The session
+loop's `except` block was five decisions stacked in `if`s, and one of them was
+load-bearing in a way nobody could see: the **quota** check came before the
+**network** check, so a transient timeout arriving while a model was near its
+daily limit read as "out of quota", stepped the model ladder down, and left the
+user on the last rung. The difference between "quieter today" and "does not start
+today" is exactly that mistake.
+
+The decisions now live in `core/session_policy.py` as data: a `Failure` in, a
+`Verdict` out, with the delay, the note for the screen, and whether the model
+ladder should move. It has no imports from the app at all — no UI, no network, no
+`sleep()` — so the reconnect policy, which had **zero tests** because every
+branch needed a live session, is now covered on every commit. The order is
+written down and argued for: a voluntary reconnect first (so a voice change costs
+nothing), an invalid key second (so it stops hammering), quota third — but the
+quota predicate now **refuses to match a bare timeout**, and the ladder's own
+answer is passed *in* rather than guessed, because this module knows the common
+shapes of an error and not the server's whole vocabulary.
+
+`main.py` shrank by 17 lines and, more importantly, its error handling became one
+call and five small reactions to a verdict instead of five predicates that had to
+be read in order to be understood.
 
 ---
 
@@ -825,7 +849,7 @@ perangkat audio, atau MT5/broker yang sebenarnya.
 ```bash
 pip install -r requirements-dev.txt
 ruff check .                 # F + E9 only — the rules whose violations are bugs
-python -m pytest -q          # 1,935 tests, offline, no API key, no display
+python -m pytest -q          # 1,957 tests, offline, no API key, no display
 python -m providers._tests   # the provider engine's own suite (mocks its own services)
 ```
 
