@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
+from core import playback_timing
 from core import playback_buffer, speech_sync
 from providers.engine_pipeline import PipelineEngine
 
@@ -75,8 +76,13 @@ def test_player_schedules_each_caption_with_corresponding_pcm_not_on_receive():
           'sd': SimpleNamespace(RawOutputStream=lambda **kwargs: Stream()),
           'audio_devices': SimpleNamespace(resolve=lambda *_: None), 'get_output_device': lambda: '',
           'RECEIVE_SAMPLE_RATE': 24000, 'CHANNELS': 1, 'CHUNK_SIZE': 1024, '_TAIL_MARGIN': .1,
-          '_VIS_HOP': 480, '_CURSOR_SLACK': .15, '_FIRST_SOUND': 1024 / 24000,
-          '_pcm_visemes': lambda *args, **kwargs: [], '_pcm_level': lambda _: 0.0}
+          '_VIS_HOP': 480,
+          '_pcm_visemes': lambda *args, **kwargs: [], '_pcm_level': lambda _: 0.0,
+              # `_play_audio` reads its schedule rule from core/playback_timing.py
+              # now. The real module is used, not a stub: this test is about the
+              # caption landing on the right PCM, and the schedule is what
+              # decides "right".
+              '_timing': playback_timing}
     exec(compile(ast.Module(body=[node], type_ignores=[]), str(source), 'exec'), ns)
     async def run():
         queue = asyncio.Queue()
