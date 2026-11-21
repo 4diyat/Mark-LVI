@@ -62,6 +62,17 @@ class Support:
                 and self.can_focus_windows)
 
 
+def os_name() -> str:
+    """`platform.system()`, in one place, so callers stop importing `platform`.
+
+    Not a wrapper for the sake of a wrapper: `core/floating.py` takes the OS
+    name as an ARGUMENT so that it stays a pure function, and every caller was
+    importing `platform` itself to produce it. One function means one answer to
+    "which name do we pass", and a test that patches this patches all of them.
+    """
+    return platform.system()
+
+
 def _linux_session() -> str:
     """'wayland', 'x11', or '' when there is no graphical session at all."""
     session = (os.environ.get("XDG_SESSION_TYPE") or "").strip().lower()

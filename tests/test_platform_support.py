@@ -209,3 +209,19 @@ def test_every_note_is_a_field_of_its_own():
     a.notes.append("only mine")
 
     assert b.notes == []
+
+
+def test_os_name_is_the_platforms_answer_in_one_place(monkeypatch):
+    """Every caller that needs the OS name for a pure policy function asks
+    here instead of importing `platform` themselves, so a test that patches
+    this patches all of them at once."""
+    monkeypatch.setattr(platform, "system", lambda: "Plan9")
+    assert ps.os_name() == "Plan9"
+
+
+def test_os_name_is_not_hardcoded_to_one_machine(monkeypatch):
+    """A stub that returned a constant would pass a caller's test and lie to
+    every user on the other two operating systems."""
+    for name in ("Windows", "Darwin", "Linux"):
+        monkeypatch.setattr(platform, "system", lambda name=name: name)
+        assert ps.os_name() == name

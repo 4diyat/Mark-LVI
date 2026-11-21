@@ -51,9 +51,25 @@ from dataclasses import dataclass, field
 # convenient.
 FLOATABLE = {
     "speech_caption": "captions of what the assistant is saying, read-only",
-    "metric_bar": "CPU/memory/network readout, read-only",
-    "camera_preview": "live camera panel, already has its own lease",
-    "hud": "the avatar itself, already floating in ui/face_bubble.py",
+    "metrics": "the CPU/MEM/NET/GPU/TMP column, read-only",
+}
+
+# Names that were in the catalogue at some point and were taken out again, kept
+# so the reason survives the removal. Each was either already a window of its
+# own or could never be one, and offering it in the drawer would have been a
+# button that either does nothing or produces a second copy of something the
+# user already has.
+RETIRED = {
+    "hud": "the avatar is already a window of its own (ui/face_bubble.py): "
+           "floating it from the main window would build a second avatar and "
+           "two animation loops, which is why it is a MODE there, not a float",
+    "camera_preview": "a self-timing overlay that hides itself after six "
+                      "seconds and is positioned by the window on every "
+                      "resize; a window that moves itself is the one thing a "
+                      "floating window may never do",
+    "metric_bar": "one bar is not a panel — five bars are. Floating one from "
+                  "the drawer would have taken CPU out of the column and left "
+                  "a hole, so the unit is the 'metrics' column instead",
 }
 
 # Explicitly not floatable, with the reason. This table is the interesting half:
@@ -121,6 +137,8 @@ def fit(name: str, os_name: str = "", session: str = "") -> Fit:
     name = (name or "").strip().lower()
     if name in NOT_FLOATABLE:
         return Fit(allowed=False, reason=NOT_FLOATABLE[name])
+    if name in RETIRED:
+        return Fit(allowed=False, reason=RETIRED[name])
     if name not in FLOATABLE:
         # Unknown names are refused rather than allowed: a plugin asking for a
         # capability that was never reviewed should not get one by default.
@@ -237,5 +255,5 @@ class State:
         return sorted(self.floating)
 
 
-__all__ = ["FLOATABLE", "NOT_FLOATABLE", "Fit", "Placement", "State",
+__all__ = ["FLOATABLE", "NOT_FLOATABLE", "RETIRED", "Fit", "Placement", "State",
            "clamp", "fit", "place", "platform_note"]
