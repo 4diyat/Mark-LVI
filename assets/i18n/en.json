@@ -29,6 +29,8 @@
   "ui.wake.minutes": "minute(s)",
   "ui.autostart.on": "◉  AUTO-START: ON",
   "ui.autostart.off": "◉  AUTO-START: OFF",
+  "tray.autostart": "Start with this computer",
+  "ui.autostart.broken": "◉  AUTO-START: BROKEN",
   "ui.brief.on": "☀  MORNING BRIEF: ON",
   "ui.brief.off": "☀  MORNING BRIEF: OFF",
   "ui.mic.muted": "🔇  MICROPHONE MUTED",

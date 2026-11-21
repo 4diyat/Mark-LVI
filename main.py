@@ -41,6 +41,7 @@ import time
 import sys
 import traceback
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
@@ -3029,10 +3030,126 @@ class JarvisLive:
             print(f"[JARVIS] Reconnecting in {delay}s...")
             await asyncio.sleep(delay)
 
+@dataclass
+class LaunchOptions:
+    """What the command line asked for, and what it deliberately cannot ask for.
+
+    WHY THIS EXISTS AT ALL
+        Everything in this release is something that starts the app: the tray's
+        "Show JARVIS", a desktop shortcut, auto-start at login, a second
+        double-click. Until now each of those produced the same launch, so a
+        login entry that also opened a full-screen window (the default `hud`
+        mode) covering the desktop was correct only because nobody had thought
+        about the alternative.
+
+        So: a launch can say `--hidden` — start in the tray, whatever `ui_mode`
+        says — and `--show` — come to the front, for a shortcut that means "come
+        and talk to me".
+
+    WHAT IT CANNOT DO
+        Nothing here can choose a mode the user has not got a surface for. A
+        `--hidden` on a first run, with no API key, still gets the window: the
+        setup screen is inside it, and a login entry that hides the only way to
+        enter a key is an install that can never finish. `ui/lifecycle.py`
+        already refuses that, and `start_hidden` is passed down to it rather
+        than overriding it.
+    """
+
+    hidden: bool = False
+    show: bool = False
+
+    @property
+    def force_window(self) -> bool:
+        """Whether the window must be on screen from the first frame."""
+        return self.show and not self.hidden
+
+
+def _parse_args(argv: list[str] | None = None) -> tuple[LaunchOptions, list[str]]:
+    """Split `argv` into this app's flags and what Qt should see.
+
+    Returns `(options, qt_argv)`. Qt is given `argv` with our flags REMOVED,
+    because `QApplication` documents that it may consume or refuse arguments it
+    does not recognise, and an unrecognised flag in `sys.argv` is how a packaged
+    build ends up not starting at all with no message.
+
+    Unknown flags are not this function's business: they stay in `qt_argv` and
+    Qt decides. Silently swallowing an argument the user typed is worse than
+    passing it on to the component that owns it.
+    """
+    raw = list(sys.argv[1:] if argv is None else argv)
+    options = LaunchOptions()
+    keep: list[str] = []
+    for arg in raw:
+        # Both spellings, because Windows users type /hidden about as often as
+        # --hidden and argparse-style tools accept both.
+        flag = arg.replace("/", "--", 1) if arg[:1] == "/" and len(arg) > 1 else arg
+        if flag in ("--hidden", "-H"):
+            options.hidden = True
+        elif flag in ("--show", "-S"):
+            options.show = True
+        else:
+            keep.append(arg)
+    if options.hidden and options.show:
+        # Contradiction. `--hidden` is the safer reading: ending up in the tray
+        # is recoverable in one click, while a window that covers the screen at
+        # login is not something the user asked to have to dismiss.
+        options.show = False
+    return options, keep
+
+
+def _claim_single_instance():
+    """One JARVIS per user, and a second launch means "come to the front".
+
+    WHY THIS IS THE FIRST THING `main()` DOES
+        Every surface this app now has is a way to start it twice: the tray's
+        "Show JARVIS", the desktop shortcut, auto-start at login, and a user
+        who does not see a window because the mode is ambient. Two copies is
+        two Live sessions and two microphones answering the same question,
+        twice, in two voices — and two tray icons, neither of which summons
+        the other.
+
+    WHAT A SECOND LAUNCH DOES INSTEAD
+        Writes a request file and exits 0. The running copy polls for it
+        (`ui/lifecycle.watch_for_another_launch`) and summons itself. Nothing
+        here constructs a window: the cost of a duplicate start should not
+        include paying for a QApplication before finding out you are not
+        wanted.
+
+    Returns the claim on success, or exits the process. Never returns None in
+    the "somebody else is running" case, because continuing would be the bug.
+    """
+    from core import single_instance
+
+    try:
+        return single_instance.acquire(program=str(Path(__file__).resolve()))
+    except single_instance.AlreadyRunning as e:
+        holder = e.holder or {}
+        if single_instance.request_foreground():
+            print(f"[JARVIS] Already running (pid {holder.get('pid', '?')}) — "
+                  "bringing it to the front.")
+        else:
+            # The running copy could not be told. Not a reason to start a
+            # second one, and the user needs to know the two facts that let
+            # them fix it: there is one already, and where its lock is.
+            print(f"[JARVIS] Already running (pid {holder.get('pid', '?')}). "
+                  f"If it is not visible, quit it from the tray icon, or "
+                  f"delete {single_instance.lock_path()}")
+        raise SystemExit(0)
+
+
 def main():
     if _LOG_PATH:
         print(f"[JARVIS] Log: {_LOG_PATH}")
-    ui = JarvisUI("face.png")
+    options, qt_argv = _parse_args()
+    # Before anything is built: a second copy must not open a microphone, a
+    # window, or a Gemini session on its way to finding out it is redundant.
+    _instance = _claim_single_instance()     # noqa: F841 — held for the process
+    ui = JarvisUI("face.png", launch=options, argv=qt_argv)
+    # The file to launch at login, recorded here because this is the only place
+    # that knows it. `ui/window.py` used to derive it from `__file__` and got
+    # `ui/main.py` — a path that has never existed, registered silently by the
+    # auto-start toggle on every platform and failing at the next login.
+    ui._program_path = str(Path(__file__).resolve())
 
     def runner():
         ui.wait_for_api_key()

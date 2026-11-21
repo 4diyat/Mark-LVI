@@ -31,6 +31,49 @@ if TYPE_CHECKING:                                   # pragma: no cover
     from ui.window import JarvisUI
 
 
+def watch_for_another_launch(shell: "JarvisUI", interval_ms: int = 800) -> None:
+    """Summon the window when a SECOND copy of the app was started and exited.
+
+    `core/single_instance.py` makes a second launch a request — "come to the
+    front" — written to a small file, rather than a second assistant holding
+    the microphone. This is the other half of that: a timer on the Qt thread
+    that notices the request.
+
+    A timer rather than a socket for the reason given in that module: the
+    asking process may be anything, on any of three platforms, and may already
+    be gone. Polling a file costs one `exists()` every 800 ms and cannot fail
+    in a way that keeps a request from being answered.
+
+    Nothing here is started in HUD mode — the window is already on screen, and
+    a request to bring it forward has nothing to do.
+    """
+    try:
+        from PyQt6.QtCore import QTimer
+        from core import single_instance
+    except Exception:                               # noqa: BLE001
+        return
+
+    timer = QTimer(shell._win)
+    timer.setInterval(interval_ms)
+
+    def _check() -> None:
+        try:
+            if single_instance.take_foreground_request():
+                summon(shell)
+        except Exception as e:                      # noqa: BLE001
+            # A poll that raises would stop the timer's usefulness silently.
+            # Reported once, then the timer is left to try again.
+            note(shell, f"could not answer a second launch — {type(e).__name__}: {e}")
+
+    # `timer.timeout` is a SIGNAL on a real QTimer, not a method: it is bound
+    # here for the same reason the tray binds `activated` — a stub that returns
+    # a signal from a call would hide the difference, and this is the one line
+    # where Qt's API shape matters.
+    timer.timeout.connect(_check)
+    timer.start()
+    shell._launch_watch = timer
+
+
 def start_interface(shell: "JarvisUI") -> None:
     """Pick a mode, then either fill the screen or go to the tray.
 
@@ -47,6 +90,21 @@ def start_interface(shell: "JarvisUI") -> None:
     except Exception:                               # noqa: BLE001
         mode = "hud"
 
+    # WHAT THE LAUNCH ITSELF ASKED FOR, and why it can outrank the saved mode
+    # only in one direction.
+    #
+    #     `--hidden` is the login entry talking: start in the tray, whatever the
+    #     user's saved mode is. That is a DOWNGRADE of visibility and it is safe
+    #     in every case the mode already handles, because everything below
+    #     (first run, no tray) still refuses to leave the user with no surface.
+    #
+    #     `--show` is a shortcut meaning "come and talk to me", which is an
+    #     upgrade and is therefore just the ordinary path — it cannot ask for
+    #     anything the mode does not already give.
+    launch = getattr(shell, "_launch", None)
+    if getattr(launch, "hidden", False):
+        mode = "ambient"
+
     # FIRST RUN OUTRANKS THE MODE.
     #
     # The setup screen (API key) is an overlay INSIDE the window. In ambient
@@ -60,7 +118,16 @@ def start_interface(shell: "JarvisUI") -> None:
     # there is something to run headlessly.
     if mode == "hud" or not getattr(shell._win, "_ready", False):
         shell._win.showFullScreen()
+        # `--show` on a HUD install: the window is up, and asking for it to be
+        # in front is the same call the tray makes when the user clicks Show.
+        if getattr(launch, "force_window", False):
+            raise_window(shell)
         return
+
+    # Ambient (or bubble): the window may be hidden, so a second launch is
+    # answered here. Started BEFORE the tray falls back to the window, because
+    # the fallback still leaves the app running as the one instance.
+    watch_for_another_launch(shell)
 
     if not start_tray(shell):
         # No notification area: there is nowhere else to be. See the docstring.
@@ -141,8 +208,9 @@ def start_tray(shell: "JarvisUI") -> bool:
         "wake": lambda: request_wake(shell),
         "sleep": lambda: request_sleep(shell),
         "settings": lambda: summon_settings(shell),
+        "autostart": lambda: toggle_autostart(shell),
         "quit": lambda: quit_app(shell),
-    }, app=shell._app)
+    }, app=shell._app, checked=lambda key: autostart_state()["enabled"])
     if not tray.start():
         # Reported, not swallowed: "the mode you asked for could not be given"
         # is exactly the kind of thing a log is for.
@@ -338,6 +406,87 @@ def note_quiet(text: str) -> None:
 
 
 # ── what the tray menu asks for ───────────────────────────────────────────
+
+def program_path(shell: "JarvisUI") -> str:
+    """The file that auto-start should launch. The one that is actually running.
+
+    NOT derived from `__file__`. The old toggle did that from inside
+    `ui/window.py`, which produced `ui/main.py` — a path that has never
+    existed — on all three platforms, and the failure only showed up at the
+    next login. `main.py` records its own path on the shell at startup; this
+    asks for it and refuses to guess.
+    """
+    path = getattr(shell, "_program_path", "")
+    if not path:
+        raise RuntimeError("the program path was never recorded by main.py")
+    return path
+
+
+def autostart_state() -> dict:
+    """`{"enabled", "script", "broken"}` — read from disk, never remembered."""
+    from core import autostart
+    try:
+        return autostart.status()
+    except Exception as e:                          # noqa: BLE001
+        return {"enabled": False, "script": "",
+                "broken": False, "error": f"{type(e).__name__}: {e}"}
+
+
+def toggle_autostart(shell: "JarvisUI") -> bool:
+    """Turn auto-start on or off, and SAY what happened.
+
+    Returns the new state, which is what the tray's tick is set to — a
+    checkable menu item that flips itself regardless of the outcome is a switch
+    that lies. Every failure is written to the log rather than raised: this runs
+    from a menu, and a menu item that throws looks like a menu item that worked.
+    """
+    from core import autostart
+
+    before = autostart_state()
+    # Three states, not two, and the third is the one the old toggle could not
+    # see: registered but pointing at a file that is gone. Treating that as
+    # "on" leaves a switch that promises a launch that cannot happen; treating
+    # it as "off" and calling `enable` fails on the same missing file. So it is
+    # removed, and said out loud. A stale entry is not something anybody keeps.
+    if before["enabled"] and before["broken"]:
+        try:
+            autostart.disable()
+            note(shell, "Auto-start removed — it pointed at a file that is no "
+                        f"longer there: {before['script']}")
+        except Exception as e:                      # noqa: BLE001
+            note(shell, f"Auto-start failed — {type(e).__name__}: {e}")
+        return False
+
+    was_on = bool(before["enabled"])
+    try:
+        if was_on:
+            autostart.disable()
+            note(shell, "Auto-start disabled.")
+        else:
+            script = program_path(shell)
+            autostart.enable(script, icon=_icon_or_none())
+            note(shell, f"Auto-start enabled — {script}")
+    except Exception as e:                          # noqa: BLE001
+        note(shell, f"Auto-start failed — {type(e).__name__}: {e}")
+
+    after = autostart_state()
+    # The state that gets reported is the state READ BACK. "Enabled" is only
+    # true if an entry exists AND the file it points at exists, which is the
+    # pair of facts the old toggle never checked.
+    if after["broken"]:
+        note(shell, f"Auto-start points at a file that is not there: {after['script']}")
+    return bool(after["enabled"]) and not after["broken"]
+
+
+def _icon_or_none():
+    """The tray icon file, if it exists. A missing icon is not an error."""
+    try:
+        from ui.tray import icon_path
+        path = icon_path()
+        return path if path.exists() else None
+    except Exception:                               # noqa: BLE001
+        return None
+
 
 def request_wake(shell: "JarvisUI") -> None:
     """Tray menu: wake the assistant without a word."""

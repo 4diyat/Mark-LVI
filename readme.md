@@ -557,6 +557,12 @@ The tray icon exists in all three ambient variants, because the face cannot be g
 
 **Desktop notifications when an answer arrives and nobody is looking.** In ambient mode there is otherwise no signal that JARVIS finished — the tray tooltip is the only readout, and nobody watches a tooltip. Three rules keep it from becoming the thing you switch off on day two: it announces once per completed turn (not once per status change — the LISTENING → THINKING → SPEAKING cycle runs dozens of times a minute), it stays quiet while the window is already on screen saying the same thing, and it will not fire twice within 45 seconds. Toggled with **NOTIFICATIONS** in the CONTROLS drawer, or `desktop_notifications: false` in the config.
 
+**Start with this computer — and a switch that tells the truth.** Ambient mode made auto-start worth having, so the tray menu now carries it as a checkbox, not just a button in SETUP. All three platforms are written by `core/autostart.py`: the `Run` key under HKCU on Windows (both paths quoted — `C:\Users\Fatih Makes\…` is the normal case), a `LaunchAgent` with `RunAtLoad` on macOS and deliberately no `KeepAlive`, and a `.desktop` file on Linux whose `Exec=` follows the quoting rules that a bare space in a project path otherwise breaks. The tick is drawn from what is **on disk**, never from what was just written, and an entry that exists while the file it points at does not reads as *off* — or, in SETUP, as **BROKEN**. That last state is not hypothetical: the toggle that shipped before this one derived the launch path from `__file__`, which produced `ui/main.py` on every platform, so every entry it ever wrote pointed at a file that has never existed. It failed at the next login, silently, which is the failure this project keeps having to design against.
+
+**A launch can say which launch it is.** Two flags, and they are the two ends of one question. `--hidden` starts in the tray whatever `ui_mode` says — that is what the auto-start entry passes, because a login entry that fills the screen with a full-screen window before you have done anything is a kiosk. `--show` comes to the front — that is what a clicked desktop shortcut passes, because a person clicking an icon means "come and talk to me". Both are stripped from `argv` before `QApplication` sees it (Qt may consume or refuse arguments it does not recognise, which is how a packaged build fails to start with no message), and `--hidden` can only ever *reduce* visibility: a first run with no API key, or a desktop with no tray, still gets the window, because those are the surfaces that make the app finishable and quittable.
+
+**One JARVIS at a time — and a second launch means "come to the front".** Every surface this release added is a way to start the app twice: the tray's *Show JARVIS*, the desktop shortcut, auto-start at login, and you, not seeing a window because the mode is ambient. Two copies is not two windows — it is two Live sessions and two microphones answering the same question, two sets of automation driving the same mouse, and two identical tray icons neither of which summons the other. So the first thing `main.py` does is take a lock in the per-user state folder (`core/single_instance.py`); a second launch writes a small request file and exits 0, and the running copy polls it and summons itself. The lock records the pid **and that process's start time**, because pids get reused and a lock that outlives a crash must not lock you out for good — a dead or reused pid is taken over automatically. When the holder cannot be *proven* stale it is left alone: refusing to start (and saying which file to delete) is recoverable, while trampling a live lock silently produces the very duplicate this exists to prevent.
+
 **A blocking surface always gets the window back.** Two things inside the interface are not decoration but the only way to finish what the assistant started: the confirmation banner (shutdown, restart, anything irreversible — `core/confirm` holds the action for 90 seconds and then refuses it) and the setup screen shown when an API key is rejected (`main.py` waits for it with no timeout). In ambient mode either one would wait invisibly, so the mode yields: the window comes up, the banner is on it, and `Ctrl+Shift+J` puts it away again.
 
 The window still exists in ambient mode; it is simply not on screen. Everything `main.py` talks to lives on it, so keeping it built means one behaviour for both modes instead of a branch at every call site. Three things had to be true for this not to be a worse experience than a window:
@@ -821,7 +827,7 @@ Mark LVI/
 │   ├── setup_overlay.py      #   first run: an API key, and which OS to assume
 │   ├── camera_preview.py     #   the small window that shows what the camera just saw
 │   ├── lifecycle.py          #   launch, summon, dismiss — the three interface modes
-│   ├── tray.py               #   the notification-area icon: show, wake, sleep, settings, quit
+│   ├── tray.py               #   the notification-area icon: show, wake, sleep, settings, autostart, quit
 │   └── face_bubble.py        #   the always-on-top floating face, and its dragging
 ├── setup.py                  # OS-aware installer (skips wrong-OS dependencies, checks your Python)
 ├── pyproject.toml            # Lint + test configuration (ruff: bugs only, see CONTRIBUTING.md)
@@ -911,6 +917,10 @@ Mark LVI/
 │   ├── lazyimport.py         # Heavy third-party imports paid only if they are used
 │   ├── platform_support.py   # What THIS machine permits — Wayland, macOS permissions —
 │   │                         #   reported to the user and to the model, never guessed at
+│   ├── autostart.py          # Start with the machine: HKCU Run / LaunchAgent / .desktop,
+│   │                         #   read back from disk so the switch cannot lie
+│   ├── single_instance.py    # One assistant per user: a lock with the holder's pid AND
+│   │                         #   start time, and a file a second launch asks through
 │   ├── gemini.py             # One place for every one-shot Gemini call — model ladder, timeouts,
 │   │                         #   cooldowns, and the configured provider as one more rung
 │   ├── prompt.txt            # All prompt wording — {tokens} are filled from the live system at startup
