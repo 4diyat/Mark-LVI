@@ -670,5 +670,8 @@
   "ui.floating_documents.off": "⧉  DOKUMEN MENGAMBANG: {ready} SIAP",
   "ui.floating_documents.on": "⧉  DOKUMEN MENGAMBANG: {n} KELUAR",
   "ui.floating_documents.hint": "Keluarkan window alat yang sedang terbuka (editor kode, editor gambar, panel trading, SSH, browser) dari workspace ke desktop. Konfirmasi order tidak pernah mengambang. Tekan lagi untuk mengembalikan semuanya ke tempat semula.",
-  "ui.floating_documents.none": "Tidak ada window alat yang terbuka untuk dikeluarkan. Buka dulu satu (editor, panel trading, browser), lalu tekan lagi."
+  "ui.floating_documents.none": "Tidak ada window alat yang terbuka untuk dikeluarkan. Buka dulu satu (editor, panel trading, browser), lalu tekan lagi.",
+  "ui.dashboard.on": "▦  DASBOR: AKTIF",
+  "ui.dashboard.off": "▦  DASBOR",
+  "ui.dashboard.hint": "Tampilkan aktivitas asisten di satu papan. Esc untuk keluar."
 }

@@ -670,5 +670,8 @@
   "ui.floating_documents.off": "⧉  FLOAT DOCUMENTS: {ready} READY",
   "ui.floating_documents.on": "⧉  FLOAT DOCUMENTS: {n} OUT",
   "ui.floating_documents.hint": "Take the open tool windows (code editor, image editor, trading panel, SSH, browser) out of the workspace and onto the desktop. The order confirmation never floats. Press again to bring them all back where they were.",
-  "ui.floating_documents.none": "No tool window is open that could float. Open one first (editor, trading panel, browser), then press this again."
+  "ui.floating_documents.none": "No tool window is open that could float. Open one first (editor, trading panel, browser), then press this again.",
+  "ui.dashboard.on": "▦  DASHBOARD: ON",
+  "ui.dashboard.off": "▦  DASHBOARD",
+  "ui.dashboard.hint": "Show what the assistant is doing on one board. Esc leaves it."
 }

@@ -1,634 +1,397 @@
-"""The phone dashboard: what it refuses, and what it tells the browser.
+"""The dashboard layer: one board, entered on purpose, left with everything back.
 
-Every test here corresponds to a way the dashboard was exploitable or
-unhelpful. The routes are exercised through FastAPI's TestClient against a real
-app object — not a mock — so a decorator that stops being applied, or a header
-that stops being set, fails here.
+WHAT THIS IS NOT
+    "Floating widget" already exists here as a WINDOW (`core/floating.py`,
+    `ui/floating_documents.py`). The macOS Dashboard is a PLACE: a single layer
+    that shows the handful of things you glance at, and leaves with everything
+    exactly where it was. The difference decides every rule below:
 
-Needs fastapi (in requirements.txt). On a machine without it the whole module
-skips rather than failing: the app is still runnable there, the dashboard is
-just off. CI runs these in the job that installs the real requirements.
+      * a window is always there, a layer exists only while you are in it;
+      * a window can be behind another window; a layer is in front of
+        everything this program owns;
+      * a window may persist across launches, a layer must never;
+      * a widget may be in the layer or in the workspace — never both.
 """
 from __future__ import annotations
 
-import time
-import uuid
-from unittest import mock
+import ast
+import importlib.util
+import sys
+import types
+from pathlib import Path
 
-import pytest
+from core import dashboard as db
 
-pytest.importorskip("fastapi", reason="dashboard dependencies not installed")
-pytest.importorskip("httpx", reason="TestClient needs httpx")
+ROOT = Path(__file__).resolve().parent.parent
 
-from fastapi.testclient import TestClient  # noqa: E402
 
-import dashboard.server as ds  # noqa: E402
+# ── the catalogue is a decision, not a rule ───────────────────────────────
 
+def test_the_catalogue_shows_things_you_glance_at():
+    """A dashboard shows what you look at. Typing surfaces are refused, and the
+    refusal is the interesting half of the feature."""
+    assert "metrics" in db.DASHBOARD_WIDGETS
+    assert "speech_caption" in db.DASHBOARD_WIDGETS
+    for refused in ("conversation", "input_row", "drawer", "order_dialog",
+                    "code_editor"):
+        assert refused in db.NOT_ON_DASHBOARD, refused
+        assert refused not in db.DASHBOARD_WIDGETS
 
-@pytest.fixture()
-def server(tmp_path, monkeypatch):
-    """A dashboard with its own uploads folder and a fresh one-time key."""
-    monkeypatch.setattr(ds, "UPLOADS_DIR", tmp_path)
-    srv = ds.DashboardServer()
-    srv._uploads_dir = tmp_path
-    # Use the server's own generator rather than re-rolling the length here:
-    # a duplicated magic number is exactly how the login page and the server
-    # drifted apart (8 vs 6) and manual entry became impossible.
-    key = srv.new_key()
-    client = TestClient(srv.app)
-    token = client.post("/login", json={"pin": key}).json()["token"]
-    return srv, client, token, key
 
+def test_a_live_trade_confirmation_can_never_appear_on_the_board():
+    """The single most important refusal: a dashboard must not be able to
+    display, let alone accept, a LIVE acknowledgement."""
+    decision = db.entry("order_dialog")
+    assert decision.allowed is False
+    assert "LIVE acknowledgement" in decision.reason
 
-def _h(token: str) -> dict:
-    return {"Authorization": f"Bearer {token}"}
-
-
-def _ws_auth(ws, token):
-    ws.send_json({"type": "auth", "token": token})
-    assert ws.receive_json() == {"type": "auth_ok"}
 
-
-# ── headers ──────────────────────────────────────────────────────────────────
-
-@pytest.mark.parametrize("path", ["/login", "/"])
-def test_pages_carry_security_headers(server, path):
-    _, client, _, _ = server
-    r = client.get(path)
-    assert r.status_code == 200
-    assert r.headers["x-frame-options"] == "DENY"
-    assert r.headers["x-content-type-options"] == "nosniff"
-    assert r.headers["referrer-policy"] == "no-referrer"
-    assert "frame-ancestors 'none'" in r.headers["content-security-policy"]
-
-
-@pytest.mark.parametrize("path", ["/login", "/"])
-def test_inline_script_nonce_matches_the_policy(server, path):
-    """A nonce in the header that does not match the tag blocks the page.
-
-    This is the failure mode of adding a CSP to a page with an inline script:
-    every layer "present", the dashboard blank. The two must be the same value.
-    """
-    _, client, _, _ = server
-    r = client.get(path)
-    csp = r.headers["content-security-policy"]
-    nonce = csp.split("'nonce-")[1].split("'")[0]
-    assert f'nonce="{nonce}"' in r.text
-    assert "__NONCE__" not in r.text, "the nonce placeholder was never substituted"
-    assert nonce not in ("", "__NONCE__")
-
-
-def test_two_pages_get_different_nonces(server):
-    _, client, _, _ = server
-    def nonce_of(path):
-        csp = client.get(path).headers["content-security-policy"]
-        return csp.split("'nonce-")[1].split("'")[0]
-    assert nonce_of("/") != nonce_of("/")
+def test_an_unknown_widget_is_refused_with_a_sentence():
+    """A plugin asking for a capability nobody reviewed must not get it by
+    default."""
+    decision = db.entry("some_plugin_window")
+    assert decision.allowed is False
+    assert "not a widget this program shows" in decision.reason
 
 
-def test_json_endpoints_get_headers_too(server):
-    """The middleware covers routes added later; a per-route decorator would not."""
-    _, client, token, _ = server
-    r = client.get("/api/devices", headers=_h(token))
-    assert r.headers["x-frame-options"] == "DENY"
-
-
-# ── authentication and scope ─────────────────────────────────────────────────
+def test_every_refusal_explains_itself():
+    """A greyed button with no reason is how a feature looks broken."""
+    for name in db.NOT_ON_DASHBOARD:
+        assert db.entry(name).reason, name
+    assert db.entry("nonsense").reason
 
-def test_commands_need_a_token(server):
-    _, client, _, _ = server
-    assert client.post("/api/command", json={"text": "hi"}).status_code == 401
-    assert client.post("/api/wake").status_code == 401
-    assert client.get("/api/devices").status_code == 401
-    assert client.get("/api/audit").status_code == 401
-
-
-def test_wrong_key_is_refused(server):
-    _, client, _, _ = server
-    r = client.post("/login", json={"pin": "ZZZZZZZZ"})
-    assert r.status_code == 401
-
-
-def test_login_attempts_are_throttled(server):
-    """Six guesses then a wait. There was no limit at all before."""
-    _, client, _, _ = server
-    codes = [client.post("/login", json={"pin": f"AAAAAA{i}"}).status_code
-             for i in range(ds._LOGIN_MAX_TRIES + 2)]
-    assert 429 in codes, codes
-
-
-def test_scope_read_cannot_send_a_command(server):
-    """A paired device may be allowed to watch without being allowed to type."""
-    srv, client, _, _ = server
-    read_tok = f"read-{uuid.uuid4().hex}"
-    now = time.time()
-    with srv._token_lock:
-        srv._tokens[read_tok] = [now, now, ds._SCOPE_READ]
-
-    assert client.get("/api/devices", headers=_h(read_tok)).status_code == 200
-    assert client.post("/api/command", json={"text": "shutdown"},
-                       headers=_h(read_tok)).status_code == 401
-    assert client.post("/api/wake", headers=_h(read_tok)).status_code == 401
-
-
-def test_expired_and_idle_tokens_stop_working(server):
-    """Twelve hours absolute, two hours unused — both clocks, not one."""
-    srv, client, _, _ = server
-    now = time.time()
-    cases = {
-        "expired": [now - ds._TOKEN_TTL_SECONDS - 1, now, ds._SCOPE_COMMAND],
-        "idle":    [now - 60, now - ds._TOKEN_IDLE_SECONDS - 1, ds._SCOPE_COMMAND],
-    }
-    with srv._token_lock:
-        for tok, rec in cases.items():
-            srv._tokens[tok] = rec
-    for tok in cases:
-        assert client.post("/api/command", json={"text": "hi"},
-                           headers=_h(tok)).status_code == 401, tok
-
-
-def test_a_used_token_keeps_working(server):
-    """The idle clock must be refreshed by use, or a page open for two hours dies."""
-    srv, client, token, _ = server
-    with srv._token_lock:
-        srv._tokens[token][1] = time.time() - ds._TOKEN_IDLE_SECONDS + 60
-    assert client.post("/api/command", json={"text": "hi"}, headers=_h(token)).status_code == 200
-    with srv._token_lock:
-        assert time.time() - srv._tokens[token][1] < 5
-
-
-# ── bodies ───────────────────────────────────────────────────────────────────
-
-def test_oversized_command_is_refused(server):
-    """A command is a sentence. 64 KB is not one, and parsing it costs the app."""
-    _, client, token, _ = server
-    r = client.post("/api/command", json={"text": "x" * (ds._MAX_COMMAND_BODY + 10)},
-                    headers=_h(token))
-    assert r.status_code == 413
-
-
-def test_malformed_login_body_is_a_400_not_a_500(server):
-    _, client, _, _ = server
-    r = client.post("/login", content=b"not json",
-                    headers={"Content-Type": "application/json"})
-    assert r.status_code == 400
-
-
-def test_command_text_is_capped(server):
-    srv, client, token, _ = server
-    client.post("/api/command", json={"text": "a" * 10_000}, headers=_h(token))
-    # queued, and shorter than what was sent
-    queued = srv._command_queue.get_nowait()
-    assert len(queued) <= 2000
-
-
-# ── files ────────────────────────────────────────────────────────────────────
-
-def test_upload_name_cannot_escape_the_folder(server, tmp_path):
-    _, client, token, _ = server
-    r = client.post("/api/upload", files={"file": ("../../evil.sh", b"echo hi")},
-                    headers=_h(token))
-    assert r.status_code == 200
-    assert r.json()["name"] == "evil.sh"
-    assert not (tmp_path.parent / "evil.sh").exists()
-    assert (tmp_path / "evil.sh").exists()
-
-
-def test_upload_refused_when_the_folder_is_full(server, tmp_path, monkeypatch):
-    """A per-file cap bounds one request; it says nothing about the folder."""
-    monkeypatch.setattr(ds, "_UPLOAD_QUOTA_MB", 1)
-    (tmp_path / "already.bin").write_bytes(b"0" * (2 * 1024 * 1024))
-    _, client, token, _ = server
-    r = client.post("/api/upload", files={"file": ("x.txt", b"hello")}, headers=_h(token))
-    assert r.status_code == 507
-    assert "full" in r.json()["error"].lower()
-
-
-def test_download_needs_a_token(server, tmp_path):
-    (tmp_path / "a.txt").write_text("secret", encoding="utf-8")
-    _, client, token, _ = server
-    assert client.get("/uploads/a.txt").status_code == 401
-    assert client.get(f"/uploads/a.txt?token={token}").status_code == 401
-    response = client.get("/uploads/a.txt", headers=_h(token))
-    assert response.status_code == 200 and response.text == "secret"
-    assert response.headers["cache-control"] == "no-store"
-    assert client.get("/uploads/a.txt", headers=_h("invalid")).status_code == 401
-    srv = server[0]
-    read_token = f"read-{uuid.uuid4().hex}"
-    with srv._token_lock:
-        srv._tokens[read_token] = [time.time(), time.time(), ds._SCOPE_READ]
-    assert client.get("/uploads/a.txt", headers=_h(read_token)).status_code == 200
-    with srv._token_lock:
-        srv._tokens[read_token][0] = time.time() - ds._TOKEN_TTL_SECONDS - 1
-    assert client.get("/uploads/a.txt", headers=_h(read_token)).status_code == 401
-
-
-def test_old_uploads_are_swept(tmp_path):
-    old = tmp_path / "old.txt"
-    new = tmp_path / "new.txt"
-    old.write_text("x", encoding="utf-8")
-    new.write_text("y", encoding="utf-8")
-    import os
-    past = time.time() - 40 * 86400
-    os.utime(old, (past, past))
-    assert ds._sweep_uploads(tmp_path) == 1
-    assert not old.exists()
-    assert new.exists()
-
-
-# ── audit ────────────────────────────────────────────────────────────────────
-
-def test_actions_are_recorded(server):
-    """"Did my phone send that?" needs an answer that outlives the scrollback."""
-    srv, client, token, _ = server
-    client.post("/api/command", json={"text": "open spotify"}, headers=_h(token))
-    client.post("/api/wake", headers=_h(token))
-    kinds = [e["kind"] for e in client.get("/api/audit", headers=_h(token)).json()["entries"]]
-    assert kinds[:2] == ["command", "wake"]
-    assert any("open spotify" in e["detail"] for e in srv._audit)
-
-
-def test_audit_is_capped(server):
-    srv, client, token, _ = server
-    for i in range(260):
-        client.post("/api/command", json={"text": f"n{i}"}, headers=_h(token))
-    with srv._audit_lock:
-        assert len(srv._audit) <= 200
-
-
-def test_revoke_ends_live_sessions_but_keeps_the_caller(server):
-    srv, client, token, _ = server
-    with srv._token_lock:
-        srv._tokens["other"] = [time.time(), time.time(), ds._SCOPE_COMMAND]
-    r = client.post("/api/revoke-devices", headers=_h(token)).json()
-    assert r["sessions_ended"] >= 1
-    assert client.get("/api/devices", headers=_h(token)).status_code == 200
-    assert client.post("/api/command", json={"text": "hi"},
-                       headers=_h("other")).status_code == 401
-
-
-def test_local_address_logs_when_it_can_only_offer_localhost(caplog):
-    """The QR code saying 127.0.0.1 is the only symptom of a problem here.
-
-    `_local_ip()` tries three methods and used to swallow all three failures
-    with `except: pass`; the caller then shows a link no phone can open, with
-    nothing anywhere saying why. The log line is the difference between "the
-    dashboard is broken" and "this machine is not on a network".
-    """
-    import logging
-
-    from dashboard import server
-
-    with caplog.at_level(logging.DEBUG, logger="dashboard"):
-        with mock.patch.object(server.socket, "socket", side_effect=OSError("no route")), \
-             mock.patch.object(server.socket, "gethostbyname", side_effect=OSError("no dns")), \
-             mock.patch.object(server.socket, "getaddrinfo", side_effect=OSError("no ifaces")):
-            assert server._local_ip() == "127.0.0.1"
-
-    text = caplog.text
-    assert "no LAN address" in text
-    assert "no route" in text or "no dns" in text or "no ifaces" in text
-
-
-# ── the login page must accept the whole key ────────────────────────────────
-
-def test_login_page_accepts_the_whole_key(server):
-    """The page and the server must agree on how long a key is.
-
-    They did not: the server minted 8-character keys while login.html capped
-    the field at 6 and auto-submitted at 6. Typing therefore submitted a
-    truncated key, the server refused it, and the page cleared the field —
-    "the code keeps failing and resets". No test caught it because none read
-    the page's numbers against the server's.
-    """
-    import re
-
-    srv, client, _, _ = server
-    html = client.get("/login").text
-
-    maxlength = int(re.search(r'maxlength="(\d+)"', html).group(1))
-    auto_submit = int(re.search(r"length === (\d+)", html).group(1))
-    minimum = int(re.search(r"length < (\d+)", html).group(1))
-
-    assert maxlength == ds._KEY_LENGTH
-    assert auto_submit == ds._KEY_LENGTH
-    assert minimum == ds._KEY_LENGTH
-    assert len(srv.new_key()) == ds._KEY_LENGTH
-
-
-def test_a_full_length_key_logs_in(server):
-    """The key the desktop shows, typed in full, is accepted."""
-    srv, client, _, _ = server
-    key = srv.new_key()
-    r = client.post("/login", json={"pin": key})
-    assert r.status_code == 200
-    assert r.json()["ok"] is True
-
-
-def test_auto_login_has_matching_nonce_and_device_reconnect_works(server):
-    """QR scan auto-login must carry a CSP nonce for its redirect script and
-    issue a device token usable by /api/device-login without 500s."""
-    import re
-
-    srv, client, _, _ = server
-    key = srv.new_key()
-    r = client.get(f"/auto-login?key={key.lower()}")
-    assert r.status_code == 200
-    csp = r.headers["content-security-policy"]
-    nonce = csp.split("'nonce-")[1].split("'")[0]
-    assert f'nonce="{nonce}"' in r.text
-    assert "__NONCE__" not in r.text
-
-    dev_tok = re.search(
-        r"localStorage\.setItem\(\s*['\"]jarvis_device_token['\"]\s*,\s*['\"]([^'\"]+)['\"]\s*\)",
-        r.text,
-    )
-    assert dev_tok is not None
-    r2 = client.post("/api/device-login", json={"device_token": dev_tok.group(1)})
-    assert r2.status_code == 200
-    assert r2.json()["ok"] is True and r2.json()["token"]
-
-
-def test_malformed_inputs_and_callback_errors_do_not_return_500(server, tmp_path):
-    """Non-dict JSON on /api/device-login, bad Content-Length headers, missing
-    uploads directory, and connect callback failures must never produce 500."""
-    import shutil
-
-    srv, client, token, _ = server
-    srv.set_connect_callback(lambda: (_ for _ in ()).throw(RuntimeError("ui boom")))
-
-    key = srv.new_key()
-    assert client.post("/login", json={"pin": key}).status_code == 200
-    key2 = srv.new_key()
-    assert client.get(f"/auto-login?key={key2}").status_code == 200
-
-    for bad in ("null", "[]", '"str"', '{"device_token": 123}'):
-        r = client.post("/api/device-login", content=bad,
-                        headers={"Content-Type": "application/json"})
-        assert r.status_code in (400, 401), f"got {r.status_code} for {bad}"
-
-    r_cl = client.post("/api/command", json={"text": "ping"},
-                       headers={**_h(token), "Content-Length": "abc"})
-    assert r_cl.status_code == 400
-
-    shutil.rmtree(tmp_path)
-    r_up = client.post("/api/upload", files={"file": ("hello.txt", b"hi")},
-                       headers=_h(token))
-    assert r_up.status_code == 200
-    assert (tmp_path / "hello.txt").exists()
-
-
-
-def test_phone_audio_requires_command_permission_and_rechecks_revocation(server, monkeypatch):
-    import threading
-    from starlette.websockets import WebSocketDisconnect
-    srv, client, token, _ = server
-    received = threading.Event()
-    original_put = srv._phone_audio_queue.put_nowait
-    def observe_put(item):
-        original_put(item)
-        if item.get('data') == b'\x01\x00':
-            received.set()
-    monkeypatch.setattr(srv._phone_audio_queue, 'put_nowait', observe_put)
-    read_tok = f"read-{uuid.uuid4().hex}"
-    now = time.time()
-    with srv._token_lock:
-        srv._tokens[read_tok] = [now, now, ds._SCOPE_READ]
-    for bad in ("invalid", read_tok):
-        with pytest.raises(WebSocketDisconnect):
-            with client.websocket_connect("/ws/phone-audio") as ws:
-                _ws_auth(ws, bad)
-    with client.websocket_connect("/ws/phone-audio") as ws:
-        _ws_auth(ws, token)
-        ws.send_bytes(b"\x01\x00")
-        # TestClient and the server use different threads: wait until this
-        # frame was accepted before testing revocation of the next frame.
-        assert received.wait(3)
-        with srv._token_lock:
-            srv._tokens.pop(token)
-        ws.send_bytes(b"\x02\x00")
-        with pytest.raises(WebSocketDisconnect) as exc:
-            ws.receive_bytes()
-        assert exc.value.code == 4001
-    chunk = srv._phone_audio_queue.get_nowait()
-    assert chunk["data"] == b"\x01\x00" and chunk["mime_type"] == "audio/pcm"
-    assert srv._phone_audio_queue.get_nowait() == {"phone_audio_end": True}
-
-
-def test_phone_audio_rejects_invalid_frame_and_limits_concurrent_streams(server):
-    from starlette.websockets import WebSocketDisconnect
-    srv, client, token, _ = server
-    with client.websocket_connect("/ws/phone-audio") as first:
-        _ws_auth(first, token)
-        with pytest.raises(WebSocketDisconnect) as exc:
-            with client.websocket_connect("/ws/phone-audio") as second:
-                _ws_auth(second, token)
-        assert exc.value.code == 4009
-        first.send_bytes(b"x")
-        with pytest.raises(WebSocketDisconnect) as exc:
-            first.receive_bytes()
-        assert exc.value.code == 1003
-    assert srv._phone_audio_queue.empty()
-
-
-def test_phone_audio_disconnect_preserves_end_when_queue_is_full(server):
-    srv, client, token, _ = server
-    with client.websocket_connect("/ws/phone-audio") as ws:
-        _ws_auth(ws, token)
-        ws.send_bytes(b"\x00\x00")
-        # Synchronize by sending an invalid frame and awaiting the server close.
-        for _ in range(250):
-            ws.send_bytes(b"\x01\x00")
-        ws.send_bytes(b"x")
-        from starlette.websockets import WebSocketDisconnect
-        with pytest.raises(WebSocketDisconnect):
-            ws.receive_bytes()
-    queued = []
-    while not srv._phone_audio_queue.empty():
-        queued.append(srv._phone_audio_queue.get_nowait())
-    assert len(queued) == 200 and queued[-1] == {"phone_audio_end": True}
-
-
-def test_remote_playback_is_opt_in_and_live_only(server):
-    from starlette.websockets import WebSocketDisconnect
-    srv, client, token, _ = server
-    srv.publish_audio(b"\x01\x00")
-    assert not srv._playback_clients and not any("data" in x for x in srv._history)
-    with pytest.raises(WebSocketDisconnect):
-        with client.websocket_connect('/ws/phone-playback') as ws:
-            _ws_auth(ws, 'invalid')
-    with client:
-        with client.websocket_connect('/ws/phone-playback') as ws:
-            _ws_auth(ws, token)
-            assert len(srv._playback_clients) == 1
-            client.portal.call(srv.publish_audio, b"\x01\x00\x02\x00")
-            assert ws.receive_bytes() == b"\x01\x00\x02\x00"
-            with srv._token_lock:
-                srv._tokens.pop(token)
-            client.portal.call(srv.publish_audio, b"\x03\x00")
-            with pytest.raises(WebSocketDisconnect) as exc:
-                ws.receive_bytes()
-            assert exc.value.code == 4001
-        assert not srv._playback_clients
-    assert not any("data" in x for x in srv._history)
-
-
-def test_remote_playback_backpressure_is_bounded(server):
-    import asyncio
-    srv, _, _, _ = server
-    q = asyncio.Queue(maxsize=2)
-    srv._playback_clients.add(q)
-    srv.publish_audio(b"\x01\x00")
-    srv.publish_audio(b"\x02\x00")
-    srv.publish_audio(b"\x03\x00")
-    assert q.qsize() == 2
-    assert q.get_nowait() == b"\x02\x00" and q.get_nowait() == b"\x03\x00"
-
-
-def test_interactive_controls_do_not_use_csp_blocked_inline_handlers(server):
-    from html.parser import HTMLParser
-    class HandlerParser(HTMLParser):
-        def __init__(self):
-            super().__init__()
-            self.handlers = []
-        def handle_starttag(self, tag, attrs):
-            self.handlers.extend((tag, key) for key, _ in attrs if key.lower().startswith("on"))
-    _, client, _, _ = server
-    for path in ("/", "/login"):
-        response = client.get(path)
-        parser = HandlerParser()
-        parser.feed(response.text)
-        assert not parser.handlers, (path, parser.handlers)
-        assert "'unsafe-inline'" not in response.headers["content-security-policy"].split("script-src")[1].split(";")[0]
-    app = client.get("/").text
-    assert "speakerBtn.addEventListener('click', toggleRemotePlayback)" in app
-    assert "getElementById('send-btn').addEventListener('click', doSend)" in app
-    assert "wake.addEventListener('click', doWake)" in app
-    assert "getElementById('connect-btn').addEventListener('click', doLogin)" in client.get("/login").text
-
-@pytest.mark.parametrize("path", ["/login", "/"])
-def test_configured_name_is_rendered_safely_and_updates(server, monkeypatch, path):
-    import memory.config_manager as config
-
-    _, client, _, _ = server
-    monkeypatch.setattr(config, "get_assistant_name", lambda: '<img src=x onerror="alert(1)">')
-    response = client.get(path)
-    assert '&lt;img src=x onerror=&quot;alert(1)&quot;&gt;' in response.text
-    assert '<img src=x onerror=' not in response.text
-    assert '__ASSISTANT_NAME__' not in response.text
-    monkeypatch.setattr(config, "get_assistant_name", lambda: "Friday")
-    assert "Friday" in client.get(path).text
-
-
-def test_qr_pairing_uses_fragment_and_post_and_remembers_device(server):
-    from urllib.parse import urlsplit
-    srv, client, _, _ = server
-    key = srv.new_key()
-    url = urlsplit(srv.get_pairing_url(key))
-    assert url.path == "/login" and url.query == "" and url.fragment == f"key={key}"
-    page = client.get(url.path)
-    assert "URLSearchParams(location.hash.slice(1))" in page.text
-    assert "history.replaceState" in page.text
-    result = client.post("/api/qr-login", json={"key": key.lower()})
-    assert result.status_code == 200 and result.headers["cache-control"] == "no-store"
-    data = result.json()
-    assert data["token"] and data["device_token"]
-    assert client.post("/api/qr-login", json={"key": key}).status_code == 401
-    reconnect = client.post("/api/device-login", json={"device_token": data["device_token"]})
-    assert reconnect.status_code == 200 and reconnect.json()["key"] == key
-    assert client.post("/api/command", headers=_h(data["token"]), json={"text": "ping"}).status_code == 200
-
-
-def test_qr_pairing_and_legacy_share_manual_login_throttle(server):
-    srv, client, _, _ = server
-    key = srv.new_key()
-    for i in range(ds._LOGIN_MAX_TRIES):
-        if i % 2:
-            assert client.post("/api/qr-login", json={"key": "INVALID"}).status_code == 401
-        else:
-            assert client.get("/auto-login?key=INVALID").status_code == 200
-    assert client.post("/api/qr-login", json={"key": key}).status_code == 429
-    assert client.get(f"/auto-login?key={key}").status_code == 429
-    assert client.post("/login", json={"pin": key}).status_code == 429
-    assert key in srv._pending_keys
-
-
-def test_qr_login_rejects_malformed_body(server):
-    _, client, _, _ = server
-    for body in ([], None, {"key": 123}, {}):
-        assert client.post("/api/qr-login", json=body).status_code == 400
-    assert client.post("/api/qr-login", content="not json").status_code == 400
-
-
-@pytest.mark.parametrize("path", ["/ws", "/ws/phone-audio", "/ws/phone-playback"])
-def test_websocket_rejects_query_token_and_times_out_without_first_message(server, monkeypatch, path):
-    from starlette.websockets import WebSocketDisconnect
-    srv, client, token, _ = server
-    monkeypatch.setattr(ds, "_WS_AUTH_TIMEOUT", 0.05)
-    # Reject the old credential-bearing URL rather than authenticating it.
-    with pytest.raises(WebSocketDisconnect):
-        with client.websocket_connect(f"{path}?token={token}"):
-            pass
-    # With no first message the server closes on timeout, without history/audio.
-    with client.websocket_connect(path) as ws:
-        with pytest.raises(WebSocketDisconnect) as exc:
-            ws.receive_json()
-        assert exc.value.code == 4001
-    assert srv._pending_ws_auth == 0
-    assert not srv._clients and not srv._playback_clients and not srv._phone_audio_active
-
-
-@pytest.mark.parametrize("path", ["/ws", "/ws/phone-audio", "/ws/phone-playback"])
-@pytest.mark.parametrize("payload", ["not-json", '{"type":"auth","token":"' + 'x' * 600 + '"}',
-                                    '{"type":"command","text":"bad"}', '[]'])
-def test_websocket_rejects_malformed_auth_without_disclosing_data(server, path, payload):
-    from starlette.websockets import WebSocketDisconnect
-    srv, client, _, _ = server
-    with client.websocket_connect(path) as ws:
-        ws.send_text(payload)
-        with pytest.raises(WebSocketDisconnect) as exc:
-            ws.receive_json()
-        assert exc.value.code == 4001
-    assert srv._pending_ws_auth == 0
-    assert not srv._clients and not srv._playback_clients and not srv._phone_audio_active
-
-
-def test_unauthenticated_socket_capacity_is_bounded(server):
-    from starlette.websockets import WebSocketDisconnect
-    srv, client, _, _ = server
-    srv._pending_ws_auth = ds._MAX_PENDING_WS_AUTH
-    try:
-        with pytest.raises(WebSocketDisconnect):
-            with client.websocket_connect("/ws"):
-                pass
-    finally:
-        srv._pending_ws_auth = 0
-
-
-def test_feed_rechecks_revocation_before_broadcast(server):
-    from starlette.websockets import WebSocketDisconnect
-    srv, client, token, _ = server
-    srv._history.clear()
-    with client:
-        with client.websocket_connect("/ws") as ws:
-            _ws_auth(ws, token)
-            with srv._token_lock:
-                srv._tokens.pop(token)
-            client.portal.call(srv.broadcast, {"type": "log", "text": "private"})
-            with pytest.raises(WebSocketDisconnect) as exc:
-                ws.receive_json()
-            assert exc.value.code == 4001
-        assert not srv._clients
-
-
-def test_feed_read_scope_cannot_send_command(server):
-    srv, client, _, _ = server
-    srv._history.clear()
-    token = f"read-{uuid.uuid4().hex}"
-    with srv._token_lock:
-        srv._tokens[token] = [time.time(), time.time(), ds._SCOPE_READ]
-    with client.websocket_connect("/ws") as ws:
-        _ws_auth(ws, token)
-        ws.send_json({"type": "command", "text": "should not run"})
-        assert "watch, not command" in ws.receive_json()["text"]
-    assert srv._command_queue.empty()
+
+def test_the_catalogue_order_is_stable_across_launches():
+    """A board that rearranges itself between launches is a board you have to
+    re-find your things on."""
+    assert db.catalogue() == db.catalogue()
+    assert db.catalogue() == sorted(db.DASHBOARD_WIDGETS)
+
+
+def test_every_catalogue_entry_has_a_tile_size():
+    """Placing everything at one size is how a dashboard becomes a grid of
+    clipped text; no size at all is a tile that cannot be placed."""
+    for name in db.catalogue():
+        assert name in db.TILE_SIZE, name
+        columns, rows = db.TILE_SIZE[name]
+        assert columns >= 1 and rows >= 1
+
+
+# ── the layer: one home per widget ────────────────────────────────────────
+
+def test_a_widget_cannot_be_in_both_places():
+    """Two live surfaces for one thing is the bug this class exists to stop:
+    two caption labels fed by one audio loop, two metric readers."""
+    layer = db.Layer()
+    layer.lift("metrics", slot=(10, 20, 100, 50))
+    assert "metrics" in layer
+    layer.dock("metrics")
+    assert "metrics" not in layer
+
+
+def test_lifting_twice_keeps_the_original_slot():
+    """A second lift is a redraw, not a new home. Overwriting the slot is how a
+    widget comes back in the wrong place."""
+    layer = db.Layer()
+    layer.lift("metrics", slot=(1, 2, 3, 4))
+    layer.lift("metrics", slot=(9, 9, 9, 9))
+    assert layer.slot_for("metrics") == (1, 2, 3, 4)
+
+
+def test_docking_returns_the_slot_it_came_from():
+    layer = db.Layer()
+    layer.lift("speech_caption", slot=(5, 6, 7, 8))
+    assert layer.dock("speech_caption") == (5, 6, 7, 8)
+
+
+def test_docking_something_that_was_never_lifted_is_not_an_error():
+    """Called from stop paths that can run more than once."""
+    assert db.Layer().dock("metrics") is None
+
+
+def test_a_refused_widget_is_never_recorded_as_lifted():
+    layer = db.Layer()
+    decision = layer.lift("conversation")
+    assert decision.allowed is False
+    assert len(layer) == 0, "a refused widget was recorded as being on the board"
+
+
+def test_names_are_normalised():
+    layer = db.Layer()
+    layer.lift("  METRICS  ")
+    assert layer.names() == ["metrics"]
+
+
+# ── a partial request does not cancel the layer ───────────────────────────
+
+def test_one_bad_name_does_not_lose_the_good_ones():
+    """The user asked for three things and two can be shown. Refusing the whole
+    request punishes them for a plugin they did not write."""
+    shown, refused = db.plan(["metrics", "nonsense", "speech_caption"])
+    assert [name for name, _ in shown] == ["metrics", "speech_caption"]
+    assert len(refused) == 1
+
+
+def test_an_inactive_plan_shows_nothing():
+    assert db.plan(["metrics"], active=False) == ([], [])
+
+
+def test_an_empty_request_shows_nothing_rather_than_everything():
+    """Opening an empty board teaches the user the feature is broken, and
+    substituting the whole catalogue is a surprise they did not ask for."""
+    assert db.plan([]) == ([], [])
+
+
+# ── leaving ───────────────────────────────────────────────────────────────
+
+def test_every_way_out_has_a_sentence():
+    """A dashboard you cannot leave is a modal trap. Each route is named so the
+    log says which one happened instead of three silent code paths."""
+    for key in ("escape", "toggle", "blur", "shutdown"):
+        assert db.exit_reason(key) in db.EXITS.values()
+    assert db.exit_reason("something else")
+
+
+def test_a_layer_never_survives_a_restart():
+    """A floating WINDOW may persist because it is a window. A layer is a MODE,
+    and starting the app inside a mode the user did not choose this time is how
+    a dashboard becomes something to escape from."""
+    assert db.survives_restart() is False
+
+
+# ── the Qt half, with Qt stubbed ──────────────────────────────────────────
+
+class _Widget:
+    """Enough of a QWidget to be re-parented, measured and dropped."""
+
+    def __init__(self, geo=(1, 2, 30, 40)):
+        self._geo = geo
+        # Every move is recorded. Without this a test cannot tell "put back
+        # where it was" from "never moved at all" — both leave the geometry at
+        # the value it started with.
+        self.moves = []
+        self.shown = 0
+        self.style = ""
+        self.deleted = 0
+        self._box = None
+
+    def geometry(self):
+        x, y, w, h = self._geo
+        return types.SimpleNamespace(x=lambda: x, y=lambda: y,
+                                     width=lambda: w, height=lambda: h)
+
+    def setGeometry(self, *a):                        # noqa: N802
+        self._geo = a
+        self.moves.append(a)
+    def setMinimumSize(self, *a): pass                # noqa: N802
+    def setObjectName(self, *a): pass                 # noqa: N802
+    def setStyleSheet(self, s): self.style = s        # noqa: N802
+    def show(self): self.shown += 1                   # noqa: N802
+    def hide(self): pass                              # noqa: N802
+    def raise_(self): pass
+    def deleteLater(self): self.deleted += 1          # noqa: N802
+    def setWidgetResizable(self, *a): pass            # noqa: N802
+    def setWidget(self, *a): pass                     # noqa: N802
+    def setGeometry2(self, *a): pass
+
+
+class _Layout:
+    def __init__(self, *a, **k): self.items = []
+
+    def setContentsMargins(self, *a): pass            # noqa: N802
+    def setSpacing(self, *a): pass                    # noqa: N802
+    def addWidget(self, *a): self.items.append(a)     # noqa: N802
+    def count(self): return len(self.items)
+    def takeAt(self, i):                              # noqa: N802
+        return self.items.pop(i) if self.items else None
+
+
+def _load(monkeypatch):
+    """`ui.dashboard_layer` with Qt, the window and the theme stubbed."""
+    qtcore = types.ModuleType("PyQt6.QtCore")
+    qtwidgets = types.ModuleType("PyQt6.QtWidgets")
+    class _Sized(_Widget):
+        """The board and its scroll area are sized from the window."""
+
+        def width(self):
+            return 0
+
+        def height(self):
+            return 0
+
+    for name in ("QScrollArea", "QWidget"):
+        setattr(qtwidgets, name, _Sized)
+    qtwidgets.QGridLayout = _Layout
+    qtwidgets.QVBoxLayout = _Layout
+    monkeypatch.setitem(sys.modules, "PyQt6.QtCore", qtcore)
+    monkeypatch.setitem(sys.modules, "PyQt6.QtWidgets", qtwidgets)
+    stub = types.ModuleType("ui")
+    stub.__path__ = [str(ROOT / "ui")]
+    monkeypatch.setitem(sys.modules, "ui", stub)
+    spec = importlib.util.spec_from_file_location(
+        "dashboard_layer_under_test", ROOT / "ui" / "dashboard_layer.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class _Window:
+    """A window with a caption and a metrics reader, and a log."""
+
+    def __init__(self):
+        self._speech_caption = _Widget((100, 200, 300, 40))
+        self._metrics = _Widget((10, 10, 80, 200))
+        self.log = []
+        self._w, self._h = 1280, 800
+
+    def width(self): return self._w
+    def height(self): return self._h
+
+    def write_log(self, text): self.log.append(text)
+
+
+def test_opening_the_board_borrows_the_real_widgets(monkeypatch):
+    module = _load(monkeypatch)
+    window = _Window()
+    layer = module.attach(window)
+    layer.show(["speech_caption", "metrics"])
+    assert layer.open is True
+    assert set(layer.tiles) == {"speech_caption", "metrics"}
+    assert "Dashboard open" in " ".join(window.log)
+
+
+def test_the_widgets_return_to_the_place_they_left(monkeypatch):
+    """THE ONE THING A LAYER MUST GET RIGHT. A `QWidget` has one parent; the
+    layout closes the gap while it is away, so the only record of where it was
+    is the one taken before it moved."""
+    module = _load(monkeypatch)
+    window = _Window()
+    layer = module.attach(window)
+    layer.show(["speech_caption"])
+    layer.hide("escape")
+    assert layer.open is False
+    # It must have been MOVED back, not merely left where it was: the board
+    # took it out of its layout, and a widget that is never re-placed is one the
+    # user has lost.
+    assert window._speech_caption.moves == [(100, 200, 300, 40)]
+    assert layer.tiles == {}
+
+
+def test_escaping_a_closed_board_does_not_consume_the_key(monkeypatch):
+    """An Escape swallowed in an ordinary window is an Escape the user presses
+    again, harder."""
+    module = _load(monkeypatch)
+    layer = module.attach(_Window())
+    assert layer.hide("escape") is False
+
+
+def test_toggling_twice_leaves_the_board_closed(monkeypatch):
+    module = _load(monkeypatch)
+    layer = module.attach(_Window())
+    layer.toggle(["metrics"])
+    assert layer.open is True
+    layer.toggle()
+    assert layer.open is False
+
+
+def test_a_board_with_nothing_to_show_does_not_open(monkeypatch):
+    """An empty board teaches the user the feature is broken. Say so and stay
+    closed."""
+    module = _load(monkeypatch)
+    window = _Window()
+    layer = module.attach(window)
+    refused = layer.show(["conversation"])
+    assert layer.open is False
+    assert refused, "the refusal was not reported"
+    assert "Nothing on this machine" in " ".join(window.log)
+
+
+def test_every_way_out_returns_the_widgets(monkeypatch):
+    """Esc, the button and shutdown take the same path, because a layer that
+    only tidies up on the polite exit eats the caption the first time the user
+    alt-tabs."""
+    module = _load(monkeypatch)
+    for reason in ("escape", "toggle", "blur", "shutdown"):
+        window = _Window()
+        layer = module.attach(window)
+        layer.show(["speech_caption"])
+        layer.hide(reason)
+        assert window._speech_caption.moves == [(100, 200, 300, 40)], reason
+
+
+def test_closing_the_window_closes_the_layer(monkeypatch):
+    """A layer is a mode: it must not outlive the window it covers."""
+    module = _load(monkeypatch)
+    window = _Window()
+    layer = module.attach(window)
+    layer.show(["metrics"])
+    module.close(window)
+    assert layer.open is False
+    assert window._metrics.moves == [(10, 10, 80, 200)]
+
+
+def test_closing_a_window_with_no_layer_is_not_an_error(monkeypatch):
+    module = _load(monkeypatch)
+    module.close(_Window())
+
+
+def test_a_widget_that_is_not_there_is_reported_not_crashed(monkeypatch):
+    """`camera_preview` has no plain widget: it is a self-positioning overlay.
+    Lifting it would fight the code that moves it."""
+    module = _load(monkeypatch)
+    window = _Window()
+    layer = module.attach(window)
+    layer.show(["camera_preview", "metrics"])
+    assert "camera_preview" not in layer.tiles
+    assert "metrics" in layer.tiles
+    assert "not available" in " ".join(window.log)
+
+
+# ── the wiring ────────────────────────────────────────────────────────────
+
+def test_the_window_keeps_its_ceiling():
+    """The rule this whole repository runs on: a new widget gets a new module."""
+    lines = (ROOT / "ui" / "window.py").read_text(encoding="utf-8").count("\n")
+    assert lines <= 3800, f"ui/window.py is {lines} lines"
+
+
+def test_the_window_only_wires_three_things():
+    """build a row, route Esc, close on shutdown — and nothing else. Every
+    decision is in the two modules this test also covers."""
+    source = (ROOT / "ui" / "window.py").read_text(encoding="utf-8")
+    assert "_dash_row.build(self, lay, _row)" in source
+    assert "dashboard_row.escape(self)" in source
+    assert "_dl.close(self)" in source
+    # No layout, geometry or catalogue arithmetic in the window.
+    tree = ast.parse(source)
+    window_class = next(n for n in tree.body
+                        if isinstance(n, ast.ClassDef) and n.name == "MainWindow")
+    code = ast.unparse(ast.Module(body=window_class.body, type_ignores=[]))
+    assert "BOARD_COLUMNS" not in code
+    assert "DASHBOARD_WIDGETS" not in code
+
+
+def test_the_layer_module_imports_only_the_rules_and_logging():
+    """It needs Qt, but it must not reach into the window's own state — the
+    widgets are borrowed through `getattr`, named in the catalogue."""
+    source = (ROOT / "ui" / "dashboard_layer.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    imported = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported |= {a.name.split(".")[0] for a in node.names}
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported.add(node.module.split(".")[0])
+    assert imported <= {"__future__", "core", "PyQt6"}, imported
+
+
+def test_the_rules_module_needs_no_display():
+    source = (ROOT / "core" / "dashboard.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    imported = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported |= {a.name.split(".")[0] for a in node.names}
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported.add(node.module.split(".")[0])
+    assert imported <= {"__future__", "dataclasses"}, imported
