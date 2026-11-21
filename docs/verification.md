@@ -18,6 +18,7 @@ semua komputer. Hasil uji lokal tidak otomatis menjadi hasil CI atau rilis.
 | Plugin dan layanan eksternal | Discovery/manifest dan tes plugin menggunakan fixture/mock | Kredensial, perubahan API, izin, kuota, jaringan dan akun yang dipakai |
 | Integrasi OS (auto-start, `jarvis://`, identitas aplikasi) | Format entri Windows/LaunchAgent/`.desktop`, quoting path berspasi, round-trip tulis-baca, parser `jarvis://` dan penolakannya, urutan pemasangan identitas; registry Windows diuji lewat shell palsu | Klik `jarvis://` sungguhan, grup dan ikon taskbar Windows, entri login setelah restart, dock/`StartupWMClass` Linux, dialog "buka dengan" macOS |
 | Riwayat percakapan | Penulisan/format JSONL, batas ukuran dan retensi, baris terpotong, pembersihan per hari, tool `recall_history` dengan argumen aneh | Isi transkrip dari sesi suara nyata: apakah setiap giliran benar-benar tercatat, dan apakah pertanyaan "tadi kita bicarakan apa" dijawab dari transkrip, bukan dari memori |
+| Interupsi suara (barge-in) | Palet keputusan murni: kapan memotong, kapan mengabaikan, gema sendiri, jeda, ruang bising, guard belum terkalibrasi; pemanggilan di callback mikrofon dan penekanannya per jawaban | Apakah memotong benar-benar terasa nyaman dengan mikrofon dan speaker sungguhan: berapa lama jeda sebelum berhenti, apakah tersela gema di ruang bergema, dan apakah suara latar memicu pemotongan |
 
 Fitur kontrol tangan dan order MT5 tetap **eksperimental**. Smoke offscreen
 memverifikasi interaksi yang diprogram, bukan kesesuaian visual, performa nyata,
@@ -169,6 +170,21 @@ perilaku shell yang sebenarnya, dan itu tidak dapat disimulasikan.
 - [ ] Periksa ukuran folder dan pastikan pemangkasan 30 hari berjalan sesuai
       yang tertulis, serta bahwa menghapus file hari itu tidak membuat aplikasi
       gagal start.
+
+### Interupsi suara (barge-in)
+
+- [ ] Dengan **speaker** (bukan headphone), minta jawaban panjang lalu potong di tengah
+      dengan bicara biasa. Catat: berapa lama sampai suara berhenti, dan apakah
+      potongannya terasa wajar.
+- [ ] Ulangi di ruang bergema (kamar mandi, ruang kosong) dan catat apakah asisten
+      memotong dirinya sendiri. Kalau ya, catat `echo floor` dari baris log — itu
+      angka yang dipakai untuk menaikkan ambang.
+- [ ] Uji dengan suara latar: musik, TV, percakapan orang lain. Tidak boleh memotong.
+- [ ] Uji batuk, ketukan keyboard, dan pintu tertutup. Tidak boleh memotong.
+- [ ] Pastikan interrupt tidak memotong **tool yang sedang berjalan** — pagar itu
+      memang tidak dijanjikan, dan uji ini memastikan tidak ada klaim palsu.
+- [ ] Dengan headphone (tanpa gema sama sekali), pastikan pemotongan tetap bekerja
+      dan tidak justru lebih lambat.
 
 ### Remote HTTPS
 
