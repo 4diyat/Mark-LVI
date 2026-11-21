@@ -88,7 +88,6 @@ select = ["F", "E9", "B006", "S110"]
 #     actions/youtube_video.py
 #     core/_smoke_harness.py
 #     core/echo.py
-#     core/hotkey.py
 #     core/playback.py
 #     core/workspace_gesture.py
 #     memory/config_manager.py
@@ -138,7 +137,6 @@ select = ["F", "E9", "B006", "S110"]
 "actions/weather_report.py" = ["S110"]
 "actions/youtube_video.py" = ["S110"]
 "core/echo.py" = ["S110"]
-"core/hotkey.py" = ["S110"]
 "core/playback.py" = ["S110"]
 "core/workspace_gesture.py" = ["S110"]
 "memory/config_manager.py" = ["S110"]

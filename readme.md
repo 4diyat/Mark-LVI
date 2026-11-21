@@ -563,7 +563,7 @@ The window still exists in ambient mode; it is simply not on screen. Everything 
 - **A first run shows the window** whatever the mode says, because the setup screen — the one place an API key can be typed — is an overlay inside it.
 - **Closing a summoned window puts it away** instead of ending the session, and `Quit` in the tray menu is the thing that ends it. That item is not decoration: with no window, it is the only exit.
 
-Push-to-talk is unaffected on Windows, where the chord is read system-wide. On macOS and Linux it stays window-scoped, so it needs the window focused — that limitation is older than this mode and unchanged by it.
+Push-to-talk and the summon chord are read system-wide on all three desktops — `GetAsyncKeyState` on Windows, `XQueryKeymap` on X11, `CGEventSourceState` on macOS — so holding the key works while another application has focus, which is the only way it is useful in ambient mode. On **Wayland** there is no global hook without a portal, so both fall back to window-scoped and the log says so rather than installing a chord that silently does nothing. macOS needs Accessibility permission for the same reason.
 
 #### 🎛 Two drawers instead of one
 ⚙ **SETUP** holds the things you set once — remote control, desktop shortcut, auto-start and customisation. 🎛 **CONTROLS** holds the switches you flick daily — fullscreen, morning brief, wake word, sleep, push-to-talk, HUD style. Only one is open at a time, and each sits under its own header button.
