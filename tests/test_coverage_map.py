@@ -82,6 +82,7 @@ TESTED = {
     "core/prompt_build.py":   "tests/test_prompt_build.py",
     "core/transcript.py":     "tests/test_transcript.py",
     "core/playback_timing.py": "tests/test_playback_timing.py",
+    "core/briefing.py":       "tests/test_briefing.py",
     "core/gesture_os.py":     "tests/test_gesture_os.py",
     "core/gesture_os_pointer.py": "tests/test_gesture_os.py",
     "core/file_access.py":    "tests/test_file_access.py",

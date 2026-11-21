@@ -21,6 +21,7 @@ semua komputer. Hasil uji lokal tidak otomatis menjadi hasil CI atau rilis.
 | Interupsi suara (barge-in) | Palet keputusan murni: kapan memotong, kapan mengabaikan, gema sendiri, jeda, ruang bising, guard belum terkalibrasi; pemanggilan di callback mikrofon dan penekanannya per jawaban | Apakah memotong benar-benar terasa nyaman dengan mikrofon dan speaker sungguhan: berapa lama jeda sebelum berhenti, apakah tersela gema di ruang bergema, dan apakah suara latar memicu pemotongan |
 | Obsidian | Penemuan vault dari `obsidian.json`, penelusuran yang melewati `.obsidian`/`.trash`, pencarian dan kutipan baris, append yang menjaga CRLF, penolakan menimpa, penolakan symlink keluar, uji sumber yang melarang penghapusan | Vault Obsidian **sungguhan** milik pengguna: apakah Obsidian membaca ulang perubahan tanpa konflik, apakah nama catatan dengan spasi/emoji bekerja, dan apakah vault yang disinkronkan (Obsidian Sync/iCloud) tidak bentrok |
 | Widget mengambang | Kebijakan murni tanpa Qt: daftar boleh/tidak **beserta alasannya**, nama yang sudah dipensiunkan (`hud`, `camera_preview`, `metric_bar`) ditolak dengan alasan penggantinya, penolakan Wayland atas always-on-top, penguncian posisi ke layar, penyimpanan posisi per widget; baris drawer diuji dengan stub (label bukan tombol mati, tinggi tidak terpotong 26px, state dilukis ulang tiap kali drawer dibangun) | Desktop **sungguhan** di Windows, macOS, X11 dan Wayland: apakah caption benar-benar tetap di atas aplikasi lain, apakah ia kembali ke indeks layout yang sama, apakah sesi Wayland memberi tahu pengguna bahwa jendela bisa tertutup, apakah posisi bertahan setelah monitor dicabut atau resolusi berubah, dan apakah label catatan terbaca utuh di lebar drawer 220px |
+| Kata-kata briefing pagi | Teks briefing dipisah ke `core/briefing.py`: ringkasan sesi bertanggal **masa depan** tidak pernah dibaca sebagai "-3 hari lalu", klausa bahasa selalu menyerah pada bahasa pengguna, fetch kosong dianggap gagal (bukan berita), dan briefing serta panel `web_search` kini memakai **satu** definisi "tidak ada hasil" — dulu keduanya punya daftar sendiri. 11/11 mutan tertangkap | Pembukaan sungguhan: apakah sapaan benar-benar diucapkan <1 detik, apakah berita yang dibacakan sesuai panel di layar, apakah plugin morning_brief yang mati disebut apa adanya, dan apakah bahasa sapaan mengikuti bahasa balasan pengguna |
 | Kapan bibir boleh bergerak | Jadwal audio dipisah ke `core/playback_timing.py`: batch pertama dijangkar **satu periode callback** setelah `now` (bukan `stream.latency`, yang melaporkan kapasitas antrean — inilah asal lag setengah detik di Windows), kursor yang sudah lewat `now` atau melampaui buffer dijangkar ulang, batch kosong tetap memajukan kursor, dan tiga puluh batch 40 ms tidak bergeser satu milidetik pun. 9/9 mutan tertangkap | Speaker sungguhan: apakah bibir dan caption benar-benar tepat pada suara di Windows (buffer 300–500 ms) **dan** di Linux dengan buffer kecil, apakah tidak ada lag setelah 10 menit bicara terus-menerus, dan apakah setelah interupsi bibir tidak mundur ke jadwal lama |
 | Transkrip dan level audio | Dua hal yang hanya bisa dicapai lewat `import main` kini di `core/transcript.py` dan diuji tanpa sesi: penanda kontrol tidak pernah sampai ke log, baris baru tidak ikut dibuang, chunk pendek hanya dibandingkan dengan chunk sebelumnya ("ya, ya" adalah kalimat), blok yang bukan audio menghasilkan 0 dan **bukan** bar penuh, dan tidak ada `RuntimeWarning` per frame untuk blok kosong. 10/10 mutan tertangkap | Perangkat sungguhan: apakah bar waveform bergerak wajar untuk suara pelan, apakah barge-in masih memicu saat JARVIS berbicara, dan apakah log aktivitas bersih tanpa `<ctrl…>` selama percakapan panjang |
 | Prompt yang dibangun untuk model | Isi prompt dipindah ke `core/prompt_build.py` dan diuji tanpa sesi: build tuli dinyatakan tidak bisa mendengar, build buta dinyatakan tidak punya penglihatan, refusals platform muncul sebelum keterbatasan build, tool yang tidak bisa dilayani engine benar-benar hilang dari daftar yang dijanjikan, dan `str.format` tidak pernah dipakai (satu kurung kurawal di prompt tidak boleh mematikan aplikasi). 10/10 mutan tertangkap | Mesin sungguhan: apakah model benar-benar berhenti menawarkan `screen_process` pada engine tanpa penglihatan, apakah ia menyebut keterbatasan platform dengan benar saat ditanya, dan apakah nama asisten baru dari config muncul di jawaban tanpa ada yang menyunting prompt |
@@ -257,6 +258,22 @@ perilaku shell yang sebenarnya, dan itu tidak dapat disimulasikan.
 - [ ] Minta asisten mengambangkan window plugin (terminal trading, editor gambar).
       **Belum didukung** — catat bila ia mengklaim bisa. Langkah ini memastikan
       tidak ada klaim palsu.
+
+### Briefing pagi
+
+- [ ] Mulai aplikasi tanpa menyapa apa pun. Sapaan harus mulai berbunyi dalam
+      waktu kurang dari satu detik.
+- [ ] Dengar sapaan, lalu cocokkan jam yang disebut dengan jam mesin.
+- [ ] Setelah fase 2, bandingkan berita yang **dibacakan** dengan panel
+      "NEWS" di layar. Tidak boleh ada judul yang tidak ada di panel.
+- [ ] Matikan jaringan, mulai ulang. Briefing harus mengatakan berita tidak bisa
+      diambil — bukan membacakan pesan error atau mengarang judul.
+- [ ] Nonaktifkan plugin `morning_brief`, mulai ulang. Panel harus tetap muncul
+      dengan berita saja, tanpa bagian kosong.
+- [ ] Bicara dalam bahasa lain pada balasan pertama. Fase 2 harus mengikuti
+      bahasa Anda, bukan bahasa yang diingat.
+- [ ] Tanyakan sesuatu yang butuh `web_search` dan hasilnya kosong. Panel isi
+      tidak boleh menampilkan pesan "No results" sebagai hasil.
 
 ### Prompt dan kemampuan yang dinyatakan
 
