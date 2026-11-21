@@ -71,7 +71,8 @@ def _main_methods():
           # missing and only ever surfaced as a NameError raised from inside
           # the except block, which hid the real error.
           'keep_turn': lambda role, text: None, 'traceback': traceback,
-          '_REPEAT_MIN': 5}
+          '_transcript': SimpleNamespace(REPEAT_MIN=5,
+                                         is_repeat_chunk=lambda *_: False)}
     exec(compile(ast.Module(body=nodes, type_ignores=[]), str(source), 'exec'), ns)
     return ns
 
