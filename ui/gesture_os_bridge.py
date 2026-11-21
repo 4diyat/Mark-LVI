@@ -40,12 +40,13 @@ class GestureOsBridge:
         self._out = None                 # built lazily: pyautogui is 200ms
         self._enabled = False
         self._last_reason = ""
+        self._last_action = ""
 
     # ── state ─────────────────────────────────────────────────────────────
 
     @property
     def holding_button(self) -> bool:
-        return self._pointer.holding_button
+        return False
 
     @property
     def enabled(self) -> bool:
@@ -88,6 +89,10 @@ class GestureOsBridge:
             now=now,
         )
         intent = self._pointer.step(sample, ctx)
+        # Remembered for the RING, not for the decision: the on-screen pointer
+        # brightens on a pinch, and the only place that knows a pinch happened
+        # is the verdict. `""` means this frame did nothing.
+        self._last_action = intent.action
         if intent.is_empty:
             # Remembered, not logged per frame: "the hand was lost" at 30 fps
             # is 30 lines a second of a sentence the user already knows.
@@ -100,6 +105,7 @@ class GestureOsBridge:
 
     def release(self) -> None:
         """Let go. Called on stop, on mode off, and on close."""
+        self._last_action = ""
         from core import gesture_os_pointer
         if self._pointer.holding_button:
             self._pointer.release_now()
@@ -136,6 +142,37 @@ class GestureOsBridge:
     def last_reason(self) -> str:
         """Why the last frame did nothing — for the status line."""
         return self._last_reason
+
+    @property
+    def frozen(self) -> bool:
+        """Is the pointer being held back right now?
+
+        Read from the window, not from the last frame's verdict: between two
+        frames the user can click back to JARVIS or a confirmation can appear,
+        and the ring must go with the pointer in the same frame it changes.
+        """
+        return bool(self._own_focus() or self._confirmation_open()
+                    or self._modal_open() or not self._enabled)
+
+    @property
+    def pinching(self) -> bool:
+        """Is the hand holding a click, for the ring's highlighted state?
+
+        Read from `holding_button` rather than from the last frame's action,
+        because the interesting span is the one BETWEEN press and release: a
+        ring that lit up only on the two frames that carried an event would
+        blink rather than glow for as long as the user is holding.
+        """
+        return self._pointer.holding_button
+
+    @property
+    def driving(self) -> bool:
+        """Did the last frame actually touch the desktop?
+
+        Used by the ring, which must not claim a pointer that is not moving.
+        """
+        return self._last_action in (gesture_os.POINTER, gesture_os.CLICK,
+                                     gesture_os.SCROLL)
 
 
 __all__ = ["GestureOsBridge"]

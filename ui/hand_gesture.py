@@ -5,6 +5,7 @@ from PyQt6.QtCore import QPoint, QPointF, QTimer, Qt
 from PyQt6.QtWidgets import (QAbstractButton, QAbstractScrollArea, QApplication, QComboBox, QHBoxLayout,
                              QLabel, QMdiSubWindow, QPushButton, QSlider, QVBoxLayout, QWidget)
 
+from core import pointer_ring as _ring
 from core.i18n import label as _t
 from core.workspace_gesture import ClapTracker, WorkspaceHandController, dwell_matches
 from core.workspace_transform import FlickTracker, bounded_flick, transform_window
@@ -90,9 +91,12 @@ class WorkspaceGestures:
         self.cursors = []
         for _ in range(2):
             cursor = QLabel(window.centralWidget())
-            cursor.setFixedSize(42, 42)
+            # THE RING IS DEFINED ONCE, in core/pointer_ring.py, because the
+            # desktop overlay draws the same one. Two copies of a stylesheet
+            # are "the same pointer" only until somebody edits one of them.
+            cursor.setFixedSize(_ring.size(), _ring.size())
             cursor.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-            cursor.setStyleSheet("background: rgba(20, 92, 120, 45); border: 2px solid #86eaff; border-radius: 21px;")
+            cursor.setStyleSheet(_ring.style(False))
             cursor.hide()
             self.cursors.append(cursor)
 
@@ -112,13 +116,11 @@ class WorkspaceGestures:
                 continue
             x, y = samples[i][:2]
             pinched = bool(samples[i][2])
-            cursor.setStyleSheet("background: rgba(20, 150, 180, 95); border: 3px solid #9afaff; border-radius: 21px;"
-                                 if pinched else
-                                 "background: rgba(20, 92, 120, 45); border: 2px solid #86eaff; border-radius: 21px;")
+            cursor.setStyleSheet(_ring.style(pinched))
             point = QPoint(round(x * max(0, viewport.width() - 1)),
                            round(y * max(0, viewport.height() - 1)))
             point = viewport.mapTo(self.window.centralWidget(), point)
-            cursor.move(point.x() - 21, point.y() - 21)
+            cursor.move(*_ring.where(point.x(), point.y()))
             cursor.show()
             cursor.raise_()
 
@@ -502,8 +504,10 @@ def setup(window):
         if bridge is not None:
             if running:
                 bridge.feed(samples, time.monotonic())
+                _ring_on_desktop(window, bridge)
             else:
                 bridge.release()
+                _ring_hide(window)
         mode_key = {'move': 'gesture.mode_move', 'resize': 'gesture.mode_transform',
                     'click': 'gesture.mode_click', 'slider': 'gesture.mode_slider',
                     'claw': 'gesture.mode_claw'}.get(gestures.mode)
@@ -553,6 +557,52 @@ def setup(window):
                 index = 0
             controller.start(index)
         refresh()
+
+    def _ring_on_desktop(window, bridge):
+        """Show the SAME ring on the desktop, while the OS pointer is moving.
+
+        The window's own ring is drawn over the MDI viewport and stays there;
+        when the hand drives the desktop, a ring trapped inside a window the
+        user is not looking at is not a pointer. So the desktop ring is drawn
+        from the ACTUAL cursor position (`ui/desktop_ring.py` explains why it is
+        read rather than computed), and it appears under exactly the conditions
+        the pointer obeys — `pointer_ring.visible()` takes the mode, the freeze
+        and the platform's answer together, so the ring cannot claim a pointer
+        that is not moving.
+        """
+        from ui import desktop_ring
+
+        if not _ring.visible(_os_permitted(), bridge.enabled, bridge.frozen):
+            _ring_hide(window)
+            return
+        ring = getattr(window, "_desktop_ring", None)
+        if ring is None:
+            ring = desktop_ring.DesktopRing()
+            window._desktop_ring = ring
+        ring.show(pinched=bridge.pinching)
+
+    def _os_permitted():
+        """Can this machine be driven at all? The same answer the app states.
+
+        `core/platform_support.detect()` is the one place that knows a Wayland
+        session cannot be typed into; asking it here means the ring disappears
+        for the same reason the feature does, instead of glowing over a desktop
+        it never reaches.
+        """
+        from types import SimpleNamespace
+
+        from core import platform_support
+
+        try:
+            return SimpleNamespace(
+                allowed=platform_support.detect().can_control_input)
+        except Exception:                    # noqa: BLE001 — never block a frame
+            return SimpleNamespace(allowed=False)
+
+    def _ring_hide(window):
+        ring = getattr(window, "_desktop_ring", None)
+        if ring is not None:
+            ring.hide()
 
     def release_os_button():
         """Let go of a button a gesture is holding, if there is one.

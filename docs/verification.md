@@ -21,6 +21,7 @@ semua komputer. Hasil uji lokal tidak otomatis menjadi hasil CI atau rilis.
 | Interupsi suara (barge-in) | Palet keputusan murni: kapan memotong, kapan mengabaikan, gema sendiri, jeda, ruang bising, guard belum terkalibrasi; pemanggilan di callback mikrofon dan penekanannya per jawaban | Apakah memotong benar-benar terasa nyaman dengan mikrofon dan speaker sungguhan: berapa lama jeda sebelum berhenti, apakah tersela gema di ruang bergema, dan apakah suara latar memicu pemotongan |
 | Obsidian | Penemuan vault dari `obsidian.json`, penelusuran yang melewati `.obsidian`/`.trash`, pencarian dan kutipan baris, append yang menjaga CRLF, penolakan menimpa, penolakan symlink keluar, uji sumber yang melarang penghapusan | Vault Obsidian **sungguhan** milik pengguna: apakah Obsidian membaca ulang perubahan tanpa konflik, apakah nama catatan dengan spasi/emoji bekerja, dan apakah vault yang disinkronkan (Obsidian Sync/iCloud) tidak bentrok |
 | Widget mengambang | Kebijakan murni tanpa Qt: daftar boleh/tidak **beserta alasannya**, nama yang sudah dipensiunkan (`hud`, `camera_preview`, `metric_bar`) ditolak dengan alasan penggantinya, penolakan Wayland atas always-on-top, penguncian posisi ke layar, penyimpanan posisi per widget; baris drawer diuji dengan stub (label bukan tombol mati, tinggi tidak terpotong 26px, state dilukis ulang tiap kali drawer dibangun) | Desktop **sungguhan** di Windows, macOS, X11 dan Wayland: apakah caption benar-benar tetap di atas aplikasi lain, apakah ia kembali ke indeks layout yang sama, apakah sesi Wayland memberi tahu pengguna bahwa jendela bisa tertutup, apakah posisi bertahan setelah monitor dicabut atau resolusi berubah, dan apakah label catatan terbaca utuh di lebar drawer 220px |
+| Cincin pointer desktop | Satu definisi untuk dua tempat: gaya/ukuran/offset hanya di `core/pointer_ring.py`, dan tes AST menolak salinan stylesheet di `ui/hand_gesture.py`. Cincin desktop diuji dengan kursor tiruan: digambar dari posisi kursor **yang sebenarnya** (bukan dari intent), `WindowTransparentForInput` menyala, tidak direstyle saat keadaan tidak berubah, dan `visible()` menolak saat mode mati, saat pointer dibekukan, dan saat platform tidak mengizinkan input | Desktop **sungguhan** dengan kamera: apakah cincin benar-benar berada tepat di bawah kursor Windows pada DPI 100% dan 150%, apakah ia tidak menghalangi klik pada tombol kecil, apakah ia hilang seketika saat JARVIS diberi fokus, dan apakah ia tidak tertinggal di layar setelah kontrol tangan dimatikan |
 | Kebijakan reconnect | Murni dan tanpa impor aplikasi: timeout tidak boleh terbaca sebagai kuota, jawaban tangga model dipakai saat predikat modul tidak mengenali pesannya, `keep_context` untuk ganti suara, backoff berlipat dan berbatas, error tak dikenal tidak menurunkan model, dan `run()` benar-benar memanggil `decide()` (diperiksa lewat AST, bukan teks) | Sesi **sungguhan** dengan jaringan nyata: apakah kabel dicabut di tengah percakapan benar-benar kembali setelah backoff, apakah kuota habis benar-benar berpindah model dan menyebut namanya, dan apakah ini semua tidak menahan percakapan lebih lama dari yang tertulis di layar |
 | Dokumen mengambang | Lapisan Qt diuji dengan stub yang mencatat: `removeSubWindow` saat keluar, `addSubWindow` saat kembali (subwindow yang hanya di-reparent adalah widget di 0,0), reset `WindowNoState` untuk subwindow yang semula maximised, Wayland tidak meminta always-on-top, `order_dialog` ditolak, kind tak dikenal diizinkan, manifest hanya boleh *menyebut* `window` dan tidak pernah mengambangkan, dan toggle plugin mengembalikan window-nya **sebelum** menyimpan status OFF | Desktop **sungguhan**: apakah dokumen yang mengambang benar-benar tetap di atas aplikasi lain, apakah ia kembali ke posisi dan ukuran MDI yang sama, apakah menutup window mengambang masih memunculkan dialog simpan, dan apakah mematikan plugin saat ada window mengambang benar-benar mengembalikannya tanpa kehilangan kerja |
 | Tangan → OS | Kebijakan murni: hanya tiga aksi, pembekuan saat fokus ada di JARVIS/konfirmasi/modal, pelepasan tombol saat tangan hilang atau mode dimatikan, penolakan lompatan sampel, margin sudut layar; uji AST yang melarang pemanggilan `press`/`hotkey`/`write` dan melarang impor allowlist shortcut | Desktop **Windows sungguhan**: apakah pointer benar-benar mengikuti tangan pada DPI dan monitor berbeda, apakah klik nyasar tidak pernah mengenai tombol tutup jendela, apakah tombol mouse benar-benar lepas saat tangan keluar frame, dan apakah tracking tetap layak dipakai di ruangan dengan cahaya redup |
@@ -253,6 +254,25 @@ perilaku shell yang sebenarnya, dan itu tidak dapat disimulasikan.
 - [ ] Minta asisten mengambangkan window plugin (terminal trading, editor gambar).
       **Belum didukung** — catat bila ia mengklaim bisa. Langkah ini memastikan
       tidak ada klaim palsu.
+
+### Cincin pointer di desktop
+
+- [ ] Di Windows, nyalakan kontrol tangan lalu tekan **HAND → OS**. Cincin cyan
+      harus muncul **tepat di bawah kursor**, bukan di posisi lain.
+- [ ] Gerakkan tangan. Cincin harus mengikuti kursor tanpa tertinggal — kalau ia
+      bergerak sendiri ke tempat yang tidak pernah dikunjungi kursor, itu bug.
+- [ ] Cubit dan tahan. Cincin harus membesar/menyala **selama ditahan**, bukan
+      berkedip dua kali.
+- [ ] Gerakkan tangan ke sudut layar. Cincin harus berhenti di posisi kursor yang
+      dijepit margin, dan tetap sejajar dengan kursor.
+- [ ] Klik tombol kecil di aplikasi lain (mis. tombol tutup tab browser). Cincin
+      **tidak** boleh menghalangi klik itu.
+- [ ] Beri fokus ke JARVIS. Cincin desktop harus **langsung hilang**.
+- [ ] Munculkan konfirmasi, lalu gerakkan tangan. Cincin tidak boleh muncul.
+- [ ] Matikan **HAND → OS**. Cincin harus hilang dan tidak tertinggal di layar.
+- [ ] Tutup aplikasi saat cincin sedang tampil. Tidak boleh ada cincin yatim yang
+      tertinggal di desktop.
+- [ ] Ubah DPI layar ke 150%. Cincin harus tetap sejajar dengan kursor.
 
 ### Kebijakan reconnect
 
