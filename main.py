@@ -93,6 +93,27 @@ from core                      import tool_dispatch as _dispatch
 from core                      import confirm as confirm_gate
 from core                      import audio_devices
 from core.action_loader        import discover_actions
+
+
+# ── Which actions own their confirmation ─────────────────────────────────────
+#
+# Four actions call `core.confirm.request` themselves, with a title and detail
+# written for the specific operation ("Run build.py?" rather than
+# "code_helper:run"). `core.action_gate` must not ask a second time: two banners
+# for one shutdown is how a user learns to dismiss both without reading them.
+#
+# A NAME LIST RATHER THAN A `TOOL` FLAG. The four were already gating before the
+# gate existed, and adding a key to their TOOL dict would put project
+# bookkeeping in a schema that is sent to the vendor. tests/test_action_gate.py
+# checks that every name here really does call confirm.request, so the list
+# cannot rot into a way to skip the gate.
+SELF_GATED_ACTIONS = frozenset({"computer_settings", "code_helper", "dev_agent",
+                                "file_processor"})
+
+
+def action_gate_self_gated(name: str) -> bool:
+    """Whether this action is responsible for its own confirmation."""
+    return name in SELF_GATED_ACTIONS
 from core.echo                 import EchoGuard
 from core.viseme               import VisemeStream
 from core.wake_word            import (
@@ -1506,8 +1527,31 @@ class JarvisLive:
                     args["mode"] = "improve"
                 _ctx = {"player": self.ui, "speak": self.speak,
                         "response": None, "session_memory": None}
-                r = await loop.run_in_executor(None, lambda: self._action_registry.run(name, args, _ctx))
+                # ── The gate ────────────────────────────────────────────────
+                # Classified HERE, on the call and its arguments, not on the
+                # tool's name: `computer_settings` is `volume_up` or `shutdown`
+                # depending on `args`, and those two must not share an answer.
+                #
+                # `self_gated` names the actions that already call
+                # `core.confirm` with a sentence written for the specific
+                # operation. Asking again would put two banners on screen for
+                # one shutdown.
+                from core import action_gate as _gate
+                _verdict = await loop.run_in_executor(
+                    None,
+                    lambda: _gate.check(
+                        name,
+                        lambda: self._action_registry.run(name, args, _ctx),
+                        args,
+                        self_gated=action_gate_self_gated(name),
+                    ))
+                r = _verdict.message
                 result = r or "Done."
+                # A call that was PARKED did not run, so there is no content to
+                # mirror and no state to correct. The banner is already up; the
+                # model has been handed the sentence to say.
+                if not _verdict.ran:
+                    r = ""
                 # web_search: mirror results to the on-screen content panel
                 if (name == "web_search" and r
                         and not _briefing.news_failed(r)):

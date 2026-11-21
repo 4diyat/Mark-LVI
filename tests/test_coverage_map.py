@@ -58,6 +58,7 @@ TESTED = {
     "core/audit_log.py":      "tests/test_audit_log.py",
     "core/presence_mode.py":  "tests/test_presence_mode.py",
     "core/action_gate.py":    "tests/test_action_gate.py",
+    "core/tool_risk.py":      "tests/test_tool_risk.py",
     "ui/toast_queue.py":      "tests/test_toast_queue.py",
     "core/confirm.py":        "tests/test_confirm.py",
     "core/echo.py":           "tests/test_echo.py",
@@ -243,7 +244,7 @@ def test_the_exemptions_are_not_where_the_bugs_were():
     assistant DOES to the machine must not be exempt from having a test."""
     dangerous = ["core/action_loader.py", "core/plugin_loader.py", "core/undo.py",
                  "core/confirm.py", "core/outcome.py", "core/echo.py",
-                 "core/risk_policy.py", "core/action_gate.py"]
+                 "core/risk_policy.py", "core/action_gate.py", "core/tool_risk.py"]
     for name in dangerous:
         assert name in TESTED, f"{name} decides real outcomes and has no test"
 

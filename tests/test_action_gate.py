@@ -12,7 +12,6 @@ from __future__ import annotations
 import pytest
 
 from core import action_gate, audit_log, confirm, risk_policy
-from core import undo as undo_stack
 
 
 @pytest.fixture(autouse=True)
@@ -49,15 +48,38 @@ def test_a_safe_action_runs_and_is_recorded():
     assert {e["level"] for e in _entries()} == {"safe"}
 
 
-def test_a_medium_action_without_an_undo_is_held_for_a_human():
-    """The escalation in risk_policy must actually reach the gate, not just the
-    classification function."""
-    undo_stack.clear()
+def test_a_medium_action_without_a_known_undo_is_held_for_a_human():
+    """The escalation must reach the gate, not just the classification function.
+
+    A tool-level `medium` with no per-action entry has no demonstrated undo, so
+    it is escalated. That is the rule that keeps `medium` from being an
+    unverifiable promise.
+    """
     ran = []
-    result = action_gate.check("file_move", lambda: ran.append(1) or "moved")
+    result = action_gate.check("browser_control", lambda: ran.append(1) or "done")
     assert result.ran is False
     assert ran == []
     assert result.level == risk_policy.RISKY
+
+
+def test_a_call_whose_undo_is_real_runs_without_asking():
+    """`file_controller.delete` pushes `_restore_from_trash`; asking first would
+    be asking about something the user can already walk back."""
+    result = action_gate.check("file_controller", lambda: "Moved to Trash",
+                               {"action": "delete"})
+    assert result.ran is True
+    assert result.level == risk_policy.MEDIUM
+    assert result.risk.reversible is True
+
+
+def test_the_level_follows_the_arguments_not_just_the_tool():
+    """One tool, two answers: reading a folder versus shutting the machine down."""
+    assert action_gate.check("computer_settings", lambda: "ok",
+                             {"action": "volume_up"}).ran is True
+    shutdown = action_gate.check("computer_settings", lambda: "bye",
+                                 {"action": "shutdown"})
+    assert shutdown.ran is False
+    assert shutdown.needs_human is True
 
 
 def test_a_risky_action_never_runs_before_a_human_answers(isolated):
@@ -109,20 +131,27 @@ def test_a_failed_prefix_is_recorded_as_failed():
     assert [e["outcome"] for e in _entries()] == ["requested", "failed"]
 
 
-def test_the_gate_asks_the_undo_stack_by_default():
-    undo_stack.clear()
-    undo_stack.push_undo("volume 50", lambda: "restored")
-    result = action_gate.check("file_move", lambda: "moved")
-    assert result.ran is True, "a registered undo should keep a medium action medium"
-    undo_stack.clear()
+def test_a_tool_that_gates_itself_is_not_asked_about_twice():
+    """Four actions already call `core.confirm` with a sentence written for the
+    specific operation. A second banner for one shutdown teaches the user to
+    dismiss both."""
+    r = action_gate.check("code_helper", lambda: "started", {"action": "run"},
+                          self_gated=True)
+    assert r.ran is True
+    assert r.level == risk_policy.RISKY
+    assert [e["outcome"] for e in _entries()] == ["requested", "done"]
 
 
-def test_an_explicit_undo_answer_overrides_the_stack():
-    undo_stack.clear()
-    undo_stack.push_undo("volume 50", lambda: "restored")
-    result = action_gate.check("file_move", lambda: "moved", undo_registered=False)
-    assert result.ran is False
-    undo_stack.clear()
+def test_without_the_declaration_the_same_call_is_parked():
+    r = action_gate.check("code_helper", lambda: "started", {"action": "run"})
+    assert r.ran is False
+    assert r.needs_human is True
+
+
+def test_the_audit_line_names_the_sub_action():
+    """`computer_settings` alone says nothing about what was asked for."""
+    action_gate.check("computer_settings", lambda: "ok", {"action": "volume_up"})
+    assert _entries()[0]["tool"] == "computer_settings:volume_up"
 
 
 def test_an_audit_failure_does_not_stop_the_action(monkeypatch):

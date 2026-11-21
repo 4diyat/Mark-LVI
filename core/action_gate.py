@@ -1,60 +1,67 @@
-"""core/action_gate.py — one place where an action is allowed, recorded, or held.
+"""core/action_gate.py — where a tool call is allowed, recorded, or parked.
 
-WHY A GATE AND NOT THREE SEPARATE CALLS
-    Each of the three pieces already exists and each is correct on its own:
+WHY A GATE AND NOT FOUR CALLS AT EVERY TOOL
+    Each piece already exists and each is right on its own:
 
-        core/risk_policy   what level this action is
-        core/undo          how to reverse it, if it registered a closure
-        core/confirm       the trusted UI gate for the irreversible ones
-        core/audit_log     what actually happened
+        core/tool_risk    the level of THIS call, arguments included
+        core/risk_policy  the level of a tool, extended by phases and plugins
+        core/confirm      the trusted-UI gate the model cannot forge
+        core/audit_log    what actually happened
 
-    Wiring them by hand at every tool would give four call sites per action and
-    would drift: the fourth action someone writes would forget the audit line,
-    or check `can_undo()` for an action that never registers an undo and get
-    told the wrong level. This module is that wiring, written once, so the
-    ORDER is fixed:
+    Wiring them by hand per tool site would give four call sites per action and
+    would drift: the fourth one somebody writes would forget the audit line, or
+    check the undo stack for an action that never registers one and get told the
+    wrong level. This module is that wiring, written once, in a fixed order:
 
-        1. classify         (risk_policy.decide)
+        1. classify          (tool_risk.classify — per call)
         2. record the intent (audit "requested")
-        3. run, or hold     (safe/medium run; risky goes to confirm)
-        4. record the result (audit with the outcome core.outcome produced)
+        3. run, or park it   (risky goes to core.confirm, unless it already gates)
+        4. record the outcome (audit: done / unverified / failed / ...)
 
-    Steps 2 and 4 are separate on purpose. An audit log that only records what
-    finished cannot answer "it asked to send that email — did I allow it?", and
-    the confirmation dialog is precisely the case where that question matters.
+    Steps 2 and 4 are separate on purpose. A log that records only what finished
+    cannot answer "it asked to send that email — did I allow it?", and the
+    confirmation is exactly the case where that question matters.
 
-WHY THE GATE DOES NOT IMPORT Qt
+WHY SOME TOOLS ARE LEFT ALONE
+    Four actions already call `core.confirm.request` themselves, with a title
+    and a detail written for the specific operation ("Run build.py?" rather than
+    "code_helper:run"). Gating them again here would put two banners on screen
+    for one shutdown, and the second one teaches the user to dismiss both. So a
+    site declares `self_gated=True` when it owns its own confirmation, and the
+    gate records the decision without asking a second time.
+
+WHY IT NEVER IMPORTS Qt
     Everything here runs on whatever thread the agent loop is on. The trusted UI
-    is reached through `core.confirm`, which is already bound to the HUD by
-    main.py. Keeping Qt out of this file is what lets the whole decision path be
-    tested on a machine with no display.
+    is reached through `core.confirm`, which main.py binds to the HUD. Keeping Qt
+    out is what lets the whole decision path be tested with no display.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable
+from typing import Any, Callable, Mapping
 
-from core import audit_log, risk_policy
-from core import undo as undo_stack
+from core import audit_log, tool_risk
 
-# The outcomes this gate records, in the words `core.outcome` already uses so
-# the log and the spoken sentence cannot disagree.
-RUN, HELD, REFUSED = "run", "held", "refused"
+# The words an audit record can carry, in the vocabulary `core.outcome` already
+# uses so the log and the sentence the user hears cannot disagree.
+REQUESTED, AWAITING, RUN, HELD, DONE, UNVERIFIED, FAILED = (
+    "requested", "awaiting", "run", "held", "done", "unverified", "failed")
 
 
 @dataclass(frozen=True)
 class Result:
-    """What the caller should tell the model, and whether anything ran."""
+    """What happened to one call, and what to tell the model."""
 
     ran: bool
     level: str
     message: str
-    decision: risk_policy.Decision
+    risk: tool_risk.CallRisk
 
     @property
     def needs_human(self) -> bool:
-        return self.decision.needs_confirm and not self.ran
+        """True when a person still has to press something."""
+        return self.risk.level == tool_risk.RISKY and not self.ran
 
 
 def _audit(tool: str, level: str, outcome: str, detail: str = "") -> None:
@@ -65,69 +72,75 @@ def _audit(tool: str, level: str, outcome: str, detail: str = "") -> None:
         print(f"[Gate] audit write failed for {tool}: {e}")
 
 
-def check(tool: str, run: Callable[[], str],
-          confirm_detail: str = "", confirm_title: str = "",
-          undo_registered: bool | None = None) -> Result:
-    """Classify, record, then either run `run()` or park it behind confirmation.
+def check(tool: str, run: Callable[[], Any], args: Mapping | None = None,
+          *, self_gated: bool = False, confirm_title: str = "",
+          confirm_detail: str = "", on_decline: Callable[[str], str] | None = None
+          ) -> Result:
+    """Classify one call, record it, then run it or park it behind a human.
 
-    `undo_registered=None` means "ask the undo stack", which is the right answer
-    for a tool that has already pushed its closure. Pass an explicit bool only
-    when the tool knows better — for example, a tool that will register the undo
-    inside `run()` and therefore cannot have registered it yet.
+    `self_gated=True` says the tool already asked through `core.confirm` with a
+    better sentence than this module could write. The gate then records the
+    level and runs it — the tool's own gate is still the only one that can let
+    the action through.
+
+    `args` is what makes the classification per-call: pass the tool's arguments
+    and `computer_settings(action='shutdown')` is asked about while
+    `computer_settings(action='volume_up')` is not.
     """
-    if undo_registered is None:
-        try:
-            undo_registered = undo_stack.can_undo()
-        except Exception:                           # noqa: BLE001
-            undo_registered = False
+    risk = tool_risk.classify(tool, args)
+    name = risk.audit_name
+    _audit(name, risk.level, REQUESTED, confirm_title or "")
 
-    decision = risk_policy.decide(tool, undo_registered=bool(undo_registered))
-    _audit(tool, decision.level, "requested", confirm_title or "")
+    if risk.level == tool_risk.RISKY and not self_gated:
+        from core import confirm          # imported here: see the module docstring
+        title = (confirm_title or _default_title(risk))[:120]
+        detail = (confirm_detail or _default_detail(risk))[:300]
+        message = confirm.request(key=name, title=title, detail=detail,
+                                  run=lambda: _run_and_audit(name, risk.level, run))
+        _audit(name, risk.level, AWAITING, title)
+        outcome = on_decline(message) if on_decline is not None else message
+        return Result(ran=False, level=risk.level, message=outcome, risk=risk)
 
-    if decision.needs_confirm:
-        # Imported here, not at module scope: core.confirm writes to the Qt
-        # interface when it is bound, and importing it early would make this
-        # module's import order matter to the app's start-up.
-        from core import confirm
-        message = confirm.request(
-            key=tool,
-            title=(confirm_title or f"Menjalankan {tool}?")[:120],
-            detail=(confirm_detail or decision.reason)[:300],
-            run=lambda: _run_and_audit(tool, decision.level, run),
-        )
-        _audit(tool, decision.level, HELD, message[:120])
-        return Result(ran=False, level=decision.level, message=message, decision=decision)
-
-    return Result(ran=True, level=decision.level,
-                  message=_run_and_audit(tool, decision.level, run), decision=decision)
+    return Result(ran=True, level=risk.level,
+                  message=_run_and_audit(name, risk.level, run), risk=risk)
 
 
-def _run_and_audit(tool: str, level: str, run: Callable[[], str]) -> str:
+def _default_title(risk: tool_risk.CallRisk) -> str:
+    return f"Run {risk.tool}?" if not risk.action else f"Run {risk.tool}: {risk.action}?"
+
+
+def _default_detail(risk: tool_risk.CallRisk) -> str:
+    return f"{risk.reason}. This cannot be undone by the assistant."
+
+
+def _run_and_audit(name: str, level: str, run: Callable[[], Any]) -> str:
     """Run one action and record what happened, including when it exploded.
 
-    The exception is recorded and re-raised as a sentence rather than propagated:
+    An exception is recorded and turned into a sentence rather than propagated:
     the caller is a model-facing tool, and a traceback in the conversation is
-    both useless to the user and a source of invented detail. `core.outcome`
-    shapes the sentence elsewhere; this keeps the audit line truthful either way.
+    both useless to the user and a source of invented detail.
     """
     try:
-        message = run() or "Done."
+        value = run()
     except Exception as e:                          # noqa: BLE001
-        _audit(tool, level, "failed", f"{type(e).__name__}: {e}"[:200])
+        _audit(name, level, FAILED, f"{type(e).__name__}: {e}")
         return f"That failed: {type(e).__name__}: {e}"
-    outcome = "done"
-    lowered = str(message).lower()
-    # core.outcome marks unverified results with a bracketed tag; mirroring that
-    # here keeps the audit log's vocabulary identical to the spoken result.
-    if "[unverified" in lowered or "unverified" in lowered:
-        outcome = "unverified"
+
+    message = "Done." if value is None else str(value)
+    lowered = message.lower()
+    # `core.outcome` marks its results with bracketed tags; mirroring them here
+    # keeps the audit vocabulary identical to the sentence the user hears.
+    if "[unverified" in lowered or lowered.startswith("unverified"):
+        outcome = UNVERIFIED
     elif "[failed" in lowered or lowered.startswith("failed"):
-        outcome = "failed"
-    _audit(tool, level, outcome, str(message)[:200])
+        outcome = FAILED
+    else:
+        outcome = DONE
+    _audit(name, level, outcome, message[:200])
     return message
 
 
-def describe(tool: str) -> str:
+def describe(tool: str, args: Mapping | None = None) -> str:
     """One line for the risk table in the UI, without running anything."""
-    decision = risk_policy.decide(tool, undo_registered=False)
-    return f"{tool}: {decision.level} — {decision.reason}"
+    risk = tool_risk.classify(tool, args)
+    return f"{risk.audit_name}: {risk.level} — {risk.reason}"

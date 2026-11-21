@@ -59,7 +59,42 @@ Test yang memegang aturan 1 dan 2 ada di `tests/test_risk_policy.py`, dan
 keduanya sudah diperiksa dengan mutasi: mengubah default ke `safe` membuat dua
 tes gagal.
 
+### Tingkat melekat pada **panggilan**, bukan pada tool
+
+`core/risk_policy.py` memetakan satu tool ke satu tingkat, dan bentuk itu tidak
+bertahan pada tool yang benar-benar ada di repo ini:
+
+| Tool | Satu tool, banyak aksi | Kalau diklasifikasi per tool |
+|---|---|---|
+| `computer_settings` | ~50 aksi: `volume_up` sampai `shutdown` | membaca volume butuh konfirmasi, atau mematikan mesin lolos |
+| `file_controller` | `read` dan `delete` di bawah satu nama | salah satunya pasti salah |
+| `code_helper` | `syntax` dan `run` | sama |
+
+`core/tool_risk.py` karena itu mengklasifikasi `(tool, args)`. Tiga tabel
+eksplisit — `_RISKY_ACTIONS`, `_SAFE_ACTIONS`, `_REVERSIBLE_ACTIONS` — dan satu
+aturan: **sub-aksi yang tidak terdaftar dianggap `risky`**, bukan mewarisi
+tingkat induknya. Mewarisi terlihat lebih rapi dan merupakan lubang: hari di
+mana salah satu induk itu dilonggarkan ke `medium`, semua aksi tak terdaftar di
+bawahnya ikut lolos tanpa suara.
+
+`organize_desktop` sengaja muncul di dua tabel (punya undo, **dan** memindahkan
+seluruh desktop sekaligus). Yang lebih ketat menang, dan test memastikan
+keduanya tidak pernah bertentangan tanpa terlihat.
+
 ---
+
+## Aksi yang sudah berpagar sendiri
+
+Empat aksi memanggil `core.confirm.request` sendiri dengan kalimat yang ditulis
+untuk operasi itu ("Jalankan build.py?" bukan "code_helper:run"). `main.py`
+mendaftarnya di `SELF_GATED_ACTIONS`, dan gate hanya mencatat tingkatnya tanpa
+bertanya dua kali — dua banner untuk satu shutdown adalah cara membuat pengguna
+membiasakan diri menutup keduanya tanpa membaca.
+
+Daftar itu tidak bisa membusuk diam-diam: `tests/test_gate_wiring.py` membaca
+sumber setiap aksi dan gagal kalau namanya ada di daftar tetapi aksinya tidak
+pernah memanggil `confirm.request`. Menambah nama di sana tanpa pagar sungguhan
+berarti melewati gate sepenuhnya.
 
 ## Konfirmasi tidak bisa dipalsukan model
 
@@ -143,12 +178,14 @@ pribadi, dan hitungan saran hari ini tidak berarti apa pun setelah di-commit.
 | `ui/command_bar.py` | **selesai** | Ctrl+Space, riwayat 10 baris; fokus kembali dicatat, bukan diklaim |
 | `core/undo_journal.py` | **tidak perlu** | `core/undo.py` sudah melakukan ini |
 | `core/tool_registry.py` | belum | `risk_policy.register()` sudah jadi tempatnya |
-| sambungan ke `main.py` | belum | `action_gate` belum dipanggil dari loop mana pun |
+| sambungan ke `main.py` | **selesai** | dua jalur registry lewat `action_gate.check`; `self_gated` untuk empat aksi |
 
 Tiga hal hanya bisa dibuktikan di Windows dan **jangan** diklaim berfungsi:
 klik-tembus orb (`WindowTransparentForInput` berbeda di X11/macOS), fokus
 kembali setelah Esc, dan DPAPI.
 
-`core/action_gate.py` sudah siap dipakai tetapi belum disambungkan ke pemanggil
-tool mana pun. Menyambungkannya mengubah perilaku setiap tindakan, jadi itu
-langkah tersendiri — bukan efek samping dari commit ini.
+`core/action_gate.py` **sudah tersambung** ke jalur action dan plugin di
+`main.py`. Yang belum: jalur `tool_dispatch` (`recall_memory`, `undo`,
+`system_status`, …) — semuanya read-only atau sudah reversibel, jadi gate hanya
+akan menambah catatan audit, bukan gerbang. Itu langkah berikutnya kalau
+diinginkan.

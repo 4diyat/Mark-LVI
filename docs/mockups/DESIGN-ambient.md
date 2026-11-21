@@ -146,6 +146,8 @@ stack-neutral dan berlaku apa adanya untuk implementasi Python.
 | Audit log terpisah dari `logs/jarvis.log` | `core/audit_log.py` | `tests/test_audit_log.py` |
 | Mode Aktif/Fokus/Senyap | `core/presence_mode.py` | `tests/test_presence_mode.py` |
 | Gerbang eksekusi: klasifikasi → catat → jalan/tahan | `core/action_gate.py` | `tests/test_action_gate.py` |
+| Tingkat per panggilan (`computer_settings` ≠ satu tingkat) | `core/tool_risk.py` | `tests/test_tool_risk.py` |
+| Sambungan gate ke `main.py` + daftar aksi berpagar sendiri | `main.py` | `tests/test_gate_wiring.py` |
 | Orb overlay 96 px, meredup di Fokus/Senyap | `ui/orb_overlay.py` | `tests/test_orb_overlay.py` |
 | Command bar Ctrl+Space, Esc mengembalikan fokus | `ui/command_bar.py` | `tests/test_command_bar.py` |
 | Sambungan mode → orb, chord, dan baki | `ui/lifecycle.py`, `memory/config_manager.py` | `tests/test_presence_wiring.py` |
