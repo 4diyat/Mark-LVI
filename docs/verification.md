@@ -16,6 +16,7 @@ semua komputer. Hasil uji lokal tidak otomatis menjadi hasil CI atau rilis.
 | Editor kode/gambar dan penampil OBJ | Tes logika serta sebagian operasi Qt offscreen | Dialog file, font, gambar, penyimpanan dan penggunaan interaktif pada desktop pengguna |
 | Provider suara, mikrofon & speaker | Tes logika dan mock; pilihan perangkat | Perangkat audio, driver, privasi dan koneksi provider yang dipakai |
 | Plugin dan layanan eksternal | Discovery/manifest dan tes plugin menggunakan fixture/mock | Kredensial, perubahan API, izin, kuota, jaringan dan akun yang dipakai |
+| Integrasi OS (auto-start, `jarvis://`, identitas aplikasi) | Format entri Windows/LaunchAgent/`.desktop`, quoting path berspasi, round-trip tulis-baca, parser `jarvis://` dan penolakannya, urutan pemasangan identitas; registry Windows diuji lewat shell palsu | Klik `jarvis://` sungguhan, grup dan ikon taskbar Windows, entri login setelah restart, dock/`StartupWMClass` Linux, dialog "buka dengan" macOS |
 
 Fitur kontrol tangan dan order MT5 tetap **eksperimental**. Smoke offscreen
 memverifikasi interaksi yang diprogram, bukan kesesuaian visual, performa nyata,
@@ -127,6 +128,33 @@ lengkap, audio atau kredensial dalam laporan.
       sengaja. Coba ketika kamera sibuk dan ketika JARVIS kehilangan fokus.
 - [ ] Pastikan gesture tidak dapat menyetujui dialog sensitif atau mengendalikan
       aplikasi di luar workspace. Jangan mengandalkan gesture untuk order.
+
+### Integrasi OS — Windows, macOS, Linux
+
+Tiga area di bawah hanya terbukti formatnya di CI. Yang menentukan adalah
+perilaku shell yang sebenarnya, dan itu tidak dapat disimulasikan.
+
+- [ ] **Identitas taskbar (Windows).** Jalankan `python main.py`, lalu lihat
+      taskbar: tombolnya harus bergrup sendiri dengan ikon arc reactor dan
+      label `J.A.R.V.I.S`, **bukan** bergabung dengan `python.exe`. Uji juga
+      saat ikon di-pin dan saat ada skrip Python lain berjalan bersamaan.
+      Catat versi Windows dan apakah pin lama perlu dilepas dulu.
+- [ ] **Auto-start.** Nyalakan dari tray, restart mesin, lalu pastikan JARVIS
+      muncul **di tray** (bukan layar penuh) dan tidak meminta API key ulang.
+      Lalu hapus `main.py` sementara dan buka SETUP: entri harus terbaca
+      **BROKEN**, bukan "ON". Kembalikan file setelah uji.
+- [ ] **`jarvis://`.** Dari browser ketik `jarvis://summon`, lalu
+      `jarvis://ask?text=halo` saat JARVIS sudah berjalan: jendela harus muncul
+      **dan** teksnya masuk sebagai giliran pengguna — bukan hanya jendela tanpa
+      alasan. Uji juga satu link rusak (`jarvis://run`) dan pastikan alasannya
+      muncul di log aktivitas dan aplikasi tetap mau start. Ulangi tombol
+      ON/OFF di SETUP, lalu hapus entri handler dengan tangan dan pastikan
+      tombol kembali menunjukkan OFF.
+- [ ] **Linux.** Di X11, pastikan jendela memakai ikon dari `.desktop` dan
+      tidak muncul sebagai dua entri terpisah di dock (`StartupWMClass`).
+      Ulangi di Wayland dan catat apa yang memang tidak didukung.
+- [ ] **macOS.** Setelah `jarvis://` didaftarkan, pastikan dialog "buka dengan"
+      menyebut J.A.R.V.I.S, dan bundle di `~/Applications` memakai ikon aplikasi.
 
 ### Remote HTTPS
 
