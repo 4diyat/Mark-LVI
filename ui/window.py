@@ -3011,9 +3011,16 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         self._iface_btn.setToolTip(_t("ui.iface.hint"))
 
     def _toggle_interface_mode(self):
-        """Ask JarvisUI for the other mode; believe only what it managed."""
+        """Cycle the three interface modes; believe only what actually took.
+
+        hud -> ambient -> bubble -> hud. The same order as the HUD style button
+        next to it, which also cycles rather than presenting a list — one button
+        that shows where you are is cheaper to read than a menu, and the label
+        always says which mode you are in.
+        """
         from memory.config_manager import get_ui_mode
-        want = "ambient" if get_ui_mode() == "hud" else "hud"
+        order = ("hud", "ambient", "bubble")
+        want = order[(order.index(get_ui_mode()) + 1) % len(order)]
         ok = False
         host = getattr(self, "_shell", None)
         if host is not None:
@@ -3731,6 +3738,8 @@ class JarvisUI:
         self._win = MainWindow(face_path)
         self.root = _RootShim(self._app)
         self._tray = None
+        self._bubble = None
+        self._face_path = face_path
         self._ambient = False
         # The window's closeEvent has to be able to tell "put it away" from
         # "quit", and only this object knows whether a tray exists. It reaches
@@ -3766,6 +3775,10 @@ class JarvisUI:
 
     def _start_tray(self) -> bool:
         return self._lifecycle.start_tray(self)
+
+    def _face_path_or_default(self) -> str:
+        """The face image the bubble should draw, as the window was given it."""
+        return getattr(self, "_face_path", None) or "face.png"
 
     def summon(self) -> None:
         self._lifecycle.summon(self)
@@ -3910,6 +3923,9 @@ class JarvisUI:
             self._win.hud.set_audio_level(level)
         except Exception:
             pass
+        bubble = getattr(self, "_bubble", None)
+        if bubble is not None:
+            bubble.set_audio_level(level)
 
     def glance(self, dx: float, dy: float, hold: float = 1.1) -> None:
         """Ask the avatar to look somewhere for a moment (see HoloAvatar.glance)."""
@@ -3943,6 +3959,12 @@ class JarvisUI:
             self._win.hud.push_visemes(frames, hop, at)
         except Exception:
             pass
+        # Without this the floating face mouths nothing while the assistant
+        # talks — it would sit there breathing, which looks broken rather than
+        # muted.
+        bubble = getattr(self, "_bubble", None)
+        if bubble is not None:
+            bubble.push_visemes(frames, hop, at)
 
     def notify_phone_connected(self) -> None:
         self._win._phone_connected_sig.emit()
@@ -3962,6 +3984,12 @@ class JarvisUI:
         tray = getattr(self, "_tray", None)
         if tray is not None:
             tray.set_state(state)
+        # The bubble is a SECOND place the state is visible, and it is the only
+        # one on screen in bubble mode — a face that keeps breathing while the
+        # assistant is asleep would be a lie told in the most visible place.
+        bubble = getattr(self, "_bubble", None)
+        if bubble is not None:
+            bubble.set_state(state)
 
     def speech_caption(self, event):
         self._win._speech_caption_sig.emit(event)

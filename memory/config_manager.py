@@ -346,11 +346,15 @@ def save_hud_style(style: str) -> None:
 #   "ambient" — no window at launch. JARVIS lives in the notification area and
 #               answers by voice; the interface is something you SUMMON, not
 #               something you sit inside.
+#   "bubble"  — ambient, plus the animated face in a small always-on-top window
+#               that can be dragged out of the way and double-clicked to open
+#               the interface. The tray icon is still there, because the face
+#               cannot be guaranteed to appear and the tray can.
 #
 # A STRING RATHER THAN A BOOLEAN, because "hidden" is not the only alternative
-# to "full screen" and the floating-face mode planned next needs a third value.
-# Storing a bool now would mean migrating every config file later.
-UI_MODES = ("hud", "ambient")
+# to "full screen". That is no longer a prediction: "bubble" is the third value,
+# and a bool stored by phase 1 would have had to be migrated to add it.
+UI_MODES = ("hud", "ambient", "bubble")
 
 
 def get_ui_mode() -> str:

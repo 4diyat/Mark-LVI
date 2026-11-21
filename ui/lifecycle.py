@@ -58,14 +58,23 @@ def start_interface(shell: "JarvisUI") -> None:
     # So a configuration that cannot start a session always gets the window,
     # whatever `ui_mode` says. The mode takes effect from the next launch, once
     # there is something to run headlessly.
-    if mode != "ambient" or not getattr(shell._win, "_ready", False):
+    if mode == "hud" or not getattr(shell._win, "_ready", False):
         shell._win.showFullScreen()
         return
 
-    if start_tray(shell):
-        shell._ambient = True
+    if not start_tray(shell):
+        # No notification area: there is nowhere else to be. See the docstring.
+        shell._win.showFullScreen()
         return
-    shell._win.showFullScreen()
+
+    shell._ambient = True
+    if mode == "bubble":
+        # A face that will not draw is not a reason to lose the mode — the tray
+        # alone is a working ambient install, which is what phase 1 shipped.
+        # DEGRADE TO LESS, NEVER TO A WINDOW: the user asked for no window.
+        if not start_bubble(shell):
+            shell._win._log_sig.emit(
+                "SYS: Face bubble unavailable; staying in the tray.")
 
 
 def start_tray(shell: "JarvisUI") -> bool:
@@ -98,6 +107,28 @@ def start_tray(shell: "JarvisUI") -> bool:
     return True
 
 
+def start_bubble(shell: "JarvisUI") -> bool:
+    """Create the always-on-top face. False if this desktop will not have it."""
+    from ui.face_bubble import FaceBubble
+
+    try:
+        from memory.config_manager import get_assistant_name
+        name = get_assistant_name()
+    except Exception:                               # noqa: BLE001
+        name = "J.A.R.V.I.S"
+
+    bubble = FaceBubble(
+        shell._face_path_or_default(),
+        name,
+        on_double_click=lambda: summon(shell),
+    )
+    if not bubble.start():
+        note(shell, "Face bubble could not be created; staying in the tray.")
+        return False
+    shell._bubble = bubble
+    return True
+
+
 # ── summon / dismiss ──────────────────────────────────────────────────────
 
 def summon(shell: "JarvisUI") -> None:
@@ -113,6 +144,16 @@ def summon(shell: "JarvisUI") -> None:
         shell._win.showFullScreen()
     else:
         shell._win.showMaximized()
+    # THE FACE STEPS ASIDE WHILE THE WINDOW IS UP.
+    #
+    # Both are always-on-top, and two copies of the same avatar — one in the
+    # window's centre, one floating over it — reads as a rendering fault rather
+    # than as two surfaces. Hidden rather than stopped: the animation state is
+    # kept, so it picks up mid-motion when the window goes away again, which is
+    # the same rule the window's own canvas follows (`_on_screen`).
+    bubble = getattr(shell, "_bubble", None)
+    if bubble is not None and bubble.available:
+        _hide_bubble(bubble)
     try:
         shell._win.raise_()
         shell._win.activateWindow()
@@ -135,6 +176,9 @@ def dismiss(shell: "JarvisUI") -> None:
         return
     shell._win.hide()
     shell._ambient = True
+    bubble = getattr(shell, "_bubble", None)
+    if bubble is not None and bubble.available:
+        _show_bubble(bubble)
 
 
 def toggle_interface(shell: "JarvisUI") -> None:
@@ -158,6 +202,7 @@ def set_interface_mode(shell: "JarvisUI", mode: str) -> bool:
 
     mode = str(mode or "").strip().lower()
     if mode == "hud":
+        _stop_bubble(shell)
         if getattr(shell, "_tray", None) is not None:
             shell._tray.stop()
             shell._tray = None
@@ -165,14 +210,62 @@ def set_interface_mode(shell: "JarvisUI", mode: str) -> bool:
         shell._ambient = False
         save_ui_mode("hud")
         return True
-    if mode != "ambient":
+    if mode not in ("ambient", "bubble"):
         return False
+
+    # The tray comes first in every ambient variant: it is the only surface
+    # that can always get the user back, so a mode that cannot create one is a
+    # mode this machine cannot have.
     if getattr(shell, "_tray", None) is None and not start_tray(shell):
         return False
+
+    if mode == "bubble":
+        if getattr(shell, "_bubble", None) is None and not start_bubble(shell):
+            # Refused rather than saved-and-ignored: the user picked this mode,
+            # and a stored value that does nothing is a setting they will
+            # re-toggle forever. The tray mode is still offered, one click away.
+            return False
+        if getattr(shell, "_bubble", None) is not None:
+            _show_bubble(shell._bubble)
+    else:
+        _stop_bubble(shell)
+
     shell._win.hide()
     shell._ambient = True
-    save_ui_mode("ambient")
+    save_ui_mode(mode)
     return True
+
+
+def _hide_bubble(bubble) -> None:
+    try:
+        bubble._window.hide()
+    except Exception as e:                          # noqa: BLE001
+        note_quiet(f"could not hide the face — {type(e).__name__}: {e}")
+
+
+def _show_bubble(bubble) -> None:
+    try:
+        bubble._window.show()
+    except Exception as e:                          # noqa: BLE001
+        note_quiet(f"could not show the face — {type(e).__name__}: {e}")
+
+
+def _stop_bubble(shell) -> None:
+    bubble = getattr(shell, "_bubble", None)
+    if bubble is None:
+        return
+    bubble.stop()
+    shell._bubble = None
+
+
+def note_quiet(text: str) -> None:
+    """A note for the case where there is no shell to write a log line on.
+
+    Show/hide failures happen while the user is watching the thing not appear,
+    so silence is the one response that would be wrong — stdout costs nothing
+    and shows up in the log file main.py opens at startup.
+    """
+    print(f"[JARVIS] {text}")
 
 
 # ── what the tray menu asks for ───────────────────────────────────────────
@@ -195,9 +288,12 @@ def request_sleep(shell: "JarvisUI") -> None:
     move the state in the direction the menu item promises. A "Go to sleep" that
     sometimes wakes it up would be worse than no item at all.
     """
-    btn = getattr(shell._win, "_wake_btn", None)
+    # `wake_state()["awake"]` is the state main.py actually gates the mic on, so
+    # asking it directly is exact. An earlier draft read the wake BUTTON, which
+    # only agrees with this when the last repaint happened to be right.
+    getter = getattr(shell._win, "_wake_state", None)
     try:
-        awake = bool(btn.isChecked()) if btn is not None else None
+        awake = bool(getter()["awake"]) if getter is not None else None
     except Exception:                               # noqa: BLE001
         awake = None
     if awake is False:

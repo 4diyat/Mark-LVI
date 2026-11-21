@@ -546,8 +546,14 @@ So there are two players running together, with a timer that corrects any drift 
 #### 🔇 It stopped hearing the film
 The microphone is open while a video plays, so the moment you turn the sound on, JARVIS starts answering the film. The mic now mutes itself when the video's sound goes on and unmutes when it goes off — and it says so in the activity log rather than going deaf silently.
 
-#### 🖥 Full screen, or only the tray
-JARVIS used to be the whole screen: launching it covered the desktop, so you could not work and be heard at the same time. That is a kiosk. **INTERFACE** in the CONTROLS drawer now chooses between the original full-screen HUD and **ambient** mode, where no window opens at all — JARVIS sits in the notification area, answers by voice, and shows the interface only when summoned (left-click the icon, or `Ctrl+Shift+J` to put it away again).
+#### 🖥 Full screen, face on the desktop, or only the tray
+JARVIS used to be the whole screen: launching it covered the desktop, so you could not work and be heard at the same time. That is a kiosk. **INTERFACE** in the CONTROLS drawer now cycles three modes:
+
+- **FULL SCREEN** — the HUD, unchanged. What this app has always done.
+- **FACE ON DESKTOP** — the animated face in a small always-on-top window you can drag out of the way. Double-click it to open the interface.
+- **TRAY ONLY** — no window at all. JARVIS sits in the notification area, answers by voice, and shows the interface only when summoned (left-click the icon, or `Ctrl+Shift+J` to put it away again).
+
+The tray icon exists in all three ambient variants, because the face cannot be guaranteed to appear on every desktop and the tray can. In face mode the face hides while the window is up — two copies of the same avatar on screen reads as a rendering fault rather than as two surfaces — and comes back when the window goes away.
 
 The window still exists in ambient mode; it is simply not on screen. Everything `main.py` talks to lives on it, so keeping it built means one behaviour for both modes instead of a branch at every call site. Three things had to be true for this not to be a worse experience than a window:
 
@@ -806,8 +812,9 @@ Mark LVI/
 ├── main.py                   # Core loop — Gemini Live session, audio I/O, viseme extraction, tool dispatch
 ├── ui/                       # PyQt6 HUD — window.py (widgets), theme.py (palette), metrics.py (sampler)
 │   ├── window.py             #   avatar canvas, waveform, log panel, settings drawer, camera feed
-│   ├── lifecycle.py          #   launch, summon, dismiss — full screen or tray-only
-│   └── tray.py               #   the notification-area icon: show, wake, sleep, settings, quit
+│   ├── lifecycle.py          #   launch, summon, dismiss — the three interface modes
+│   ├── tray.py               #   the notification-area icon: show, wake, sleep, settings, quit
+│   └── face_bubble.py        #   the always-on-top floating face, and its dragging
 ├── setup.py                  # OS-aware installer (skips wrong-OS dependencies, checks your Python)
 ├── pyproject.toml            # Lint + test configuration (ruff: bugs only, see CONTRIBUTING.md)
 ├── CONTRIBUTING.md           # How to work on it — the checks, and the rules that are not obvious

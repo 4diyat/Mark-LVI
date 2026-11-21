@@ -281,7 +281,7 @@ def test_ambient_mode_does_not_show_the_window_at_launch():
     source = LIFECYCLE.read_text(encoding="utf-8")
     start = source.index("def start_interface(shell")
     body = source[start:source.index("def start_tray(shell")]
-    assert 'mode != "ambient"' in body, "the launch path must branch on the mode"
+    assert 'mode == "hud"' in body, "the launch path must branch on the mode"
     assert "_win.showFullScreen()" in body, "hud mode must still fill the screen"
     assert "start_tray(shell)" in body, "ambient mode must go to the tray"
     # And the fallback, in the same function: no tray means show the window.
@@ -301,7 +301,7 @@ def test_an_unconfigured_install_gets_the_window_even_in_ambient_mode():
     source = LIFECYCLE.read_text(encoding="utf-8")
     start = source.index("def start_interface(shell")
     body = source[start:source.index("def start_tray(shell")]
-    guard = 'if mode != "ambient" or not getattr(shell._win, "_ready", False):'
+    guard = 'if mode == "hud" or not getattr(shell._win, "_ready", False):'
     assert guard in body, (
         "ambient mode must not engage on an install that still needs setup")
     assert body.index(guard) < body.index("start_tray(shell)"), (
@@ -311,7 +311,9 @@ def test_an_unconfigured_install_gets_the_window_even_in_ambient_mode():
 def test_ambient_is_opt_in_and_defaults_to_the_hud():
     """An upgrade must not remove the window somebody used yesterday."""
     from memory import config_manager as cm
-    assert cm.UI_MODES == ("hud", "ambient")
+    # Three values now — "bubble" was added in phase 2, which is exactly why
+    # ui_mode is a string and not a bool (phase 1 said so and was right).
+    assert cm.UI_MODES == ("hud", "ambient", "bubble")
     import inspect
     src = inspect.getsource(cm.get_ui_mode)
     assert 'get("ui_mode", "hud")' in src
