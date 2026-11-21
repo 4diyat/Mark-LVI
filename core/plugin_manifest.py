@@ -49,8 +49,16 @@ THE FORMAT
       "description": "…",
       "permissions": ["network"],        # see PERMISSIONS below
       "sha256": "…",                     # of the .py file
-      "homepage": "https://…"            # optional
+      "homepage": "https://…",           # optional
+      "window": "float"                  # optional, DESCRIPTIVE ONLY
     }
+
+    `window` is the one field here that does nothing. It is read, logged when
+    the window opens, and never acted on: only the user floats a window, from
+    the CONTROLS drawer (`core/floating.py::plugin_hint` explains why in the
+    sentence it hands to the log). An unknown value is not a problem — it is
+    ignored, because a manifest field that can fail a plugin would turn a
+    description into a permission by the back door.
 """
 from __future__ import annotations
 
@@ -109,6 +117,7 @@ class Manifest:
     permissions: tuple[str, ...] = ()
     sha256: str = ""
     homepage: str = ""
+    window: str = ""          # "float"/"docked": a wish, never an instruction
     problems: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
@@ -124,6 +133,16 @@ class Manifest:
         if self.permissions:
             bits.append("needs " + ", ".join(self.permissions))
         return " — ".join(bits)
+
+    @property
+    def asks_to_float(self) -> bool:
+        """Whether the plugin WISHES its window floated. Not a capability.
+
+        Named for what it is. A caller that wants to float something has to go
+        through the user (`core/floating.py`), and this property is not the
+        thing that decides it.
+        """
+        return self.window == "float"
 
 
 def sha256_of(path: Path) -> str:
@@ -232,6 +251,7 @@ def read(py_file: Path, plugin_name: str = "") -> Manifest | None:
         permissions=tuple(str(p) for p in declared if p in PERMISSIONS),
         sha256=str(raw.get("sha256") or "").strip().lower(),
         homepage=str(raw.get("homepage") or ""),
+        window=str(raw.get("window") or "").strip().lower(),
         problems=problems,
     )
 

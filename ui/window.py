@@ -193,6 +193,7 @@ from core.i18n import active_locale as i18n_active, label as _t, set_locale
 #     window keeps importing them by name so `ui.MetricBar`, `ui.FileDropZone`
 #     and `ui.SetupOverlay` resolve exactly as they did before.
 from ui.metric_bar import MetricBar          # noqa: F401 — re-exported
+from ui.floating_documents import toggle_hook as _recall_hook
 from ui.drop_zone import (                   # noqa: F401 — re-exported
     FileDropZone,
     _DropCanvas,
@@ -1483,11 +1484,9 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         settings_btn.clicked.connect(self._open_plugin_settings)
         lay.addWidget(settings_btn)
 
-        # The button is built here with the rest of the drawer; the panel behind
-        # it — and the whole providers package — is imported on the click. The
-        # drawer used to stutter for a measured 2.104 seconds because a state
-        # check imported openwakeword while it was being built, and adding a
-        # second thing that does that would undo the fix rather than repeat it.
+        # Built here; the providers package is imported on the click. The drawer
+        # used to stutter for a measured 2.104s because a state check imported
+        # openwakeword at build time; a second such import would undo the fix.
         prov_btn = QPushButton(_t("ui.engine.button"))
         prov_btn.setFixedHeight(26)
         prov_btn.setFont(QFont("Courier New", 7))
@@ -1558,13 +1557,12 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         self._iface_btn.clicked.connect(self._toggle_interface_mode)
         self._refresh_iface_btn()
 
-        # With no window, a banner is the only way to learn an answer arrived.
         from ui.notify_row import build_notifications_button
         self._notify_btn = build_notifications_button(
             lay, _row, on_toggled=self._on_notifications_toggled)
-        from ui.floating_row import build_floating_button, build_gesture_os_button
-        self._floating_btn = build_floating_button(lay, _row, self)
-        self._gesture_os_btn = build_gesture_os_button(lay, _row, self)
+        from ui import floating_row as _fr   # what may leave, what has
+        self._floating_btn = _fr.build_floating_rows(lay, _row, self)
+        self._gesture_os_btn = _fr.build_gesture_os_button(lay, _row, self)
         from ui.file_access_row import build_file_access_button as build_fa
         self._file_access_btn = build_fa(lay, _row)
 
@@ -2990,6 +2988,8 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         ov.show()
         ov.raise_()
         self._plugin_manager_overlay = ov   # keep a reference so it isn't GC'd
+
+    _recall_floating_plugin = _recall_hook()
 
     def _open_plugin_settings(self):
         sections = self.get_plugin_settings() if self.get_plugin_settings else []
