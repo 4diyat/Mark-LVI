@@ -1,6 +1,7 @@
 """Offline stress and interruption checks for assistant PCM backpressure."""
 import ast
 import asyncio
+import traceback
 from pathlib import Path
 import threading
 from types import SimpleNamespace
@@ -117,6 +118,12 @@ def test_receive_path_preserves_audio_transcript_and_tool_call_with_backpressure
         node = next(n for n in cls.body if isinstance(n, ast.AsyncFunctionDef) and n.name == '_receive_audio')
         ns = {'asyncio': asyncio, 'playback_buffer': playback_buffer,
               '_clean_transcript': lambda text: text, '_is_repeat_chunk': lambda *_: False,
+          # The method is exec'd out of main.py, so it sees exactly the
+          # globals given here — every module-level name it uses must be one of
+          # them. `keep_turn` is the transcript writer; `traceback` was already
+          # missing and only ever surfaced as a NameError raised from inside
+          # the except block, which hid the real error.
+          'keep_turn': lambda role, text: None, 'traceback': traceback,
               '_REPEAT_MIN': 5}
         exec(compile(ast.Module(body=[node], type_ignores=[]), str(source), 'exec'), ns)
         logs, tool_calls, tool_responses = [], [], []

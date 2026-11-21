@@ -33,7 +33,8 @@ from core import undo as undo_stack
 # Imported lazily inside the handlers that use them, so importing this module
 # never drags in the system monitor's psutil probe or the memory file scan —
 # `main.py` imports this at startup.
-_HANDLED = frozenset({"recall_memory", "undo", "system_status", "manage_monitor"})
+_HANDLED = frozenset({"recall_memory", "recall_history", "undo",
+                      "system_status", "manage_monitor"})
 
 
 def handles(name: str) -> bool:
@@ -49,6 +50,41 @@ async def dispatch(name: str, args: dict) -> str:
         # short strings, and a thread hop would cost more than the work itself.
         from memory.memory_manager import search_memory
         return search_memory(args.get("query", ""), limit=8)
+
+    if name == "recall_history":
+        # The RAW conversation, not the curated memory: "what did we just talk
+        # about" is a question about the transcript, and answering it from the
+        # memory file would return what the assistant chose to remember rather
+        # than what was actually said. Local file read: no network, no model.
+        from core import history
+
+        def _number(key: str, default: int, low: int, high: int) -> int:
+            """A model can send a string, a float or nothing at all; the tool
+            must answer, not raise. Clamped to a range the file scan can serve."""
+            try:
+                value = int(float(args.get(key, default) or default))
+            except (TypeError, ValueError):
+                value = default
+            return max(low, min(value, high))
+
+        days = _number("days", 1, 1, history.KEEP_DAYS)
+        turns = _number("turns", 20, 2, 200)
+        if days > 1:
+            chunks = []
+            for offset in range(days - 1, -1, -1):
+                from datetime import date, timedelta
+                day = (date.today() - timedelta(days=offset)).isoformat()
+                entries = history.read_day(day)
+                if not entries:
+                    continue
+                chunks.append(f"--- {day} ---")
+                for e in entries[-turns:]:
+                    who = "You" if e.get("role") == "user" else "JARVIS"
+                    chunks.append(f"{who}: {e.get('text', '')}")
+            return ("\n".join(chunks) if chunks
+                    else "There is no recorded conversation for those days.")
+        text = history.as_text(turns)
+        return text or "There is no recorded conversation yet."
 
     if name == "undo":
         if str(args.get("action", "")).lower().strip() == "list":
