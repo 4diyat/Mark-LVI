@@ -81,6 +81,11 @@ TESTED = {
     "core/gesture_os_pointer.py": "tests/test_gesture_os.py",
     "core/file_access.py":    "tests/test_file_access.py",
     "ui/file_access_row.py":  "tests/test_file_access.py",
+    "ui/floating_window.py":  "tests/test_floating.py",
+    "ui/floating_panel.py":   "tests/test_floating.py",
+    "ui/floating_row.py":     "tests/test_floating.py",
+    "ui/drawer_note.py":      "tests/test_floating.py",
+    "ui/gesture_os_bridge.py": "tests/test_gesture_os.py",
     "memory/config_manager.py": "tests/test_config.py",
     "memory/memory_manager.py": "tests/test_memory.py",
 }

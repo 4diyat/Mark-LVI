@@ -13,6 +13,8 @@ Two halves, tested differently on purpose:
 """
 from __future__ import annotations
 
+import pathlib
+
 import pytest
 
 from core import floating as fl
@@ -41,6 +43,23 @@ def test_every_floatable_entry_is_actually_allowable():
         assert fl.fit(name, "linux", "x11").allowed is True, name
 
 
+def test_the_three_tables_do_not_overlap():
+    """A name in two tables is a `fit` whose answer depends on dict order."""
+    names = list(fl.FLOATABLE) + list(fl.NOT_FLOATABLE) + list(fl.RETIRED)
+    assert len(names) == len(set(names)), sorted(names)
+
+
+def test_the_float_button_can_only_name_widgets_the_catalogue_knows():
+    """The row asks the catalogue, so a widget it cannot find is a click that
+    silently does nothing — the exact bug this test was written after."""
+    from pathlib import Path
+    source = (Path(__file__).resolve().parent.parent
+              / "ui" / "floating_row.py").read_text(encoding="utf-8")
+    for name in fl.FLOATABLE:
+        if name == "speech_caption":
+            assert '"speech_caption"' in source
+
+
 def test_the_drawer_cannot_float_because_it_is_anchored():
     """Not an opinion: `_position_ctrl_drawer` calls `mapTo` on its own button.
     As a window it has no button to anchor to."""
@@ -60,6 +79,25 @@ def test_the_conversation_does_not_float():
     assert fl.fit("conversation").allowed is False
 
 
+def test_a_retired_name_is_refused_and_says_what_replaced_it():
+    """`hud` and `camera_preview` were in the catalogue and are not any more.
+
+    A name that silently stops being floatable reads as a regression; a name
+    that comes back with its reason reads as a decision. And the avatar in
+    particular: it is ALREADY a window (`ui/face_bubble.py`), so "floating" it
+    from the main window would build a second one.
+    """
+    for name, reason in fl.RETIRED.items():
+        assert reason.strip(), name
+        fit = fl.fit(name, "windows")
+        assert fit.allowed is False
+        assert fit.reason == reason
+
+    assert "second avatar" in fl.fit("hud", "windows").reason
+    assert "moves itself" in fl.fit("camera_preview", "windows").reason
+    assert "'metrics'" in fl.fit("metric_bar", "windows").reason
+
+
 # ── what it means on this platform ────────────────────────────────────────
 
 def test_wayland_floats_but_does_not_promise_always_on_top():
@@ -77,13 +115,13 @@ def test_x11_gets_always_on_top():
 
 
 def test_windows_admits_the_fullscreen_exception():
-    fit = fl.fit("metric_bar", "windows")
+    fit = fl.fit("metrics", "windows")
     assert fit.always_on_top is True
     assert "fullscreen" in fit.note
 
 
 def test_macos_mentions_spaces():
-    fit = fl.fit("metric_bar", "darwin")
+    fit = fl.fit("metrics", "darwin")
     assert fit.always_on_top is True
     assert "Space" in fit.note
 
@@ -175,9 +213,9 @@ def test_state_tracks_what_is_floating():
 def test_forgetting_one_keeps_the_others():
     state = fl.State()
     state.add("speech_caption", fl.Placement(1, 2, 3, 4))
-    state.add("metric_bar", fl.Placement(5, 6, 7, 8))
+    state.add("metrics", fl.Placement(5, 6, 7, 8))
     state.forget("speech_caption")
-    assert state.names() == ["metric_bar"]
+    assert state.names() == ["metrics"]
     state.forget()
     assert state.names() == []
 
@@ -484,6 +522,72 @@ def panel(tmp_path, monkeypatch):
                 __import__("sys").modules[name] = value
 
 
+def test_the_panel_finds_qt_from_a_module_it_did_not_import(panel):
+    """`_qt()` reads `sys.modules`, not a name captured at import time.
+
+    WHY THIS IS WORTH A TEST AT ALL, AND WHAT IT IS NOT
+        `_qt()` exists so the lookup lives in ONE function rather than in each
+        method that needs it. This test asserts exactly that and no more: the
+        `Qt` the panel hands to the Qt layer is the one currently loaded, not a
+        copy bound earlier. What it does NOT claim is that `from PyQt6.QtCore
+        import Qt` would be different — measured, it is answered from
+        `sys.modules` too when the submodule is already loaded, so the two are
+        interchangeable and a mutation swapping them survives. Believing
+        otherwise is how a test ends up asserting a comment.
+    """
+    import sys
+
+    loaded = sys.modules["PyQt6.QtCore"]
+    original = loaded.Qt
+    replacement = object()
+    try:
+        loaded.Qt = replacement
+        assert panel._qt_lookup() is replacement
+    finally:
+        loaded.Qt = original
+
+
+def test_the_panel_reports_the_os_it_was_told_about(monkeypatch):
+    """The OS and session are read as a pair: "wayland on Windows" is not a
+    state, and passing only one of them used to leave the other stale."""
+    import importlib.util
+    import sys
+    import types
+
+    from core import platform_support
+
+    monkeypatch.setattr(platform_support, "os_name", lambda: "Windows")
+    monkeypatch.setattr(platform_support, "_linux_session", lambda: "wayland")
+
+    # Loaded by path, and `ui` stubbed with nothing in it: `from ui import
+    # floating_panel` would run the real package, which re-exports the window
+    # and with it the whole Qt import graph. Construction needs no Qt at all —
+    # that is the point of the panel keeping Qt behind `_qt()`.
+    saved = sys.modules.get("ui")
+    sys.modules["ui"] = types.ModuleType("ui")
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "panel_under_test", pathlib.Path(__file__).resolve().parent.parent
+            / "ui" / "floating_panel.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    finally:
+        if saved is None:
+            sys.modules.pop("ui", None)
+        else:
+            sys.modules["ui"] = saved
+
+    class _Window:
+        pass
+
+    panel = module.FloatingPanel(_Window())
+    assert panel._os_name == "Windows"
+    assert panel._session == "wayland"
+
+    told = module.FloatingPanel(_Window(), os_name="Linux", session="x11")
+    assert (told._os_name, told._session) == ("Linux", "x11")
+
+
 def test_the_panel_refuses_an_anchored_widget_and_says_why(panel):
     layout = _Layout()
     widget = _SizedWidget(layout)
@@ -600,3 +704,231 @@ def test_a_widget_that_vanished_does_not_raise(panel):
     """Closing a floating widget's owner and then docking it must log, not
     traceback into the Qt thread."""
     assert panel.dock("speech_caption") is False
+
+
+# ── the drawer row, and the explanation under it ──────────────────────────
+
+def _row_modules():
+    """`ui.floating_row` + `ui.drawer_note`, with Qt answered by a stub.
+
+    The row is where the user actually meets this feature, and until now it had
+    no test at all — which is how it came to look up its widget in a
+    one-entry dictionary and paint a count that could only ever be 0 or 1.
+    """
+    import importlib.util
+    import sys
+    import types
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+
+    class _RowStub:
+        """Stands in for the drawer's `_row`: it ADDS the widget it is given.
+
+        Every other row module in this drawer hands its widget to `_row` and
+        lets the drawer place it, so the stub records the call rather than
+        being a layout with `addWidget` on it.
+        """
+
+        def __init__(self):
+            self.collected = []
+            self.calls = []
+
+        def __call__(self, widget, *a, **k):
+            self.collected.append(widget)
+            self.calls.append((widget, *a))
+            return widget
+
+    class _Button:
+        def __init__(self, *a, **k):
+            self._text = ""
+            self._tip = ""
+            self.clicked = types.SimpleNamespace(connect=lambda fn: None)
+
+        def setFont(self, *a): pass          # noqa: N802 — Qt's names
+        def setStyleSheet(self, *a): pass    # noqa: N802
+        def setToolTip(self, tip): self._tip = tip   # noqa: N802
+        def toolTip(self): return self._tip  # noqa: N802
+        def setText(self, text): self._text = text   # noqa: N802
+        def text(self): return self._text
+
+    class _Label(_Button):
+        def setWordWrap(self, on): pass      # noqa: N802
+        def setTextInteractionFlags(self, flags): pass   # noqa: N802
+        def setMaximumHeight(self, h): self.max_height = h   # noqa: N802
+        def setCursor(self, c): self.cursor = c   # noqa: N802
+
+    class _Qt:
+        class TextInteractionFlag:
+            NoTextInteraction = 0
+
+        class CursorShape:
+            ArrowCursor = 0
+
+    qtgui = types.ModuleType("PyQt6.QtGui")
+    qtgui.QFont = lambda *a, **k: None
+    qtwidgets = types.ModuleType("PyQt6.QtWidgets")
+    qtwidgets.QPushButton = _Button
+    qtwidgets.QLabel = _Label
+    qtcore = types.ModuleType("PyQt6.QtCore")
+    qtcore.Qt = _Qt
+
+    theme = types.ModuleType("ui.theme")
+    theme.C = types.SimpleNamespace(PRI="", TEXT="", TEXT_DIM="", WHITE="",
+                                    BORDER="", BORDER_B="")
+
+    saved = {n: sys.modules.get(n) for n in
+             ("PyQt6", "PyQt6.QtCore", "PyQt6.QtGui", "PyQt6.QtWidgets",
+              "ui.theme", "ui.floating_row", "ui.drawer_note")}
+    sys.modules.update({"PyQt6": types.ModuleType("PyQt6"),
+                        "PyQt6.QtCore": qtcore, "PyQt6.QtGui": qtgui,
+                        "PyQt6.QtWidgets": qtwidgets, "ui.theme": theme})
+
+    def load(name):
+        spec = importlib.util.spec_from_file_location(
+            f"ui.{name}", root / "ui" / f"{name}.py")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[f"ui.{name}"] = module
+        spec.loader.exec_module(module)
+        return module
+
+    try:
+        yield load("drawer_note"), load("floating_row"), _Button, _Label, _RowStub
+    finally:
+        for name, value in saved.items():
+            if value is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = value
+
+
+def test_the_capability_note_is_text_not_a_dead_button():
+    """A greyed-out button that never responds reads as "not installed"."""
+    gen = _row_modules()
+    note_mod, _, _, Label, Row = next(gen)
+    asked = []
+    note_mod._t = lambda key: asked.append(key) or ""
+    try:
+        row = Row()
+        label = note_mod.build_capability_note(object(), row,
+                                               "ui.capability.captions")
+        assert isinstance(label, Label)
+        assert row.collected == [label], "the note was never added to the drawer"
+        # The KEY, not the rendered text: `ui.theme` is stubbed here, and the
+        # point of this row is that it asks for a sentence about a capability.
+        # That both language files actually carry the key is `test_i18n.py`'s
+        # job, not a Qt stub's.
+        assert asked == ["ui.capability.captions"], asked
+        # `_row` clips every widget to 26px, which is right for a button and
+        # cuts a wrapped sentence in half. The note undoes it.
+        assert label.max_height > 26, label.max_height
+    finally:
+        try:
+            next(gen)
+        except StopIteration:
+            pass
+
+
+def test_the_float_row_paints_its_state_every_time_it_is_built():
+    """The drawer rebuilds its buttons on every open. A row that painted once
+    would come back saying OFF while the captions were out."""
+    import types
+
+    gen = _row_modules()
+    _, row_mod, Button, _, _ = next(gen)
+    try:
+        class _State:
+            def __init__(self, names):
+                self._names = names
+
+            def names(self):
+                return list(self._names)
+
+        class _Panel:
+            def __init__(self, names):
+                self.state = _State(names)
+                self._window = types.SimpleNamespace(_speech_caption=None)
+
+        floating = _Panel(["speech_caption"])
+        button = Button()
+        row_mod.paint(button, floating)
+        assert "1" in button.text(), button.text()
+
+        # …and after a CLICK, not only on build: the drawer is rebuilt on every
+        # open, so a row that only painted at construction time would come back
+        # saying OFF while the captions were still out on the desktop.
+        clicked = _Panel([])
+        clicked._window = types.SimpleNamespace(
+            _speech_caption=types.SimpleNamespace())
+
+        def _float(name, widget):
+            clicked.state._names = ["speech_caption"]
+            clicked.state.names = lambda: list(clicked.state._names)
+
+        clicked.toggle = _float
+        # A FRESH button, deliberately: reusing the one above would still be
+        # carrying the "1" that the previous `paint` left on it, and the
+        # assertion would pass whether or not `toggle` repainted anything.
+        fresh = Button()
+        row_mod.paint(fresh, _Panel([]))
+        assert "OFF" in fresh.text() or "MATI" in fresh.text(), fresh.text()
+        row_mod.toggle(fresh, clicked)
+        assert "1" in fresh.text(), f"did not repaint after the click: {fresh.text()}"
+
+        docked = _Panel([])
+        row_mod.paint(button, docked)
+        assert "OFF" in button.text() or "MATI" in button.text(), button.text()
+    finally:
+        try:
+            next(gen)
+        except StopIteration:
+            pass
+
+
+def test_a_click_with_no_captions_yet_says_so_instead_of_doing_nothing():
+    """The captions widget does not exist until the first reply is spoken.
+
+    Clicking FLOAT WIDGETS before that used to call `panel.toggle` with a None
+    widget, which returns False and says nothing at all — the one outcome a
+    drawer row may never have.
+    """
+    import types
+
+    gen = _row_modules()
+    _, row_mod, Button, _, _ = next(gen)
+    try:
+        class _Panel:
+            def __init__(self):
+                self.state = types.SimpleNamespace(names=lambda: [])
+                self.said = []
+                self._window = types.SimpleNamespace(_speech_caption=None)
+
+            def toggle(self, name, widget):
+                raise AssertionError("nothing to float, but it tried")
+
+            def say(self, message):
+                self.said.append(message)
+
+        panel = _Panel()
+        row_mod.toggle(Button(), panel)
+        assert panel.said, "a click that cannot do anything said nothing"
+    finally:
+        try:
+            next(gen)
+        except StopIteration:
+            pass
+
+
+def test_the_float_row_names_the_one_widget_it_can_actually_float():
+    """It used to take a tuple of names and resolve them through a dictionary
+    holding one real widget — a list pretending to be general."""
+    import ast
+    from pathlib import Path
+
+    source = (Path(__file__).resolve().parent.parent
+              / "ui" / "floating_row.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    toggles = [n for n in ast.walk(tree)
+               if isinstance(n, ast.FunctionDef) and n.name == "toggle"]
+    assert len(toggles) == 1
+    assert "names=" not in source, "the general-looking tuple is back"

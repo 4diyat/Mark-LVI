@@ -659,10 +659,12 @@
   "ui.file_access.on": "🔓  FULL FILE ACCESS: ON ({n} FOLDERS)",
   "ui.file_access.pick": "Choose a folder the assistant may use",
   "ui.file_access.hint": "Off, the assistant works only inside your home folder. On, it also works in the folders you grant — but never in .ssh, browser password stores or this app's own key file.",
-  "ui.floating.off": "⧉  FLOATING WIDGETS: OFF",
-  "ui.floating.on": "⧉  FLOATING WIDGETS: {n}",
-  "ui.floating.hint": "Lift the speech captions out of the window so they stay on screen while you work elsewhere. On Wayland it will float but cannot stay above other windows — the system does not allow it.",
+  "ui.floating.off": "⧉  FLOAT WIDGETS: OFF",
+  "ui.floating.on": "⧉  FLOAT WIDGETS: {n} OUT",
+  "ui.floating.hint": "Take the speech captions out of this window and onto the desktop as a window of their own. Click again to put them back where they were.",
   "ui.gesture_os.off": "🖐  HAND → OS: OFF",
   "ui.gesture_os.on": "🖐  HAND → OS: ON",
-  "ui.gesture_os.hint": "Let your hand drive the desktop: point to move the pointer, pinch and hold 0.35s to click, hold two fingers to scroll. Stops by itself when this window has focus or a confirmation is on screen, so you still press sensitive buttons yourself."
+  "ui.gesture_os.hint": "Let your hand drive the desktop: point to move the pointer, pinch and hold 0.35s to click, hold two fingers to scroll. Stops by itself when this window has focus or a confirmation is on screen, so you still press sensitive buttons yourself.",
+  "ui.capability.captions": "Only the speech captions float today. The metrics column and the avatar stay put — each one has a reason, and neither is a feature this build forgot to finish.",
+  "ui.floating.no_caption": "There are no speech captions to float yet — they appear when the assistant speaks."
 }

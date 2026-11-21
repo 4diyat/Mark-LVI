@@ -27,11 +27,23 @@ from core import floating, logbook
 # saved record is unusable. Chosen to be out of the way of the middle of the
 # screen without being flush against an edge.
 _DEFAULTS = {
-    "speech_caption": (24, 24, 420, 96),
-    "metric_bar": (24, 140, 240, 120),
-    "camera_preview": (24, 280, 320, 240),
-    "hud": (24, 24, 260, 260),
+    "speech_caption": (24, 24, 460, 120),
+    "metrics": (24, 160, 240, 220),
 }
+
+
+def _qt():
+    """The `Qt` namespace, from the ALREADY-LOADED module, in one place.
+
+    Not `from PyQt6.QtCore import Qt`: that resolves `PyQt6` as a PACKAGE and
+    executes `PyQt6/__init__.py`, 60 lines of theme plumbing this file has no
+    use for — and on a machine where Qt is stubbed it is the difference
+    between a test and a second implementation of Qt. Read once, here, rather
+    than copied into each method that needs it.
+    """
+    import sys
+
+    return sys.modules["PyQt6.QtCore"].Qt
 
 
 class FloatingPanel:
@@ -41,16 +53,21 @@ class FloatingPanel:
         self._window = window
         # Detected here rather than passed in: the window would have to know
         # which session type it is running under, and it has no other reason to.
-        import platform
-
+        # A caller that names a SESSION must also name the OS it belongs to;
+        # "wayland on Windows" is not a state, so the pair is read together.
         from core import platform_support
 
-        self._os_name = os_name or platform.system()
-        self._session = (session if session is not None and os_name
-                         else platform_support._linux_session())
+        self._os_name = os_name or platform_support.os_name()
+        self._session = session if os_name else platform_support._linux_session()
         self.state = floating.State()
         self._docks: dict = {}
         self._widgets: dict = {}
+
+    # ── the Qt namespace ──────────────────────────────────────────────────
+
+    def _qt_lookup(self):
+        """`Qt`, read from the module that is already loaded. See `_qt()`."""
+        return _qt()
 
     # ── the question ──────────────────────────────────────────────────────
 
@@ -77,23 +94,17 @@ class FloatingPanel:
             return False
         fit = self.may_float(name)
         if not fit.allowed:
-            self._log(fit.reason)
+            self.say(fit.reason)
             return False
 
         try:
             from ui import floating_window
-            import sys as _sys
 
-            # A SUBMODULE import, not `from PyQt6.QtCore import Qt`. The latter
-            # resolves `PyQt6` as a package and executes `PyQt6/__init__.py`,
-            # which is 60 lines of Qt theme plumbing this file has no use for —
-            # and which fails outright on a machine where Qt is stubbed.
-            Qt = _sys.modules["PyQt6.QtCore"].Qt
             placement = self._placement_for(name, widget)
-            dock = floating_window.attach(widget, Qt, fit, placement)
+            dock = floating_window.attach(widget, self._qt_lookup(), fit, placement)
         except Exception as e:              # noqa: BLE001 — a Qt edge
             logbook.get(__name__).warning("could not float %s: %s", name, e)
-            self._log(f"could not float {name}")
+            self.say(f"could not float {name}")
             return False
 
         self._docks[name] = dock
@@ -104,7 +115,7 @@ class FloatingPanel:
         # from, and would reappear in the default corner next time.
         self._remember(name)
         if fit.note:
-            self._log(fit.note)
+            self.say(fit.note)
         return True
 
     def dock(self, name: str) -> bool:
@@ -117,10 +128,8 @@ class FloatingPanel:
         self._remember(name)
         try:
             from ui import floating_window
-            import sys as _sys
 
-            Qt = _sys.modules["PyQt6.QtCore"].Qt
-            floating_window.detach(widget, Qt, self._docks.get(name))
+            floating_window.detach(widget, self._qt_lookup(), self._docks.get(name))
         except Exception as e:              # noqa: BLE001
             logbook.get(__name__).warning("could not dock %s: %s", name, e)
             return False
@@ -199,8 +208,12 @@ class FloatingPanel:
             logbook.get(__name__).debug("could not read a saved position: %s", e)
             return None
 
-    def _log(self, message: str) -> None:
-        """Say it where the user can see it — a silent refusal is a dead end."""
+    def say(self, message: str) -> None:
+        """Say it where the user can see it — a silent refusal is a dead end.
+
+        Public because the drawer's row reports through it too: the row owns
+        the click, so it owns the sentence that answers an impossible click.
+        """
         try:
             self._window.write_log(f"SYS: {message}")
         except Exception as e:              # noqa: BLE001
