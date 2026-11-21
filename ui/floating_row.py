@@ -73,4 +73,15 @@ def build_floating_button(layout, row_factory, window) -> QPushButton:
     return button
 
 
-__all__ = ["build_floating_button", "paint", "toggle"]
+def build_gesture_os_button(*args, **kwargs):
+    """Re-exported so the drawer needs one import, not two.
+
+    `ui/window.py` is at its line ceiling and every import there costs a line
+    it does not have. The row itself still lives in its own module — this is a
+    name, not a move.
+    """
+    from ui.gesture_os_row import build_gesture_os_button as _build
+    return _build(*args, **kwargs)
+
+
+__all__ = ["build_floating_button", "build_gesture_os_button", "paint", "toggle"]

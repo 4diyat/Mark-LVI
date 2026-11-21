@@ -495,6 +495,15 @@ def setup(window):
             message += ' ' + controller.error
         samples = controller.sample() if running else ()
         gestures.update(samples)
+        # The SAME samples, one frame later, offered to the desktop. The
+        # workspace acts first on purpose: if a gesture is ambiguous, moving a
+        # card here is recoverable and clicking something there may not be.
+        bridge = getattr(window, '_gesture_os', None)
+        if bridge is not None:
+            if running:
+                bridge.feed(samples, time.monotonic())
+            else:
+                bridge.release()
         mode_key = {'move': 'gesture.mode_move', 'resize': 'gesture.mode_transform',
                     'click': 'gesture.mode_click', 'slider': 'gesture.mode_slider',
                     'claw': 'gesture.mode_claw'}.get(gestures.mode)
@@ -545,9 +554,22 @@ def setup(window):
             controller.start(index)
         refresh()
 
+    def release_os_button():
+        """Let go of a button a gesture is holding, if there is one.
+
+        Called wherever tracking can stop — the panel's Stop, the drawer's
+        toggle, and the process exiting. A held button left behind turns the
+        whole desktop into a drag-selection, and the user cannot fix it by
+        waving: the pointer is theirs, the button is this program's.
+        """
+        bridge = getattr(window, '_gesture_os', None)
+        if bridge is not None:
+            bridge.release()
+
     def stop_from_panel():
         # Never toggle: a worker that just exited must not be restarted by Stop.
         controller.stop()
+        release_os_button()
         gestures.reset()
         gestures.clap.reset()
         gestures.show_cursors(())
@@ -564,3 +586,4 @@ def setup(window):
     window._hand_timer = timer
     window._hand_refresh = refresh
     QApplication.instance().aboutToQuit.connect(controller.stop)
+    QApplication.instance().aboutToQuit.connect(release_os_button)
