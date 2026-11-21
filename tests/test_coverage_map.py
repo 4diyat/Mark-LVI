@@ -79,6 +79,7 @@ TESTED = {
     "core/floating.py":       "tests/test_floating.py",
     "core/session_policy.py": "tests/test_session_policy.py",
     "core/pointer_ring.py":   "tests/test_pointer_ring.py",
+    "core/prompt_build.py":   "tests/test_prompt_build.py",
     "core/gesture_os.py":     "tests/test_gesture_os.py",
     "core/gesture_os_pointer.py": "tests/test_gesture_os.py",
     "core/file_access.py":    "tests/test_file_access.py",

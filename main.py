@@ -67,6 +67,7 @@ from memory.memory_manager import (
 from core import deeplink as _deeplink
 from core import outcome
 from core import playback_buffer
+from core import prompt_build as _prompt_build
 from core import session_policy as _session_policy
 from core import speech_sync
 from core.action_loader import strip_meta
@@ -261,93 +262,28 @@ def _pcm_visemes(samples, sr: int = 24000):
         return []
 
 
-def _describe_tools(declarations) -> str:
-    """One line per capability, straight from the live tool declarations.
+def _platform_limits() -> tuple:
+    """What the platform forbids, for the prompt. The only machine-dependent bit.
 
-    Derived rather than written down: the action and plugin registries are
-    discovered at startup, so whatever the user has installed is what the model
-    is told it can do. Adding a plugin extends this by itself, and removing one
-    stops the model from claiming an ability it no longer has.
+    `core/platform_support` asks the host; `core/prompt_build` does not, so the
+    wording can be tested anywhere. A probe that fails must cost the prompt a
+    paragraph, not the startup of the app.
     """
-    lines = []
-    for d in declarations or ():
-        try:
-            name = d.get("name") if isinstance(d, dict) else getattr(d, "name", None)
-            desc = (d.get("description") if isinstance(d, dict)
-                    else getattr(d, "description", "")) or ""
-        except Exception:
-            continue
-        if not name:
-            continue
-        desc = " ".join(str(desc).split())
-        lines.append(f"- {name}: {desc[:150]}" if desc else f"- {name}")
-    return "\n".join(lines)
-
-
-def _describe_limits(has_vision: bool, has_mic: bool) -> str:
-    """The other half of self-knowledge: what is out of reach, and why.
-
-    Derived from how the program is actually built, not from a list of refusals.
-    A model that knows its boundaries stops improvising around them, and stating
-    them as architecture rather than as rules keeps the answer honest in any
-    language.
-    """
-    out = [
-        "- Anything not listed above is outside your reach. Say so in one clause "
-        "and offer the nearest thing you can actually do — never mime an action "
-        "you cannot take, and never report a result you did not get.",
-        "- You act on this machine only. You cannot reach the user's other "
-        "devices, accounts or hardware except through the tools listed above.",
-        "- You remember what is in the memory block and what has been said this "
-        "session. Anything else you were told before is gone unless it was saved.",
-    ]
-    # What the PLATFORM forbids, before what the build lacks.
-    #
-    # On Wayland, and on a macOS without Accessibility, the keyboard, mouse and
-    # screen are simply not available to any program — and the APIs report
-    # success anyway. A model that does not know this reports clicks that never
-    # happened, which is how "it does not work properly on Linux" was described
-    # for a long time without anybody being able to name the failing part.
     try:
         from core import platform_support
-        out.extend(platform_support.describe_for_model(platform_support.detect()))
+        return tuple(platform_support.describe_for_model(platform_support.detect()))
     except Exception as _e:
         print(f"[Limits] platform capabilities unavailable: {_e}")
+        return ()
 
-    if has_vision:
-        out.append(
-            "- Your sight is not continuous. You see nothing until you call a "
-            "vision tool, and then only that single frame at that moment — you "
-            "cannot watch, monitor or notice something changing on screen.")
-    else:
-        out.append("- You have no sight at all in this build.")
-    if has_mic:
-        out.append(
-            "- You hear nothing while the microphone is muted, and you cannot "
-            "unmute it yourself.")
-    else:
-        # The branch that did not exist. Without it, a machine with no
-        # microphone produced a prompt that said NOTHING about it, and the model
-        # behaved as if it could hear — answering "I did not catch that" forever
-        # while the user spoke into a device that was not there.
-        out.append(
-            "- The computer microphone is unavailable. A paired remote device "
-            "may still send audio; respond normally if audio arrives. Do not "
-            "pretend to hear from the computer microphone. Text remains available.")
-    return "\n".join(out)
+
+def _describe_tools(declarations) -> str:
+    """Kept as a name for the prompt builder; the wording lives in core."""
+    return _prompt_build.describe_tools(declarations)
 
 
 def _render_prompt(template: str, values: dict) -> str:
-    """Fill {tokens} in the prompt template.
-
-    A plain replace rather than str.format: the file is meant to be edited by
-    hand, and a stray brace in someone's own wording must never take the app
-    down at startup.
-    """
-    out = template or ""
-    for key, val in values.items():
-        out = out.replace("{" + key + "}", str(val))
-    return out
+    return _prompt_build.render(template, values)
 
 
 def _get_api_key() -> str:
@@ -1288,32 +1224,15 @@ class JarvisLive:
         mem_str    = format_memory_for_prompt(memory)
         sys_prompt = _load_system_prompt()
 
-        now      = datetime.now()
-        time_str = now.strftime("%A, %B %d, %Y — %I:%M %p")
-        time_ctx = (
-            f"[CURRENT DATE & TIME]\n"
-            f"Right now it is: {time_str}\n"
-            f"Use this to calculate exact times for reminders.\n\n"
-        )
+        # The date and time block: `now` is read here, the wording is not.
+        time_ctx = _prompt_build.time_block(datetime.now())
 
-        # Identity injection — overrides any hardcoded name in prompt.txt
-        # Address form is a property of the language being spoken, so it is
-        # stated as a principle rather than a two-language lookup — the model
-        # already knows the respectful register of whatever language it is in.
-        _addr = (f"ADDRESS: Always call the user '{_user_name}'."
-                 if _user_name
-                 else 'ADDRESS: Address the user with the ordinary respectful form '
-                      'for a superior in the language you are currently speaking — '
-                      '"sir" in English, its everyday equivalent in any other '
-                      'language. Never an archaic or aristocratic form, and never '
-                      'the form from a different language than the one you are '
-                      'speaking in this sentence.')
-        identity_ctx = (
-            f"[IDENTITY]\n"
-            f"Your name is {self._asst_name}. "
-            f"Always refer to yourself as {self._asst_name}.\n"
-            f"{_addr}\n\n"
-        )
+        # Identity injection — overrides any hardcoded name in prompt.txt.
+        # The wording lives in core/prompt_build.py: address form is a property
+        # of the language being spoken, stated as a principle rather than a
+        # two-language lookup, and that argument belongs with the text it is
+        # about rather than in the middle of a config builder.
+        identity_ctx = _prompt_build.identity_block(self._asst_name, _user_name)
 
         # Everything the model is told about *itself* is derived here, not
         # written into prompt.txt: the name comes from config, the platform from
@@ -1326,28 +1245,15 @@ class JarvisLive:
 
         # An engine that cannot do something is not offered the tool for it.
         #
-        # This is why capabilities are data rather than a pile of conditions: the
-        # SAME filtering feeds `_describe_limits` two lines below, through
-        # `_names`, so an engine with no eyes ends up with the model being TOLD
-        # it cannot see. Without that it would be handed a tool it cannot serve,
-        # call it, get nothing back, and describe a screen it never received.
-        #
-        # `self._engine_caps is None` is Gemini Live and skips all of it, so the
-        # declaration list is byte-for-byte what it has always been.
-        if self._engine_caps is not None:
-            _caps = self._engine_caps
-            _blocked = set()
-            if not _caps.get("vision"):
-                _blocked |= {"screen_process", "close_camera"}
-            if not _caps.get("tools"):
-                _blocked = {(d.get("name") if isinstance(d, dict)
-                             else getattr(d, "name", "")) for d in _all_decls}
-            if _blocked:
-                _all_decls = [d for d in _all_decls
-                              if (d.get("name") if isinstance(d, dict)
-                                  else getattr(d, "name", "")) not in _blocked]
-                print(f"[JARVIS] {len(_blocked)} tool(s) withheld — "
-                      f"this engine cannot serve them")
+        # The filtering, the budget and the name list are in
+        # `core/prompt_build.py` now, because they decide what the model is
+        # TOLD about itself and none of it needs a live session to test.
+        # `self._engine_caps is None` is Gemini Live and skips all of it, so
+        # the declaration list is byte-for-byte what it has always been.
+        _all_decls, _blocked_n = _prompt_build.withhold(_all_decls, self._engine_caps)
+        if _blocked_n:
+            print(f"[JARVIS] {_blocked_n} tool(s) withheld — "
+                  f"this engine cannot serve them")
 
         # Apply the provider's budget before describing capabilities, and while
         # tier/brief metadata still exists. Otherwise the prompt promises tools
@@ -1358,22 +1264,20 @@ class JarvisLive:
                                       max_tools=self._engine_caps.get("max_tools"),
                                       max_chars=self._engine_caps.get("max_tool_chars"),
                                       preferred_names=(_schema.VISUAL_TOOLS if self._engine_caps.get("prioritize_visual_tools") else ()))
-            _kept_names = {d.get("name") if isinstance(d, dict) else getattr(d, "name", "")
-                           for d in _offered}
-            _omitted = [d.get("name") if isinstance(d, dict) else getattr(d, "name", "")
-                        for d in _all_decls
-                        if (d.get("name") if isinstance(d, dict) else getattr(d, "name", "")) not in _kept_names]
+            _kept_names = {_prompt_build.tool_name(d) for d in _offered}
+            _omitted = [_prompt_build.tool_name(d) for d in _all_decls
+                        if _prompt_build.tool_name(d) not in _kept_names]
             if _omitted:
                 self.ui.write_log("Tool budget omitted: " + ", ".join(_omitted))
             _all_decls = _offered
 
-        _names = {(d.get("name") if isinstance(d, dict) else getattr(d, "name", ""))
-                  for d in _all_decls}
+        _names = {_prompt_build.tool_name(d) for d in _all_decls}
         sys_prompt = _render_prompt(sys_prompt, {
             "assistant_name": self._asst_name,
             "platform": f"{_platform.system()} {_platform.release()}".strip(),
             "capabilities": _describe_tools(_all_decls),
-            "limits": _describe_limits(
+            "limits": _prompt_build.describe_limits(
+                platform_lines=_platform_limits(),
                 has_vision="screen_process" in _names,
                 # A machine with no microphone must be told it cannot hear.
                 # This was the constant `True`, so a deaf build was instructed
