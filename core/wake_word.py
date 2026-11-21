@@ -232,45 +232,62 @@ class WakeWordDetector:
             self._logger(f"Wake word: frame dropped — {e}")
 
     def _loop(self) -> None:
-        import numpy as np
         while self._running:
             try:
                 frame = self._queue.get()
                 if frame is None or not self._running:
                     break
-                scores = self._model.predict(np.asarray(frame, dtype=np.int16))
-                score = 0.0
-                if isinstance(scores, dict):
-                    # match the jarvis model regardless of exact key suffix
-                    for k, v in scores.items():
-                        if "jarvis" in k.lower():
-                            score = max(score, float(v))
-                    if score == 0.0 and scores:
-                        score = max(float(v) for v in scores.values())
-                if score >= self._threshold:
-                    # Fire FIRST, then drain.
-                    #
-                    # This used to drain before on_detect(), and the comment
-                    # said it was "so we don't double-fire on the same
-                    # utterance". It did prevent the double fire, and it also
-                    # threw away the rest of the sentence: "Hey Jarvis, what is
-                    # the weather" arrives as a burst of frames, the phrase is
-                    # detected partway through, and everything after it was
-                    # discarded before the window had a chance to become awake.
-                    # The user then had to repeat themselves — the most common
-                    # way a wake word "sort of works".
-                    #
-                    # Firing first means the window is awake before the frames
-                    # are dropped, so the audio after the phrase is already
-                    # going where it should. The drain stays, because without
-                    # it the remaining frames of the SAME phrase re-trigger.
-                    try:
-                        self._on_detect()
-                    except Exception as e:
-                        self._logger(f"Wake word: on_detect error — {e}")
-                    self._drain(reset_model=True)
+                self._run_one_pass(frame)
             except Exception as e:
                 self._logger(f"Wake word: inference error — {e}")
+
+    def _run_one_pass(self, frame=None) -> None:
+        """Feed one frame to the model and act on the score.
+
+        Split out of `_loop` so the decision can be exercised without a thread.
+        A test that races the inference thread to observe what happens between
+        `_drain()` and `_on_detect()` is a test that passes on a fast machine
+        and fails on a slow one — which is what happened.
+        """
+        import numpy as np
+        if frame is None:
+            frame = self._queue.get()
+            if frame is None or not self._running:
+                return
+        try:
+            scores = self._model.predict(np.asarray(frame, dtype=np.int16))
+            score = 0.0
+            if isinstance(scores, dict):
+                # match the jarvis model regardless of exact key suffix
+                for k, v in scores.items():
+                    if "jarvis" in k.lower():
+                        score = max(score, float(v))
+                if score == 0.0 and scores:
+                    score = max(float(v) for v in scores.values())
+            if score >= self._threshold:
+                # Fire FIRST, then drain.
+                #
+                # This used to drain before on_detect(), and the comment
+                # said it was "so we don't double-fire on the same
+                # utterance". It did prevent the double fire, and it also
+                # threw away the rest of the sentence: "Hey Jarvis, what is
+                # the weather" arrives as a burst of frames, the phrase is
+                # detected partway through, and everything after it was
+                # discarded before the window had a chance to become awake.
+                # The user then had to repeat themselves — the most common
+                # way a wake word "sort of works".
+                #
+                # Firing first means the window is awake before the frames
+                # are dropped, so the audio after the phrase is already
+                # going where it should. The drain stays, because without
+                # it the remaining frames of the SAME phrase re-trigger.
+                try:
+                    self._on_detect()
+                except Exception as e:
+                    self._logger(f"Wake word: on_detect error — {e}")
+                self._drain(reset_model=True)
+        except Exception as e:
+            self._logger(f"Wake word: inference error — {e}")
 
     def _drain(self, reset_model: bool = False) -> None:
         """Throw away everything queued, so one utterance cannot fire twice.

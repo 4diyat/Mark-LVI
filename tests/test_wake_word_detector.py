@@ -161,29 +161,42 @@ def test_detection_fires_before_the_queue_is_drained(detector_factory):
     is detected partway through, and draining first discarded everything after
     it — so the user had to repeat themselves.
 
-    ORDER, NOT TIMING. The old code called `_drain()` and then `_on_detect()`;
-    the new code calls `_on_detect()` and then `_drain()`. Rather than race the
-    inference thread and hope to sample the queue mid-flight, the callback
-    records the queue depth AT THE MOMENT IT IS CALLED. If the drain has
-    already happened, the frames that follow the phrase are gone before anyone
-    can act on them, and the depth is zero.
+    Driven by hand, not by the inference thread. Racing a real thread to sample
+    the queue mid-flight is exactly the flaky test this replaced: it passed
+    here and failed on CI, where the machine was fast enough to consume the
+    whole backlog before the callback looked. Calling `_loop`'s body once, with
+    the queue pre-filled, makes the ORDER the only thing under test.
     """
     depth_when_fired = []
-    detector = None
+    detector = detector_factory(lambda: depth_when_fired.append(detector._queue.qsize()))
 
-    def on_detect():
-        depth_when_fired.append(detector._queue.qsize())
+    # Driving the pass by hand, so there must be a model and a running flag —
+    # but no thread, which is the point: nothing can consume the backlog behind
+    # our back.
+    class _Model:
+        def reset(self):
+            pass
+        def predict(self, samples):
+            return {"hey_jarvis_v0.1": 0.9}
+    detector._model = _Model()
+    detector._running = True
 
-    detector = detector_factory(on_detect)
-    detector.start()
-    for frame in frames(6):
-        detector.feed(frame)
+    # Five frames waiting, as if the mic outran inference by a few blocks.
+    for frame in frames(5):
+        detector._queue.put_nowait(frame)
+    assert detector._queue.qsize() == 5
 
-    _wait(lambda: depth_when_fired, "the detector never fired")
-    assert depth_when_fired[0] > 0, (
-        "the queue was already empty when the callback ran — the rest of the "
-        "utterance was discarded before the window could wake")
-    _wait(lambda: detector._queue.qsize() == 0, "the backlog was never drained")
+    detector._run_one_pass()          # one predict(); the fake scores it as a hit
+
+    assert depth_when_fired, "the detector did not fire on a full queue"
+    # One of the five was consumed by the predict() under test, so four should
+    # still be waiting when the callback runs. Anything less means the drain
+    # got there first.
+    assert depth_when_fired[0] == 4, (
+        "the queue was drained before the callback ran — the rest of the "
+        f"utterance was discarded first (depth was {depth_when_fired[0]}, "
+        "expected 4)")
+    assert detector._queue.qsize() == 0, "the backlog was never drained"
 
 
 def test_a_detection_clears_the_models_own_buffers(detector_factory):
