@@ -20,6 +20,7 @@ semua komputer. Hasil uji lokal tidak otomatis menjadi hasil CI atau rilis.
 | Riwayat percakapan | Penulisan/format JSONL, batas ukuran dan retensi, baris terpotong, pembersihan per hari, tool `recall_history` dengan argumen aneh | Isi transkrip dari sesi suara nyata: apakah setiap giliran benar-benar tercatat, dan apakah pertanyaan "tadi kita bicarakan apa" dijawab dari transkrip, bukan dari memori |
 | Interupsi suara (barge-in) | Palet keputusan murni: kapan memotong, kapan mengabaikan, gema sendiri, jeda, ruang bising, guard belum terkalibrasi; pemanggilan di callback mikrofon dan penekanannya per jawaban | Apakah memotong benar-benar terasa nyaman dengan mikrofon dan speaker sungguhan: berapa lama jeda sebelum berhenti, apakah tersela gema di ruang bergema, dan apakah suara latar memicu pemotongan |
 | Obsidian | Penemuan vault dari `obsidian.json`, penelusuran yang melewati `.obsidian`/`.trash`, pencarian dan kutipan baris, append yang menjaga CRLF, penolakan menimpa, penolakan symlink keluar, uji sumber yang melarang penghapusan | Vault Obsidian **sungguhan** milik pengguna: apakah Obsidian membaca ulang perubahan tanpa konflik, apakah nama catatan dengan spasi/emoji bekerja, dan apakah vault yang disinkronkan (Obsidian Sync/iCloud) tidak bentrok |
+| Widget mengambang | Kebijakan murni tanpa Qt: daftar boleh/tidak beserta alasannya, penolakan Wayland atas always-on-top, penguncian posisi ke layar, penyimpanan posisi per widget; lapisan Qt diuji dengan stub yang mencatat geometry dan flag | Desktop **sungguhan** di Windows, macOS, X11 dan Wayland: apakah caption benar-benar tetap di atas aplikasi lain, apakah ia kembali ke indeks layout yang sama, apakah sesi Wayland memberi tahu pengguna bahwa jendela bisa tertutup, dan apakah posisi bertahan setelah monitor dicabut atau resolusi berubah |
 | Akses file penuh | Kebijakan murni: default = home saja, opt-in hanya dari `true` literal, penolakan kredensial (`~/.ssh`, `System32`, penyimpan sandi browser) meski folder induknya diizinkan, penolakan kunci milik aplikasi sendiri, resolusi symlink sebelum pemeriksaan, alasan penolakan, dan uji AST yang memastikan tidak ada tool/plugin yang bisa memanggil `save`/`disable` | Folder **sungguhan** di Windows (`C:\`), macOS (`~/Library`) dan Linux (`/`): apakah folder sistem benar-benar tertolak, apakah reparse point/junction Windows dan symlink OneDrive/Dropbox tidak menyelinap, dan apakah dialog pemilih folder mengembalikan path yang bisa disimpan |
 
 Fitur kontrol tangan dan order MT5 tetap **eksperimental**. Smoke offscreen
@@ -223,6 +224,26 @@ perilaku shell yang sebenarnya, dan itu tidak dapat disimulasikan.
       file di luar home. Harus tetap ditolak dan aplikasi tetap bisa dipakai.
 - [ ] Coba minta asisten "memberi dirinya akses ke C:\". Ia tidak punya tool untuk
       itu; jawabannya harus menjelaskan bahwa Anda yang harus menekan tombolnya.
+
+### Widget mengambang
+
+- [ ] Buka drawer CONTROLS, tekan **FLOATING WIDGETS**. Caption harus keluar dari
+      window dan muncul sebagai panel kecil tanpa bingkai.
+- [ ] Pindah ke aplikasi lain (browser, editor). Caption harus tetap terlihat — di
+      Windows/macOS/X11. Di Wayland, catat apakah ia tertutup, dan pastikan log
+      menyebut alasannya.
+- [ ] Ucapkan satu kalimat panjang. Caption mengambang harus tetap mengikuti teks.
+- [ ] Tutup lalu buka lagi tombolnya. Caption harus kembali ke **posisi semula di
+      dalam window**, bukan ke dasar panel.
+- [ ] Geser caption ke sudut, matikan, nyalakan lagi. Ia harus muncul di tempat
+      terakhir, bukan di pojok default.
+- [ ] Cabut monitor kedua (atau ubah resolusi), lalu nyalakan caption yang terakhir
+      berada di monitor itu. Ia harus muncul di layar yang masih ada.
+- [ ] Tutup aplikasi saat caption masih mengambang, buka lagi, lalu nyalakan. Posisi
+      terakhir harus diingat.
+- [ ] Minta asisten mengambangkan window plugin (terminal trading, editor gambar).
+      **Belum didukung** — catat bila ia mengklaim bisa. Langkah ini memastikan
+      tidak ada klaim palsu.
 
 ### Remote HTTPS
 

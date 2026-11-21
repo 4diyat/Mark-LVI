@@ -658,5 +658,8 @@
   "ui.file_access.off": "🔓  FULL FILE ACCESS: OFF",
   "ui.file_access.on": "🔓  FULL FILE ACCESS: ON ({n} FOLDERS)",
   "ui.file_access.pick": "Choose a folder the assistant may use",
-  "ui.file_access.hint": "Off, the assistant works only inside your home folder. On, it also works in the folders you grant — but never in .ssh, browser password stores or this app's own key file."
+  "ui.file_access.hint": "Off, the assistant works only inside your home folder. On, it also works in the folders you grant — but never in .ssh, browser password stores or this app's own key file.",
+  "ui.floating.off": "⧉  FLOATING WIDGETS: OFF",
+  "ui.floating.on": "⧉  FLOATING WIDGETS: {n}",
+  "ui.floating.hint": "Lift the speech captions out of the window so they stay on screen while you work elsewhere. On Wayland it will float but cannot stay above other windows — the system does not allow it."
 }

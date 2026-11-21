@@ -658,5 +658,8 @@
   "ui.file_access.off": "🔓  AKSES FILE PENUH: MATI",
   "ui.file_access.on": "🔓  AKSES FILE PENUH: AKTIF ({n} FOLDER)",
   "ui.file_access.pick": "Pilih folder yang boleh dipakai asisten",
-  "ui.file_access.hint": "Saat mati, asisten hanya bekerja di folder home Anda. Saat aktif, ia juga bekerja di folder yang Anda izinkan — tapi tidak pernah di .ssh, penyimpan sandi browser, atau file kunci aplikasi ini."
+  "ui.file_access.hint": "Saat mati, asisten hanya bekerja di folder home Anda. Saat aktif, ia juga bekerja di folder yang Anda izinkan — tapi tidak pernah di .ssh, penyimpan sandi browser, atau file kunci aplikasi ini.",
+  "ui.floating.off": "⧉  WIDGET MENGAMBANG: MATI",
+  "ui.floating.on": "⧉  WIDGET MENGAMBANG: {n}",
+  "ui.floating.hint": "Angkat teks ucapan keluar dari window supaya tetap terlihat saat Anda bekerja di aplikasi lain. Di Wayland ia mengambang tetapi tidak bisa selalu di atas window lain — sistem tidak mengizinkannya."
 }
