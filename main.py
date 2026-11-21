@@ -68,6 +68,7 @@ from core import outcome
 from core import playback_buffer
 from core import prompt_build as _prompt_build
 from core import briefing as _briefing
+from core import mic_status as _mic_status
 from core import playback_timing as _timing
 from core import transcript as _transcript
 from core import session_policy as _session_policy
@@ -651,6 +652,10 @@ class JarvisLive:
         # Did the microphone ever open on this connection? A loop that never
         # opened it cannot "recover", it starts over.
         self._mic_recovered: bool = False
+        # Has the "microphone found" sentence EVER been said? Separate from
+        # `_mic_recovered`, which asks "did it come back just now". Conflating
+        # them is why the second recovery was silent.
+        self._mic_recovered_first: bool = True
 
         self._reconnect_event: asyncio.Event | None = None
         self._reconnect_keep = True   # False → next rebuild drops the resumption handle
@@ -1702,9 +1707,9 @@ class JarvisLive:
                 # Only worth saying once: the recovery loop below repeats this
                 # check every two seconds, and a log line every two seconds is
                 # how a transcript becomes unreadable.
-                if not self._deaf:
+                if _mic_status.should_repeat_failure(self._deaf):
                     print(f"[JARVIS] 🎤 {_mic_problem}")
-                    self.ui.set_state("NO MIC")
+                    self.ui.set_state(_mic_status.NO_MIC)
                 self._deaf = True
                 await self._wait_for_microphone()
                 continue
@@ -1713,16 +1718,26 @@ class JarvisLive:
                 with _mic_stream:
                     was_deaf = self._deaf
                     self._apply_listening_state()
-                    if was_deaf:
-                        self.ui.write_log("SYS: Microphone found — listening again.")
-                    print("[JARVIS] 🎤 Mic stream open")
+                    # The sentence is decided in core/mic_status.py. It used to
+                    # be gated on a flag that was set and never cleared, so the
+                    # SECOND recovery resumed silently and the user was left
+                    # waiting for a confirmation that never came.
+                    log, line = _mic_status.messages(_mic_status.MicEvent(
+                        opened=True, recovered=was_deaf,
+                        recovered_first_time=self._mic_recovered_first))
+                    if log:
+                        self.ui.write_log(log)
+                    if line:
+                        print(line)
+                    self._mic_recovered_first = False
                     while True:
                         await asyncio.sleep(0.1)
                         if not _mic_stream.active:
                             break
-                self.ui.write_log("SYS: Microphone stream stopped — retrying.")
+                log, _ = _mic_status.messages(_mic_status.MicEvent(stream_ended=True))
+                self.ui.write_log(log)
                 self._deaf = True
-                self.ui.set_state("NO MIC")
+                self.ui.set_state(_mic_status.NO_MIC)
                 await self._wait_for_microphone()
             except Exception as e:
                 # The stream opened and then died — a USB microphone pulled
@@ -1730,12 +1745,12 @@ class JarvisLive:
                 # old code re-raised here too, which killed the session at the
                 # exact moment the user would most want it still to be there.
                 print(f"[JARVIS] ❌ Mic stream ended: {e}")
-                if not self._deaf:
-                    self.ui.write_log(
-                        f"SYS: The microphone could not start or stopped ({e}). "
-                        "I will keep retrying; typing still works.")
+                if _mic_status.should_repeat_failure(self._deaf):
+                    log, _ = _mic_status.messages(_mic_status.MicEvent(
+                        lost=True, problem=str(e)))
+                    self.ui.write_log(log)
                 self._deaf = True
-                self.ui.set_state("NO MIC")
+                self.ui.set_state(_mic_status.NO_MIC)
                 await self._wait_for_microphone()
                 continue
 
@@ -1748,7 +1763,7 @@ class JarvisLive:
         """
         self._deaf = False
         try:
-            self.ui.set_state("LISTENING" if self._awake else "SLEEPING")
+            self.ui.set_state(_mic_status.state_for(self._awake))
         except Exception:
             pass
 
