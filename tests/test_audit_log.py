@@ -86,9 +86,17 @@ def test_erase_of_a_file_that_was_never_written_is_fine(tmp_path):
     assert AuditLog(path=str(tmp_path / "nothing.jsonl")).erase() is True
 
 
-def test_an_unwritable_path_returns_false_rather_than_raising():
-    """A directory that cannot exist must not become the action's exception."""
-    log = AuditLog(path="/proc/definitely/not/writable/audit.jsonl")
+def test_an_unwritable_path_returns_false_rather_than_raising(tmp_path):
+    """A directory that cannot exist must not become the action's exception.
+
+    The obstacle is a regular FILE where a directory has to be, not a path under
+    /proc: the first version used /proc and passed here while failing on the
+    Windows runner, where `/proc` is simply `C:\proc` and an administrator can
+    create it. A file-in-the-way fails identically on every OS.
+    """
+    blocker = tmp_path / "not-a-directory"
+    blocker.write_text("this is a file", encoding="utf-8")
+    log = AuditLog(path=str(blocker / "audit.jsonl"))
     assert log.record("a", "safe", "done") is False
 
 
