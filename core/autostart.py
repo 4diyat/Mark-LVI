@@ -126,7 +126,8 @@ def _disable_windows() -> None:
         pass          # already gone: disabling twice is not an error
 
 
-def plist_text(script: Path, python: str | None = None) -> str:
+def plist_text(script: Path, python: str | None = None,
+               args: tuple[str, ...] = ()) -> str:
     """The LaunchAgent. `ProgramArguments`, not `Program` — argv[0] is `-`.
 
     `script` is XML-escaped: a path with `&` in it (a folder called "Work &
@@ -145,7 +146,8 @@ def plist_text(script: Path, python: str | None = None) -> str:
         '  <array>\n'
         f'    <string>{esc(python or sys.executable)}</string>\n'
         f'    <string>{esc(str(script))}</string>\n'
-        '  </array>\n'
+        + "".join(f'    <string>{esc(arg)}</string>\n' for arg in args)
+        + '  </array>\n'
         '  <key>RunAtLoad</key><true/>\n'
         '  <key>ProcessType</key><string>Interactive</string>\n'
         '</dict>\n'
@@ -153,7 +155,8 @@ def plist_text(script: Path, python: str | None = None) -> str:
     )
 
 
-def _exec_value(script: Path, python: str | None = None) -> str:
+def _exec_value(script: Path, python: str | None = None,
+                args: tuple[str, ...] = ()) -> str:
     r"""The Desktop Entry `Exec=` value — NOT shell quoting, and not JSON.
 
     The spec says each argument may be wrapped in double quotes, and that
@@ -188,16 +191,24 @@ def _exec_value(script: Path, python: str | None = None) -> str:
                 out.append(ch)
         return '"' + "".join(out) + '"'
 
-    return f"{quote(python)} {quote(str(script))}"
+    return " ".join([quote(python), quote(str(script)), *map(quote, args)])
 
 
 def desktop_text(script: Path, name: str = "J.A.R.V.I.S",
-                 icon: Path | None = None, python: str | None = None) -> str:
+                 icon: Path | None = None, python: str | None = None,
+                 args: tuple[str, ...] = ()) -> str:
+    """The `.desktop` entry. `args` are extra argv entries after the script.
+
+    Used by anything that launches this app rather than running it from a
+    terminal — an auto-start entry with a flag, a shortcut, a menu item. They go
+    through the same quoting as the paths, because an argument containing a
+    space is exactly as capable of making the entry unparseable.
+    """
     lines = [
         "[Desktop Entry]",
         "Type=Application",
         f"Name={name}",
-        f"Exec={_exec_value(script, python)}",
+        f"Exec={_exec_value(script, python, args)}",
         "Terminal=false",
         "X-GNOME-Autostart-enabled=true",
         # A launcher whose target vanished should show up as broken rather than
@@ -209,8 +220,16 @@ def desktop_text(script: Path, name: str = "J.A.R.V.I.S",
     return "\n".join(lines) + "\n"
 
 
+# The flag every auto-start entry passes. A login entry that opens a
+# full-screen window over the desktop is a kiosk, not an assistant — and the
+# `hud` default would do exactly that at every login. `--hidden` starts in the
+# tray, which is where something launched by the system belongs.
+LOGIN_ARGS: tuple[str, ...] = ("--hidden",)
+
+
 def enable(script: str | Path, os_name: str | None = None,
-           icon: str | Path | None = None, name: str = "J.A.R.V.I.S") -> bool:
+           icon: str | Path | None = None, name: str = "J.A.R.V.I.S",
+           args: tuple[str, ...] = LOGIN_ARGS) -> bool:
     """Register auto-start for `script`. True when it is now on.
 
     `script` is REQUIRED and is the file that was actually run. Passing it in
@@ -223,19 +242,20 @@ def enable(script: str | Path, os_name: str | None = None,
         raise FileNotFoundError(f"cannot auto-start a script that is not there: {script}")
 
     if os_name == "Windows":
-        _enable_windows(script)
+        _enable_windows(script, args)
     elif os_name == "Darwin":
         # Through `target_path`, the same function `enabled()` reads with. The
         # writer and the reader naming the file differently is how "it saved
         # but the toggle still says off" happens.
         path = target_path(os_name)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(plist_text(script), encoding="utf-8")
+        path.write_text(plist_text(script, args=args), encoding="utf-8")
     else:
         path = target_path(os_name)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(desktop_text(script, name=name,
-                                     icon=Path(icon) if icon else None),
+                                     icon=Path(icon) if icon else None,
+                                     args=args),
                         encoding="utf-8")
     return enabled(os_name)
 
@@ -283,6 +303,13 @@ def enabled(os_name: str | None = None) -> bool:
 def installed_script(os_name: str | None = None) -> str:
     """The script the CURRENT entry would start. "" when there is none.
 
+    POSITION 1, NOT THE LAST ARGUMENT. The entry is `<interpreter> <script>
+    [flags…]`, and the flags are the point of `LOGIN_ARGS` — so "the last
+    thing in the command line" is now `--hidden`, which is not a file and which
+    `status()` would report as BROKEN on every platform. It took the last
+    argument when the entry had no flags; adding one is what exposed it.
+    
+
     Reported to the user rather than guessed at: after the `ui/main.py` bug,
     "auto-start is on" is only worth saying when this returns a path that
     exists, which is exactly what `status()` checks.
@@ -295,7 +322,7 @@ def installed_script(os_name: str | None = None) -> str:
                                 winreg.KEY_READ) as key:
                 raw, _ = winreg.QueryValueEx(key, APP_KEY)
             parts = _split_windows_command(str(raw))
-            return parts[-1] if parts else ""
+            return parts[1] if len(parts) >= 2 else ""
         text = target_path(os_name).read_text(encoding="utf-8", errors="replace")
     except Exception:                 # noqa: BLE001
         return ""
@@ -313,11 +340,11 @@ def installed_script(os_name: str | None = None) -> str:
             return ""
         args = [a.strip() for a in
                 re.findall(r"<string>(.*?)</string>", block.group(1), re.S)]
-        return args[-1] if len(args) >= 2 else ""
+        return args[1] if len(args) >= 2 else ""
     for line in text.splitlines():
         if line.startswith("Exec="):
             parts = _split_desktop_command(line[len("Exec="):])
-            return parts[-1] if parts else ""
+            return parts[1] if len(parts) >= 2 else ""
     return ""
 
 

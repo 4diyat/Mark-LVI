@@ -90,6 +90,21 @@ def start_interface(shell: "JarvisUI") -> None:
     except Exception:                               # noqa: BLE001
         mode = "hud"
 
+    # WHAT THE LAUNCH ITSELF ASKED FOR, and why it can outrank the saved mode
+    # only in one direction.
+    #
+    #     `--hidden` is the login entry talking: start in the tray, whatever the
+    #     user's saved mode is. That is a DOWNGRADE of visibility and it is safe
+    #     in every case the mode already handles, because everything below
+    #     (first run, no tray) still refuses to leave the user with no surface.
+    #
+    #     `--show` is a shortcut meaning "come and talk to me", which is an
+    #     upgrade and is therefore just the ordinary path — it cannot ask for
+    #     anything the mode does not already give.
+    launch = getattr(shell, "_launch", None)
+    if getattr(launch, "hidden", False):
+        mode = "ambient"
+
     # FIRST RUN OUTRANKS THE MODE.
     #
     # The setup screen (API key) is an overlay INSIDE the window. In ambient
@@ -103,6 +118,10 @@ def start_interface(shell: "JarvisUI") -> None:
     # there is something to run headlessly.
     if mode == "hud" or not getattr(shell._win, "_ready", False):
         shell._win.showFullScreen()
+        # `--show` on a HUD install: the window is up, and asking for it to be
+        # in front is the same call the tray makes when the user clicks Show.
+        if getattr(launch, "force_window", False):
+            raise_window(shell)
         return
 
     # Ambient (or bubble): the window may be hidden, so a second launch is

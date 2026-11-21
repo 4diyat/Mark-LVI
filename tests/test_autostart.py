@@ -69,7 +69,7 @@ def _desktop_script(path) -> str:
     for line in path.read_text(encoding="utf-8").splitlines():
         if line.startswith("Exec="):
             parts = autostart._split_desktop_command(line[len("Exec="):])
-            return parts[-1] if parts else ""
+            return parts[1] if len(parts) >= 2 else ""
     return ""
 
 
@@ -133,7 +133,10 @@ def test_the_desktop_entry_survives_a_space_in_the_project_path(tmp_path, script
     text = (home / ".config" / "autostart" / "jarvis.desktop").read_text()
     exec_line = next(line for line in text.splitlines() if line.startswith("Exec="))
     argv = autostart._split_desktop_command(exec_line[len("Exec="):])
-    assert argv[-1] == str(script.resolve())
+    # The script is argv[1]: argv[0] is the interpreter and the LOGIN_ARGS flag
+    # comes after it.
+    assert "--hidden" in argv, "the login entry must not open a window at boot"
+    assert argv[1] == str(script.resolve())
     assert argv[0] == sys.executable or argv[0].endswith("pythonw.exe")
 
 

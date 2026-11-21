@@ -1123,7 +1123,11 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
                 target   = str(pythonw if pythonw.exists() else python)
                 lnk      = str(desktop / "J.A.R.V.I.S.lnk")
                 icon_loc = str(ico_path) if ico_path.exists() else f"{target},0"
-                self._create_lnk_windows(lnk, target, str(script),
+                # `--show`: a shortcut is a person clicking it, so it means
+                # "come to the front" — the opposite of the login entry's
+                # `--hidden`. Same flag the parser in main.py reads.
+                self._create_lnk_windows(lnk, target,
+                                         f'"{script}" --show',
                                          str(script.parent), icon_loc)
 
             # ── macOS — proper .app bundle (no Terminal window) ───────────────
@@ -1140,7 +1144,9 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
                 launcher.write_text(
                     "#!/usr/bin/env bash\n"
                     f'cd "{script.parent}"\n'
-                    f'exec "{python}" "{script}"\n'
+                    # `--show` is what a clicked icon means; the login entry
+                    # passes `--hidden` from the other side of the same flag.
+                    f'exec "{python}" "{script}" --show\n'
                 )
                 launcher.chmod(launcher.stat().st_mode
                                | _stat.S_IEXEC | _stat.S_IXGRP | _stat.S_IXOTH)
@@ -1196,7 +1202,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
                 desk.write_text(
                     "[Desktop Entry]\n"
                     "Name=J.A.R.V.I.S\n"
-                    f"Exec={python} {script}\n"
+                    f'Exec="{python}" "{script}" --show\n' 
                     f"Path={script.parent}\n"
                     "Type=Application\n"
                     "Terminal=false\n"
@@ -3215,11 +3221,17 @@ class JarvisUI:
         the seam between the session loop and the interface.
     """
 
-    def __init__(self, face_path: str, size=None):
+    def __init__(self, face_path: str, size=None, launch=None, argv=None):
         _apply_ui_scale()
         if QApplication.instance() is None:
             QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
-        self._app = QApplication.instance() or QApplication(sys.argv)
+        # `argv` is what main.py left after removing THIS app's flags. Qt is
+        # documented to consume or refuse arguments it does not recognise, and
+        # an unrecognised flag is how a packaged build fails to start with no
+        # message at all. Defaulting to sys.argv keeps every existing caller —
+        # the provider self-test builds a JarvisUI — working unchanged.
+        self._app = QApplication.instance() or QApplication(
+            list(sys.argv if argv is None else argv))
         self._app.setStyle("Fusion")
         self._win = MainWindow(face_path)
         self.root = _RootShim(self._app)
@@ -3228,6 +3240,9 @@ class JarvisUI:
         self._notifier = None
         self._face_path = face_path
         self._ambient = False
+        # What the command line asked for (core: `main._parse_args`). None means
+        # "an ordinary launch", which is every caller that already existed.
+        self._launch = launch
         # Which file to launch at login. `main.py` overwrites this with its own
         # path; the default is only so a test double is never None.
         self._program_path = ""
