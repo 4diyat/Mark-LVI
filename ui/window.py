@@ -710,6 +710,17 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
             pw, ph,
         )
 
+    def keyPressEvent(self, event):
+        """Esc leaves the dashboard layer, and does nothing when it is closed."""
+
+        from PyQt6.QtCore import Qt
+
+        from ui import dashboard_row
+        if event.key() == Qt.Key.Key_Escape and dashboard_row.escape(self):
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
     def closeEvent(self, event):
         from ui.desktop_workspace import confirm_shutdown
 
@@ -734,6 +745,10 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         if not confirm_shutdown(self):
             event.ignore()
             return
+        # A layer is a mode: it must not outlive the window it covers. The rule
+        # is `core/dashboard.survives_restart()`; this is where it is honoured.
+        from ui import dashboard_layer as _dl
+        _dl.close(self)
         self.stop_camera_stream()
         self._on_video_close()
         super().closeEvent(event)
@@ -849,7 +864,6 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         except Exception:
             pass
 
-
     def _set_video_muted(self, muted: bool) -> None:
         """Silence whichever output is carrying the sound for this video."""
         muted = bool(muted)
@@ -861,7 +875,6 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
             self._video_sound_out.setMuted(muted)
         self._sync_video_mute_btn()
         self._sync_mic_for_video()
-
 
     def _sync_mic_for_video(self) -> None:
         """Close the microphone while the video is making sound.
@@ -894,14 +907,12 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
             self._set_muted(False, _t("ui.video.mic_back"))
 
     def _sync_video_mute_btn(self) -> None:
+        # A bar that says SOUND ON over silence tells the user the opposite of
+        # the truth about their own machine, so the label follows the player.
         out = self._video_sound_out if self._video_split else self._video_audio
         muted = bool(out and out.isMuted())
-        if muted:
-            self._video_mute_btn.setText(_t("ui.video.sound_off"))
-        else:
-            # A bar that says SOUND ON over silence is worse than no bar: it
-            # tells the user the opposite of the truth about their own machine.
-            self._video_mute_btn.setText(_t("ui.video.sound_on"))
+        self._video_mute_btn.setText(
+            _t("ui.video.sound_off" if muted else "ui.video.sound_on"))
 
     def _toggle_video_mute(self) -> None:
         out = self._video_sound_out if self._video_split else self._video_audio
@@ -924,22 +935,8 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
     # only the translation of Qt's enums into them, in one place, because that
     # translation is exactly where this feature kept going wrong.
     def _status_word(self, status) -> str:
-        try:
-            S = QMediaPlayer.MediaStatus
-            if status in (S.EndOfMedia,):
-                return "ended"
-            if status in (S.InvalidMedia,):
-                return "invalid"
-            if status in (S.NoMedia,):
-                return "no_media"
-            if status in (S.BufferingMedia, S.StalledMedia):
-                return "buffering"
-            if status in (S.LoadingMedia,):
-                return "loading"
-            return "playing"
-        except Exception:
-            return "playing"
-
+        """Qt's enum as the word `core/playback` understands."""
+        return _pb.status_word(status, QMediaPlayer.MediaStatus)
 
 
     def _report_video_failure(self, player, detail: str = "",
@@ -1350,7 +1347,6 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         except Exception:
             self._proc_lbl.setText(_t("ui.proc_idle"))
 
-
     def _build_header(self) -> QWidget:
         from ui.desktop_layout import build_menu_bar
         return build_menu_bar(self)
@@ -1563,6 +1559,8 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         from ui import floating_row as _fr   # what may leave, what has
         self._floating_btn = _fr.build_floating_rows(lay, _row, self)
         self._gesture_os_btn = _fr.build_gesture_os_button(lay, _row, self)
+        from ui import dashboard_row as _dash_row
+        self._dashboard_btn = _dash_row.build(self, lay, _row)
         from ui.file_access_row import build_file_access_button as build_fa
         self._file_access_btn = build_fa(lay, _row)
 
@@ -2499,7 +2497,6 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
             "Microphone stays closed until you hold the key — nothing is sent "
             "while you are not holding it." if ptt
             else "Hold a key to talk instead of streaming the mic continuously.")
-
 
     def _refresh_hud_btn(self):
         from memory.config_manager import get_hud_style

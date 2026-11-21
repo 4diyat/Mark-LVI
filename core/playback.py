@@ -633,3 +633,33 @@ def should_search_alternate(origin: str, detail: str, title: str = "",
     low = (detail or "").strip().lower()
     return any(w in low for w in _REFUSED_OR_DEAD)
 
+
+
+def status_word(status, media_status) -> str:
+    """Qt's MediaStatus enum as the word the rest of this module understands.
+
+    The TRANSLATION lives here, beside `core/playback`'s rules, rather than in
+    the window: it is a pure mapping of one enum onto five strings, it was 18
+    lines of branching inside a 3,800-line file, and it is exactly the kind of
+    thing that goes wrong silently — a new Qt status that falls through to
+    "playing" tells the user a finished video is still going.
+
+    `media_status` is passed IN rather than imported: this module stays Qt-free,
+    and the window hands it `QMediaPlayer.MediaStatus`. `None` is what a machine
+    with no multimedia backend has, and it answers "playing", which is the old
+    behaviour for that case.
+    """
+    if media_status is None:
+        return "playing"
+    for words, names in (
+        ("ended", ("EndOfMedia",)),
+        ("invalid", ("InvalidMedia",)),
+        ("no_media", ("NoMedia",)),
+        ("buffering", ("BufferingMedia", "StalledMedia")),
+        ("loading", ("LoadingMedia",)),
+    ):
+        for name in names:
+            member = getattr(media_status, name, None)
+            if member is not None and status == member:
+                return words
+    return "playing"

@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 
 from core import gesture_os as go
+from core.workspace_gesture import os_owns_the_hand
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -505,3 +506,57 @@ def test_a_window_that_is_closing_reads_as_focused(bridge_mod):
 
     bridge = bridge_mod.GestureOsBridge(Broken())
     assert bridge._own_focus() is True
+
+
+# ── one hand, one place ───────────────────────────────────────────────────
+#
+# OS control and the workspace gestures run from the SAME samples in the same
+# frame. Before `os_owns_the_hand()` the workspace ran unconditionally, so a
+# hand driving the desktop pointer ALSO dragged cards in the workspace
+# underneath it: the user moved the cursor across the screen and their Documents
+# window came with it.
+
+def test_the_workspace_stands_down_while_the_desktop_is_driven():
+    assert os_owns_the_hand(True, True) is True
+
+
+def test_the_workspace_still_works_when_os_mode_is_off():
+    assert os_owns_the_hand(False, True) is False
+    assert os_owns_the_hand(False, False) is False
+
+
+def test_a_frozen_pointer_gives_the_workspace_back():
+    """THE SUBTLE HALF. OS mode on, but JARVIS has focus or a confirmation is
+    up, so `core/gesture_os.py` freezes the pointer. During that freeze the
+    workspace gestures are exactly what should still work — otherwise turning
+    OS mode on would silently disable the workspace every time the user came
+    back to the window."""
+    assert os_owns_the_hand(True, False) is False
+
+
+def test_the_rule_is_two_questions_not_one():
+    """Both arguments are needed and they are not the same question: one is the
+    user's switch, the other is whether the pointer is free this frame."""
+    import inspect
+    params = list(inspect.signature(os_owns_the_hand).parameters)
+    assert params == ["os_mode_enabled", "os_mode_actually_driving"]
+
+
+def test_the_loop_asks_the_rule_instead_of_acting_twice():
+    """The bug was in the refresh loop, so the assertion has to be about the
+    loop: exactly one of the two surfaces is fed each frame."""
+    source = (ROOT / "ui" / "hand_gesture.py").read_text(encoding="utf-8")
+    assert "_workspace_gesture.os_owns_the_hand(" in source
+    assert "bridge.enabled, not bridge.frozen" in source
+    # And the unconditional call that caused the bug is gone.
+    assert "\n        gestures.update(samples)" not in source
+
+
+def test_a_half_finished_drag_is_reset_not_frozen():
+    """A drag left open in the workspace would resume the moment the pointer
+    froze (JARVIS takes focus) and the widget would jump."""
+    source = (ROOT / "ui" / "hand_gesture.py").read_text(encoding="utf-8")
+    start = source.index("if owns:")
+    block = source[start:source.index("else:", start)]
+    assert "gestures.reset()" in block
+    assert "gestures.show_cursors(())" in block
