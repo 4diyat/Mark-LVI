@@ -67,6 +67,7 @@ from core import deeplink as _deeplink
 from core import outcome
 from core import playback_buffer
 from core import prompt_build as _prompt_build
+from core import playback_timing as _timing
 from core import transcript as _transcript
 from core import session_policy as _session_policy
 from core import speech_sync
@@ -176,13 +177,9 @@ _STALL_LIMIT = 30.0
 _VIS_WIN = 1024        # ~43 ms analysis window at 24 kHz: enough for formants
 _VIS_HOP = 480         # 20 ms between frames, i.e. 50 shapes a second
 
-# Delay from handing the first bytes of a reply to an already-running output
-# stream to hearing them: one callback period, plus whatever the DAC adds.
-_FIRST_SOUND = CHUNK_SIZE / RECEIVE_SAMPLE_RATE      # ~43 ms
-# How far past the device's own buffer the mouth's timeline may drift before it
-# is re-anchored. The buffer is the hard limit on how much audio can be queued
-# ahead, so anything beyond it plus a margin for clock error is impossible.
-_CURSOR_SLACK = 0.15
+# Both timing constants — how long the first bytes take to sound, and how far
+# the timeline may drift — now live in core/playback_timing.py beside the only
+# function that reads them.
 
 # Erring early is the safe direction. A viewer tolerates a mouth that moves
 # slightly before the sound far better than one that moves after it — the
@@ -2076,34 +2073,20 @@ class JarvisLive:
                     pcm = np.frombuffer(bytes(batch), dtype=np.int16)
                     hop = _VIS_HOP / RECEIVE_SAMPLE_RATE
                     frames = _pcm_visemes(pcm, sr=RECEIVE_SAMPLE_RATE)
-                    # When does this batch become audible? The stream was
-                    # started at launch and its callback has been pulling
-                    # silence ever since, so the first bytes of a reply reach
-                    # the speaker about one callback period later — NOT one
-                    # buffer later. `stream.latency` reports the buffer's
-                    # capacity, which is how much can be queued ahead, and on
-                    # Windows that is commonly 300-500 ms. Anchoring on it put
-                    # the entire schedule a buffer late; that is the half second
-                    # of lag, and it grew with whatever the device reported.
-                    #
-                    # After the anchor nothing needs measuring: the device
-                    # consumes at exactly realtime, so each batch sounds one
-                    # batch-duration after the one before it. The cursor is
-                    # re-anchored only when it leaves the range physically
-                    # possible — behind `now` means the device drained and this
-                    # batch starts a fresh stretch of speech, while further
-                    # ahead than the buffer can hold means it has drifted.
-                    now = time.time()
-                    horizon = self._out_latency + _CURSOR_SLACK
-                    if not (now <= self._play_cursor <= now + horizon):
-                        self._play_cursor = now + _FIRST_SOUND
-                    at = self._play_cursor
+                    # When does this batch become audible, and where does the
+                    # next one land? The rule — and the reason it does NOT use
+                    # `stream.latency` — lives in core/playback_timing.py, where
+                    # it has tests and the measurement is recorded.
+                    at, self._play_cursor = _timing.schedule(
+                        now=time.time(),
+                        cursor=self._play_cursor,
+                        out_latency=self._out_latency,
+                        block_frames=CHUNK_SIZE,
+                        n_samples=pcm.size,
+                        rate=RECEIVE_SAMPLE_RATE,
+                    )
                     if caption:
                         _speech_sync.schedule(self, caption, at)
-                    # Advance by the batch's own duration whether or not it
-                    # yielded frames, so a block too short to analyse cannot
-                    # shift everything after it out of step with the audio.
-                    self._play_cursor += pcm.size / RECEIVE_SAMPLE_RATE
                     if frames:
                         frames = self._visemes.frames(frames, hop)
                         self.ui.push_visemes(frames, hop, at)
