@@ -105,6 +105,11 @@ Spesifikasi tidak memberi angka untuk ini; saya pilih dan catat di ringkasan HTM
 
 ## Target implementasi: repo ini, Python + PyQt6
 
+Keputusan perilaku yang menyertai modul pertama ada di
+[`EXECUTION-PATH.md`](EXECUTION-PATH.md): tiga tingkat risiko, jalur konfirmasi
+yang tidak bisa dipalsukan model, dan janji "3 tertahan" pada mode Fokus.
+
+
 Keputusan: **tidak** ditulis ulang ke Tauri/React. Artboard shell (1–6, 23–28) digambar
 stack-neutral dan berlaku apa adanya untuk implementasi Python.
 
