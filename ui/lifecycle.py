@@ -31,6 +31,49 @@ if TYPE_CHECKING:                                   # pragma: no cover
     from ui.window import JarvisUI
 
 
+def watch_for_another_launch(shell: "JarvisUI", interval_ms: int = 800) -> None:
+    """Summon the window when a SECOND copy of the app was started and exited.
+
+    `core/single_instance.py` makes a second launch a request — "come to the
+    front" — written to a small file, rather than a second assistant holding
+    the microphone. This is the other half of that: a timer on the Qt thread
+    that notices the request.
+
+    A timer rather than a socket for the reason given in that module: the
+    asking process may be anything, on any of three platforms, and may already
+    be gone. Polling a file costs one `exists()` every 800 ms and cannot fail
+    in a way that keeps a request from being answered.
+
+    Nothing here is started in HUD mode — the window is already on screen, and
+    a request to bring it forward has nothing to do.
+    """
+    try:
+        from PyQt6.QtCore import QTimer
+        from core import single_instance
+    except Exception:                               # noqa: BLE001
+        return
+
+    timer = QTimer(shell._win)
+    timer.setInterval(interval_ms)
+
+    def _check() -> None:
+        try:
+            if single_instance.take_foreground_request():
+                summon(shell)
+        except Exception as e:                      # noqa: BLE001
+            # A poll that raises would stop the timer's usefulness silently.
+            # Reported once, then the timer is left to try again.
+            note(shell, f"could not answer a second launch — {type(e).__name__}: {e}")
+
+    # `timer.timeout` is a SIGNAL on a real QTimer, not a method: it is bound
+    # here for the same reason the tray binds `activated` — a stub that returns
+    # a signal from a call would hide the difference, and this is the one line
+    # where Qt's API shape matters.
+    timer.timeout.connect(_check)
+    timer.start()
+    shell._launch_watch = timer
+
+
 def start_interface(shell: "JarvisUI") -> None:
     """Pick a mode, then either fill the screen or go to the tray.
 
@@ -61,6 +104,11 @@ def start_interface(shell: "JarvisUI") -> None:
     if mode == "hud" or not getattr(shell._win, "_ready", False):
         shell._win.showFullScreen()
         return
+
+    # Ambient (or bubble): the window may be hidden, so a second launch is
+    # answered here. Started BEFORE the tray falls back to the window, because
+    # the fallback still leaves the app running as the one instance.
+    watch_for_another_launch(shell)
 
     if not start_tray(shell):
         # No notification area: there is nowhere else to be. See the docstring.

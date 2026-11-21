@@ -3029,9 +3029,52 @@ class JarvisLive:
             print(f"[JARVIS] Reconnecting in {delay}s...")
             await asyncio.sleep(delay)
 
+def _claim_single_instance():
+    """One JARVIS per user, and a second launch means "come to the front".
+
+    WHY THIS IS THE FIRST THING `main()` DOES
+        Every surface this app now has is a way to start it twice: the tray's
+        "Show JARVIS", the desktop shortcut, auto-start at login, and a user
+        who does not see a window because the mode is ambient. Two copies is
+        two Live sessions and two microphones answering the same question,
+        twice, in two voices — and two tray icons, neither of which summons
+        the other.
+
+    WHAT A SECOND LAUNCH DOES INSTEAD
+        Writes a request file and exits 0. The running copy polls for it
+        (`ui/lifecycle.watch_for_another_launch`) and summons itself. Nothing
+        here constructs a window: the cost of a duplicate start should not
+        include paying for a QApplication before finding out you are not
+        wanted.
+
+    Returns the claim on success, or exits the process. Never returns None in
+    the "somebody else is running" case, because continuing would be the bug.
+    """
+    from core import single_instance
+
+    try:
+        return single_instance.acquire(program=str(Path(__file__).resolve()))
+    except single_instance.AlreadyRunning as e:
+        holder = e.holder or {}
+        if single_instance.request_foreground():
+            print(f"[JARVIS] Already running (pid {holder.get('pid', '?')}) — "
+                  "bringing it to the front.")
+        else:
+            # The running copy could not be told. Not a reason to start a
+            # second one, and the user needs to know the two facts that let
+            # them fix it: there is one already, and where its lock is.
+            print(f"[JARVIS] Already running (pid {holder.get('pid', '?')}). "
+                  f"If it is not visible, quit it from the tray icon, or "
+                  f"delete {single_instance.lock_path()}")
+        raise SystemExit(0)
+
+
 def main():
     if _LOG_PATH:
         print(f"[JARVIS] Log: {_LOG_PATH}")
+    # Before anything is built: a second copy must not open a microphone, a
+    # window, or a Gemini session on its way to finding out it is redundant.
+    _instance = _claim_single_instance()     # noqa: F841 — held for the process
     ui = JarvisUI("face.png")
     # The file to launch at login, recorded here because this is the only place
     # that knows it. `ui/window.py` used to derive it from `__file__` and got
