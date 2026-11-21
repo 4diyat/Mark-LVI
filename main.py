@@ -62,6 +62,7 @@ from memory.memory_manager import (
 # Only tools that are tied to live-session state stay inline in this file
 # (screen_process, close_camera, save_memory, manage_monitor, shutdown_jarvis,
 # system_status).
+from core import deeplink as _deeplink
 from core import outcome
 from core import playback_buffer
 from core import speech_sync
@@ -3057,11 +3058,18 @@ class LaunchOptions:
 
     hidden: bool = False
     show: bool = False
+    # A `jarvis://` link the operating system handed us, already parsed and
+    # validated by `core/deeplink.py`, or "" for an ordinary launch. Kept as the
+    # parsed object rather than the string so nothing downstream re-parses
+    # untrusted text, and so an invalid link has already been refused before a
+    # window exists.
+    link: object = None
+    link_error: str = ""
 
     @property
     def force_window(self) -> bool:
         """Whether the window must be on screen from the first frame."""
-        return self.show and not self.hidden
+        return (self.show or self.link is not None) and not self.hidden
 
 
 def _parse_args(argv: list[str] | None = None) -> tuple[LaunchOptions, list[str]]:
@@ -3087,8 +3095,24 @@ def _parse_args(argv: list[str] | None = None) -> tuple[LaunchOptions, list[str]
             options.hidden = True
         elif flag in ("--show", "-S"):
             options.show = True
+        elif arg.lower().startswith(("jarvis://", "jarvis:")):
+            # The URL the OS appended. NOT passed to Qt: it is ours, and Qt has
+            # no business seeing — or consuming — an address it cannot mean.
+            try:
+                options.link = _deeplink.parse(arg)
+            except _deeplink.Rejected as e:
+                # Recorded, not raised. A malformed link must not stop the app
+                # from starting: the user may be clicking a bad shortcut while
+                # the assistant is not running, and refusing to start would be
+                # a worse outcome than saying "that link was wrong".
+                options.link_error = str(e)
         else:
             keep.append(arg)
+    if options.link is not None:
+        # A link means "do this now"; a login-style hidden start would swallow
+        # it into the tray. So a link implies the window, and `force_window`
+        # below carries that decision rather than a second special case.
+        options.hidden = False
     if options.hidden and options.show:
         # Contradiction. `--hidden` is the safer reading: ending up in the tray
         # is recoverable in one click, while a window that covers the screen at

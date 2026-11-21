@@ -71,6 +71,7 @@ TESTED = {
     "core/platform_support.py": "tests/test_platform_support.py",
     "core/autostart.py":      "tests/test_autostart.py",
     "core/single_instance.py": "tests/test_single_instance.py",
+    "core/deeplink.py":       "tests/test_deeplink.py",
     "memory/config_manager.py": "tests/test_config.py",
     "memory/memory_manager.py": "tests/test_memory.py",
 }

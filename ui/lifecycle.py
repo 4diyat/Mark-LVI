@@ -74,6 +74,59 @@ def watch_for_another_launch(shell: "JarvisUI", interval_ms: int = 800) -> None:
     shell._launch_watch = timer
 
 
+def run_deeplink(shell: "JarvisUI") -> bool:
+    """Act on the `jarvis://` link this launch was started with, if any.
+
+    Called once, after the interface exists. Returns whether a link was
+    delivered — which is what lets a launch that was started BY a link exit
+    with a status somebody can read (a shell alias, a script, a launcher).
+
+    THE THREE HANDLERS ARE THE POINT
+        `summon` and `hide` are the tray's own two actions, so a link can do
+        nothing a person at the keyboard could not. `ask` hands text to the
+        session as a user turn — the same entry point a typed message takes —
+        and only if the session exists. Every other verb is refused in
+        `core/deeplink.py` before this function is ever reached; there is no
+        branch here that could be talked into running something else.
+    """
+    launch = getattr(shell, "_launch", None)
+    link = getattr(launch, "link", None)
+    error = getattr(launch, "link_error", "") or ""
+    if not link and not error:
+        return False
+
+    if error:
+        # Said out loud rather than swallowed: the user clicked something and
+        # it did not work, and the alternative is a link that fails silently.
+        note(shell, f"A link was refused — {error}")
+        return False
+
+    def _ask(text: str) -> bool:
+        send = getattr(shell, "on_text_command", None)
+        if not callable(send):
+            note(shell, "A link tried to send a message before the session was ready.")
+            return False
+        try:
+            import threading
+            # On a thread, exactly as a typed message is: the caller here is a
+            # Qt slot and the send blocks on the session.
+            threading.Thread(target=send, args=(text,), daemon=True).start()
+            return True
+        except Exception as e:                      # noqa: BLE001
+            note(shell, f"could not deliver a link — {type(e).__name__}: {e}")
+            return False
+
+    from core import deeplink
+    try:
+        delivered = deeplink.dispatch(link, summon=lambda: summon(shell),
+                                      hide=lambda: dismiss(shell), ask=_ask)
+    except Exception as e:                          # noqa: BLE001
+        note(shell, f"a link failed — {type(e).__name__}: {e}")
+        return False
+    note(shell, f"Link: {link.verb}" + (f" — {link.text[:60]}" if link.text else ""))
+    return delivered
+
+
 def start_interface(shell: "JarvisUI") -> None:
     """Pick a mode, then either fill the screen or go to the tray.
 
@@ -116,6 +169,12 @@ def start_interface(shell: "JarvisUI") -> None:
     # So a configuration that cannot start a session always gets the window,
     # whatever `ui_mode` says. The mode takes effect from the next launch, once
     # there is something to run headlessly.
+    # A LINK IS AN INSTRUCTION TO THE RUNNING APP, so it is answered before the
+    # mode is chosen: `jarvis://hide` on an ambient install must not be turned
+    # into a window just because the saved mode is hud.
+    if getattr(getattr(shell, "_launch", None), "link", None) is not None:
+        run_deeplink(shell)
+
     if mode == "hud" or not getattr(shell._win, "_ready", False):
         shell._win.showFullScreen()
         # `--show` on a HUD install: the window is up, and asking for it to be
