@@ -1,0 +1,11 @@
+{
+  "_comment": "Membaca dan menambahkan baris ke vault Obsidian milik pengguna; izin files diperlukan.",
+  "name": "obsidian_notes",
+  "version": "1.0.0",
+  "author": "MARK-LVI",
+  "description": "Cari, baca, dan tambahkan satu baris ke catatan Obsidian milik pengguna tanpa pernah menulis ulang atau menghapusnya.",
+  "permissions": [
+    "files"
+  ],
+  "sha256": "54ed3d52648b9015395e64a12394ba656511b1c29c00b9f848dc074e6656bd70"
+}
