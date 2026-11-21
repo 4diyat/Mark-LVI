@@ -204,6 +204,8 @@ def desktop_text(script: Path, name: str = "J.A.R.V.I.S",
     through the same quoting as the paths, because an argument containing a
     space is exactly as capable of making the entry unparseable.
     """
+    from core.app_identity import startup_wm_class
+
     lines = [
         "[Desktop Entry]",
         "Type=Application",
@@ -214,6 +216,11 @@ def desktop_text(script: Path, name: str = "J.A.R.V.I.S",
         # A launcher whose target vanished should show up as broken rather than
         # silently doing nothing at login.
         f"TryExec={python or _python_command()}",
+        # Which running window this entry owns. Without it the desktop draws
+        # the app's window with a separate, generic icon — the entry and the
+        # window are two strangers. It must be the class Qt actually sets,
+        # which is what `core/app_identity.py` gives both sides.
+        f"StartupWMClass={startup_wm_class()}",
     ]
     if icon and Path(icon).exists():
         lines.append(f"Icon={icon}")

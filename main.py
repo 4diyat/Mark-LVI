@@ -3170,6 +3170,12 @@ def _claim_single_instance(link=None):
 def main():
     if _LOG_PATH:
         print(f"[JARVIS] Log: {_LOG_PATH}")
+    # Before anything is built: the taskbar group on Windows is decided when
+    # the process starts, and a process that never says who it is appears as
+    # `python.exe` — same icon, same group as every other Python script. No-op
+    # on Linux and macOS, where the launcher entry carries the identity.
+    from core import app_identity
+    app_identity.apply_os()
     options, qt_argv = _parse_args()
     # Before anything is built: a second copy must not open a microphone, a
     # window, or a Gemini session on its way to finding out it is redundant.
