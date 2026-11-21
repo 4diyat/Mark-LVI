@@ -68,6 +68,7 @@ def start_interface(shell: "JarvisUI") -> None:
         return
 
     shell._ambient = True
+    start_summon_hotkey(shell)
     if mode == "bubble":
         # A face that will not draw is not a reason to lose the mode — the tray
         # alone is a working ambient install, which is what phase 1 shipped.
@@ -75,6 +76,50 @@ def start_interface(shell: "JarvisUI") -> None:
         if not start_bubble(shell):
             shell._win._log_sig.emit(
                 "SYS: Face bubble unavailable; staying in the tray.")
+
+
+# The summon chord. Ctrl+Shift+J is what does this INSIDE the window; the
+# global version is the same shape so there is one thing to remember.
+SUMMON_CHORD = ("ctrl", "shift", "j")
+
+
+def start_summon_hotkey(shell: "JarvisUI") -> str:
+    """Bind the global summon chord. Returns the scope actually achieved.
+
+    WHY THIS IS NOT PART OF THE TRAY
+        The tray icon is the way back to the interface, and on some desktops it
+        is not there at all — a Wayland session without a StatusNotifier host, a
+        GNOME install with the extension disabled, a Windows session where the
+        notification area is hidden. Until now that user had NO way to summon
+        the window: the in-window shortcut needs a focused window, which by
+        definition they do not have. That is a one-way door, and this is the
+        other handle.
+
+    A 'window' scope is reported, not hidden: on Wayland there is genuinely no
+    global hook available without a portal, and saying so is better than
+    installing a chord that silently does nothing.
+    """
+    from core.hotkey import HotkeyTap
+
+    tap = HotkeyTap(lambda: toggle_interface(shell), chord=SUMMON_CHORD)
+    try:
+        scope = tap.start()
+    except Exception as e:                          # noqa: BLE001
+        note(shell, f"summon shortcut unavailable — {type(e).__name__}: {e}")
+        return "window"
+    shell._summon_hotkey = tap
+    if scope != "global":
+        note(shell, "the summon shortcut only works while the interface is "
+                    "focused — this desktop offers no global key hook.")
+    return scope
+
+
+def stop_summon_hotkey(shell: "JarvisUI") -> None:
+    tap = getattr(shell, "_summon_hotkey", None)
+    if tap is None:
+        return
+    tap.stop()
+    shell._summon_hotkey = None
 
 
 def start_tray(shell: "JarvisUI") -> bool:
@@ -203,6 +248,7 @@ def set_interface_mode(shell: "JarvisUI", mode: str) -> bool:
     mode = str(mode or "").strip().lower()
     if mode == "hud":
         _stop_bubble(shell)
+        stop_summon_hotkey(shell)
         if getattr(shell, "_tray", None) is not None:
             shell._tray.stop()
             shell._tray = None
