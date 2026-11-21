@@ -2030,6 +2030,14 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         self._iface_btn.clicked.connect(self._toggle_interface_mode)
         self._refresh_iface_btn()
 
+        # Notifications. Next to the interface mode because it exists FOR that
+        # mode: with no window, a banner is the only way to learn that an answer
+        # arrived. A setting nobody can reach is the same as no setting, so it
+        # gets a row rather than living in the config file.
+        from ui.notify_row import build_notifications_button
+        self._notify_btn = build_notifications_button(
+            lay, _row, on_toggled=self._on_notifications_toggled)
+
         w.adjustSize()
         return w
 
@@ -3037,6 +3045,11 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
             self._log.append_log(f"ERR: {_t('ui.iface.unavailable')}")
         self._refresh_iface_btn()
 
+    def _on_notifications_toggled(self, enabled: bool):
+        """Say it in the log: a switch with no trace reads as a no-op."""
+        self._log.append_log(
+            "SYS: " + _t("ui.notify.on" if enabled else "ui.notify.off"))
+
     def _toggle_hud_style(self):
         """Swap the centrepiece. Both objects stay in memory, so the change is
         instant and switching back costs nothing."""
@@ -3314,6 +3327,9 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         self._style_mute_btn()
         self._sync_video_mute_btn()
         self._refresh_iface_btn()
+        from ui.notify_row import paint as _paint_notifications
+        if hasattr(self, "_notify_btn"):
+            _paint_notifications(self._notify_btn)
         self._refresh_wake_btns()
         self._refresh_talk_btns()
         for name, key in (("_drawer_btn", "ui.settings_button"),
@@ -3751,6 +3767,7 @@ class JarvisUI:
         self.root = _RootShim(self._app)
         self._tray = None
         self._bubble = None
+        self._notifier = None
         self._face_path = face_path
         self._ambient = False
         # The window's closeEvent has to be able to tell "put it away" from
@@ -4002,6 +4019,13 @@ class JarvisUI:
         bubble = getattr(self, "_bubble", None)
         if bubble is not None:
             bubble.set_state(state)
+        # Kept on the shell because `announce_if_finished` needs it and taking
+        # it as an argument would push two more lines into a file that is 11
+        # under its ceiling.
+        # Mode check and notification policy both live in ui/lifecycle: this
+        # file is 2 lines under a ceiling that exists for a reason.
+        from ui.lifecycle import announce_if_finished
+        announce_if_finished(self, state)
 
     def speech_caption(self, event):
         self._win._speech_caption_sig.emit(event)

@@ -357,6 +357,21 @@ def save_hud_style(style: str) -> None:
 UI_MODES = ("hud", "ambient", "bubble")
 
 
+def get_desktop_notifications() -> bool:
+    """Whether an answer should raise a desktop notification in ambient mode.
+
+    Default ON, because that is the whole reason ambient mode needs it: with no
+    window there is otherwise no signal at all that the assistant finished. It
+    is a setting rather than a constant because a banner that interrupts is a
+    matter of taste, and the policy in `core/notify.py` cannot know yours.
+    """
+    return bool(load_api_keys().get("desktop_notifications", True))
+
+
+def save_desktop_notifications(enabled: bool) -> bool:
+    return set_config_values(desktop_notifications=bool(enabled))
+
+
 def get_ui_mode() -> str:
     """Which interface mode to start in.
 

@@ -647,5 +647,8 @@
   "ui.iface.hint": "Mode ambient menyembunyikan jendela: JARVIS tinggal di tray dan menjawab lewat suara sampai Anda memanggilnya.",
   "ui.iface.unavailable": "Desktop ini tidak punya area notifikasi, jadi jendela harus tetap ada.",
   "ui.iface.saved": "SYS: Mode antarmuka — {mode}. Langsung berlaku.",
-  "ui.iface.bubble": "🫧  ANTARMUKA: WAJAH DI DESKTOP"
+  "ui.iface.bubble": "🫧  ANTARMUKA: WAJAH DI DESKTOP",
+  "ui.notify.on": "🔔  NOTIFIKASI: AKTIF",
+  "ui.notify.off": "🔕  NOTIFIKASI: NONAKTIF",
+  "ui.notify.hint": "Di mode ambient, tampilkan pemberitahuan desktop saat jawaban tiba. Diam saat jendela sedang terlihat."
 }
