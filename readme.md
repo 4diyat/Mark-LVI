@@ -555,6 +555,8 @@ JARVIS used to be the whole screen: launching it covered the desktop, so you cou
 
 The tray icon exists in all three ambient variants, because the face cannot be guaranteed to appear on every desktop and the tray can. In face mode the face hides while the window is up — two copies of the same avatar on screen reads as a rendering fault rather than as two surfaces — and comes back when the window goes away.
 
+**A blocking surface always gets the window back.** Two things inside the interface are not decoration but the only way to finish what the assistant started: the confirmation banner (shutdown, restart, anything irreversible — `core/confirm` holds the action for 90 seconds and then refuses it) and the setup screen shown when an API key is rejected (`main.py` waits for it with no timeout). In ambient mode either one would wait invisibly, so the mode yields: the window comes up, the banner is on it, and `Ctrl+Shift+J` puts it away again.
+
 The window still exists in ambient mode; it is simply not on screen. Everything `main.py` talks to lives on it, so keeping it built means one behaviour for both modes instead of a branch at every call site. Three things had to be true for this not to be a worse experience than a window:
 
 - **A failed tray shows the window.** A desktop with no notification area would otherwise leave an assistant you cannot see, reach or quit.

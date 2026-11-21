@@ -3402,6 +3402,13 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
             self._hand_controller.stop()
         if getattr(self, "_hand_menu", None) is not None:
             self._hand_menu.close()
+
+        # Something is now waiting for the user, so it has to be visible. In
+        # ambient mode this banner would be drawn into a hidden window while
+        # core/confirm holds the action open for 90 s and then refuses it.
+        from ui.lifecycle import window_needs_attention
+        window_needs_attention(self, "an action needs confirming")
+
         self._hide_confirm_banner()
         ov = ConfirmBanner(title, detail, parent=self.centralWidget())
         ov.answered.connect(lambda accepted: self._on_confirm_answered(token, accepted))
@@ -3593,6 +3600,11 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
             both paths, and a close that is not a save sets `_ready` too — see
             _on_setup_closed.
         """
+        # Also a blocking surface: main.py waits in `while not self._win._ready`
+        # after an invalid key, with no timeout. See ui.lifecycle.
+        from ui.lifecycle import window_needs_attention
+        window_needs_attention(self, "the API key needs re-entering")
+
         cw = self.centralWidget()
         # Never leak the previous one: a second _show_setup while a box is open
         # would otherwise leave a live overlay with nowhere to report back to.
