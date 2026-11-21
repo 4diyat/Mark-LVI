@@ -30,7 +30,7 @@ os.environ.setdefault("QT_LOGGING_RULES", "qt.multimedia.*=false")
 # at runtime (PyQt6 loads them for the classes that ARE used) and they cost a
 # reader: an import that suggests a feature that is not there.
 from PyQt6.QtCore import (
-    QPointF, QPoint, QRectF, QSizeF, Qt, QTimer, QUrl, pyqtSignal,
+    QPointF, QPoint, QRectF, QSizeF, Qt, QTimer, pyqtSignal,
 )
 from PyQt6.QtGui import (
     QBrush, QCursor, QDragEnterEvent, QDropEvent, QFont,
@@ -126,12 +126,13 @@ from ui.metrics import (        # noqa: F401 — same object as ui/metrics._metr
 # labels) and because this file was at its size ceiling with the language row
 # still unwritten. Re-exported through the package, so `ui.CustomizeOverlay`
 # and every plugin that names it keep working.
-from ui.audio import AudioMixin, qurl_for
+from ui.audio import AudioMixin
 from ui.video_fallback import VideoFallbackMixin
 from ui.audio_devices import (      # noqa: F401 — re-exported through the package
     AudioDeviceOverlay,
 )
 from ui.hud_canvas import HudCanvas   # noqa: F401 — re-exported
+from ui.icons import build_jarvis_icon
 from ui.hud_panels import (        # noqa: F401 — re-exported through the package
     ClipboardPanel,
     MemoryOverlay,
@@ -1287,64 +1288,6 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
     # Everything below runs on the Qt thread. Plugins and the assistant reach it
     # through the signals above, the same way every other panel is driven, so a
     # background thread never touches a widget.
-    def _on_video_open(self, source: str, title: str, muted: bool,
-                       audio_source: str = "", fallbacks=None,
-                       on_exhausted=None) -> None:
-        if not HAVE_VIDEO or not self._video_player:
-            self.write_log("SYS: Video playback is not available in this Qt "
-                           "install.")
-            return
-        from ui.video_controls import reset as reset_video_controls
-        reset_video_controls(self)
-        self._video_seq = getattr(self, "_video_seq", 0) + 1
-
-        # ── opening over something ─────────────────────────────────────────
-        # The previous version simply loaded a new source over the old one. If
-        # the old one was a YouTube video, its separate sound player was never
-        # stopped: the previous video's voice kept talking underneath the new
-        # file, and the mute button controlled the new (silent) output while the
-        # old one was the thing making noise.
-        plan = _pb.opening_while_playing(self._video_on, self._video_split)
-        self._video_swapping = True
-        try:
-            if plan["stop_timer"] and self._video_sync:
-                self._video_sync.stop()
-            for player, kill in ((self._video_player, plan["stop_video"]),
-                                 (self._video_sound, plan["stop_audio"])):
-                if player and kill:
-                    try:
-                        player.stop()
-                        player.setSource(QUrl())
-                    except Exception:
-                        pass
-            if plan["release_mic"]:
-                self._release_video_mic()
-
-            self._video_title.setText(_t("ui.video.title", title=(title or "VIDEO")[:44].upper()))
-            self._video_split = bool(audio_source)
-            self._video_ended = False
-            self._video_sound_failed = False
-            self._set_video_fallbacks(audio_source, fallbacks, on_exhausted)
-            self._set_video_muted(bool(muted))
-
-            # THROUGH `qurl_for`, NOT `QUrl(...)`. This line is why local
-            # videos did not play: `QUrl(r"C:\\clips\\a b.mp4")` reads "C:" as
-            # a scheme. See ui/audio.py for the measurements.
-            self._video_player.setSource(qurl_for(source))
-            if self._video_split:
-                self._video_sound.setSource(qurl_for(audio_source))
-            self._video_on = True
-            from ui.desktop_workspace import show_video
-            show_video(self)
-        finally:
-            self._video_swapping = False
-        # Re-run now that the video counts as playing: _set_video_muted ran
-        # before this line and saw no video, so its mic check was a no-op.
-        self._sync_mic_for_video()
-        self._video_player.play()
-        if self._video_split:
-            self._video_sound.play()
-            self._video_sync.start()
 
     def _fit_video(self, *_a) -> None:
         """Size the picture to the panel, keeping its shape."""
@@ -1364,38 +1307,6 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         except Exception:
             pass
 
-    def _on_video_close(self, mic_from_rule: bool | None = None) -> None:
-        """Stop and hide the video window.
-
-        `mic_from_rule` is how a finished video says "the microphone was closed
-        for the sound, so it must open again even though the mute switch has
-        already moved". Left as None for a plain close, where the mute rule is
-        enough. The signal carries no argument, so Qt's own call to this slot
-        arrives with the default — which is the right behaviour for the close
-        button and for a stop from a tool.
-        """
-        self._video_swapping = True
-        try:
-            if self._video_sync:
-                self._video_sync.stop()
-            for p in (self._video_player, self._video_sound):
-                if p:
-                    p.stop()
-                    p.setSource(QUrl())
-        finally:
-            self._video_swapping = False
-        self._video_split = False
-        self._video_on = False
-        self._video_ended = False
-        self._clear_video_fallbacks()
-        if HAVE_VIDEO:
-            from ui.video_controls import reset as reset_video_controls
-            reset_video_controls(self)
-        from ui.desktop_workspace import hide_video
-        hide_video(self)
-        if mic_from_rule:
-            self._release_video_mic()
-        self._sync_mic_for_video()      # gives the microphone back
 
     def _set_video_muted(self, muted: bool) -> None:
         """Silence whichever output is carrying the sound for this video."""
@@ -1409,8 +1320,6 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         self._sync_video_mute_btn()
         self._sync_mic_for_video()
 
-    def _on_video_mute(self, muted: bool) -> None:
-        self._set_video_muted(muted)
 
     def _sync_mic_for_video(self) -> None:
         """Close the microphone while the video is making sound.
@@ -1466,19 +1375,6 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         """
         self._log_sig.emit(text)
 
-    def _on_video_error(self, *_a) -> None:
-        if getattr(self, "_video_swapping", False):
-            return
-        err = _a[1] if len(_a) > 1 and isinstance(_a[1], str) else ""
-        if not err:
-            try:
-                err = self._video_player.errorString()
-            except Exception:
-                pass
-        if self._try_next_video_source(err):
-            return
-        self._report_video_failure(self._video_player, err)
-        self._on_video_close()
 
     # ── what a finished video does ─────────────────────────────────────────
     #
@@ -1502,53 +1398,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         except Exception:
             return "playing"
 
-    def _on_video_status(self, status) -> None:
-        """The picture's status. EndOfMedia is the one that mattered."""
-        if getattr(self, "_video_swapping", False):
-            return
-        word = self._status_word(status)
-        if not _pb.should_open_from_ended(word):
-            return
-        sound_was_on = bool(not self._video_muted_state())
-        effect = _pb.ended_video_effect(word, sound_was_on)
-        if word == "ended":
-            self.write_log(_t("ui.video.finished"))
-        elif word in ("invalid", "no_media"):
-            if not self._video_on:
-                return
-            err = ""
-            try:
-                err = self._video_player.errorString()
-            except Exception:
-                pass
-            if self._try_next_video_source(err or word):
-                return
-            self._report_video_failure(self._video_player, err)
-            self._on_video_close()
-            return
-        if effect["close"]:
-            self._on_video_close(mic_from_rule=effect["release_mic"])
 
-    def _on_video_sound_error(self, *_a) -> None:
-        """The soundtrack failed, the picture did not.
-
-        A separate stream can fail on its own: an expired YouTube signature, a
-        codec the machine lacks, a network drop in the middle. Silence is not an
-        acceptable answer, because it is indistinguishable from a video that has
-        no audio at all — so the bar stops claiming sound and the log says why.
-        """
-        if getattr(self, "_video_swapping", False):
-            return
-        detail = _a[1] if len(_a) > 1 and isinstance(_a[1], str) else ""
-        if not detail:
-            try:
-                detail = self._video_sound.errorString()
-            except Exception:
-                pass
-        if self._try_next_video_sound(detail):
-            return
-        self._video_sound_failed = True
-        self._report_video_failure(self._video_sound, detail, sound_only=True)
 
     def _report_video_failure(self, player, detail: str = "",
                               sound_only: bool = False) -> None:
@@ -1591,104 +1441,6 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
     # Icon generation — arc-reactor style, rendered with Pillow
     # ------------------------------------------------------------------
     @staticmethod
-    def _build_jarvis_icon(out_path: Path) -> bool:
-        """
-        Render a JARVIS arc-reactor icon at 4× resolution and downsample
-        for crisp results at all sizes. Saves a multi-res .ico to out_path.
-        Returns True on success.
-        """
-        try:
-            import math
-            import PIL.Image
-            import PIL.ImageDraw
-            import PIL.ImageFilter
-        except ImportError:
-            return False
-
-        CYAN   = (0, 212, 255)
-        DIM    = (0, 100, 140)
-        DARK   = (0, 6, 10)
-        GLOW   = (0, 160, 200)
-        WHITE  = (220, 240, 255)
-
-        def _render(sz: int) -> PIL.Image.Image:
-            S  = sz * 4                     # draw at 4× then downscale
-            img = PIL.Image.new("RGBA", (S, S), (0, 0, 0, 0))
-            d   = PIL.ImageDraw.Draw(img)
-            cx = cy = S // 2
-
-            # ── filled background circle ──────────────────────────────────
-            R = S // 2 - 2
-            d.ellipse([cx-R, cy-R, cx+R, cy+R], fill=(*DARK, 255))
-
-            # ── outer border ring ─────────────────────────────────────────
-            lw = max(2, S // 40)
-            d.ellipse([cx-R, cy-R, cx+R, cy+R],
-                      outline=(*CYAN, 220), width=lw)
-
-            # ── mid decorative ring ───────────────────────────────────────
-            R2 = int(R * 0.72)
-            d.ellipse([cx-R2, cy-R2, cx+R2, cy+R2],
-                      outline=(*DIM, 180), width=max(1, lw // 2))
-
-            # ── 6 radial spokes (hex bolt) ────────────────────────────────
-            R_inner = int(R * 0.30)
-            R_outer = int(R * 0.62)
-            spoke_w = max(1, S // 80)
-            for i in range(6):
-                angle = math.radians(i * 60 - 30)
-                x1 = cx + int(R_inner * math.cos(angle))
-                y1 = cy + int(R_inner * math.sin(angle))
-                x2 = cx + int(R_outer * math.cos(angle))
-                y2 = cy + int(R_outer * math.sin(angle))
-                d.line([x1, y1, x2, y2], fill=(*GLOW, 200), width=spoke_w)
-
-            # ── 6 tick marks on outer ring ────────────────────────────────
-            for i in range(6):
-                angle = math.radians(i * 60)
-                for dr in range(lw * 2):
-                    rx = (R - lw - dr)
-                    d.point(
-                        [cx + int(rx * math.cos(angle)),
-                         cy + int(rx * math.sin(angle))],
-                        fill=(*WHITE, 220),
-                    )
-
-            # ── inner glowing ring ────────────────────────────────────────
-            Ri = int(R * 0.26)
-            d.ellipse([cx-Ri, cy-Ri, cx+Ri, cy+Ri],
-                      outline=(*CYAN, 255), width=max(2, lw))
-
-            # ── bright glow soft blur applied before core ─────────────────
-            # (draw a slightly larger cyan circle on a separate layer)
-            glow_layer = PIL.Image.new("RGBA", (S, S), (0, 0, 0, 0))
-            gd = PIL.ImageDraw.Draw(glow_layer)
-            Rc = int(R * 0.13)
-            gd.ellipse([cx-Rc*2, cy-Rc*2, cx+Rc*2, cy+Rc*2],
-                       fill=(*CYAN, 110))
-            glow_layer = glow_layer.filter(PIL.ImageFilter.GaussianBlur(S // 14))
-            img = PIL.Image.alpha_composite(img, glow_layer)
-            d   = PIL.ImageDraw.Draw(img)
-
-            # ── core dot ──────────────────────────────────────────────────
-            d.ellipse([cx-Rc, cy-Rc, cx+Rc, cy+Rc], fill=(*WHITE, 255))
-
-            # ── downscale to target size ──────────────────────────────────
-            return img.resize((sz, sz), PIL.Image.LANCZOS)
-
-        try:
-            sizes  = [256, 128, 64, 48, 32, 16]
-            frames = [_render(s) for s in sizes]
-            frames[0].save(
-                out_path,
-                format="ICO",
-                append_images=frames[1:],
-                sizes=[(s, s) for s in sizes],
-            )
-            return True
-        except Exception as e:
-            print(f"[Shortcut] ⚠️  Icon generation failed: {e}")
-            return False
 
     @staticmethod
     def _create_lnk_windows(lnk: str, target: str, args: str,
@@ -1835,7 +1587,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         # Arc-reactor icon (.ico — also exported as .png for Linux/macOS)
         ico_path = Path(__file__).resolve().parent / "config" / "jarvis.ico"
         if not ico_path.exists():
-            self._build_jarvis_icon(ico_path)
+            build_jarvis_icon(ico_path)
 
         try:
             _os = platform.system()

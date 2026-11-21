@@ -95,9 +95,16 @@ def test_live_tool_routes_pointed_screen_without_silent_fallback():
     def ordinary_capture():
         captures.append("ordinary")
         return b"normal image", "image/jpeg"
+    # `_execute_tool` is exec'd on its own, so every module-level global it
+    # reads has to be supplied here. `_dispatch` is core/tool_dispatch, the
+    # stateless branch router; `screen_process` is not one of its tools, so it
+    # answers handles() with False and this test still exercises the vision
+    # path it was written for.
+    from core import tool_dispatch as _real_dispatch
     env = {"asyncio": asyncio, "time": time, "traceback": traceback,
            "types": SimpleNamespace(FunctionResponse=lambda **kw: kw),
-           "_capture_screen": ordinary_capture, "_capture_pointed_screen": pointed_capture}
+           "_capture_screen": ordinary_capture, "_capture_pointed_screen": pointed_capture,
+           "_dispatch": _real_dispatch}
     exec(compile(ast.Module(body=[fn], type_ignores=[]), str(path), "exec"), env)
     registry = SimpleNamespace(scheduling=lambda _: None)
     logs = []
