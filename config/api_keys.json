@@ -1,3 +1,4 @@
 {
-    "ui_mode": "hud"
+    "ui_mode": "hud",
+    "presence_mode": "quiet"
 }

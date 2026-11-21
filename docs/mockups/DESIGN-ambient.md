@@ -134,8 +134,6 @@ stack-neutral dan berlaku apa adanya untuk implementasi Python.
 
 | Kebutuhan | Modul | Status |
 |---|---|---|
-| Orb overlay 56 px click-through | `ui/orb_overlay.py` | **belum** — `Qt.WA_TranslucentBackground` + `WindowTransparentForInput` di luar orb; region klik terpisah |
-| Command bar | `ui/command_bar.py` | **belum** — frameless, fokus input, Esc mengembalikan fokus |
 | Tool registry | `core/tool_registry.py` | **belum** — sementara `risk_policy.register()` sudah bisa dipakai untuk mendeklarasikan tingkat |
 
 ### Sudah dikerjakan (dan diuji)
@@ -148,6 +146,9 @@ stack-neutral dan berlaku apa adanya untuk implementasi Python.
 | Audit log terpisah dari `logs/jarvis.log` | `core/audit_log.py` | `tests/test_audit_log.py` |
 | Mode Aktif/Fokus/Senyap | `core/presence_mode.py` | `tests/test_presence_mode.py` |
 | Gerbang eksekusi: klasifikasi → catat → jalan/tahan | `core/action_gate.py` | `tests/test_action_gate.py` |
+| Orb overlay 96 px, meredup di Fokus/Senyap | `ui/orb_overlay.py` | `tests/test_orb_overlay.py` |
+| Command bar Ctrl+Space, Esc mengembalikan fokus | `ui/command_bar.py` | `tests/test_command_bar.py` |
+| Sambungan mode → orb, chord, dan baki | `ui/lifecycle.py`, `memory/config_manager.py` | `tests/test_presence_wiring.py` |
 
 `core/undo_journal.py` **tidak dibuat**: `core/undo.py` sudah melakukan itu
 (`push_undo`/`undo_last`, kedalaman 10). Menambah modul kedua hanya akan menjadi
@@ -155,6 +156,14 @@ salinan yang berbeda perilaku.
 
 ### Batasan platform yang harus diuji di Windows
 
-- `WindowTransparentForInput` berbeda di X11/macOS; orb click-through hanya bisa
-  diverifikasi di Windows.
-- Fokus kembali setelah Esc bergantung pada window manager; perlu uji manual.
+- Orb **tidak** click-through, dan itu disengaja: ia satu-satunya permukaan yang
+  bisa diklik di mode ambient, jadi klik di luar cincin ditolak oleh hit test
+  (`inside_hit_region`), bukan oleh flag jendela. Yang belum bisa dibuktikan:
+  apakah jendela frameless benar-benar mengabaikan klik di area transparannya di
+  setiap window manager.
+- Fokus kembali setelah Esc bergantung pada window manager; `FocusLedger`
+  mencatat permintaan dan hasilnya, tetapi `activateWindow()` tidak melaporkan
+  apakah berhasil.
+- **Keputusan pemilik repo:** Fokus dan Senyap **meredupkan orb**, bukan hanya
+  menahan notifikasi. Board 24 (28→18 px, cincin titik-titik) sekarang menjadi
+  perilaku yang diuji, bukan asumsi.

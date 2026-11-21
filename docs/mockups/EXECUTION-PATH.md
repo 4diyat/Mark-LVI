@@ -96,9 +96,10 @@ dan tes memegangnya: `offer()` mengembalikan tiga jawaban berbeda (`show`,
 `hold`, `drop`), dan meninggalkan Fokus **tidak** menghapus yang tertahan;
 pemanggil mengalirkannya lewat `take_held()` supaya urutannya tetap.
 
-> **Belum diputuskan:** apakah Fokus/Senyap juga meredupkan orb. Board 24
-> mengasumsikan redup 28→18 px, glow hilang, cincin jadi titik-titik. Itu
-> keputusan produk, bukan implementasi — jangan diambil sendiri.
+**Diputuskan:** Fokus dan Senyap **meredupkan orb**. Board 24 (redup 28→18 px,
+glow hilang, cincin jadi titik-titik) sekarang menjadi perilaku di
+`ui/orb_overlay.appearance()` dan diuji di `tests/test_orb_overlay.py` serta
+`tests/test_presence_wiring.py`.
 
 ---
 
@@ -138,8 +139,8 @@ pribadi, dan hitungan saran hari ini tidak berarti apa pun setelah di-commit.
 | Modul | Status | Catatan |
 |---|---|---|
 | `ui/toast_queue.py` | **selesai** | antrean, kapasitas 3, hitungan yang dibuang; bebas Qt |
-| `ui/orb_overlay.py` | **belum** | klik-tembus hanya bisa dibuktikan di Windows |
-| `ui/command_bar.py` | **belum** | Ctrl+Space, Esc mengembalikan fokus — Windows |
+| `ui/orb_overlay.py` | **selesai** | 96 px, meredup di Fokus/Senyap; klik di luar cincin diteruskan ke desktop |
+| `ui/command_bar.py` | **selesai** | Ctrl+Space, riwayat 10 baris; fokus kembali dicatat, bukan diklaim |
 | `core/undo_journal.py` | **tidak perlu** | `core/undo.py` sudah melakukan ini |
 | `core/tool_registry.py` | belum | `risk_policy.register()` sudah jadi tempatnya |
 | sambungan ke `main.py` | belum | `action_gate` belum dipanggil dari loop mana pun |

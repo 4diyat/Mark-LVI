@@ -221,6 +221,11 @@ def test_hidden_forces_the_tray_whatever_the_saved_mode_says():
                         lambda shell: tray.append(True) or True)
     monkeypatch.setattr(lifecycle, "watch_for_another_launch", lambda shell: None)
     monkeypatch.setattr(lifecycle, "start_summon_hotkey", lambda shell: "ctrl+shift+j")
+    # The orb and the command bar are started by the same function, and both
+    # reach Qt. Stubbed here because this test is about which MODE was chosen,
+    # not about whether a ring can be drawn — that is tests/test_orb_overlay.py.
+    monkeypatch.setattr(lifecycle, "start_orb", lambda shell: True)
+    monkeypatch.setattr(lifecycle, "start_command_bar", lambda shell: True)
     try:
         win = SimpleNamespace(_ready=True, showFullScreen=lambda: shown.append(1),
                               _log_sig=SimpleNamespace(emit=lambda _t: None))
