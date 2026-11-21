@@ -1138,6 +1138,18 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         if not self._ready:
             self._show_setup()
 
+        # ── the shortcut that brings the interface back ──────────────────────
+        # Window-scoped, so it needs the window focused — which is fine for the
+        # mode it exists to serve: getting OUT of a window you already have
+        # focus in. Getting back IN, with no window to focus, cannot be done
+        # from a Qt shortcut at all and is the tray's job (see ui/tray.py).
+        #
+        # Ctrl+Shift+J rather than Ctrl+J, which is the browser's downloads
+        # panel and a common editor binding; the extra modifier is what makes it
+        # safe to install without asking.
+        sc_hide = QShortcut(QKeySequence("Ctrl+Shift+J"), self)
+        sc_hide.activated.connect(self._put_interface_away)
+
         sc_mute = QShortcut(QKeySequence("F4"), self)
         sc_mute.activated.connect(self._toggle_mute)
         sc_full = QShortcut(QKeySequence("F11"), self)
@@ -1189,6 +1201,25 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
 
     def closeEvent(self, event):
         from ui.desktop_workspace import confirm_shutdown
+
+        # CLOSING THE WINDOW IN AMBIENT MODE MEANS "PUT IT AWAY".
+        #
+        # With a tray icon there is still a way back, so a close that ended the
+        # whole session would be a surprise: the user dismissed a window and
+        # lost the assistant. Hide instead, and let the tray's Quit item be the
+        # thing that ends the program. Without a tray there is no way back, so
+        # the old behaviour stands.
+        host = getattr(self, "_shell", None)
+        if host is not None and getattr(host, "tray_available", False):
+            if not confirm_shutdown(self):
+                event.ignore()
+                return
+            self.stop_camera_stream()
+            self._on_video_close()
+            event.ignore()
+            host.dismiss()
+            return
+
         if not confirm_shutdown(self):
             event.ignore()
             return
@@ -1684,7 +1715,27 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         except Exception as e:
             self._log.append_log(f"ERR: Shortcut failed — {e}")
 
+    def _put_interface_away(self):
+        """Ctrl+Shift+J — hand the screen back, if there is a tray to hold it.
+
+        With no tray this does nothing rather than hiding the only surface the
+        user has. `JarvisUI.dismiss` enforces that; this is the keystroke.
+        """
+        host = getattr(self, "_shell", None)
+        if host is not None:
+            host.dismiss()
+
     def _toggle_fullscreen(self):
+        # F11 WHILE THE WINDOW IS HIDDEN IS NOT A FULL-SCREEN REQUEST.
+        #
+        # In ambient mode the window exists but is deliberately not on screen.
+        # `showFullScreen()` on a hidden window would put a full-screen interface
+        # in front of the desktop the user is working on — from a keystroke that
+        # belongs to whatever they were actually doing. Refuse instead: the way
+        # back to the interface is the tray, or the summon shortcut, both of
+        # which are deliberate.
+        if not self.isVisible():
+            return
         if self.isFullScreen():
             self.showNormal()
         else:
@@ -1971,6 +2022,13 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         self._hud_btn = _row(QPushButton())
         self._hud_btn.clicked.connect(self._toggle_hud_style)
         self._refresh_hud_btn()
+
+        # Interface mode. Next to the HUD style button because it answers the
+        # same kind of question — "how much of my screen does this thing take up"
+        # — and belongs in the same drawer the user opens to change that.
+        self._iface_btn = _row(QPushButton())
+        self._iface_btn.clicked.connect(self._toggle_interface_mode)
+        self._refresh_iface_btn()
 
         w.adjustSize()
         return w
@@ -2927,6 +2985,58 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         self._hud_btn.setStyleSheet(style)
         self._hud_btn.setToolTip(_t("ui.hud.cycle_hint"))
 
+    def _refresh_iface_btn(self):
+        """Paint the interface-mode button from what is actually stored.
+
+        Read from the config rather than from `JarvisUI`, so a mode that failed
+        to take effect cannot be reported as if it had: the button shows the
+        saved value, and the failure is a log line.
+
+        In ambient mode this button is not reachable at all — there is no window
+        to show it in. That is not a gap: the mode is changed from the HUD, and
+        the tray's "Show" item is the way back to it.
+        """
+        from memory.config_manager import get_ui_mode
+        current = get_ui_mode()
+        self._iface_btn.setText(_t("ui.iface." + current))
+        # The same palette names as `_refresh_hud_btn` — the adjacent button in
+        # the same drawer — so the two cannot look like they came from different
+        # screens. (An earlier draft invented C.ACCENT and C.TEXT; neither is a
+        # name in ui/theme.py, and the window stub said so immediately.)
+        self._iface_btn.setStyleSheet(f"""
+            QPushButton {{ background: {C.PANEL2}; color: {C.PRI};
+                border: 1px solid {C.BORDER_A}; border-radius: 3px;
+                text-align: left; padding: 0 8px; }}
+            QPushButton:hover {{ color: {C.WHITE}; border: 1px solid {C.BORDER_B}; }}""")
+        self._iface_btn.setToolTip(_t("ui.iface.hint"))
+
+    def _toggle_interface_mode(self):
+        """Cycle the three interface modes; believe only what actually took.
+
+        hud -> ambient -> bubble -> hud. The same order as the HUD style button
+        next to it, which also cycles rather than presenting a list — one button
+        that shows where you are is cheaper to read than a menu, and the label
+        always says which mode you are in.
+        """
+        from memory.config_manager import get_ui_mode
+        order = ("hud", "ambient", "bubble")
+        want = order[(order.index(get_ui_mode()) + 1) % len(order)]
+        ok = False
+        host = getattr(self, "_shell", None)
+        if host is not None:
+            try:
+                ok = bool(host.set_interface_mode(want))
+            except Exception as e:                  # noqa: BLE001
+                self._log.append_log(f"ERR: Interface mode failed — {e}")
+                ok = False
+        if not ok:
+            # Said plainly instead of flipping the label and pretending. The
+            # commonest cause is a desktop with no notification area, and the
+            # user can do nothing about that — so they are told why the button
+            # will keep going back to what it was.
+            self._log.append_log(f"ERR: {_t('ui.iface.unavailable')}")
+        self._refresh_iface_btn()
+
     def _toggle_hud_style(self):
         """Swap the centrepiece. Both objects stay in memory, so the change is
         instant and switching back costs nothing."""
@@ -3203,6 +3313,7 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         # button says, not a second copy that can drift.
         self._style_mute_btn()
         self._sync_video_mute_btn()
+        self._refresh_iface_btn()
         self._refresh_wake_btns()
         self._refresh_talk_btns()
         for name, key in (("_drawer_btn", "ui.settings_button"),
@@ -3600,6 +3711,24 @@ def _apply_ui_scale() -> None:
 
 
 class JarvisUI:
+    """The whole interface, and whether any of it is on screen.
+
+    AMBIENT MODE, AND WHY THE WINDOW IS STILL BUILT IN IT
+        `ui_mode` in the config decides what happens at launch. "hud" is what
+        this app has always done: build the window and fill the screen with it.
+        "ambient" builds the same window and does NOT show it — JARVIS lives in
+        the notification area and answers by voice until it is summoned.
+
+        The window is still constructed rather than deferred. Everything the
+        rest of the program talks to lives on it (`write_log`, `set_state`,
+        `show_confirm`, the plugin registry, the camera stream target), and
+        `main.py` starts using those before anyone could plausibly summon the
+        interface. Building it and keeping it hidden keeps every one of those
+        30 attributes working, in both modes, with no branch at any call site.
+        It costs the memory of a window that is not drawn; it saves rewriting
+        the seam between the session loop and the interface.
+    """
+
     def __init__(self, face_path: str, size=None):
         _apply_ui_scale()
         if QApplication.instance() is None:
@@ -3608,7 +3737,72 @@ class JarvisUI:
         self._app.setStyle("Fusion")
         self._win = MainWindow(face_path)
         self.root = _RootShim(self._app)
-        self._win.showFullScreen()
+        self._tray = None
+        self._bubble = None
+        self._face_path = face_path
+        self._ambient = False
+        # The window's closeEvent has to be able to tell "put it away" from
+        # "quit", and only this object knows whether a tray exists. It reaches
+        # back through this one attribute rather than being handed a callback
+        # per concern.
+        self._win._shell = self
+        # Launch, summon and dismiss live in ui/lifecycle.py: 200 lines of them
+        # pushed this file past the ceiling that exists to stop it growing again,
+        # and the ceiling was not raised for new code. The methods below are
+        # thin delegations so every existing caller is unaffected.
+        from ui import lifecycle
+        self._lifecycle = lifecycle
+        lifecycle.start_interface(self)
+
+    # ── the interface's own lifecycle ────────────────────────────────────────
+    # Convenience pass-throughs. `lifecycle` takes the shell explicitly; these
+    # keep `shell.summon()` working for main.py, plugins and the tray.
+
+    @property
+    def ambient(self) -> bool:
+        """True when there is no window and the tray is the only surface."""
+        return self._ambient
+
+    @property
+    def tray_available(self) -> bool:
+        """Whether a notification-area icon is standing by.
+
+        Read by `MainWindow.closeEvent`: with one, closing means hide; without
+        one, closing means quit, because there would be no way back.
+        """
+        tray = getattr(self, "_tray", None)
+        return tray is not None and tray.available
+
+    def _start_tray(self) -> bool:
+        return self._lifecycle.start_tray(self)
+
+    def _face_path_or_default(self) -> str:
+        """The face image the bubble should draw, as the window was given it."""
+        return getattr(self, "_face_path", None) or "face.png"
+
+    def summon(self) -> None:
+        self._lifecycle.summon(self)
+
+    def dismiss(self) -> None:
+        self._lifecycle.dismiss(self)
+
+    def toggle_interface(self) -> None:
+        self._lifecycle.toggle_interface(self)
+
+    def set_interface_mode(self, mode: str) -> bool:
+        return self._lifecycle.set_interface_mode(self, mode)
+
+    def request_wake(self) -> None:
+        self._lifecycle.request_wake(self)
+
+    def request_sleep(self) -> None:
+        self._lifecycle.request_sleep(self)
+
+    def summon_settings(self) -> None:
+        self._lifecycle.summon_settings(self)
+
+    def quit(self) -> None:
+        self._lifecycle.quit_app(self)
 
     @property
     def muted(self) -> bool:
@@ -3729,6 +3923,9 @@ class JarvisUI:
             self._win.hud.set_audio_level(level)
         except Exception:
             pass
+        bubble = getattr(self, "_bubble", None)
+        if bubble is not None:
+            bubble.set_audio_level(level)
 
     def glance(self, dx: float, dy: float, hold: float = 1.1) -> None:
         """Ask the avatar to look somewhere for a moment (see HoloAvatar.glance)."""
@@ -3762,12 +3959,37 @@ class JarvisUI:
             self._win.hud.push_visemes(frames, hop, at)
         except Exception:
             pass
+        # Without this the floating face mouths nothing while the assistant
+        # talks — it would sit there breathing, which looks broken rather than
+        # muted.
+        bubble = getattr(self, "_bubble", None)
+        if bubble is not None:
+            bubble.push_visemes(frames, hop, at)
 
     def notify_phone_connected(self) -> None:
         self._win._phone_connected_sig.emit()
 
     def set_state(self, state: str):
         self._win._state_sig.emit(state)
+        # THE TOOLTIP IS THE ONLY STATUS READOUT IN AMBIENT MODE.
+        #
+        # With no window, "is it listening?" has exactly one answer the user can
+        # see without summoning the interface. Cheap: one string assignment and
+        # one setToolTip per transition, and `set_state` is called on state
+        # changes, not per frame.
+        # `getattr` rather than `self._tray`: this facade is built piecemeal in
+        # tests and by plugins, and a status update must never be the thing that
+        # raises because an attribute was not there. The tray is an extra
+        # surface, not a precondition.
+        tray = getattr(self, "_tray", None)
+        if tray is not None:
+            tray.set_state(state)
+        # The bubble is a SECOND place the state is visible, and it is the only
+        # one on screen in bubble mode — a face that keeps breathing while the
+        # assistant is asleep would be a lie told in the most visible place.
+        bubble = getattr(self, "_bubble", None)
+        if bubble is not None:
+            bubble.set_state(state)
 
     def speech_caption(self, event):
         self._win._speech_caption_sig.emit(event)

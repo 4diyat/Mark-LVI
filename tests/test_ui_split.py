@@ -27,7 +27,7 @@ WINDOW = UI_PKG / "window.py"
 # is only ever loosened is not a ratchet.
 WINDOW_CEILING = 4_250
 MODULES = [UI_PKG / "__init__.py", UI_PKG / "theme.py", UI_PKG / "metrics.py",
-           UI_PKG / "overlays.py"]
+           UI_PKG / "overlays.py", UI_PKG / "lifecycle.py", UI_PKG / "tray.py"]
 
 
 def _tree(path: Path) -> ast.Module:

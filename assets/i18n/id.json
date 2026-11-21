@@ -641,5 +641,11 @@
   "ssh.assist_confirm_detail": "JARVIS mengusulkan perintah berikut pada {user}@{host}:{port}:\n\n{command}\n\nPerintah ini dapat mengubah sistem jarak jauh. Setujui hanya jika Anda mempercayai perintah dan tujuannya.",
   "ssh.copy_output": "Salin",
   "ssh.clear_output": "Bersihkan",
-  "ssh.command_log": "Perintah: {command}"
+  "ssh.command_log": "Perintah: {command}",
+  "ui.iface.hud": "🖥  ANTARMUKA: LAYAR PENUH",
+  "ui.iface.ambient": "🔔  ANTARMUKA: HANYA TRAY",
+  "ui.iface.hint": "Mode ambient menyembunyikan jendela: JARVIS tinggal di tray dan menjawab lewat suara sampai Anda memanggilnya.",
+  "ui.iface.unavailable": "Desktop ini tidak punya area notifikasi, jadi jendela harus tetap ada.",
+  "ui.iface.saved": "SYS: Mode antarmuka — {mode}. Langsung berlaku.",
+  "ui.iface.bubble": "🫧  ANTARMUKA: WAJAH DI DESKTOP"
 }
