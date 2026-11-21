@@ -33,14 +33,35 @@ Semua diambil dari sumbernya langsung:
 3. **Emblem menulis nama asisten**, bukan status seperti pada gambar PNG.
 4. **Subwindow navigasi 240 px memuat panel 170 px** → 70 px ruang mati.
 
-## Usulan terbuka
+## Arah: ambient-only
 
-- **U1** Promosikan navigasi menjadi kolom tetap (mengubah start, perlu PR sendiri).
-- **U2** Tampilkan footer, atau hapus kodenya — jangan dibiarkan setengah jadi.
-- **U3** Samakan caption emblem dengan nama asisten.
-- **U4** Rapikan lebar subwindow navigasi.
+Permintaan terakhir: **JARVIS hanya mode ambient.** Kondisi kode sekarang belum begitu —
+`UI_MODES = ("hud", "ambient", "bubble")` dengan default `"hud"`.
 
-Urutan kerja yang disarankan: **U4 → U2 → U3 → U1**.
+Karena itu lembar acuan dibagi dua:
+
+- **Bagian A** (Artboard 1–2) — jendela yang **dipanggil**. Setelah ambient-only, ini bukan lagi
+  keadaan saat aplikasi dibuka.
+- **Bagian B** (Artboard 3–4) — keadaan ambient yang sesungguhnya: desktop pengguna bersih,
+  hanya ikon tray 22 px, tooltip `JARVIS — {STATE}`, banner notifikasi (`core/notify.py`),
+  dan varian wajah melayang 260 px.
+
+### Usulan ambient (belum dikerjakan)
+
+| Kode | Isi | Dampak |
+|---|---|---|
+| **A2** | Panggilan memakai jendela tersimpan, bukan `showMaximized()` | Membuat ambient benar-benar berbeda dari hud |
+| **A4** | Ikon tray berubah warna per keadaan | Status terbaca tanpa hover |
+| **A1** | `hud` dan `bubble` dihapus dari `UI_MODES` | 8 berkas tes, i18n, tray, `--hidden`/`--show` |
+| **A3** | Wajah melayang dihapus | Status hanya dari tray |
+
+Urutan: **A2 → A4 → A1 → A3**.
+
+### Usulan jendela (ditangguhkan selama ambient-only)
+
+U2 (footer 22 px), U3 (caption emblem), U4 (lebar subwindow navigasi) tetap berlaku di dalam
+jendela yang dipanggil. **U1 ditangguhkan** — mengangkat sidebar jadi kolom tetap justru
+menambah chrome permanen.
 
 ## Batasan
 

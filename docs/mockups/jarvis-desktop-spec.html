@@ -44,7 +44,8 @@
 </p>
 
 <!-- ===================== ARTBOARD 1 ===================== -->
-<p class="cap">Artboard 1 — keadaan default saat aplikasi dibuka, jendela 1440 × 900</p>
+<h2>Bagian A — jendela 1440 × 900 (mode <span class="mono">hud</span>, default hari ini)</h2>
+<p class="cap">Artboard 1 — jendela penuh layar. Sesudah usulan A1/A2, ini adalah keadaan <b>saat dipanggil</b>, bukan keadaan saat dibuka.</p>
 <div class="artboard">
 <svg viewBox="0 0 1600 1090" width="1600" height="1090" xmlns="http://www.w3.org/2000/svg"
      font-family="Arial, Helvetica, sans-serif">
@@ -337,10 +338,182 @@
   <tr><td>Menu File/Edit/View/Workspace/Help</td><td>Aslinya File / Edit / View / <b>Window</b> / Help</td><td class="warn">satu label salah</td></tr>
 </table>
 
+<!-- ===================== AMBIENT ===================== -->
+<h2>Bagian B — Keadaan ambient (permukaan yang sesungguhnya dari mode ini)</h2>
+
+<div class="note">
+  <b>Mode yang ada di kode sekarang:</b> <code>UI_MODES = ("hud", "ambient", "bubble")</code>
+  (<span class="mono">memory/config_manager.py:357</span>), dan <b>default-nya <code>"hud"</code></b>.
+  Jadi yang berjalan hari ini adalah jendela penuh layar. Bagian A menggambar keadaan
+  <i>hud</i>; bagian ini menggambar keadaan <i>ambient</i> yang menjadi tujuan desain.
+</div>
+
+<p class="cap">Artboard 3 — desktop pengguna saat ambient: tidak ada jendela JARVIS sama sekali</p>
+<div class="artboard">
+<svg viewBox="0 0 1600 900" width="1600" height="900" xmlns="http://www.w3.org/2000/svg"
+     font-family="Arial, Helvetica, sans-serif">
+  <defs>
+    <linearGradient id="userdesk" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2b3a4d"/><stop offset="1" stop-color="#16202b"/>
+    </linearGradient>
+  </defs>
+
+  <!-- the user's own desktop, deliberately neutral -->
+  <rect x="40" y="40" width="1520" height="700" rx="4" fill="url(#userdesk)"/>
+  <g fill="#8fa3b8" font-family="Consolas, monospace" font-size="11">
+    <text x="70" y="76">desktop pengguna — bukan milik JARVIS</text>
+  </g>
+  <g stroke="#ffffff" stroke-opacity="0.07">
+    <path d="M70 120 H1530 M70 200 H1530 M70 280 H1530 M70 360 H1530"/>
+  </g>
+  <rect x="120" y="140" width="420" height="300" rx="4" fill="#1b2531" stroke="#ffffff" stroke-opacity="0.1"/>
+  <text x="140" y="166" fill="#8fa3b8" font-size="11" font-family="Consolas, monospace">aplikasi lain milik pengguna</text>
+  <rect x="700" y="180" width="560" height="420" rx="4" fill="#1b2531" stroke="#ffffff" stroke-opacity="0.1"/>
+  <text x="720" y="206" fill="#8fa3b8" font-size="11" font-family="Consolas, monospace">tetap bisa dipakai — tidak tertutup apa pun</text>
+
+  <!-- taskbar -->
+  <rect x="40" y="744" width="1520" height="36" fill="#0e141b"/>
+  <g fill="#4d5c6d">
+    <rect x="56" y="752" width="20" height="20" rx="3"/>
+    <rect x="86" y="752" width="20" height="20" rx="3"/>
+    <rect x="116" y="752" width="20" height="20" rx="3"/>
+  </g>
+  <text x="980" y="766" fill="#8fa3b8" font-size="10" font-family="Consolas, monospace">area notifikasi →</text>
+
+  <!-- JARVIS tray icon: the ONE thing it adds -->
+  <circle cx="1500" cy="762" r="12" fill="none" stroke="#6ed8ff" stroke-width="1.5" stroke-dasharray="2 2" opacity="0.5"/>
+  <g>
+    <circle cx="1500" cy="762" r="7" fill="#0b1725" stroke="#6ed8ff" stroke-width="2"/>
+    <circle cx="1500" cy="762" r="2.4" fill="#6ed8ff"/>
+  </g>
+
+  <!-- annotation: the icon is the whole surface -->
+  <g stroke="#a8aeba" fill="none" stroke-width="1">
+    <path d="M1500 726 V742"/><path d="M1494 726 H1506"/>
+    <path d="M1500 782 V806 H1230"/>
+    <path d="M1230 800 V812"/>
+  </g>
+  <text x="1215" y="824" fill="#5a6070" font-size="11" font-family="Consolas, monospace" text-anchor="end">satu-satunya penanda: ikon tray 22 px + tooltip</text>
+
+  <!-- tooltip drawing, as the OS renders it -->
+  <g>
+    <rect x="1180" y="640" width="300" height="34" rx="5" fill="#f7f8fa" stroke="#b9bec8"/>
+    <path d="M1470 674 l6 8 l6 -8 z" fill="#f7f8fa" stroke="#b9bec8"/>
+    <text x="1194" y="662" font-size="12" fill="#1b1f27" font-family="Arial">JARVIS — LISTENING</text>
+  </g>
+  <g stroke="#a8aeba" fill="none" stroke-width="1">
+    <path d="M1330 640 V600 H1230"/>
+  </g>
+  <text x="1224" y="596" fill="#5a6070" font-size="11" font-family="Consolas, monospace" text-anchor="end">
+    tooltip: "JARVIS — {state}" — ui/tray.py:_tooltip
+  </text>
+
+  <!-- banner notification, as the OS renders it -->
+  <g>
+    <rect x="1120" y="440" width="380" height="92" rx="8" fill="#1d1d1f" stroke="#3b5269"/>
+    <rect x="1120" y="440" width="4" height="92" rx="2" fill="#4b9fff"/>
+    <text x="1140" y="466" font-size="11" font-weight="700" letter-spacing="0.6" fill="#eef5fd">J.A.R.V.I.S</text>
+    <text x="1140" y="488" font-size="11" fill="#aabbd0">Briefing pagi sudah siap — 3 agenda, 2 pengingat.</text>
+    <text x="1140" y="512" font-size="9.5" fill="#7f8ea3">muncul hanya saat jendela tidak terlihat · sekali per giliran · jeda 45 s</text>
+  </g>
+  <g stroke="#a8aeba" fill="none" stroke-width="1">
+    <path d="M1120 486 H1050"/>
+  </g>
+  <text x="1044" y="470" fill="#5a6070" font-size="11" font-family="Consolas, monospace" text-anchor="end">
+    core/notify.py — judul "J.A.R.V.I.S"
+  </text>
+  <text x="1044" y="486" fill="#5a6070" font-size="11" font-family="Consolas, monospace" text-anchor="end">
+    ANNOUNCE_ON=("LISTENING",) · COOLDOWN_S=45
+  </text>
+  <text x="1044" y="502" fill="#5a6070" font-size="11" font-family="Consolas, monospace" text-anchor="end">
+    teks isi = jawaban asli, bukan contoh
+  </text>
+</svg>
+</div>
+
+<p class="cap">Artboard 4 — varian <span class="mono">bubble</span>: wajah 260 px di sudut kanan bawah, margin 24 px dari area kerja (di luar taskbar)</p>
+<div class="artboard">
+<svg viewBox="0 0 1600 420" width="1600" height="420" xmlns="http://www.w3.org/2000/svg"
+     font-family="Arial, Helvetica, sans-serif">
+  <rect x="40" y="40" width="1520" height="300" rx="4" fill="#1b2531" stroke="#ffffff" stroke-opacity="0.1"/>
+  <text x="70" y="76" fill="#8fa3b8" font-size="11" font-family="Consolas, monospace">area kerja (availableGeometry — sudah dikurangi taskbar)</text>
+
+  <!-- the bubble, 260x260, margin 24 -->
+  <g>
+    <rect x="1276" y="56" width="260" height="260" rx="6" fill="none" stroke="#4b9fff" stroke-dasharray="4 4" opacity="0.5"/>
+    <circle cx="1406" cy="176" r="70" fill="none" stroke="#70c8ff" stroke-width="2" opacity="0.9"/>
+    <circle cx="1406" cy="176" r="62" fill="none" stroke="#4b95dd" opacity="0.7"/>
+    <ellipse cx="1406" cy="168" rx="26" ry="32" fill="#4b9fff" opacity="0.35"/>
+    <path d="M1360 216 q46 -34 92 0" stroke="#4b9fff" stroke-width="2" fill="none" opacity="0.45"/>
+    <text x="1406" y="300" font-size="10" fill="#aabbd0" text-anchor="middle" font-family="Consolas, monospace">260 × 260</text>
+  </g>
+
+  <g stroke="#a8aeba" fill="none" stroke-width="1">
+    <path d="M1536 56 V316"/><path d="M1530 56 H1542 M1530 316 H1542"/>
+    <path d="M1276 26 V40"/><path d="M1536 26 H1540"/>
+    <path d="M1276 340 V360 H1120"/>
+  </g>
+  <text x="1546" y="190" fill="#5a6070" font-size="11" font-family="Consolas, monospace">24</text>
+  <text x="1320" y="22" fill="#5a6070" font-size="11" font-family="Consolas, monospace">
+    x = kanan − 260 − 24 ; y = bawah − 260 − 24 (face_bubble._place)
+  </text>
+  <text x="1114" y="386" fill="#5a6070" font-size="11" font-family="Consolas, monospace" text-anchor="end">
+    selalu di atas (always-on-top) · bisa diseret · klik dua kali = panggil antarmuka · DEFAULT_SIZE = 260
+  </text>
+  <g stroke="#a8aeba" fill="none" stroke-width="1">
+    <path d="M1276 176 H1150"/>
+  </g>
+  <text x="1144" y="172" fill="#5a6070" font-size="11" font-family="Consolas, monospace" text-anchor="end">
+    saat jendela dipanggil, wajah disembunyikan (summon → _hide_bubble)
+  </text>
+</svg>
+</div>
+
+<h2>Bagian B — tabel permukaan ambient</h2>
+<table>
+  <tr><th>Permukaan</th><th class="mono">Nilai / perilaku asli</th><th>Sumber</th></tr>
+  <tr><td>Ikon tray</td><td class="mono">22 px, digambar on-demand ke <code>icon_path()</code></td><td class="mono">ui/tray.py, ui/icons.py</td></tr>
+  <tr><td>Tooltip</td><td class="mono">"JARVIS — {STATE}"</td><td class="mono">ui/tray.py:_tooltip</td></tr>
+  <tr><td>Menu tray (6 item)</td><td class="mono">Show JARVIS · Wake up · Go to sleep · Settings · Start with this computer (checkbox) · Quit</td><td class="mono">MENU_ITEMS, CHECKABLE_ITEMS</td></tr>
+  <tr><td>Notifikasi</td><td class="mono">judul "J.A.R.V.I.S"; hanya pada LISTENING setelah THINKING/SPEAKING; diam bila jendela terlihat; jeda 45 s</td><td class="mono">core/notify.py</td></tr>
+  <tr><td>Wajah melayang</td><td class="mono">260×260; margin 24 dari availableGeometry; selalu di atas; seret; klik-2 panggil</td><td class="mono">ui/face_bubble.py</td></tr>
+  <tr><td>Chord panggil</td><td class="mono">Ctrl+Shift+J (global; jatuh ke window-scope di Wayland dan dilaporkan)</td><td class="mono">SUMMON_CHORD, start_summon_hotkey</td></tr>
+  <tr><td>Saat dipanggil</td><td class="mono">showMaximized() — <b>bukan</b> jendela kecil</td><td class="mono">ui/lifecycle.py:summon</td></tr>
+  <tr><td>Pengecualian wajib</td><td class="mono">setup API key dan banner konfirmasi selalu memunculkan jendela</td><td class="mono">start_interface:194, blocking surfaces</td></tr>
+  <tr><td>Tanpa area notifikasi</td><td class="mono">degradasi ke jendela + catat alasannya — tidak pernah jadi proses hantu</td><td class="mono">start_tray → False</td></tr>
+</table>
+
+<div class="note bad">
+  <b>Satu kontradiksi desain yang harus diputuskan, bukan digambar.</b>
+  Kalau JARVIS hanya ambient, maka <code>summon()</code> yang memakai <code>showMaximized()</code>
+  berarti setiap panggilan menutupi seluruh desktop — persis yang ingin dihindari mode ambient.
+  Sampai itu diubah, ambient hanyalah “hud yang disembunyikan”. Artboard 1 tetap menggambar
+  jendela penuh; <b>Artboard 1 = keadaan saat dipanggil</b>, bukan keadaan saat dibuka.
+</div>
+
+<h2>Usulan ambient — belum ada di kode</h2>
+<ul>
+  <li><b>A1 — Jadikan <code>"ambient"</code> satu-satunya mode.</b> <code>hud</code> dan <code>bubble</code>
+    dihapus dari <code>UI_MODES</code>; tombol siklus mode di drawer diganti satu baris status.
+    Menyentuh 8 berkas tes, i18n <code>ui.iface.*</code>, tray, serta <code>--hidden</code>/<code>--show</code>.</li>
+  <li><b>A2 — Panggilan memakai jendela tersimpan, bukan layar penuh.</b> Ganti
+    <code>showMaximized()</code> menjadi geometri tersimpan (default 1200×800 di tengah). Inilah yang
+    membuat ambient terasa berbeda, bukan sekadar “disembunyikan”.</li>
+  <li><b>A3 — Tray sebagai satu-satunya penanda tetap.</b> Wajah melayang (260 px) dihapus, karena
+    Anda meminta JARVIS tidak menempati layar. Konsekuensi: status hanya terbaca dari tooltip.</li>
+  <li><b>A4 — Tambahkan status tray yang lebih terbaca.</b> Ikon berubah warna per keadaan
+    (idle/listening/muted), karena tooltip butuh hover. Digambar di <code>ui/icons.py</code>, bukan
+    aset baru.</li>
+</ul>
+
 <!-- ===================== PROPOSALS ===================== -->
 <h2>Usulan — belum ada di kode, jangan digambar sebagai fakta</h2>
 <ul>
-  <li><b>U1 — Promosikan navigasi jadi kolom tetap 170 px.</b> Ini satu-satunya perubahan yang mengubah
+  <li><b>U1 — JANGAN dikerjakan selama ambient-only.</b> Mengangkat panel navigasi 170 px
+    menjadi kolom tetap berarti menggambar kolom yang selalu terlihat di dalam jendela —
+    bertentangan dengan A1/A2. Disimpan di sini hanya karena angkanya sudah terverifikasi,
+    untuk dipakai kalau ambient-only dibatalkan.</li>
+  <li><b>U1b — Promosikan navigasi jadi kolom tetap 170 px.</b> Ini satu-satunya perubahan yang mengubah
     perilaku start. Konsekuensi: subwindow <code>navigation</code> dihapus, <code>_left_panel</code> masuk ke
     <code>body</code> sebelum workspace, dan <code>tests/test_window_smoke.py:962</code>,
     <code>core/workspace_control.py</code>, <code>core/gesture_actions.py</code>, serta
@@ -354,7 +527,10 @@
 </ul>
 <p class="lede" style="margin-top:18px">
   Lembar ini berhenti di taraf konsep. Tidak ada perubahan kode pada commit ini.
-  Bila U1–U4 disetujui, urutan kerjanya: U4 (paling murah) → U2 → U3 → U1 (paling berisiko, perlu PR sendiri).
+  Dengan arah <b>ambient-only</b>, yang relevan adalah <b>A1–A4</b>; U2–U4 hanya berlaku di dalam
+  jendela yang dipanggil, dan U1 ditangguhkan.
+  Urutan yang disarankan: <b>A2 → A4 → A1 → A3</b> — A2 lebih dulu karena tanpanya “ambient”
+  masih berarti layar penuh, dan A2 belum menyentuh daftar mode sama sekali.
 </p>
 
 </div>
