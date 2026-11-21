@@ -19,6 +19,7 @@ semua komputer. Hasil uji lokal tidak otomatis menjadi hasil CI atau rilis.
 | Integrasi OS (auto-start, `jarvis://`, identitas aplikasi) | Format entri Windows/LaunchAgent/`.desktop`, quoting path berspasi, round-trip tulis-baca, parser `jarvis://` dan penolakannya, urutan pemasangan identitas; registry Windows diuji lewat shell palsu | Klik `jarvis://` sungguhan, grup dan ikon taskbar Windows, entri login setelah restart, dock/`StartupWMClass` Linux, dialog "buka dengan" macOS |
 | Riwayat percakapan | Penulisan/format JSONL, batas ukuran dan retensi, baris terpotong, pembersihan per hari, tool `recall_history` dengan argumen aneh | Isi transkrip dari sesi suara nyata: apakah setiap giliran benar-benar tercatat, dan apakah pertanyaan "tadi kita bicarakan apa" dijawab dari transkrip, bukan dari memori |
 | Interupsi suara (barge-in) | Palet keputusan murni: kapan memotong, kapan mengabaikan, gema sendiri, jeda, ruang bising, guard belum terkalibrasi; pemanggilan di callback mikrofon dan penekanannya per jawaban | Apakah memotong benar-benar terasa nyaman dengan mikrofon dan speaker sungguhan: berapa lama jeda sebelum berhenti, apakah tersela gema di ruang bergema, dan apakah suara latar memicu pemotongan |
+| Obsidian | Penemuan vault dari `obsidian.json`, penelusuran yang melewati `.obsidian`/`.trash`, pencarian dan kutipan baris, append yang menjaga CRLF, penolakan menimpa, penolakan symlink keluar, uji sumber yang melarang penghapusan | Vault Obsidian **sungguhan** milik pengguna: apakah Obsidian membaca ulang perubahan tanpa konflik, apakah nama catatan dengan spasi/emoji bekerja, dan apakah vault yang disinkronkan (Obsidian Sync/iCloud) tidak bentrok |
 
 Fitur kontrol tangan dan order MT5 tetap **eksperimental**. Smoke offscreen
 memverifikasi interaksi yang diprogram, bukan kesesuaian visual, performa nyata,
@@ -185,6 +186,18 @@ perilaku shell yang sebenarnya, dan itu tidak dapat disimulasikan.
       memang tidak dijanjikan, dan uji ini memastikan tidak ada klaim palsu.
 - [ ] Dengan headphone (tanpa gema sama sekali), pastikan pemotongan tetap bekerja
       dan tidak justru lebih lambat.
+
+### Obsidian
+
+- [ ] Dengan vault asli, minta "cari catatan tentang <topik>". Pastikan hasil yang
+      disebut benar-benar ada dan baris yang dikutip sesuai isi file.
+- [ ] Tambahkan satu baris ke catatan harian, lalu buka Obsidian: perubahan harus
+      muncul tanpa konflik dan tanpa mengubah format file.
+- [ ] Ulangi pada vault yang disinkronkan (Obsidian Sync / iCloud / OneDrive) dan
+      catat apakah ada konflik atau file duplikat.
+- [ ] Coba nama catatan dengan spasi, huruf besar-kecil berbeda, dan emoji.
+- [ ] Pastikan folder `.trash` dan catatan yang sudah dihapus **tidak** muncul.
+- [ ] Uji dengan lebih dari satu vault: asisten harus bertanya, bukan memilih.
 
 ### Remote HTTPS
 
