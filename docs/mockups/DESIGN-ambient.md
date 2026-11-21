@@ -132,15 +132,26 @@ stack-neutral dan berlaku apa adanya untuk implementasi Python.
 
 ### Yang **belum** ada dan perlu modul baru
 
-| Kebutuhan | Usulan modul | Catatan |
+| Kebutuhan | Modul | Status |
 |---|---|---|
-| Orb overlay 56 px click-through | `ui/orb_overlay.py` | `Qt.WA_TranslucentBackground` + `WindowTransparentForInput` di luar orb; region klik terpisah |
-| Toast berantre + batas 3/hari | `ui/toast_queue.py` + `core/suggestion_quota.py` | `core/notify.py` sudah punya kebijakan; ini lapisan tampilan |
-| Command bar | `ui/command_bar.py` | Frameless, fokus input, Esc mengembalikan fokus (`setFocus` ke jendela sebelumnya) |
-| Risk policy 3 tingkat + undo journal | `core/risk_policy.py`, `core/undo_journal.py` | `core/confirm.py` menangani konfirmasi; tingkat "aman/sedang" belum ada |
-| Audit log terpisah dari log diagnostik | `core/audit_log.py` | `logs/jarvis.log` berotasi 2 MB — tidak cocok untuk audit |
-| Mode Fokus/Senyap | `core/presence_mode.py` | Menahan toast, meredupkan orb |
-| Tool registry | `core/tool_registry.py` | Sekarang tool tersebar di `actions/` |
+| Orb overlay 56 px click-through | `ui/orb_overlay.py` | **belum** — `Qt.WA_TranslucentBackground` + `WindowTransparentForInput` di luar orb; region klik terpisah |
+| Command bar | `ui/command_bar.py` | **belum** — frameless, fokus input, Esc mengembalikan fokus |
+| Tool registry | `core/tool_registry.py` | **belum** — sementara `risk_policy.register()` sudah bisa dipakai untuk mendeklarasikan tingkat |
+
+### Sudah dikerjakan (dan diuji)
+
+| Kebutuhan | Modul | Tes |
+|---|---|---|
+| Toast berantre + kapasitas + hitungan yang dibuang | `ui/toast_queue.py` | `tests/test_toast_queue.py` |
+| Batas 3 saran/hari | `core/suggestion_quota.py` | `tests/test_suggestion_quota.py` |
+| Risiko 3 tingkat, default `risky` | `core/risk_policy.py` | `tests/test_risk_policy.py` |
+| Audit log terpisah dari `logs/jarvis.log` | `core/audit_log.py` | `tests/test_audit_log.py` |
+| Mode Aktif/Fokus/Senyap | `core/presence_mode.py` | `tests/test_presence_mode.py` |
+| Gerbang eksekusi: klasifikasi → catat → jalan/tahan | `core/action_gate.py` | `tests/test_action_gate.py` |
+
+`core/undo_journal.py` **tidak dibuat**: `core/undo.py` sudah melakukan itu
+(`push_undo`/`undo_last`, kedalaman 10). Menambah modul kedua hanya akan menjadi
+salinan yang berbeda perilaku.
 
 ### Batasan platform yang harus diuji di Windows
 

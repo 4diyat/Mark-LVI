@@ -137,7 +137,7 @@ pribadi, dan hitungan saran hari ini tidak berarti apa pun setelah di-commit.
 
 | Modul | Status | Catatan |
 |---|---|---|
-| `ui/toast_queue.py` | **belum** | antrean + tahan + kapasitas; logika harus bebas Qt |
+| `ui/toast_queue.py` | **selesai** | antrean, kapasitas 3, hitungan yang dibuang; bebas Qt |
 | `ui/orb_overlay.py` | **belum** | klik-tembus hanya bisa dibuktikan di Windows |
 | `ui/command_bar.py` | **belum** | Ctrl+Space, Esc mengembalikan fokus — Windows |
 | `core/undo_journal.py` | **tidak perlu** | `core/undo.py` sudah melakukan ini |
