@@ -154,6 +154,39 @@ class LogWidget(QTextEdit):
 
     def append_log(self, text: str):
         self._sig.emit(text)
+        self._remember(text)
+
+    def _remember(self, text: str) -> None:
+        """Keep the last assistant line, for the desktop notification.
+
+        WHY HERE
+            The notification needs the text of the answer, and this is the only
+            place the program already holds it in one piece: `main.py` streams
+            captions and logs them, so the log line IS the answer. Reading it
+            back from the widget would mean walking a QTextDocument from a
+            status callback on another thread; keeping the last line is a string
+            assignment.
+
+            Only assistant lines are kept, and only the last one: this exists to
+            say "JARVIS finished, and here is what it said", not to become a
+            second log.
+        """
+        line = (text or "").strip()
+        if not line:
+            return
+        lower = line.lower()
+        if lower.startswith("you:") or lower.startswith("file:"):
+            return
+        if lower.startswith(f"{self._ai_name_lc}:") or lower.startswith("jarvis:"):
+            # Strip the speaker prefix: a notification repeats the name in its
+            # title, and "J.A.R.V.I.S / JARVIS: It is done" reads as a stutter.
+            _, _, body = line.partition(":")
+            self.last_said = body.strip()[:180]
+
+    @property
+    def last_answer(self) -> str:
+        """The last thing the assistant said, or '' — used by core.notify."""
+        return getattr(self, "last_said", "")
 
     def _enqueue(self, text: str):
         self._queue.append(text)

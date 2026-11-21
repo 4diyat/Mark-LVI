@@ -3751,6 +3751,7 @@ class JarvisUI:
         self.root = _RootShim(self._app)
         self._tray = None
         self._bubble = None
+        self._notifier = None
         self._face_path = face_path
         self._ambient = False
         # The window's closeEvent has to be able to tell "put it away" from
@@ -4002,6 +4003,13 @@ class JarvisUI:
         bubble = getattr(self, "_bubble", None)
         if bubble is not None:
             bubble.set_state(state)
+        # Kept on the shell because `announce_if_finished` needs it and taking
+        # it as an argument would push two more lines into a file that is 11
+        # under its ceiling.
+        # Mode check and notification policy both live in ui/lifecycle: this
+        # file is 2 lines under a ceiling that exists for a reason.
+        from ui.lifecycle import announce_if_finished
+        announce_if_finished(self, state)
 
     def speech_caption(self, event):
         self._win._speech_caption_sig.emit(event)

@@ -460,6 +460,41 @@ def needs_attention(shell: "JarvisUI", why: str) -> bool:
     return visible
 
 
+def announce_if_finished(shell: "JarvisUI", state: str) -> None:
+    """Desktop notification for an answer that arrived while nobody watched.
+
+    `shell._pending_state` is the status `JarvisUI.set_state` just forwarded;
+    the rest is `core/notify.py`'s policy. Three conditions, all of them
+    "no" by default, because a notification nobody asked for is the fastest way
+    to get the feature switched off for good:
+
+      * the mode is ambient — in the full-screen HUD the answer is already on
+        the screen being read;
+      * the user has not turned it off (config, default on only for ambient);
+      * the policy agrees this is a completed turn, not a status cycle.
+    """
+    if not getattr(shell, "_ambient", False) or not state:
+        return
+    from core.notify import Notifier
+    from memory.config_manager import get_desktop_notifications
+
+    if not get_desktop_notifications():
+        return
+    notifier = getattr(shell, "_notifier", None)
+    if notifier is None:
+        notifier = Notifier(visible=lambda: bool(shell._win.isVisible()))
+        shell._notifier = notifier
+    log = getattr(shell._win, "_log", None)
+    text = getattr(log, "last_answer", "") if log is not None else ""
+    try:
+        notifier.observe(state, text)
+    except Exception as e:                          # noqa: BLE001
+        # A status update must never be the thing that raises. Said rather than
+        # swallowed, because "notifications never appear" is otherwise
+        # unanswerable.
+        print(f"[JARVIS] Notifier: {type(e).__name__}: {e}")
+
+
 def window_needs_attention(window, why: str) -> None:
     """Called by a widget inside the window that is about to BLOCK the user.
 
