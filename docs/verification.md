@@ -20,6 +20,7 @@ semua komputer. Hasil uji lokal tidak otomatis menjadi hasil CI atau rilis.
 | Riwayat percakapan | Penulisan/format JSONL, batas ukuran dan retensi, baris terpotong, pembersihan per hari, tool `recall_history` dengan argumen aneh | Isi transkrip dari sesi suara nyata: apakah setiap giliran benar-benar tercatat, dan apakah pertanyaan "tadi kita bicarakan apa" dijawab dari transkrip, bukan dari memori |
 | Interupsi suara (barge-in) | Palet keputusan murni: kapan memotong, kapan mengabaikan, gema sendiri, jeda, ruang bising, guard belum terkalibrasi; pemanggilan di callback mikrofon dan penekanannya per jawaban | Apakah memotong benar-benar terasa nyaman dengan mikrofon dan speaker sungguhan: berapa lama jeda sebelum berhenti, apakah tersela gema di ruang bergema, dan apakah suara latar memicu pemotongan |
 | Obsidian | Penemuan vault dari `obsidian.json`, penelusuran yang melewati `.obsidian`/`.trash`, pencarian dan kutipan baris, append yang menjaga CRLF, penolakan menimpa, penolakan symlink keluar, uji sumber yang melarang penghapusan | Vault Obsidian **sungguhan** milik pengguna: apakah Obsidian membaca ulang perubahan tanpa konflik, apakah nama catatan dengan spasi/emoji bekerja, dan apakah vault yang disinkronkan (Obsidian Sync/iCloud) tidak bentrok |
+| Akses file penuh | Kebijakan murni: default = home saja, opt-in hanya dari `true` literal, penolakan kredensial (`~/.ssh`, `System32`, penyimpan sandi browser) meski folder induknya diizinkan, penolakan kunci milik aplikasi sendiri, resolusi symlink sebelum pemeriksaan, alasan penolakan, dan uji AST yang memastikan tidak ada tool/plugin yang bisa memanggil `save`/`disable` | Folder **sungguhan** di Windows (`C:\`), macOS (`~/Library`) dan Linux (`/`): apakah folder sistem benar-benar tertolak, apakah reparse point/junction Windows dan symlink OneDrive/Dropbox tidak menyelinap, dan apakah dialog pemilih folder mengembalikan path yang bisa disimpan |
 
 Fitur kontrol tangan dan order MT5 tetap **eksperimental**. Smoke offscreen
 memverifikasi interaksi yang diprogram, bukan kesesuaian visual, performa nyata,
@@ -198,6 +199,30 @@ perilaku shell yang sebenarnya, dan itu tidak dapat disimulasikan.
 - [ ] Coba nama catatan dengan spasi, huruf besar-kecil berbeda, dan emoji.
 - [ ] Pastikan folder `.trash` dan catatan yang sudah dihapus **tidak** muncul.
 - [ ] Uji dengan lebih dari satu vault: asisten harus bertanya, bukan memilih.
+
+### Akses file penuh
+
+- [ ] Biarkan **MATI**, lalu minta asisten membaca file di luar home. Harus ditolak,
+      dan penolakannya menyebut "outside your home" — bukan sekadar "Access denied".
+- [ ] Nyalakan lewat baris **FULL FILE ACCESS** di drawer CONTROLS, pilih satu folder
+      (misalnya `D:\Kerja`). Tombol harus berubah menjadi AKTIF dengan jumlah folder.
+- [ ] Minta asisten membaca file di folder itu: harus berhasil. Lalu file di folder
+      lain yang **tidak** dipilih: harus tetap ditolak.
+- [ ] Dengan folder induk home diizinkan, minta ia membaca `~/.ssh/id_rsa` dan
+      `C:\Windows\System32\drivers\etc\hosts`. Keduanya harus ditolak meski
+      induknya diizinkan.
+- [ ] Minta ia membaca `config/api_keys.json`. Harus ditolak — periksa bahwa isi
+      kunci tidak muncul di jawaban maupun di log.
+- [ ] Buat symlink di dalam folder yang diizinkan menuju file di luar folder itu
+      (di Windows: `mklink /J`), lalu minta membacanya. Harus ditolak.
+- [ ] Ulangi dengan folder yang disinkronkan (OneDrive/Dropbox/iCloud), yang sering
+      memakai reparse point. Catat apakah path dilaporkan berbeda dari yang dipilih.
+- [ ] Matikan lagi lewat tombol yang sama, lalu ulangi langkah pertama. Harus kembali
+      ditolak tanpa perlu restart, dan daftar folder harus hilang dari config.
+- [ ] Rusak `config/api_keys.json` (tambahkan `{` di awal), jalankan ulang, lalu coba
+      file di luar home. Harus tetap ditolak dan aplikasi tetap bisa dipakai.
+- [ ] Coba minta asisten "memberi dirinya akses ke C:\". Ia tidak punya tool untuk
+      itu; jawabannya harus menjelaskan bahwa Anda yang harus menekan tombolnya.
 
 ### Remote HTTPS
 

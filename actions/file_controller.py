@@ -90,20 +90,59 @@ def _restore_from_trash(original: Path) -> str:
             f"automatically, but it is there and can be restored by hand.")
 
 
-_SAFE_ROOTS: list[Path] = [
-    Path.home(),
-]
+def _policy():
+    """The boundary in force right now, read from settings each time.
+
+    WHY NOT A MODULE-LEVEL CONSTANT
+        `_SAFE_ROOTS` used to be the whole boundary: one folder, set at import.
+        That cannot express "the user just granted a second folder", and a
+        restart-to-apply boundary is one the user will not connect to the thing
+        that refused them. Reading it per call is a small JSON read on an
+        operation that is already touching the disk.
+
+    Read fresh, and never cached across processes: `core/file_access.py` owns
+    the rules (credentials, browser stores, this app's own key), and this
+    function is only where the controller asks.
+    """
+    from core import file_access
+    try:
+        return file_access.load()
+    except Exception:                      # noqa: BLE001 — a guard may not crash
+        # A policy that cannot be built is the DEFAULT policy: off.
+        return file_access.Policy(enabled=False, roots=(), home=Path.home())
+
+
+_LAST_DENIAL: dict[str, str] = {}
+
+
+def _deny_message(target: Path) -> str:
+    """Why the last refusal happened, or a plain "not allowed".
+
+    The words "Access denied" stay first: they are what the tool output has
+    always begun with, and a refusal that changes shape is a refusal the
+    assistant has to be retaught. The sentence after them is new — a boundary
+    that explains itself is one the user can act on.
+    """
+    reason = _LAST_DENIAL.get("reason")
+    return f"Access denied: {reason}" if reason else f"Access denied: {target}"
+
 
 def _is_safe_path(target: Path) -> bool:
-    """Is the given path inside _SAFE_ROOTS? If not, reject the operation."""
+    """May this path be touched? See `core/file_access.py` for the rules.
+
+    The NAME is kept because every call site already used it and because the
+    question it answers has not changed — only the answer, which is now a
+    policy rather than one folder. The refusal is also remembered so the tool
+    can say WHY, which is the difference between a puzzle and a boundary.
+    """
     try:
-        resolved = target.resolve()
-        return any(
-            resolved == root.resolve() or resolved.is_relative_to(root.resolve())
-            for root in _SAFE_ROOTS
-        )
-    except Exception:
+        path = _policy().check(target)
+    except Exception as e:                 # noqa: BLE001 — includes Denied
+        _LAST_DENIAL.clear()
+        _LAST_DENIAL["reason"] = str(e)
+        _LAST_DENIAL["path"] = str(target)
         return False
+    return bool(path)
 
 
 def _is_plain_name(name: str) -> bool:
@@ -218,7 +257,7 @@ def list_files(path: str = "desktop", show_hidden: bool = False) -> str:
     try:
         target = _resolve_path(path)
         if not _is_safe_path(target):
-            return f"Access denied: {target}"
+            return _deny_message(target)
         if not target.exists():
             return f"Path not found: {target}"
         if not target.is_dir():
@@ -250,7 +289,7 @@ def create_file(path: str, name: str = "", content: str = "") -> str:
         base   = _resolve_path(path)
         target = (base / name) if name else base
         if not _is_safe_path(target):
-            return f"Access denied: {target}"
+            return _deny_message(target)
         target.parent.mkdir(parents=True, exist_ok=True)
         existed = target.exists()
         previous = None
@@ -272,7 +311,7 @@ def create_folder(path: str, name: str = "") -> str:
         base   = _resolve_path(path)
         target = (base / name) if name else base
         if not _is_safe_path(target):
-            return f"Access denied: {target}"
+            return _deny_message(target)
         already = target.exists()
         target.mkdir(parents=True, exist_ok=True)
         # Only offer to undo a folder we actually made. "mkdir -p" on something
@@ -290,7 +329,7 @@ def delete_file(path: str, name: str = "") -> str:
         base   = _resolve_path(path)
         target = (base / name) if name else base
         if not _is_safe_path(target):
-            return f"Access denied: {target}"
+            return _deny_message(target)
         if not target.exists():
             return f"Not found: {target.name}"
 
@@ -404,7 +443,7 @@ def rename_file(path: str, name: str = "", new_name: str = "") -> str:
         base     = _resolve_path(path)
         target   = (base / name) if name else base
         if not _is_safe_path(target):
-            return f"Access denied: {target}"
+            return _deny_message(target)
         if not target.exists():
             return f"Not found: {target.name}"
         if not new_name:
@@ -436,7 +475,7 @@ def read_file(path: str, name: str = "", max_chars: int = 4000) -> str:
         base   = _resolve_path(path)
         target = (base / name) if name else base
         if not _is_safe_path(target):
-            return f"Access denied: {target}"
+            return _deny_message(target)
         if not target.exists():
             return f"File not found: {target.name}"
         if not target.is_file():
@@ -457,7 +496,7 @@ def write_file(path: str, name: str = "", content: str = "",
         base   = _resolve_path(path)
         target = (base / name) if name else base
         if not _is_safe_path(target):
-            return f"Access denied: {target}"
+            return _deny_message(target)
         target.parent.mkdir(parents=True, exist_ok=True)
 
         # Snapshot before writing. None means "did not exist", which is a
@@ -664,7 +703,7 @@ def get_file_info(path: str, name: str = "") -> str:
         base   = _resolve_path(path)
         target = (base / name) if name else base
         if not _is_safe_path(target):
-            return f"Access denied: {target}"
+            return _deny_message(target)
         if not target.exists():
             return f"Not found: {target.name}"
 

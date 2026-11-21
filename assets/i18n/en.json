@@ -654,5 +654,9 @@
   "ui.notify.off": "🔕  NOTIFICATIONS: OFF",
   "ui.notify.hint": "In ambient mode, show a desktop banner when an answer arrives. Silent while the window is on screen.",
   "ui.deeplink.on": "◉  jarvis:// LINKS: ON",
-  "ui.deeplink.off": "○  jarvis:// LINKS: OFF"
+  "ui.deeplink.off": "○  jarvis:// LINKS: OFF",
+  "ui.file_access.off": "🔓  FULL FILE ACCESS: OFF",
+  "ui.file_access.on": "🔓  FULL FILE ACCESS: ON ({n} FOLDERS)",
+  "ui.file_access.pick": "Choose a folder the assistant may use",
+  "ui.file_access.hint": "Off, the assistant works only inside your home folder. On, it also works in the folders you grant — but never in .ssh, browser password stores or this app's own key file."
 }

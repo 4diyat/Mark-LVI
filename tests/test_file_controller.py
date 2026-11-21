@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 
 from actions import file_controller
+from core import file_access
 
 
 @pytest.fixture()
@@ -27,7 +28,9 @@ def home(tmp_path, monkeypatch):
     for name in ("Desktop", "Documents", "Downloads", "Pictures", "Music", "Videos"):
         (root / name).mkdir(parents=True)
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: root))
-    monkeypatch.setattr(file_controller, "_SAFE_ROOTS", [root])
+    # The boundary is a policy now; a test points it at the throw-away home.
+    monkeypatch.setattr(file_controller, "_policy",
+                        lambda: file_access.Policy(enabled=False, roots=(), home=root))
     return root
 
 

@@ -76,6 +76,8 @@ TESTED = {
     "core/history.py":        "tests/test_history.py",
     "core/voice_interrupt.py": "tests/test_voice_interrupt.py",
     "core/obsidian.py":       "tests/test_obsidian.py",
+    "core/file_access.py":    "tests/test_file_access.py",
+    "ui/file_access_row.py":  "tests/test_file_access.py",
     "memory/config_manager.py": "tests/test_config.py",
     "memory/memory_manager.py": "tests/test_memory.py",
 }
