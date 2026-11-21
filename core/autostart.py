@@ -59,6 +59,12 @@ DESKTOP_NAME = "jarvis.desktop"           # under ~/.config/autostart
 def _run_key_windows():
     r"""The `Run` key, opened lazily so importing this module needs no winreg.
 
+    Lazy on purpose and NOT optional: `winreg` exists only on Windows, and this
+    module is imported by `ui/tray.py`, which every platform loads. A top-level
+    `import winreg` would make the whole interface fail to start on the two
+    systems the tray matters most on. (It is also why the stub Win32 runs in
+    the tests can exercise the writer without one.)
+
     HKCU, not HKLM: writing to HKLM needs elevation, and an assistant that
     asks for administrator rights to start with the user is an assistant most
     people uninstall. The same key is what Task Manager's Startup tab reads.
@@ -295,9 +301,18 @@ def installed_script(os_name: str | None = None) -> str:
         return ""
 
     if os_name == "Darwin":
-        # The last <string> inside ProgramArguments is the script.
+        # The LAST <string> inside ProgramArguments — not the last <string> in
+        # the file. There are other keys after it (`ProcessType` is a string
+        # too), so a whole-file search returns "Interactive" and reads as
+        # "registered, points at nothing" on every Mac. That is exactly what CI
+        # on macOS reported before this line was written.
         import re
-        args = re.findall(r"<string>(.*?)</string>", text, re.S)
+        block = re.search(r"<key>ProgramArguments</key>\s*<array>(.*?)</array>",
+                          text, re.S)
+        if block is None:
+            return ""
+        args = [a.strip() for a in
+                re.findall(r"<string>(.*?)</string>", block.group(1), re.S)]
         return args[-1] if len(args) >= 2 else ""
     for line in text.splitlines():
         if line.startswith("Exec="):

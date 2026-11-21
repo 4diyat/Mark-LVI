@@ -57,6 +57,22 @@ def _import_lifecycle():
     return _load("ui/lifecycle.py", "lifecycle_under_test")
 
 
+def _desktop_script(path) -> str:
+    """Read a .desktop entry's Exec= the way the real reader does, or "".
+
+    Used by the wiring tests, which are about the toggle's DECISIONS (three
+    states: off / on / registered-but-broken) rather than about the Linux
+    parser, which has its own tests above.
+    """
+    if not path.exists():
+        return ""
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.startswith("Exec="):
+            parts = autostart._split_desktop_command(line[len("Exec="):])
+            return parts[-1] if parts else ""
+    return ""
+
+
 @pytest.fixture()
 def home(tmp_path, monkeypatch):
     """A throwaway HOME, so these tests never touch the real autostart folder."""
@@ -159,12 +175,27 @@ def test_the_desktop_entry_gets_an_icon_only_when_the_file_exists(tmp_path, scri
 
 # ── the macOS entry ─────────────────────────────────────────────────────────
 
-def test_the_launch_agent_is_a_plist_that_parses(tmp_path, script, home):
+@pytest.fixture()
+def mac(tmp_path, monkeypatch):
+    """A macOS-shaped target for ONE test: the plist, in this test's folder.
+
+    `target_path` is the single function the writer and the reader both name,
+    so pointing it here tests the real read-back instead of a file nobody
+    reads. The first version of these tests asserted the plist's TEXT and never
+    asked `installed_script` anything — which is how a reader that returned
+    "Interactive" (a later `<string>` in the same file) passed on Linux and
+    failed on macOS CI.
+    """
+    path = tmp_path / "com.jarvis.assistant.plist"
+    monkeypatch.setattr(autostart, "target_path", lambda os_name=None: path)
+    return path
+
+
+def test_the_launch_agent_is_a_plist_that_parses(tmp_path, script, home, mac):
     """Parsed with a real XML parser: the old one was assembled by f-string and
     never checked by anything that would have noticed a stray `&`."""
     autostart.enable(script, os_name="Darwin")
-    plist = home / "Library" / "LaunchAgents" / "com.jarvis.assistant.plist"
-    root = ET.parse(plist).getroot()
+    root = ET.parse(mac).getroot()
     assert root.tag == "plist"
 
     strings = [e.text for e in root.iter("string")]
@@ -173,23 +204,36 @@ def test_the_launch_agent_is_a_plist_that_parses(tmp_path, script, home):
     assert root.find(".//key[.='RunAtLoad']") is not None
 
 
-def test_the_launch_agent_has_no_keepalive(tmp_path, script, home):
+def test_the_launch_agent_reads_back_as_the_script_it_will_start(tmp_path, script, home, mac):
+    """The bug macOS CI found: the reader took the LAST <string> in the file.
+
+    `ProcessType` is a string too, and it comes after `ProgramArguments`, so
+    "which file would this start" answered "Interactive" — status said
+    registered-but-not-broken, and the toggle reported success for an entry
+    that could never be verified.
+    """
+    autostart.enable(script, os_name="Darwin")
+    assert autostart.installed_script("Darwin") == str(script.resolve())
+    status = autostart.status("Darwin")
+    assert status["broken"] is False
+    assert status["script"] == str(script.resolve())
+
+
+def test_the_launch_agent_has_no_keepalive(tmp_path, script, home, mac):
     """A crashing assistant relaunched forever is worse than one that stays down.
 
     The user starts it themselves; nothing in the tray suggests it is immortal.
     """
     autostart.enable(script, os_name="Darwin")
-    text = (home / "Library" / "LaunchAgents" / "com.jarvis.assistant.plist").read_text()
-    assert "KeepAlive" not in text
+    assert "KeepAlive" not in mac.read_text()
 
 
-def test_a_project_path_with_an_ampersand_still_produces_valid_xml(tmp_path, home):
+def test_a_project_path_with_an_ampersand_still_produces_valid_xml(tmp_path, home, mac):
     script = tmp_path / "Work & Play" / "main.py"
     script.parent.mkdir(parents=True)
     script.write_text("", encoding="utf-8")
     autostart.enable(script, os_name="Darwin")
-    plist = home / "Library" / "LaunchAgents" / "com.jarvis.assistant.plist"
-    root = ET.parse(plist).getroot()             # raises if the escaping is wrong
+    root = ET.parse(mac).getroot()             # raises if the escaping is wrong
     assert str(script.resolve()) in [e.text for e in root.iter("string")]
 
 
@@ -349,9 +393,17 @@ def test_toggling_reports_the_state_it_left_behind(tmp_path, monkeypatch):
                             _win=SimpleNamespace(write_log=notes.append))
 
     # The real `status()`/`enabled()`/`installed_script()` path, but pointed at
-    # this test's folder instead of the machine's own autostart directory.
+    # this test's folder instead of the machine's own autostart directory — and
+    # at Linux, because the entry written below is a .desktop file. On macOS CI
+    # the un-pinned version read a plist that was not there and failed; the
+    # production code picks the platform the same way, so this is not a bypass.
+    monkeypatch.setattr(autostart.platform, "system", lambda: "Linux")
     monkeypatch.setattr(autostart, "target_path",
                         lambda os_name=None: tmp_path / "jarvis.desktop")
+    monkeypatch.setattr(autostart, "enabled",
+                        lambda os_name=None: (tmp_path / "jarvis.desktop").exists())
+    monkeypatch.setattr(autostart, "installed_script",
+                        lambda os_name=None: _desktop_script(tmp_path / "jarvis.desktop"))
     (tmp_path / "jarvis.desktop").write_text(
         autostart.desktop_text(script), encoding="utf-8")
 
@@ -385,6 +437,7 @@ def test_a_failing_toggle_writes_a_log_line_instead_of_raising(tmp_path, monkeyp
 
     # Isolated from whatever this machine has registered, so the test exercises
     # "turning it ON fails" rather than "turning it off succeeds".
+    monkeypatch.setattr(autostart.platform, "system", lambda: "Linux")
     monkeypatch.setattr(autostart, "target_path",
                         lambda os_name=None: tmp_path / "jarvis.desktop")
     notes = []
