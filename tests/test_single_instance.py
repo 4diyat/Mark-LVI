@@ -268,14 +268,51 @@ def test_the_start_time_is_readable_for_a_real_process():
     assert si._proc_start_time(os.getpid()) is not None
 
 
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="the POSIX branch of _pid_alive; Windows uses OpenProcess")
 def test_a_pid_that_cannot_be_checked_is_treated_as_alive(lock, monkeypatch):
     """`PermissionError` on kill(0) means the process exists, owned by somebody
-    else. Answering False there deletes a live lock."""
+    else. Answering False there deletes a live lock.
+
+    POSIX only, and the skip is the point: `_pid_alive` has two branches and
+    this patches `os.kill`, which the Windows branch never calls. The Windows
+    branch has its own test below — a test that silently exercises the wrong
+    branch is how a green suite ships a Windows bug.
+    """
     def _kill(_pid, _sig):
         raise PermissionError("not yours")
 
     monkeypatch.setattr(si.os, "kill", _kill)
     assert si._pid_alive(4242) is True
+
+
+def test_the_windows_branch_refuses_to_delete_a_lock_it_cannot_check(monkeypatch):
+    """On Windows there is no `kill(pid, 0)`; the question is asked with
+    `OpenProcess`, and a `ctypes` that is missing or refuses must read as ALIVE.
+
+    That direction is deliberate: an unanswerable question may not free a lock,
+    because freeing a live one starts the second assistant this module exists to
+    prevent. Runs everywhere by forcing the branch, since the CI runner that
+    cares is the one that cannot reach it any other way.
+    """
+    import builtins
+
+    real_import = builtins.__import__
+
+    def _no_ctypes(name, *a, **k):
+        if name == "ctypes":
+            raise ImportError("ctypes unavailable")
+        return real_import(name, *a, **k)
+
+    monkeypatch.setattr(si.sys, "platform", "win32")
+    monkeypatch.setattr(builtins, "__import__", _no_ctypes)
+    assert si._pid_alive(4242) is True
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="asks the real Windows API")
+def test_the_windows_branch_answers_for_a_real_pid():
+    assert si._pid_alive(os.getpid()) is True
+    assert si._pid_alive(999_999) is False
 
 
 # ── against a REAL second process, not a stub ──────────────────────────────
