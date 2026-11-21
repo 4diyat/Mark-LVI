@@ -85,6 +85,7 @@ from memory.config_manager     import (
 from core                     import gemini as _gemini
 from core.plugin_loader        import discover_plugins
 from core                      import tool_dispatch as _dispatch
+from core                      import security_camera as _security_camera
 from core                      import confirm as confirm_gate
 from core                      import audio_devices
 from core.action_loader        import discover_actions
@@ -2916,6 +2917,7 @@ class JarvisLive:
                     tg.create_task(self._play_audio())
                     tg.create_task(self._run_system_monitor())
                     tg.create_task(self._run_background_monitor())
+                    tg.create_task(_security_camera.watch(self.ui))
                     tg.create_task(self._run_proactive_mode())
                     tg.create_task(self._run_sleep_watch())
                     if self._dashboard:

@@ -658,5 +658,8 @@
   "ui.file_access.off": "🔓  AKSES FILE PENUH: MATI",
   "ui.file_access.on": "🔓  AKSES FILE PENUH: AKTIF ({n} FOLDER)",
   "ui.file_access.pick": "Pilih folder yang boleh dipakai asisten",
-  "ui.file_access.hint": "Saat mati, asisten hanya bekerja di folder home Anda. Saat aktif, ia juga bekerja di folder yang Anda izinkan — tapi tidak pernah di .ssh, penyimpan sandi browser, atau file kunci aplikasi ini."
+  "ui.file_access.hint": "Saat mati, asisten hanya bekerja di folder home Anda. Saat aktif, ia juga bekerja di folder yang Anda izinkan — tapi tidak pernah di .ssh, penyimpan sandi browser, atau file kunci aplikasi ini.",
+  "ui.camera.off": "🎥  KAMERA KEAMANAN: MATI",
+  "ui.camera.on": "🎥  KAMERA KEAMANAN: AKTIF",
+  "ui.camera.hint": "Saat mati, kamera tidak pernah dibuka — lampu perangkat tetap padam. Saat aktif, satu tinjauan tiap 20 detik: frame dibandingkan di memori, hasilnya satu baris di log, tidak ada rekaman dan tidak ada unggahan kecuali Anda memintanya."
 }
