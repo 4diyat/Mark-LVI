@@ -1684,6 +1684,10 @@ class JarvisLive:
             if self._wake_enabled and not self._awake:
                 det = self._wake_detector
                 if det is not None:
+                    # First frame after a detection still belongs to the
+                    # phrase that woke us. The detector needs it; dropping it
+                    # here was harmless-looking and cost the model the start of
+                    # every utterance. See _wake_ready_at.
                     det.feed(indata)
                 return
             with self._speaking_lock:
