@@ -314,12 +314,21 @@ def test_writes_stay_inside_the_vault(vault):
         assert Path(returned).resolve().is_relative_to(vault.resolve())
 
 
-def test_the_config_path_is_per_os(monkeypatch, tmp_path):
-    """The one platform where a wrong path silently finds nothing."""
-    monkeypatch.setattr(ob.sys, "platform", "darwin")
+@pytest.mark.parametrize("platform, marker", [
+    ("win32", "Roaming"),
+    ("darwin", "Application Support"),
+    ("linux", ".config"),
+])
+def test_the_config_path_is_per_os(monkeypatch, tmp_path, platform, marker):
+    """The one place where a wrong path silently finds nothing at all."""
+    monkeypatch.setattr(ob.sys, "platform", platform)
     monkeypatch.setattr(ob.Path, "home", classmethod(lambda cls: tmp_path))
-    assert "Application Support" in str(ob.obsidian_config_path())
-    assert ob.obsidian_config_path().name == "obsidian.json"
+    monkeypatch.setattr(ob.os.environ, "get",
+                        lambda key, default=None: default, raising=False)
+    path = ob.obsidian_config_path()
+    assert marker in str(path)
+    assert path.name == "obsidian.json"
+    assert path.parent.name == "obsidian"
 
 
 # ── the plugin the model actually calls ─────────────────────────────────────

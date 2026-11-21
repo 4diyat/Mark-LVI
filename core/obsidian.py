@@ -70,7 +70,10 @@ def obsidian_config_path() -> Path:
     `~/Library/Application Support`; Linux under `$XDG_CONFIG_HOME`.
     """
     home = Path.home()
-    if os.name == "nt":
+    # `sys.platform`, not `os.name`: one source of truth, and one that a test
+    # can change on any runner. `os.name == "nt"` short-circuited before the
+    # macOS branch, so the macOS path was unreachable in a test on Windows.
+    if sys.platform == "win32":
         base = Path(os.environ.get("APPDATA") or home / "AppData" / "Roaming")
         return base / "obsidian" / "obsidian.json"
     if sys.platform == "darwin":
@@ -185,7 +188,9 @@ def _title(path: Path, vault: Path) -> str:
         rel = path.relative_to(vault)
     except ValueError:
         rel = Path(path.name)
-    return str(rel.with_suffix(""))
+    # Always "/" — a title is a name the user and the model both quote, and it
+    # must not change spelling because the note was read on Windows.
+    return rel.with_suffix("").as_posix()
 
 
 def search(query: str, folder=None, limit: int = MAX_RESULTS,
