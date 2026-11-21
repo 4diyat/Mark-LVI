@@ -102,3 +102,43 @@ Spesifikasi tidak memberi angka untuk ini; saya pilih dan catat di ringkasan HTM
   berbeda), jadi gambar pratinjau bisa sedikit berbeda dari peramban. Geometri, warna,
   dan teks sudah diperiksa secara terprogram: 22 artboard valid, tanpa elemen meluber,
   tanpa bentuk berukuran nol.
+
+## Target implementasi: repo ini, Python + PyQt6
+
+Keputusan: **tidak** ditulis ulang ke Tauri/React. Artboard shell (1–6, 23–28) digambar
+stack-neutral dan berlaku apa adanya untuk implementasi Python.
+
+### Bagian spesifikasi yang **sudah ada** di repo
+
+| Kebutuhan spesifikasi | Modul yang ada | Baris |
+|---|---|---|
+| Tray + 6 item menu | `ui/tray.py` | 271 |
+| Notifikasi + kebijakan 45 s | `core/notify.py` | 242 |
+| Global hotkey (Ctrl+Space dst.) | `core/hotkey.py` | 532 |
+| Gestur tangan | `core/hand_gesture.py`, `core/gesture_os.py` | 325 |
+| Konfirmasi yang tidak bisa dipalsukan model | `core/confirm.py` | — |
+| Riwayat percakapan/tugas | `core/history.py` | — |
+| Memori personal | `memory/memory_manager.py` | 486 |
+| STT lokal (faster-whisper, Vosk) | `core/stt.py` | 93 |
+| Wake word | `core/wake_word.py` | — |
+| TTS | `core/tts.py` | 442 |
+| Plugin + manifest izin | `core/plugin_manifest.py`, `plugins/` | — |
+| Clipboard | `actions/computer_control.py` (pyperclip, lazy) | — |
+
+### Yang **belum** ada dan perlu modul baru
+
+| Kebutuhan | Usulan modul | Catatan |
+|---|---|---|
+| Orb overlay 56 px click-through | `ui/orb_overlay.py` | `Qt.WA_TranslucentBackground` + `WindowTransparentForInput` di luar orb; region klik terpisah |
+| Toast berantre + batas 3/hari | `ui/toast_queue.py` + `core/suggestion_quota.py` | `core/notify.py` sudah punya kebijakan; ini lapisan tampilan |
+| Command bar | `ui/command_bar.py` | Frameless, fokus input, Esc mengembalikan fokus (`setFocus` ke jendela sebelumnya) |
+| Risk policy 3 tingkat + undo journal | `core/risk_policy.py`, `core/undo_journal.py` | `core/confirm.py` menangani konfirmasi; tingkat "aman/sedang" belum ada |
+| Audit log terpisah dari log diagnostik | `core/audit_log.py` | `logs/jarvis.log` berotasi 2 MB — tidak cocok untuk audit |
+| Mode Fokus/Senyap | `core/presence_mode.py` | Menahan toast, meredupkan orb |
+| Tool registry | `core/tool_registry.py` | Sekarang tool tersebar di `actions/` |
+
+### Batasan platform yang harus diuji di Windows
+
+- `WindowTransparentForInput` berbeda di X11/macOS; orb click-through hanya bisa
+  diverifikasi di Windows.
+- Fokus kembali setelah Esc bergantung pada window manager; perlu uji manual.
