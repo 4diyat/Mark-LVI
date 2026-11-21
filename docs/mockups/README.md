@@ -81,3 +81,16 @@ menambah chrome permanen.
 - Gambar dan lembar ini **tidak** diverifikasi di mesin ber-Qt. Semua ukuran berasal dari
   membaca kode, bukan dari tangkapan layar aplikasi yang berjalan.
 - Tidak ada perubahan kode pada commit ini; ini tahap konsep.
+
+## Sistem desain ambient (22 artboard)
+
+Spesifikasi ambient menggantikan arah jendela di atas untuk pekerjaan baru:
+
+- `jarvis-design-system.html` — 22 artboard, palet baru (`#04080D` / `#4FD8F0` / `#F5A524`),
+  tema gelap dan terang, semuanya SVG inline tanpa jaringan.
+- `build.py` — generator lembar itu; jalankan untuk regenerasi.
+- `DESIGN-ambient.md` — ringkasan keputusan: kontras terukur, asumsi A1–A6, tiga benturan
+  spesifikasi, dan apa yang sengaja belum digambar.
+
+Lembar lama (`jarvis-desktop-spec.html`, `jarvis-desktop.png`) tetap disimpan sebagai
+dokumentasi keadaan kode pada `bb02ce1`, tetapi **bukan** acuan visual lagi.
