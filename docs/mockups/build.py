@@ -503,6 +503,17 @@ def light_pill(x, y, w, h, s, primary=True):
     return o
 
 
+def light_seg(x, y, items, active=0, w=None, h=34):
+    n = len(items); w = w or (n * 104); iw = w / n
+    o = rect(x, y, w, h, "#EDF3F6", h / 2, LLINE)
+    for i, lab in enumerate(items):
+        if i == active:
+            o += rect(x + i * iw + 3, y + 3, iw - 6, h - 6, LACC, (h - 6) / 2)
+        o += txt(x + i * iw + iw / 2, y + h / 2 + 4, lab, 11.5,
+                 "#FFFFFF" if i == active else LMUTED, 500, "middle")
+    return o
+
+
 def light_toggle(x, y, on, w=40, h=22):
     o = rect(x, y, w, h, LACC if on else "#C9D8DF", h / 2)
     kx = x + w - h / 2 if on else x + h / 2
@@ -1104,134 +1115,426 @@ def b22():
     return frame(W, H, "".join(o))
 
 
+# ── Fase 1 shell: window-behaviour artboards ───────────────────────────────
+# These document the ambient shell spec: orb overlay, toast queue, command
+# bar, tray panel, and the two overlays. They reuse the same tokens and the
+# same component helpers as the first sheet, so the two cannot drift apart.
+
+
+def clip_desk(w, h):
+    """A neutral user desktop seen through a full-screen transparent overlay."""
+    out = [rect(0, 0, w, h, "#0B1218")]
+    out.append(doc_window(120, 74, 700, 380, "RAB Q4 · anggaran.xlsx",
+                          [("h", "Ringkasan anggaran kuartal empat"),
+                           ("p", "Baris item, satuan, harga, subtotal — semua terisi."),
+                           ("p", "Kolom realisasi menunggu persetujuan tim keuangan.")]))
+    out.append(doc_window(560, 300, 600, 300, "Catatan rapat · 19 Nov",
+                          [("h", "Poin keputusan"), ("p", "Anggaran Q4 disetujui dengan catatan.")]))
+    out.append(desktop_chrome(w, h))
+    return "".join(out)
+
+
+def orb_overlay(x, y, r, hit=True, size=None):
+    """56px orb inside a click-through overlay; only the orb takes clicks."""
+    ge = uid("ove")
+    half = size or r * 2.6
+    o = [f'<defs><radialGradient id="{ge}" cx="0.5" cy="0.5" r="0.5">'
+         f'<stop offset="0.30" stop-color="{CYAN}" stop-opacity="0.26"/>'
+         f'<stop offset="1" stop-color="{CYAN}" stop-opacity="0"/></radialGradient></defs>']
+    o.append(f'<rect x="{x-half}" y="{y-half}" width="{half*2}" height="{half*2}" fill="none" '
+             f'stroke="{CYAN}" stroke-dasharray="5 6" stroke-width="1" opacity="0.25"/>')
+    o.append(f'<circle cx="{x}" cy="{y}" r="{r*2.2}" fill="url(#{ge})"/>')
+    o.append(orb(x, y, r))
+    if hit:
+        o.append(f'<circle cx="{x}" cy="{y}" r="{r+9}" fill="none" stroke="{CYAN}" '
+                 f'stroke-width="1" stroke-dasharray="3 4" opacity="0.5"/>')
+    return "".join(o)
+
+
+def toast_queue(x, y, w, items, max_shown=3):
+    """Stacked toasts plus a queue-depth line, because the spec caps the queue."""
+    o, off = [], 0
+    for title, body, acts in items[:max_shown]:
+        o.append(toast(x, y + off, w, title, body, acts))
+        off += (96 if acts else 74) + 12
+    hidden = max(0, len(items) - max_shown)
+    if hidden:
+        o.append(txt(x + w, y + off - 2, f"+{hidden} lain dalam antrean", 10.5, MUTED, 400, "end"))
+    return "".join(o)
+
+
+def n01():
+    W, H = 1280, 720
+    o = [clip_desk(W, H), orb_overlay(1180, 602, 28)]
+    o.append(txt(1180, 662, "Siaga", 10, MUTED, 500, "middle", track="1.6"))
+    o.append(f'<path d="M1136 640 H980" stroke="{CYAN}" stroke-width="1" opacity="0.45"/>')
+    o.append(txt(972, 636, "overlay ±150 px, click-through", 10, MUTED, 400, "end"))
+    o.append(txt(972, 650, "WS_EX_NOACTIVATE · WS_EX_TOOLWINDOW", 9.5, "#5E7A87", 400, "end",
+                 family="'SFMono-Regular',Consolas,monospace"))
+    return frame(W, H, "".join(o))
+
+
+def n02():
+    W, H = 1280, 720
+    o = [clip_desk(W, H)]
+    items = [("Rapat tim dimulai 10 menit lagi",
+              "Ruang Rapat 2 · 5 peserta sudah masuk", ("Buka tautan", "Tunda 5 mnt")),
+             ("Anggaran Q4 disetujui", "2 baris melewati plafon, sudah ditandai", ()),
+             ("Pengingat: kirim laporan Jumat", "Belum ada lampiran", ("Buka", "Nanti")),
+             ("Clipboard berisi rekening", "Ditandai sensitif, tidak disalin ulang", ())]
+    o.append(toast_queue(700, 330, 340, items))
+    o.append(orb_overlay(1180, 602, 28))
+    o.append(f'<path d="M690 420 H600" stroke="{CYAN}" stroke-width="1" opacity="0.45"/>')
+    o.append(txt(592, 416, "maks. 3 tampil", 10, MUTED, 400, "end"))
+    o.append(txt(592, 430, "sisanya antre", 10, MUTED, 400, "end"))
+    o.append(txt(40, 56, "Hilang otomatis 8 detik · tidak pernah meminta fokus · maksimal 3 saran per hari",
+                 10.5, MUTED))
+    return frame(W, H, "".join(o))
+
+
+def n03():
+    W, H = 1280, 720
+    o = [clip_desk(W, H), rect(0, 0, W, H, BASE, op="0.45")]
+    bx, by, bw, bh = 320, 268, 640, 184
+    g = uid("cb")
+    o.append(f'<defs><linearGradient id="{g}" x1="0" y1="0" x2="0" y2="1">'
+             f'<stop offset="0" stop-color="#0C1E29"/><stop offset="1" stop-color="#081319"/>'
+             f'</linearGradient></defs>')
+    o.append(rect(bx, by, bw, bh, f"url(#{g})", 16, LINE_ACC))
+    o.append(f'<path d="M{bx+16} {by+1} h{bw-32}" stroke="{CYAN}" stroke-width="2" opacity="0.7"/>')
+    o.append(txt(bx + 24, by + 46, "Buat ringkasan rapat", 18, TEXT, 500))
+    o.append(rect(bx + 196, by + 30, 2, 20, CYAN))
+    o.append(rect(bx + bw - 74, by + 28, 50, 22, "none", 6, LINE))
+    o.append(txt(bx + bw - 49, by + 43, "Esc", 10, MUTED, 500, "middle",
+                 family="'SFMono-Regular',Consolas,monospace"))
+    o.append(txt(bx + 24, by + 68, "Konteks: RAB Q4 · anggaran.xlsx", 10.5, MUTED))
+    o.append(rect(bx + 18, by + 82, bw - 36, 1, LINE))
+    rows = (("Ringkas 14 baris terpilih", "aman · langsung", CYAN),
+            ("Kirim ke tim keuangan", "berisiko · konfirmasi", AMBER),
+            ("Susun jendela 2 kolom", "sedang · bisa diurungkan", MUTED))
+    for i, (t, s, col) in enumerate(rows):
+        yy = by + 106 + i * 26
+        o.append(f'<circle cx="{bx+32}" cy="{yy-4}" r="3" fill="{col}"/>')
+        o.append(txt(bx + 46, yy, t, 12, TEXT if i == 0 else "#C4D6DE", 500))
+        o.append(txt(bx + bw - 26, yy, s, 10, col, 400, "end"))
+    o.append(txt(bx, by - 18, "dibuka Ctrl+Space · input langsung fokus · Esc mengembalikan fokus",
+                 10.5, MUTED))
+    o.append(txt(bx, by + bh + 28, "Target: tampil < 150 ms setelah tombol ditekan", 10.5, CYAN))
+    return frame(W, H, "".join(o))
+
+
+def n04():
+    W, H = 1280, 720
+    o = [clip_desk(W, H), orb_overlay(1000, 520, 28, hit=False)]
+    o.append(txt(1180, 470, "KLIK KIRI", 9.5, MUTED, 500, track="1.6"))
+    o.append(txt(1180, 488, "buka panel baki", 10.5, TEXT))
+    o.append(txt(1180, 516, "KLIK KANAN", 9.5, MUTED, 500, track="1.6"))
+    o.append(txt(1180, 534, "menu cepat", 10.5, TEXT))
+    o.append(txt(1180, 562, "SERET", 9.5, MUTED, 500, track="1.6"))
+    o.append(txt(1180, 580, "pindah, menempel ke tepi", 10.5, TEXT))
+    for cx, cy in ((990, 620), (930, 640)):
+        o.append(f'<circle cx="{cx}" cy="{cy}" r="28" fill="none" stroke="{CYAN}" '
+                 f'stroke-dasharray="4 5" stroke-width="1" opacity="0.3"/>')
+    o.append(txt(930, 616, "posisi lain · disimpan antar sesi", 9.5, MUTED, 400, "middle"))
+    o.append(txt(60, 80, "Orb 56 px. Empat status dibaca dari isi orb, bukan dari tooltip.", 11, MUTED))
+    return frame(W, H, "".join(o))
+
+
+def n05():
+    W, H = 460, 660
+    o = [rect(0, 0, W, H, PANEL, 16, LINE),
+         txt(24, 34, "JARVIS", 13, TEXT, 700, track="1.4"),
+         txt(24, 54, "Panel baki · mengikuti posisi taskbar", 10, MUTED)]
+    o.append(seg(24, 74, ["Aktif", "Fokus", "Senyap"], 0, w=412, h=38))
+    o.append(txt(24, 140, "AKSI CEPAT", 10, MUTED, 500, track="2"))
+    quick = (("Tangkap layar", "Ctrl+Shift+S"), ("Dikte", "Ctrl+Win"),
+             ("Cari berkas", "Ctrl+Shift+F"), ("Susun jendela", "Ctrl+Shift+J"))
+    for i, (n, k) in enumerate(quick):
+        y = 154 + i * 48
+        o.append(rect(24, y, 412, 40, "#081520", 10, LINE))
+        o.append(txt(40, y + 25, n, 11.5, TEXT, 500))
+        o.append(txt(420, y + 25, k, 9.5, MUTED, 400, "end",
+                     family="'SFMono-Regular',Consolas,monospace"))
+    o.append(txt(24, 366, "SARAN HARI INI", 10, MUTED, 500, track="2"))
+    o.append(rect(24, 380, 412, 62, "#081520", R_CARD, LINE))
+    o.append(rect(24, 392, 3, 38, AMBER, 1.5))
+    o.append(txt(44, 404, "Anggaran Q4 lewat plafon di 2 baris", 11.5, TEXT, 500))
+    o.append(txt(44, 424, "Kuota saran hari ini: 2 dari 3 terpakai", 10, MUTED))
+    o.append(txt(24, 478, "IZIN", 10, MUTED, 500, track="2"))
+    for i, (n, v) in enumerate((("Mikrofon", True), ("Kamera", False), ("Layar", True))):
+        y = 492 + i * 30
+        o.append(txt(24, y + 15, n, 11.5, TEXT))
+        o.append(toggle(396, y + 4, v))
+    o.append(rect(24, 596, 340, 40, "#081520", 20, LINE))
+    o.append(txt(44, 621, "Tanya atau beri perintah", 11.5, MUTED))
+    o.append(f'<circle cx="404" cy="616" r="18" fill="{CYAN}"/>')
+    o.append(f'<path d="M398 622 l12 -12 M404 610 h8 v8" stroke="{BASE}" stroke-width="2" '
+             f'fill="none" stroke-linecap="round"/>')
+    return frame(W, H, "".join(o))
+
+
+def n06():
+    W, H = 1280, 720
+    g = uid("edge")
+    o = [clip_desk(W, H)]
+    o.append(f'<defs><radialGradient id="{g}" cx="0.5" cy="0.5" r="0.75">'
+             f'<stop offset="0.68" stop-color="{CYAN}" stop-opacity="0"/>'
+             f'<stop offset="1" stop-color="{CYAN}" stop-opacity="0.22"/></radialGradient></defs>')
+    o.append(rect(0, 0, W, H, f"url(#{g})"))
+    o.append(rect(0, 0, W, 2, CYAN, op="0.45"))
+    o.append(rect(0, H - 2, W, 2, CYAN, op="0.45"))
+    o.append(rect(0, 0, 2, H, CYAN, op="0.45"))
+    o.append(rect(W - 2, 0, 2, H, CYAN, op="0.45"))
+    px, py, pw, ph = 940, 40, 300, 200
+    o.append(rect(px, py, pw, ph, "#071018", 12, LINE_ACC))
+    o.append(txt(px + 16, py + 24, "KAMERA", 10, MUTED, 500, track="2"))
+    o.append(hand(px + pw / 2, py + 112, 0.95, "pinch"))
+    o.append(pinch_ring(px + pw / 2 - 21, py + 104))
+    o.append(txt(40, 62, "MENDENGARKAN", 11, CYAN, 500, track="3"))
+    o.append(orb(640, 300, 44))
+    o.append(txt(640, 394, "“ringkas tabel ini dan tandai baris yang lewat anggaran”",
+                 13, TEXT, 500, "middle"))
+    o.append(txt(640, 416, "Baris 7 dan 11 melewati plafon 12% dan 4%.", 11, MUTED, 400, "middle"))
+    o.append(txt(40, 690, "Glow tepi hanya saat overlay aktif · Esc keluar · Ctrl+Alt+G menjeda gestur",
+                 10.5, MUTED))
+    return frame(W, H, "".join(o))
+
+
 BOARDS_LIST = [
-    (1, "Desktop ambient", 1280, 720, b01),
-    (2, "Command bar (Ctrl+Space)", 1280, 720, b02),
-    (3, "Kontrol gestur langsung", 1280, 720, b03),
-    (4, "Mode suara layar penuh", 1280, 720, b04),
-    (5, "Panel baki sistem", 460, 640, b05),
-    (6, "Izin & privatisasi", 460, 640, b06),
-    (7, "Onboarding izin — langkah 2 dari 4", 460, 640, b07),
-    (8, "Riwayat tugas", 460, 640, b08),
-    (9, "Memori personal", 460, 640, b09),
-    (10, "Detail memori", 460, 640, b10),
-    (11, "Rutinitas & saran", 460, 640, b11),
-    (12, "Alat cepat", 460, 640, b12),
-    (13, "Dikte · baca layar · isi form", 460, 640, b13),
-    (14, "Keamanan", 460, 640, b14),
-    (15, "Aksesibilitas · bahasa · gestur", 460, 640, b15),
-    (16, "Plugin & sinkron ponsel", 460, 640, b16),
-    (17, "Tema terang — panel baki", 460, 640, b17),
-    (18, "Tema terang — izin & privatisasi", 460, 640, b18),
-    (19, "Peta gestur", 720, 640, b19),
-    (20, "Status orb", 1280, 300, b20),
-    (21, "Brand & ikon", 1280, 640, b21),
-    (22, "Installer — langkah 1 dari 4", 720, 480, b22),
+    (1, "Orb overlay — Siaga & area klik", 1280, 720, n01),
+    (2, "Toast — antrean & batas harian", 1280, 720, n02),
+    (3, "Command bar — Ctrl+Space", 1280, 720, n03),
+    (4, "Orb overlay — interaksi & status", 1280, 720, n04),
+    (5, "Panel baki sistem", 460, 660, n05),
+    (6, "Overlay suara + kamera gestur", 1280, 720, n06),
 ]
+
+
+# ── the sheet itself ───────────────────────────────────────────────────────
+
+EXTRA = [
+    (23, "Fokus — toast ditahan", 460, 660, None),
+    (24, "Senyap — orb memudar", 1280, 720, None),
+    (25, "Risiko: konfirmasi (berisiko)", 1280, 720, None),
+    (26, "Riwayat tugas + Urungkan", 460, 660, None),
+    (27, "Izin & Privasi", 460, 660, None),
+    (28, "Tema terang — panel baki", 460, 660, None),
+]
+
+
+def panel_frame(w, h, inner, bg=PANEL):
+    return frame(w, h, rect(0, 0, w, h, bg, 16, LINE) + inner, bg=BASE)
+
+
+def n07():
+    """Fokus: notifications held, and the panel says so instead of hiding it."""
+    W, H = 460, 660
+    o = [txt(24, 34, "JARVIS", 13, TEXT, 700, track="1.4"),
+         txt(24, 54, "Panel baki · mode Fokus", 10, MUTED),
+         seg(24, 74, ["Aktif", "Fokus", "Senyap"], 1, w=412, h=38)]
+    o.append(rect(24, 132, 412, 96, "#0C1B26", R_CARD, LINE_ACC))
+    o.append(f'<circle cx="46" cy="162" r="5" fill="{CYAN}"/>')
+    o.append(txt(62, 167, "Fokus aktif sampai 17.00", 12, TEXT, 500))
+    o.append(txt(44, 192, "Toast ditahan, bukan dibuang.", 10.5, MUTED))
+    o.append(txt(44, 210, "3 tertahan · akan muncul setelahnya", 10.5, MUTED))
+    o.append(txt(24, 264, "AKSI CEPAT", 10, MUTED, 500, track="2"))
+    quick = (("Lihat yang tertahan", "3"), ("Akhiri fokus sekarang", ""),
+             ("Ubah durasi", "45 mnt"), ("Jeda semua penjadwalan", ""))
+    for i, (n, k) in enumerate(quick):
+        y = 278 + i * 48
+        o.append(rect(24, y, 412, 40, "#081520", 10, LINE))
+        o.append(txt(40, y + 25, n, 11.5, TEXT, 500))
+        o.append(txt(420, y + 25, k, 9.5, CYAN if k else MUTED, 400, "end"))
+    o.append(txt(24, 490, "SARAN HARI INI", 10, MUTED, 500, track="2"))
+    o.append(rect(24, 504, 412, 62, "#081520", R_CARD, LINE))
+    o.append(txt(44, 528, "Kuota saran: 1 dari 3 terpakai", 11.5, TEXT, 500))
+    o.append(txt(44, 548, "Dua sisanya ditahan sampai fokus berakhir", 10, MUTED))
+    o.append(rect(24, 596, 340, 40, "#081520", 20, LINE))
+    o.append(txt(44, 621, "Tanya atau beri perintah", 11.5, MUTED))
+    o.append(f'<circle cx="404" cy="616" r="18" fill="{CYAN}"/>')
+    o.append(f'<path d="M398 622 l12 -12 M404 610 h8 v8" stroke="{BASE}" stroke-width="2" '
+             f'fill="none" stroke-linecap="round"/>')
+    return frame(W, H, "".join(o))
+
+
+def n08():
+    """Senyap: the orb dims and loses its glow, so the state is visible without colour."""
+    W, H = 1280, 720
+    o = [clip_desk(W, H), rect(0, 0, W, H, BASE, op="0.35")]
+    o.append(orb_overlay(1180, 602, 28, hit=False))
+    o.append(f'<circle cx="1180" cy="602" r="34" fill="none" stroke="{MUTED}" '
+             f'stroke-width="1" stroke-dasharray="2 7" opacity="0.6"/>')
+    o.append(txt(1180, 662, "Senyap", 10, MUTED, 500, "middle", track="1.6"))
+    o.append(txt(40, 70, "Senyap", 11, MUTED, 500, track="2"))
+    o.append(txt(40, 96, "Orb menyusut 28 → 18 px, glow hilang,", 12, TEXT))
+    o.append(txt(40, 116, "cincin berubah jadi titik-titik.", 12, TEXT))
+    o.append(txt(40, 148, "Alasan: status harus terbaca tanpa warna.", 10.5, MUTED))
+    return frame(W, H, "".join(o))
+
+
+def n09():
+    """Risk confirmation: rendered by trusted UI, never by the model."""
+    W, H = 1280, 720
+    o = [clip_desk(W, H), rect(0, 0, W, H, BASE, op="0.6")]
+    bx, by, bw, bh = 380, 236, 520, 250
+    o.append(rect(bx, by, bw, bh, "#0C1B26", 16, AMBER))
+    o.append(rect(bx, by + 18, 3, bh - 36, AMBER, 1.5))
+    o.append(txt(bx + 28, by + 40, "BERISIKO", 10, AMBER, 500, track="2"))
+    o.append(txt(bx + 28, by + 74, "Kirim laporan ke tim keuangan", 18, TEXT, 500))
+    o.append(txt(bx + 28, by + 104, "Lampiran: anggaran.xlsx · 3 penerima", 11.5, MUTED))
+    o.append(txt(bx + 28, by + 126, "Tindakan ini tidak bisa diurungkan.", 11.5, MUTED))
+    o.append(rect(bx + 28, by + 146, bw - 56, 1, LINE))
+    o.append(txt(bx + 28, by + 172, "Asal permintaan", 10, MUTED, 500, track="1.6"))
+    o.append(txt(bx + 28, by + 192, "Perintah suara · 14:31 · tercatat di audit log", 11, TEXT))
+    o.append(pill_btn(bx + 28, by + 206, 150, 40, "Konfirmasi", primary=True, size=12))
+    o.append(pill_btn(bx + 190, by + 206, 130, 40, "Batal", primary=False, size=12))
+    o.append(txt(bx + bw - 28, by + 232, "Enter · Esc", 9.5, MUTED, 400, "end",
+                 family="'SFMono-Regular',Consolas,monospace"))
+    o.append(txt(bx, by - 20, "Dialog ini dirender UI tepercaya, tidak pernah oleh LLM", 10.5, AMBER))
+    return frame(W, H, "".join(o))
+
+
+def n10():
+    W, H = 460, 660
+    o = [txt(24, 34, "Riwayat tugas", 13, TEXT, 500),
+         txt(24, 54, "Hari ini · 2 bisa diurungkan", 10, MUTED)]
+    rows = [("Ringkas 14 baris terpilih", "09:14", "aman", "selesai", CYAN, None),
+            ("Susun jendela 2 kolom", "09:02", "sedang", "bisa diurungkan", MUTED, "undo"),
+            ("Kirim laporan ke tim", "08:56", "berisiko", "dibatalkan", AMBER, None),
+            ("Dikte 42 kata", "08:31", "aman", "selesai", CYAN, None)]
+    for i, (t, tm, risk, state, col, act) in enumerate(rows):
+        y = 80 + i * 96
+        o.append(rect(24, y, 412, 84, "#081520", R_CARD, LINE))
+        o.append(f'<circle cx="46" cy="{y+28}" r="4.5" fill="{col}"/>')
+        o.append(txt(60, y + 32, t, 12, TEXT, 500))
+        o.append(txt(60, y + 50, f"{tm}  ·  {risk}  ·  {state}", 10, MUTED))
+        if act == "undo":
+            o.append(pill_btn(300, y + 48, 120, 26, "Urungkan", primary=False, size=10.5))
+    o.append(txt(24, 486, "AUDIT LOG", 10, MUTED, 500, track="2"))
+    o.append(rect(24, 500, 412, 96, "#081520", R_CARD, LINE))
+    for i, (t, s) in enumerate((("14:31:02", "konfirmasi diminta · menunggu"),
+                                ("14:31:01", "tool: send_email · risk=high"),
+                                ("14:30:58", "model meminta tool call"))):
+        o.append(txt(40, 522 + i * 26, t, 9.5, CYAN, 500,
+                     family="'SFMono-Regular',Consolas,monospace"))
+        o.append(txt(112, 522 + i * 26, s, 10.5, TEXT))
+    o.append(pill_btn(24, 612, 200, 36, "Ekspor log", primary=False, size=11))
+    o.append(pill_btn(236, 612, 200, 36, "Hapus riwayat", primary=False, size=11))
+    return frame(W, H, "".join(o))
+
+
+def n11():
+    W, H = 460, 660
+    o = [txt(24, 34, "Izin & Privasi", 13, TEXT, 500),
+         txt(24, 54, "Semua data diproses lokal secara default", 10, MUTED),
+         txt(24, 88, "INDIKATOR PRIVASI", 10, MUTED, 500, track="2")]
+    for i, (n, on) in enumerate((("Mikrofon", True), ("Kamera", False), ("Layar", True))):
+        x = 24 + i * 140
+        o.append(rect(x, 102, 132, 62, "#081520", R_CARD, LINE))
+        o.append(f'<circle cx="{x+22}" cy="124" r="5" fill="{CYAN if on else "#25404C"}"/>')
+        o.append(txt(x + 36, 128, n, 11, TEXT, 500))
+        o.append(txt(x + 16, 150, "aktif" if on else "mati", 10, CYAN if on else MUTED))
+    o.append(txt(24, 194, "IZIN EKSPLISIT", 10, MUTED, 500, track="2"))
+    perms = (("Layar", "Melihat jendela aktif saat diminta", True),
+             ("Mikrofon", "Mendengar perintah suara", True),
+             ("Berkas", "Hanya folder yang dipilih", False),
+             ("Kontrol aplikasi", "Menekan tombol atas nama Anda", False))
+    for i, (n, sub, v) in enumerate(perms):
+        y = 208 + i * 66
+        o.append(rect(24, y, 412, 56, "#081520", R_CARD, LINE))
+        o.append(txt(44, y + 24, n, 12, TEXT, 500))
+        o.append(txt(44, y + 42, sub, 10, MUTED))
+        o.append(toggle(378, y + 17, v))
+    o.append(txt(24, 486, "MODE TAMU", 10, MUTED, 500, track="2"))
+    o.append(rect(24, 500, 412, 58, "#081520", R_CARD, LINE))
+    o.append(txt(44, 524, "Sembunyikan memori & riwayat", 11.5, TEXT, 500))
+    o.append(txt(44, 542, "Izin diminta ulang setiap sesi", 10, MUTED))
+    o.append(toggle(378, 519, False))
+    o.append(txt(24, 590, "Kamera tidak pernah menyimpan atau mengirim video.", 10, MUTED))
+    o.append(pill_btn(24, 610, 412, 38, "Hapus semua data lokal", primary=False, size=11.5))
+    return frame(W, H, "".join(o))
+
+
+def n12():
+    W, H = 460, 660
+    o = [rect(0, 0, W, H, LPANEL, 16, LLINE),
+         txt(24, 34, "JARVIS", 13, LTEXT, 700, track="1.4"),
+         txt(24, 54, "Panel baki · tema terang", 10, LMUTED)]
+    o.append(light_seg(24, 74, ["Aktif", "Fokus", "Senyap"], 0, w=412, h=38))
+    o.append(txt(24, 140, "AKSI CEPAT", 10, LMUTED, 500, track="2"))
+    quick = (("Tangkap layar", "Ctrl+Shift+S"), ("Dikte", "Ctrl+Win"),
+             ("Cari berkas", "Ctrl+Shift+F"), ("Susun jendela", "Ctrl+Shift+J"))
+    for i, (n, k) in enumerate(quick):
+        y = 154 + i * 48
+        o.append(rect(24, y, 412, 40, "#FFFFFF", 10, LLINE))
+        o.append(txt(40, y + 25, n, 11.5, LTEXT, 500))
+        o.append(txt(420, y + 25, k, 9.5, LMUTED, 400, "end",
+                     family="'SFMono-Regular',Consolas,monospace"))
+    o.append(txt(24, 366, "SARAN HARI INI", 10, LMUTED, 500, track="2"))
+    o.append(rect(24, 380, 412, 62, "#FFFFFF", R_CARD, LLINE))
+    o.append(rect(24, 392, 3, 38, LAMBER, 1.5))
+    o.append(txt(44, 404, "Anggaran Q4 lewat plafon di 2 baris", 11.5, LTEXT, 500))
+    o.append(txt(44, 424, "Kuota saran hari ini: 2 dari 3 terpakai", 10, LMUTED))
+    o.append(txt(24, 478, "IZIN", 10, LMUTED, 500, track="2"))
+    for i, (n, v) in enumerate((("Mikrofon", True), ("Kamera", False), ("Layar", True))):
+        y = 492 + i * 30
+        o.append(txt(24, y + 15, n, 11.5, LTEXT))
+        o.append(light_toggle(396, y + 4, v))
+    o.append(rect(24, 596, 340, 40, "#FFFFFF", 20, LLINE))
+    o.append(txt(44, 621, "Tanya atau beri perintah", 11.5, LMUTED))
+    o.append(f'<circle cx="404" cy="616" r="18" fill="{LACC}"/>')
+    o.append(f'<path d="M398 622 l12 -12 M404 610 h8 v8" stroke="#FFFFFF" stroke-width="2" '
+             f'fill="none" stroke-linecap="round"/>')
+    return frame(W, H, "".join(o), bg=LBASE)
+
+
+for _num, _title, _w, _h, _fn in EXTRA:
+    if _fn is None:
+        _fn = {23: n07, 24: n08, 25: n09, 26: n10, 27: n11, 28: n12}[_num]
+    BOARDS_LIST.append((_num, _title, _w, _h, _fn))
 
 ASSUMPTIONS = [
-    ("A1", "Font Space Grotesk tidak dimuat dari jaringan.",
-     "Lembar ini harus bisa dibuka tanpa internet, dan font pihak ketiga akan jatuh ke font "
-     "sistem tanpa peringatan. Di aplikasi Qt, Space Grotesk harus dibundel sebagai berkas "
-     "font (OFL), bukan diunduh."),
-    ("A2", "Ukuran teks: 10 / 11.5 / 13 / 19 / 26 px.",
-     "Spesifikasi tidak memberi skala tipe. Dipilih agar isi kartu 460 px tetap ≥ 4.5:1 "
-     "pada latar gelap; ukuran label 10 px sudah memenuhi ambang untuk teks non-esensial."),
-    ("A3", "Tinggi tombol minimum 40 px, target sentuh 44 px.",
-     "Spesifikasi meminta target 44 px, tetapi panel 460 px dengan dua tombol berdampingan "
-     "tidak muat pada 44 px + padding. Tombol memakai 40 px visual dengan area tekan 44 px."),
-    ("A4", "Toast 96 px dengan dua tombol, 74 px tanpa tombol.",
-     "Spesifikasi hanya menyebut auto-hilang 8 detik. Tinggi ditentukan isi, bukan angka tetap."),
-    ("A5", "Warna risiko ketiga memakai #FF6B6B.",
-     "Spesifikasi hanya memberi cyan dan amber. Tingkat bahaya ketiga butuh pembeda yang "
-     "bukan hue semata — lihat butir B3."),
-    ("A6", "Ikon memakai jalur SVG stroke 2 px tanpa pustaka ikon.",
-     "Tidak ada berkas ikon eksternal yang boleh dimuat; semuanya digambar di dalam SVG."),
+    ("A1", "Orb 56 px digambar pada 1280×720 tanpa penskalaan DPI.",
+     "Spesifikasi menyebut 56 px dan target sentuh 44 px; keduanya sudah terpenuhi "
+     "pada 100%. Pada 150% DPI orb harus ikut token, bukan piksel tetap."),
+    ("A2", "Lima jendela digambar sebagai overlay transparan di atas desktop contoh.",
+     "Spesifikasi menyebut frameless/transparan/always-on-top. Desktop contoh dipakai "
+     "supaya glow dan keterbacaan bisa dinilai; bukan bagian dari produk."),
+    ("A3", "Toast memakai tinggi 96 px (dua tombol) atau 74 px (tanpa tombol).",
+     "Spesifikasi hanya memberi angka 8 detik dan batas antrean; tinggi mengikuti isi."),
+    ("A4", "Panel baki memakai 460×660, bukan 460×640.",
+     "Tiga baris izin ditambah input membutuhkan 20 px tambahan; pada 640 px input "
+     "menabrak baris izin terakhir."),
+    ("A5", "Tingkat risiko sedang/berisiko memakai amber, bukan merah.",
+     "Spesifikasi hanya menyediakan cyan dan amber. Bahaya dibedakan lewat bentuk: "
+     "garis kiri 3 px, label teks, dan dialog konfirmasi terpisah."),
+    ("A6", "Halaman katalog komponen (Fase 0) tidak digambar terpisah.",
+     "Artboard 5, 23, 27 dan 28 sudah memuat toggle, tombol pil, chip, segmented, "
+     "slider, kbd dan kartu dalam keadaan nyata; katalog statis akan menduplikasinya."),
 ]
-
-COUNTS = """
-<div class="summary">
-  <h2>Ringkasan — asumsi & alasan desain</h2>
-  <p class="lede">Bagian ini sengaja diletakkan di luar artboard. Artboard hanya berisi UI.</p>
-
-  <h3>Kontras yang sudah dihitung</h3>
-  <table>
-    <tr><th>Pasangan</th><th class="mono">Rasio</th><th>Ambang 4.5:1</th></tr>
-    <tr><td>Teks #E6F4F8 pada Dasar #04080D</td><td class="mono">17.84</td><td class="ok">lolos</td></tr>
-    <tr><td>Teks #E6F4F8 pada Panel #0A1722</td><td class="mono">16.11</td><td class="ok">lolos</td></tr>
-    <tr><td>Teks redup #8FA9B5 pada Panel #0A1722</td><td class="mono">7.35</td><td class="ok">lolos</td></tr>
-    <tr><td>Cyan #4FD8F0 pada Panel #0A1722</td><td class="mono">10.71</td><td class="ok">lolos</td></tr>
-    <tr><td>Amber #F5A524 pada Panel #0A1722</td><td class="mono">8.88</td><td class="ok">lolos</td></tr>
-    <tr><td>Teks dasar #04080D pada tombol Cyan #4FD8F0</td><td class="mono">11.87</td><td class="ok">lolos</td></tr>
-    <tr><td>Tema terang: #0B1A24 pada #FFFFFF</td><td class="mono">17.68</td><td class="ok">lolos</td></tr>
-    <tr><td>Tema terang: aksen #0A7A93 pada #FFFFFF</td><td class="mono">4.98</td><td class="ok">lolos (tipis)</td></tr>
-    <tr><td>Tema terang: amber #9A5B00 pada #FFFFFF</td><td class="mono">5.43</td><td class="ok">lolos</td></tr>
-    <tr><td>Tema terang: redup #5B7480 pada #F6F9FB</td><td class="mono">4.67</td><td class="ok">lolos (paling tipis)</td></tr>
-  </table>
-  <p class="note">Aksen tema terang hanya berselisih 0.48 di atas ambang. Jangan digelapkan
-  lagi saat menambah state hover — hover justru harus menaikkan kontras, bukan menurunkannya.</p>
-
-  <h3>Asumsi yang perlu Anda setujui</h3>
-  <table>
-    <tr><th class="mono">#</th><th>Asumsi</th><th>Alasan</th></tr>
-    ASSUMPTION_ROWS
-  </table>
-
-  <h3>Tiga hal yang tidak bisa dipenuhi sekaligus</h3>
-  <table>
-    <tr><th>Permintaan</th><th>Benturan</th><th>Usulan</th></tr>
-    <tr><td>“Tanpa emoji”</td><td>Beberapa ikon status (mis. tanda seru) berisiko terbaca
-      sebagai emoji pada font sistem tertentu.</td><td>Semua ikon digambar sebagai jalur SVG,
-      tidak ada karakter emoji sama sekali — sudah diterapkan di artboard.</td></tr>
-    <tr><td>“Amber hanya untuk peringatan”</td><td>Artboard 20 memerlukan empat status orb;
-      “Butuh perhatian” butuh warna, dan hanya amber yang tersedia.</td><td>Amber dipakai tepat
-      untuk satu status itu saja; tiga status lain tetap cyan dengan kepadatan cincin berbeda.</td></tr>
-    <tr><td>“Bedakan warna lewat terang-gelap, bukan hue”</td><td>Cyan dan amber punya
-      luminansi mirip (10.7 vs 8.9), jadi buta warna bisa menyamakannya.</td><td>Peringatan
-      selalu membawa bentuk tambahan: tanda seru, garis kiri 3 px, atau label teks — bukan
-      warna saja.</td></tr>
-  </table>
-
-  <h3>Yang belum saya gambar, dan kenapa</h3>
-  <table>
-    <tr><th>Layar</th><th>Sebab</th></tr>
-    <tr><td>Onboarding langkah 1, 3, 4</td><td>Spesifikasi hanya meminta langkah 2. Pola yang
-      sama bisa dipakai ulang; tidak digambar agar tidak mengarang isi izin yang belum ada.</td></tr>
-    <tr><td>Installer langkah 2–4</td><td>Sama: hanya langkah 1 yang diminta.</td></tr>
-    <tr><td>Isi plugin pihak ketiga</td><td>Belum ada di kode; artboard 16 hanya memuat baris
-      plugin generik tanpa mengarang nama produk.</td></tr>
-  </table>
-</div>
-"""
 
 
 def build_html():
     _uid[0] = 0
-    artboards = []
-    for num, title, w, h, fn in BOARDS_LIST:
-        artboards.append(artboard(num, title, w, h, fn()))
-    rows = "".join(
-        f'<tr><td class="mono">{k}</td><td>{v}</td><td>{r}</td></tr>' for k, v, r in ASSUMPTIONS)
-    summary = COUNTS.replace("ASSUMPTION_ROWS", rows)
-
     head = """<!DOCTYPE html>
 <html lang="id"><head><meta charset="utf-8">
-<title>JARVIS — Sistem Desain</title>
+<title>JARVIS — Shell Ambient (Tauri 2)</title>
 <style>
   html,body{margin:0;background:#EEF1F4;color:#101820;
     font-family:'Space Grotesk',-apple-system,'Segoe UI',Arial,sans-serif}
   .wrap{max-width:1360px;margin:0 auto;padding:40px 28px 90px}
-  h1{font-size:26px;letter-spacing:-.01em;margin:0 0 6px}
-  .sub{font-size:13.5px;color:#4A5A66;max-width:78ch;line-height:1.65;margin:0 0 8px}
-  .meta{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#6C7C88;margin:26px 0 4px}
-  .ab{margin:34px 0 46px}
+  h1{font-size:26px;margin:0 0 6px}
+  .sub{font-size:13.5px;color:#4A5A66;max-width:80ch;line-height:1.65;margin:0 0 8px}
+  .meta{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#6C7C88;
+    margin:30px 0 4px;padding-top:14px;border-top:1px solid #CFD8DE}
+  .ab{margin:30px 0 42px}
   .abhead{display:flex;align-items:baseline;gap:12px;margin-bottom:10px}
-  .num{font-size:11px;font-weight:700;color:#0A7A93;background:#DDEBEF;
-    border-radius:4px;padding:3px 7px;letter-spacing:.08em}
-  .ttl{font-size:15px;font-weight:500;color:#101820}
+  .num{font-size:11px;font-weight:700;color:#0A7A93;background:#DDEBEF;border-radius:4px;
+    padding:3px 7px;letter-spacing:.08em}
+  .ttl{font-size:15px;font-weight:500}
   .dim{margin-left:auto;font-size:11px;color:#7A8894;font-family:Consolas,monospace}
   .sheet{background:#04080D;border:1px solid #CFD8DE;border-radius:6px;overflow:auto;
-    max-width:100%;line-height:0;padding:0}
+    max-width:100%;line-height:0}
   .sheet svg{display:block;max-width:100%;height:auto}
   table{width:100%;border-collapse:collapse;font-size:12.5px;background:#fff;margin:10px 0 18px}
   th,td{text-align:left;padding:9px 12px;border:1px solid #D7DFE5;vertical-align:top;
@@ -1241,26 +1544,64 @@ def build_html():
   .ok{color:#0A6B3D;font-weight:700}
   .note{font-size:12.5px;line-height:1.65;background:#fff;border-left:3px solid #F5A524;
     padding:10px 14px;margin:0 0 18px}
-  h2{font-size:15px;letter-spacing:.02em;margin:36px 0 8px;padding-bottom:8px;
-    border-bottom:1px solid #CFD8DE}
+  h2{font-size:15px;margin:36px 0 8px;padding-bottom:8px;border-bottom:1px solid #CFD8DE}
   h3{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#4A5A66;
-    margin:26px 0 6px}
-  .lede{font-size:13px;color:#4A5A66;line-height:1.65;max-width:80ch}
+    margin:24px 0 6px}
 </style></head><body><div class="wrap">
-<h1>JARVIS — Sistem Desain & 22 Artboard</h1>
-<p class="sub">Ambient lebih dulu: orb kecil dan ikon baki, bukan jendela besar. Tidak merebut
-fokus, dipanggil kapan saja, transparan soal privasi, dan aksi berisiko selalu minta konfirmasi.</p>
-<p class="sub" style="color:#6C7C88">Setiap artboard hanya berisi UI. Asumsi, rasio kontras, dan
-alasan desain ada di ringkasan setelah artboard 22.</p>
+<h1>JARVIS — Shell Ambient</h1>
+<p class="sub">Orb overlay, toast, command bar, panel baki, dan dua overlay. Semua jendela
+frameless, transparan, dan selalu di atas — digambar apa adanya di atas desktop pengguna.</p>
+<p class="sub" style="color:#6C7C88">Lembar ini melanjutkan
+<code>jarvis-design-system.html</code> (22 artboard) dengan token yang sama, tanpa
+mengubah artboard lama. Artboard 1–6 adalah shell Fase 1; 23–28 adalah keadaan yang
+menentukan (fokus, senyap, konfirmasi risiko, riwayat, izin, tema terang).</p>
 """
+    groups = [(1, 6, "Fase 1 — shell ambient"), (23, 28, "Keadaan yang menentukan")]
     body = []
-    groups = [(1, 4, "Desktop 1280 × 720"), (5, 18, "Panel 460 × 640"),
-              (19, 22, "Lainnya")]
     for start, end, name in groups:
         body.append(f'<div class="meta">{name}</div>')
         for num, title, w, h, fn in BOARDS_LIST:
             if start <= num <= end:
                 body.append(artboard(num, title, w, h, fn()))
+    rows = "".join(f'<tr><td class="mono">{k}</td><td>{v}</td><td>{r}</td></tr>'
+                   for k, v, r in ASSUMPTIONS)
+    summary = f"""
+<div>
+  <h2>Ringkasan — asumsi & alasan</h2>
+  <h3>Kontras (diukur, bukan diklaim)</h3>
+  <table>
+    <tr><th>Pasangan</th><th class="mono">Rasio</th><th>Ambang</th></tr>
+    <tr><td>Teks #E6F4F8 pada dasar #04080D</td><td class="mono">17.84</td><td class="ok">lolos</td></tr>
+    <tr><td>Teks #E6F4F8 pada panel #0A1722</td><td class="mono">16.11</td><td class="ok">lolos</td></tr>
+    <tr><td>Redup #8FA9B5 pada panel #0A1722</td><td class="mono">7.35</td><td class="ok">lolos</td></tr>
+    <tr><td>Cyan #4FD8F0 pada panel #0A1722</td><td class="mono">10.71</td><td class="ok">lolos</td></tr>
+    <tr><td>Amber #F5A524 pada panel #0A1722</td><td class="mono">8.88</td><td class="ok">lolos</td></tr>
+    <tr><td>Terang: #0B1A24 pada #FFFFFF</td><td class="mono">17.68</td><td class="ok">lolos</td></tr>
+    <tr><td>Terang: aksen #0A7A93 pada #FFFFFF</td><td class="mono">4.98</td><td class="ok">lolos (tipis)</td></tr>
+    <tr><td>Terang: redup #5B7480 pada #F6F9FB</td><td class="mono">4.67</td><td class="ok">lolos (paling tipis)</td></tr>
+  </table>
+  <h3>Asumsi</h3>
+  <table>
+    <tr><th class="mono">#</th><th>Asumsi</th><th>Alasan</th></tr>
+    {rows}
+  </table>
+  <h3>Yang sengaja TIDAK digambar</h3>
+  <table>
+    <tr><th>Hal</th><th>Sebab</th></tr>
+    <tr><td>Arsitektur Rust / Tauri / SQLite</td><td>Mockup adalah visual. Struktur
+      core service tidak punya wujud di layar.</td></tr>
+    <tr><td>Storybook / halaman katalog</td><td>Lihat A6.</td></tr>
+    <tr><td>Installer & onboarding</td><td>Sudah digambar di lembar pertama (22, 7);
+      tidak diduplikasi.</td></tr>
+  </table>
+  <h3>Peringatan yang perlu keputusan Anda</h3>
+  <p class="note">Spesifikasi ini adalah <b>aplikasi baru</b>: Tauri 2 + React + TypeScript,
+  sedangkan repo ini 354 berkas Python + PyQt6 dengan <code>Cargo.toml</code> dan
+  <code>package.json</code> yang tidak ada. Mockup tetap valid untuk keduanya karena murni
+  visual, tetapi menulis ulang shell adalah proyek tersendiri — bukan bagian dari lembar ini
+  dan tidak boleh dicampur dengan Fase 1.</p>
+</div>
+"""
     return head + "".join(body) + summary + "</div></body></html>"
 
 

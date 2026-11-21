@@ -10,6 +10,25 @@ Dua berkas, satu sumber:
 Artboard **tidak** memuat penjelasan desain. Semua asumsi, rasio kontras, dan alasan
 ada di bagian Ringkasan **di dalam** HTML, setelah artboard 22.
 
+## Tambahan: shell ambient (Fase 1)
+
+Artboard **1–6** dan **23–28** menggambar perilaku jendela sesuai spesifikasi Tauri:
+
+| # | Artboard | Yang ditunjukkan |
+|---|---|---|
+| 1 | Orb overlay | Overlay ±150 px transparan, hanya orb 56 px yang menerima klik |
+| 2 | Toast | Tiga toast menumpuk, sisanya antre, batas 3 saran/hari |
+| 3 | Command bar | Ctrl+Space, input fokus, Esc kembali ke jendela sebelumnya |
+| 4 | Orb | Klik kiri/kanan/seret, empat status dibaca dari isi orb |
+| 5 | Panel baki | Mengikuti taskbar, segmented Aktif/Fokus/Senyap |
+| 6 | Overlay suara + kamera | Glow tepi hanya saat aktif, preview gestur kecil |
+| 23 | Fokus | Toast **ditahan**, bukan dibuang — jumlahnya bisa dilihat |
+| 24 | Senyap | Orb menyusut 28→18 px, glow hilang, cincin jadi titik |
+| 25 | Konfirmasi risiko | Dirender UI tepercaya, tombol besar, ada asal permintaan |
+| 26 | Riwayat tugas | Urungkan/ulang, audit log bertimestamp, ekspor |
+| 27 | Izin & Privasi | Indikator mikon/kamera/layar, izin eksplisit, mode tamu |
+| 28 | Tema terang | Panel baki versi terang dengan token terang |
+
 ## Ringkasan isi
 
 | Kelompok | Artboard |
@@ -67,6 +86,14 @@ Spesifikasi tidak memberi angka untuk ini; saya pilih dan catat di ringkasan HTM
 - Onboarding langkah 1, 3, 4 dan installer langkah 2–4: spesifikasi hanya meminta satu
   langkah masing-masing; polanya bisa dipakai ulang.
 - Isi plugin pihak ketiga: belum ada di kode, jadi artboard 16 hanya memuat baris generik.
+
+## Batasan shell
+
+- Mockup ini **stack-neutral**: digambar dari perilaku (frameless, transparan, always-on-top),
+  bukan dari API-nya, sehingga tetap valid untuk Tauri maupun PyQt6.
+- Spesifikasi Tauri 2 + React + TypeScript adalah **aplikasi baru**; repo ini 354 berkas
+  Python + PyQt6. Menulis ulang shell bukan bagian dari lembar ini.
+- Panel baki memakai 460×660 (bukan 640) karena tiga baris izin + input butuh 20 px ekstra.
 
 ## Batasan
 
