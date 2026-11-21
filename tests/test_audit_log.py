@@ -91,7 +91,7 @@ def test_an_unwritable_path_returns_false_rather_than_raising(tmp_path):
 
     The obstacle is a regular FILE where a directory has to be, not a path under
     /proc: the first version used /proc and passed here while failing on the
-    Windows runner, where `/proc` is simply `C:\proc` and an administrator can
+    Windows runner, where `/proc` is simply `C:/proc` and an administrator can
     create it. A file-in-the-way fails identically on every OS.
     """
     blocker = tmp_path / "not-a-directory"
