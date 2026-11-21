@@ -332,8 +332,15 @@ def acquire(program: str = "", lock: Path | None = None) -> Instance:
 
 # ── the second copy's request ───────────────────────────────────────────────
 
-def request_foreground(lock: Path | None = None) -> bool:
+def request_foreground(lock: Path | None = None, text: str = "") -> bool:
     """Ask the running copy to come to the front. True if the request was written.
+
+    `text` carries the `jarvis://ask?text=…` payload when this launch was
+    started BY a link. Without it, a link opened while JARVIS is already
+    running would be swallowed: the second process refuses to start (correct),
+    the first one only learns "somebody wants the window", and the words are
+    gone. The file is the channel for exactly this reason — it can carry more
+    than a signal.
 
     A file, not a socket, and the cost of that choice is stated here: the
     running copy polls, so the window appears within one poll interval rather
@@ -346,19 +353,41 @@ def request_foreground(lock: Path | None = None) -> bool:
     try:
         want.parent.mkdir(parents=True, exist_ok=True)
         want.write_text(json.dumps({"pid": os.getpid(),
-                                    "at": time.time()}), encoding="utf-8")
+                                    "at": time.time(),
+                                    "text": text or ""}), encoding="utf-8")
         return True
     except OSError:
         return False
 
 
-def take_foreground_request(lock: Path | None = None) -> bool:
-    """Whether somebody asked, consuming the request. Called by the running copy."""
+def take_foreground_request(lock: Path | None = None):
+    """The request somebody made, consuming it. None when there is none.
+
+    Returns a `Request`-shaped tuple-free dict — `{"text": str}` — rather than a
+    bool, so the caller can tell "come to the front" from "come to the front
+    and say this". A request file that is half-written or unreadable still
+    counts as a request: somebody asked for attention, and the words being lost
+    is a smaller failure than the window not appearing at all.
+    """
     want = _want_path(lock)
     try:
         if not want.exists():
-            return False
+            return None
+        raw = want.read_text(encoding="utf-8")
         want.unlink()
-        return True
     except OSError:
-        return False
+        return None
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    # The text is bounded here as well as in the parser: this file is in a
+    # shared per-user folder, and anything that can write it can put anything
+    # in it. It is handed to the session as a user turn, so the same 500-char
+    # ceiling applies — a second process is not more trustworthy than a URL.
+    text = data.get("text") or ""
+    if not isinstance(text, str) or len(text) > 500:
+        text = ""
+    return {"text": text}

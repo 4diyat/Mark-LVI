@@ -1415,6 +1415,18 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         self._autostart_btn.clicked.connect(self._toggle_autostart)
         lay.addWidget(self._autostart_btn)
 
+        # `jarvis://` — the one thing that makes the assistant REACHABLE from
+        # outside. Registration is per-user and reversible; the button says
+        # what is actually on disk (`core.deeplink.registered`), never what was
+        # last written.
+        self._link_btn = QPushButton()
+        self._link_btn.setFixedHeight(26)
+        self._link_btn.setFont(QFont("Courier New", 7))
+        self._link_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._link_btn.clicked.connect(self._toggle_deeplink)
+        self._update_link_btn()
+        lay.addWidget(self._link_btn)
+
         cust_btn = QPushButton(_t("setup.customise"))
         cust_btn.setFixedHeight(26)
         cust_btn.setFont(QFont("Courier New", 7))
@@ -2313,6 +2325,36 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
             self._log.append_log(f"ERR: Auto-start failed — {e}")
             return
         self._update_autostart_btn(enabled)
+
+    def _update_link_btn(self):
+        """Draw the `jarvis://` button from what the OS actually has."""
+        btn = getattr(self, "_link_btn", None)
+        if btn is None:
+            return
+        try:
+            from core import deeplink
+            on = deeplink.registered()
+        except Exception:                   # noqa: BLE001 — cosmetics only
+            on = False
+        # Same two styles the neighbouring buttons keep on `self` — the local
+        # names they come from die with the method that built them.
+        btn.setText(_t("ui.deeplink.on" if on else "ui.deeplink.off"))
+        btn.setStyleSheet(getattr(self, "_BTN_PRI", "") if on
+                          else getattr(self, "_BTN_DIM", ""))
+
+    def _toggle_deeplink(self):
+        from core import deeplink
+        try:
+            if deeplink.registered():
+                deeplink.unregister()
+                self._log.append_log("SYS: jarvis:// unregistered.")
+            else:
+                from ui import lifecycle
+                deeplink.register(lifecycle.program_path(self._shell))
+                self._log.append_log("SYS: jarvis:// registered.")
+        except Exception as e:              # noqa: BLE001 — it runs from a button
+            self._log.append_log(f"ERR: jarvis:// failed — {e}")
+        self._update_link_btn()
 
     def _update_autostart_btn(self, enabled: bool):
         if not hasattr(self, '_autostart_btn'):

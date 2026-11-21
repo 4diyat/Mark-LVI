@@ -652,5 +652,7 @@
   "ui.iface.bubble": "🫧  INTERFACE: FACE ON DESKTOP",
   "ui.notify.on": "🔔  NOTIFICATIONS: ON",
   "ui.notify.off": "🔕  NOTIFICATIONS: OFF",
-  "ui.notify.hint": "In ambient mode, show a desktop banner when an answer arrives. Silent while the window is on screen."
+  "ui.notify.hint": "In ambient mode, show a desktop banner when an answer arrives. Silent while the window is on screen.",
+  "ui.deeplink.on": "◉  jarvis:// LINKS: ON",
+  "ui.deeplink.off": "○  jarvis:// LINKS: OFF"
 }
