@@ -879,8 +879,8 @@ def b17():
     o.append(rect(24, 596, 340, 40, "#FFFFFF", 20, LLINE))
     o.append(txt(44, 621, "Tulis atau tekan Ctrl+Space", 11.5, LMUTED))
     o.append(f'<circle cx="404" cy="616" r="18" fill="{LACC}"/>')
-    o.append(f'<path d="M398 622 l12 -12 M404 610 h8 v8" stroke="#FFFFFF" stroke-width="2" '
-             f'fill="none" stroke-linecap="round"/>')
+    o.append('<path d="M398 622 l12 -12 M404 610 h8 v8" stroke="#FFFFFF" stroke-width="2" '
+             'fill="none" stroke-linecap="round"/>')
     return frame(W, H, "".join(o), bg=LBASE)
 
 
@@ -1483,8 +1483,8 @@ def n12():
     o.append(rect(24, 596, 340, 40, "#FFFFFF", 20, LLINE))
     o.append(txt(44, 621, "Tanya atau beri perintah", 11.5, LMUTED))
     o.append(f'<circle cx="404" cy="616" r="18" fill="{LACC}"/>')
-    o.append(f'<path d="M398 622 l12 -12 M404 610 h8 v8" stroke="#FFFFFF" stroke-width="2" '
-             f'fill="none" stroke-linecap="round"/>')
+    o.append('<path d="M398 622 l12 -12 M404 610 h8 v8" stroke="#FFFFFF" stroke-width="2" '
+             'fill="none" stroke-linecap="round"/>')
     return frame(W, H, "".join(o), bg=LBASE)
 
 
