@@ -338,6 +338,38 @@ def save_hud_style(style: str) -> None:
     _save_flag("hud_style", s if s in HUD_STYLES else "orb")
 
 
+# ── Interface mode ───────────────────────────────────────────────────────────
+# HOW MUCH OF THE SCREEN JARVIS TAKES.
+#
+#   "hud"     — the full-screen interface, which is what this app has always
+#               done. Everything visible, nothing behind it reachable.
+#   "ambient" — no window at launch. JARVIS lives in the notification area and
+#               answers by voice; the interface is something you SUMMON, not
+#               something you sit inside.
+#
+# A STRING RATHER THAN A BOOLEAN, because "hidden" is not the only alternative
+# to "full screen" and the floating-face mode planned next needs a third value.
+# Storing a bool now would mean migrating every config file later.
+UI_MODES = ("hud", "ambient")
+
+
+def get_ui_mode() -> str:
+    """Which interface mode to start in.
+
+    Defaults to "hud": the ambient mode is new, and an upgrade must not quietly
+    remove the window somebody was using yesterday.
+    """
+    v = str(load_api_keys().get("ui_mode", "hud")).strip().lower()
+    return v if v in UI_MODES else "hud"
+
+
+def save_ui_mode(mode: str) -> bool:
+    s = str(mode or "").strip().lower()
+    if s not in UI_MODES:
+        return False
+    return set_config_values(ui_mode=s)
+
+
 def get_ui_scale() -> float:
     """How much larger than designed the whole interface is drawn, or 0 for
     'work it out from the screen'.
