@@ -584,6 +584,10 @@ Switched by **FLOAT DOCUMENTS** in the CONTROLS drawer, above **FLOAT WIDGETS**:
 
 **Bare-hand gestures that reach the desktop — with a leash, because that is the whole problem.** Every hand gesture this program shipped before moved a widget *inside* JARVIS; `core/workspace_gesture.py` says so in its own docstring. Letting a webcam pose move the real pointer is a different act with a different failure mode: a mis-read hand in the workspace drops a card somewhere wrong, and a mis-read hand on the desktop clicks a payment form. So the workspace gestures were not widened — `core/gesture_os.py` decides separately whether a gesture may also reach the OS, and it allows exactly three things: **pointer, click, scroll**. There is no gesture that types a key, runs a shortcut, closes a window or launches anything, and `gesture_actions.py`'s allowlist of desktop shortcuts is not reachable from here at all (a test walks the AST to prove it — and `core/gesture_os_pointer.py` may call exactly four pyautogui functions, no more). Four rules carry it. **Three actions and nothing else.** **Our own surfaces are never hand-operated:** the moment the JARVIS window takes focus, or a confirmation banner or modal is up, OS control stops — which is what the README already promised ("konfirmasi sensitif memerlukan input fisik"), now enforced instead of merely stated. **A held button is never left behind:** losing the hand mid-pinch, switching the mode off, stopping tracking or quitting all release it on that frame, because a stuck mouse button turns the desktop into a drag-selection the user cannot fix by waving. **Ghost samples are dropped:** a hand that jumps more than a third of the screen between frames is a mis-detection, not a movement — but the button is deliberately *not* released, since dropping what the user was carrying because one frame was bad is worse. The pointer cannot reach the corners of the screen either; hand tracking is least accurate there and the corners hold the close buttons. The same samples drive both: the workspace acts first on every frame, because a wrong card move is recoverable and a wrong click may not be. Switched by **HAND → OS** in the CONTROLS drawer, next to the other two permissions.
 
+**The same ring, on the desktop.** While gestures were workspace-only, a 42px cyan ring showed where the camera thought the hand was — and the moment the hand started driving the real pointer, that ring stayed behind in a window nobody was looking at while the system cursor disappeared into whatever the hand touched. The one moment the feature needs a visible reference was the moment it had none. So the ring is now defined **once**, in `core/pointer_ring.py` (size, stylesheet, offset), and drawn in both places: the workspace uses it exactly as before, and `ui/desktop_ring.py` draws the same ring on the desktop.
+
+The desktop ring follows the **actual cursor** (`QCursor.pos()`), not the position the hand asked for. That is not fussiness: `pyautogui` clamps, a platform can refuse a move, a fullscreen window can swallow one, and a dropped ghost sample leaves the cursor where it was. A ring drawn from the intent would show a place the pointer never reached, and the user would find out by clicking something. It is frameless, off the taskbar, and `WindowTransparentForInput` — it sits on top of whatever the hand is about to click, so a ring that accepted the click would eat the gesture it exists to show. It brightens for the whole pinch, not for the two frames that carry an event, and it appears only when the pointer is really being driven: mode on, not frozen by our own focus or a confirmation, and on a platform that permits input at all.
+
 **Talking over the answer stops it, and the hard part is knowing it is you.** While JARVIS speaks the microphone is closed to the model — it must not hear itself — but it is still heard locally, so a person saying "stop" is answered the way a person would be: the sentence ends. That was attempted once before and taken back out, because the only dangerous question is whether the voice is the user's or the assistant's own echo, and getting it wrong cuts every answer off after three words. `core/voice_interrupt.py` now owns that decision, on top of the same `EchoGuard` that already separates a voice from an echo for the tail. Three gates must all agree: the assistant must actually be speaking (otherwise talking *is* the conversation), the echo guard must have heard its own voice at least once (an uncalibrated guard calls the start of a reply a person), and the speech must be sustained for as many blocks as the guard demands **in that room** — five in a quiet one, twelve where the echo survives subtraction. A silence resets the count rather than pausing it: a gap means the user stopped, and a count that survives it eventually fires on two unrelated sounds a minute apart. It is not speech recognition and makes no attempt to hear the word "stop" — a four-word vocabulary in a room recording would be the least reliable part of the app. Whether it is comfortable to use depends on a real microphone in a real room, which is why it is a manual check rather than a claim.
 
 **The conversation is written down, and it is not the log file.** `logs/jarvis.log` already contained every turn, which is exactly why it was the wrong place to look: it rotates at 2 MB, it interleaves an exception in the middle of a sentence, and by Thursday the thing you said on Tuesday is gone. History is now its own file (`core/history.py`), one JSON object per line under `logs/history/YYYY-MM-DD.jsonl` — a text editor and `grep` both work, a half-written last line is skipped rather than fatal, and the file is appended to as you speak instead of rewritten. It is deliberately **not** the memory either: the memory is what the assistant was told to remember, curated and trimmed to fit a prompt; the transcript is what was actually said, including the parts nobody asked it to keep. Both halves of every turn are recorded at the one place a turn becomes a turn — beside the activity-log line — so the record cannot drift from what you saw. Thirty days are kept and older files are pruned on the next write; the size of the folder is measured, not estimated. A new tool, `recall_history`, answers "what did we talk about" from those files, which is a question the curated memory cannot answer honestly. Writing never raises and never blocks: a transcript that cannot be saved drops, because losing the record must not also lose the session.
@@ -776,6 +780,30 @@ It is held in memory only, deliberately: writing it to disk would make a fresh l
 | *shared* | The last five above also shipped to LIII, LIV and LV at the same time — moving up a Mark never loses them |
 | **LVII+** | ~~Interrupt by voice~~ · ~~conversation history~~ · ~~Obsidian~~ · ~~full file access~~ · security camera |
 | **LVIII** | ~~Floating widgets~~ · ~~bare-hand gestures that reach the OS~~ · ~~floating plugin windows~~ |
+| **LIX** | ~~Reconnect policy as data~~ · ~~the same pointer ring on the desktop~~ · `main.py` → smaller pieces |
+
+**A network blip used to cost you your model for the rest of the day.** The session
+loop's `except` block was five decisions stacked in `if`s, and one of them was
+load-bearing in a way nobody could see: the **quota** check came before the
+**network** check, so a transient timeout arriving while a model was near its
+daily limit read as "out of quota", stepped the model ladder down, and left the
+user on the last rung. The difference between "quieter today" and "does not start
+today" is exactly that mistake.
+
+The decisions now live in `core/session_policy.py` as data: a `Failure` in, a
+`Verdict` out, with the delay, the note for the screen, and whether the model
+ladder should move. It has no imports from the app at all — no UI, no network, no
+`sleep()` — so the reconnect policy, which had **zero tests** because every
+branch needed a live session, is now covered on every commit. The order is
+written down and argued for: a voluntary reconnect first (so a voice change costs
+nothing), an invalid key second (so it stops hammering), quota third — but the
+quota predicate now **refuses to match a bare timeout**, and the ladder's own
+answer is passed *in* rather than guessed, because this module knows the common
+shapes of an error and not the server's whole vocabulary.
+
+`main.py` shrank by 17 lines and, more importantly, its error handling became one
+call and five small reactions to a verdict instead of five predicates that had to
+be read in order to be understood.
 
 ---
 
@@ -825,7 +853,7 @@ perangkat audio, atau MT5/broker yang sebenarnya.
 ```bash
 pip install -r requirements-dev.txt
 ruff check .                 # F + E9 only — the rules whose violations are bugs
-python -m pytest -q          # 1,935 tests, offline, no API key, no display
+python -m pytest -q          # 1,976 tests, offline, no API key, no display
 python -m providers._tests   # the provider engine's own suite (mocks its own services)
 ```
 
