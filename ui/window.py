@@ -1558,15 +1558,15 @@ class MainWindow(VideoFallbackMixin, AudioMixin, QMainWindow):
         self._iface_btn.clicked.connect(self._toggle_interface_mode)
         self._refresh_iface_btn()
 
-        # Notifications. Next to the interface mode because it exists FOR that
-        # mode: with no window, a banner is the only way to learn that an answer
-        # arrived. A setting nobody can reach is the same as no setting, so it
-        # gets a row rather than living in the config file.
+        # With no window, a banner is the only way to learn an answer arrived.
         from ui.notify_row import build_notifications_button
         self._notify_btn = build_notifications_button(
             lay, _row, on_toggled=self._on_notifications_toggled)
-        from ui.file_access_row import build_file_access_button
-        self._file_access_btn = build_file_access_button(lay, _row)
+        from ui.floating_row import build_floating_button, build_gesture_os_button
+        self._floating_btn = build_floating_button(lay, _row, self)
+        self._gesture_os_btn = build_gesture_os_button(lay, _row, self)
+        from ui.file_access_row import build_file_access_button as build_fa
+        self._file_access_btn = build_fa(lay, _row)
 
         w.adjustSize()
         return w
