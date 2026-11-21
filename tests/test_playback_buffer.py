@@ -124,7 +124,11 @@ def test_receive_path_preserves_audio_transcript_and_tool_call_with_backpressure
           # missing and only ever surfaced as a NameError raised from inside
           # the except block, which hid the real error.
           'keep_turn': lambda role, text: None, 'traceback': traceback,
-              '_REPEAT_MIN': 5}
+              # The method reads its transcript rules from core/transcript.py
+              # now. The threshold is lowered here so the test can exercise a
+              # short duplicate without inventing a 12-character sentence.
+              '_transcript': SimpleNamespace(REPEAT_MIN=5,
+                                             is_repeat_chunk=lambda *_: False)}
         exec(compile(ast.Module(body=[node], type_ignores=[]), str(source), 'exec'), ns)
         logs, tool_calls, tool_responses = [], [], []
         pcm = b'a' * playback_buffer.SLICE_BYTES + b'b' * playback_buffer.SLICE_BYTES

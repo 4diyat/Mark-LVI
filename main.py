@@ -35,7 +35,6 @@ for _stream in ("stdout", "stderr"):
 # ─────────────────────────────────────────────────────────────────────────────
 
 import asyncio
-import re
 import threading
 import time
 import sys
@@ -68,6 +67,7 @@ from core import deeplink as _deeplink
 from core import outcome
 from core import playback_buffer
 from core import prompt_build as _prompt_build
+from core import transcript as _transcript
 from core import session_policy as _session_policy
 from core import speech_sync
 from core.action_loader import strip_meta
@@ -130,26 +130,14 @@ SEND_SAMPLE_RATE    = 16000
 RECEIVE_SAMPLE_RATE = 24000
 CHUNK_SIZE          = 1024
 
-# RMS below which 16-bit PCM is treated as room silence; above _LEVEL_FULL it
-# reads as a full-height waveform. Tuned so ordinary speech lands mid-range and
-# the bars still move for a quiet talker — language- and device-independent.
-_LEVEL_FLOOR = 60.0
-_LEVEL_FULL  = 2600.0
+# The loudness thresholds live in core/transcript.py, next to the mapping that
+# uses them: a constant in one file and its only reader in another is how the
+# two drift apart.
 
 
 def _pcm_level(samples) -> float:
-    """Map a block of int16 PCM samples to a 0.0–1.0 loudness level for the HUD
-    waveform. Returns 0.0 on empty/invalid input so it can never raise."""
-    try:
-        x = np.asarray(samples, dtype=np.float32)
-        if x.size == 0:
-            return 0.0
-        rms = float(np.sqrt(np.mean(x * x)))
-    except Exception:
-        return 0.0
-    if rms <= _LEVEL_FLOOR:
-        return 0.0
-    return min(1.0, (rms - _LEVEL_FLOOR) / (_LEVEL_FULL - _LEVEL_FLOOR))
+    """The HUD's loudness number; the mapping lives in core/transcript.py."""
+    return _transcript.pcm_level(samples)
 
 
 # ── Viseme extraction ─────────────────────────────────────────────────────────
@@ -310,28 +298,14 @@ def _load_system_prompt() -> str:
             "Never simulate or guess results — always call the appropriate tool."
         )
 
-_CTRL_RE = re.compile(r"<ctrl\d+>", re.IGNORECASE)
-
-# Transcript chunks shorter than this may legitimately repeat ("evet, evet"),
-# so only longer ones are treated as duplicates.
-_REPEAT_MIN = 12
+def _clean_transcript(text: str) -> str:
+    """Kept as the name the receive loop calls; the cleaning lives in core."""
+    return _transcript.clean_transcript(text)
 
 
 def _is_repeat_chunk(txt: str, buf: list) -> bool:
-    """True if this transcript chunk has already been seen this turn.
+    return _transcript.is_repeat_chunk(txt, buf)
 
-    Guards against the API re-sending the tail of a response across the several
-    turn_completes a tool-using turn produces.
-    """
-    if len(txt) < _REPEAT_MIN:
-        return bool(buf) and txt == buf[-1]
-    joined = " ".join(buf)
-    return txt in joined
-
-def _clean_transcript(text: str) -> str:    
-    text = _CTRL_RE.sub("", text)
-    text = re.sub(r"[\x00-\x08\x0b-\x1f]", "", text)
-    return text.strip()
 
 TOOL_DECLARATIONS = [
     # ── Inline tools ─────────────────────────────────────────────────────────
@@ -1959,7 +1933,7 @@ class JarvisLive:
                             # Second line of defence: even if a repeat slips
                             # into a *fresh* buffer after a flush, never log the
                             # same answer (or a tail of it) twice in a row.
-                            if full_out and len(full_out) >= _REPEAT_MIN and self._last_out_logged:
+                            if full_out and len(full_out) >= _transcript.REPEAT_MIN and self._last_out_logged:
                                 if full_out in self._last_out_logged:
                                     full_out = ""
                             if full_out:
