@@ -100,4 +100,35 @@ def build_gesture_os_button(*args, **kwargs):
     return _build(*args, **kwargs)
 
 
-__all__ = ["build_floating_button", "build_gesture_os_button", "paint", "toggle"]
+def build_floating_rows(layout, row_factory, window):
+    """Add BOTH floating rows, plus their note, and return the first button.
+
+    WHY ONE ENTRY POINT
+        `ui/window.py` is at exactly 3,800 lines and has room for one statement
+        here, not three. The two rows are also read together by a user — "what
+        can leave" and "what has left" — so building them in one place keeps
+        them adjacent in the drawer instead of one drifting below unrelated
+        settings the next time that file is edited.
+
+    Returns the captions button, which is what the window keeps a reference to.
+    The documents button is kept on the window by its own builder.
+    """
+    from ui.floating_documents_row import build_floating_documents_button
+
+    button = build_floating_button(layout, row_factory, window)
+    window._floating_docs_btn = build_floating_documents_button(
+        layout, row_factory, window)
+    return button
+
+
+def build_floating_documents_button(*args, **kwargs):
+    """Re-exported for the same reason as `build_gesture_os_button` below:
+    `ui/window.py` is at its line ceiling and every import there costs a line
+    the file does not have. The row lives in `ui/floating_documents_row.py`.
+    """
+    from ui.floating_documents_row import build_floating_documents_button as _b
+    return _b(*args, **kwargs)
+
+
+__all__ = ["build_floating_button", "build_floating_documents_button",
+           "build_floating_rows", "build_gesture_os_button", "paint", "toggle"]

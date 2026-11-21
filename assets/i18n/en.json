@@ -666,5 +666,9 @@
   "ui.gesture_os.on": "🖐  HAND → OS: ON",
   "ui.gesture_os.hint": "Let your hand drive the desktop: point to move the pointer, pinch and hold 0.35s to click, hold two fingers to scroll. Stops by itself when this window has focus or a confirmation is on screen, so you still press sensitive buttons yourself.",
   "ui.capability.captions": "Only the speech captions float today. The metrics column and the avatar stay put — each one has a reason, and neither is a feature this build forgot to finish.",
-  "ui.floating.no_caption": "There are no speech captions to float yet — they appear when the assistant speaks."
+  "ui.floating.no_caption": "There are no speech captions to float yet — they appear when the assistant speaks.",
+  "ui.floating_documents.off": "⧉  FLOAT DOCUMENTS: {ready} READY",
+  "ui.floating_documents.on": "⧉  FLOAT DOCUMENTS: {n} OUT",
+  "ui.floating_documents.hint": "Take the open tool windows (code editor, image editor, trading panel, SSH, browser) out of the workspace and onto the desktop. The order confirmation never floats. Press again to bring them all back where they were.",
+  "ui.floating_documents.none": "No tool window is open that could float. Open one first (editor, trading panel, browser), then press this again."
 }

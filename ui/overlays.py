@@ -31,6 +31,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout, QWidget,
 )
 
+from core import logbook
 from core.i18n import label as _t, set_locale
 from ui.theme import C, DEFAULT_UI_COLOR, qcol
 
@@ -617,11 +618,37 @@ class PluginManagerOverlay(QWidget):
     def _toggle(self, name: str, btn: QPushButton, default_enabled: bool = True):
         from memory.config_manager import get_plugin_enabled, save_plugin_enabled
         new_val = not get_plugin_enabled(name, default=default_enabled)
+        # SWITCHING OFF CLOSES WHAT IT LEFT ON THE DESKTOP.
+        #
+        # A floating window of a plugin that is no longer switched on is a panel
+        # the user can see and cannot account for. It goes back to the
+        # workspace first — through the document's own close veto, so unsaved
+        # work still asks. When that veto refuses, the plugin stays ON: the
+        # alternative is destroying work to satisfy a toggle.
+        if not new_val and not self._recall_floating(name):
+            return
         if not save_plugin_enabled(name, new_val):
             return
         self._style_toggle(btn, new_val)
         if callable(getattr(self, "on_changed", None)):
             self.on_changed()
+
+    def _recall_floating(self, name: str) -> bool:
+        """True when nothing of this plugin is left on the desktop.
+
+        Deliberately tolerant of a host that has no floating panel at all: the
+        overlay is also built by `tools/`, where there is no window to ask.
+        """
+        host = getattr(self, "_host", None) or self.parent()
+        callback = getattr(host, "_recall_floating_plugin", None)
+        if not callable(callback):
+            return True
+        try:
+            return bool(callback(name))
+        except Exception as e:              # noqa: BLE001 — never block a toggle
+            logbook.get(__name__).warning(
+                "could not bring %s's windows home: %s", name, e)
+            return False
 
 
 class PluginSettingsOverlay(QWidget):

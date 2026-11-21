@@ -666,5 +666,9 @@
   "ui.gesture_os.on": "🖐  TANGAN → OS: AKTIF",
   "ui.gesture_os.hint": "Biarkan tangan Anda mengendalikan desktop: tunjuk untuk menggerakkan pointer, cubit dan tahan 0,35 detik untuk klik, tahan dua jari untuk menggulir. Berhenti sendiri saat window ini mendapat fokus atau ada konfirmasi di layar, jadi tombol sensitif tetap Anda tekan sendiri.",
   "ui.capability.captions": "Baru teks ucapan yang bisa mengambang. Kolom metrik dan avatar tetap di tempat — keduanya punya alasan, bukan fitur yang lupa diselesaikan.",
-  "ui.floating.no_caption": "Belum ada teks ucapan untuk dikeluarkan — teks itu muncul saat asisten berbicara."
+  "ui.floating.no_caption": "Belum ada teks ucapan untuk dikeluarkan — teks itu muncul saat asisten berbicara.",
+  "ui.floating_documents.off": "⧉  DOKUMEN MENGAMBANG: {ready} SIAP",
+  "ui.floating_documents.on": "⧉  DOKUMEN MENGAMBANG: {n} KELUAR",
+  "ui.floating_documents.hint": "Keluarkan window alat yang sedang terbuka (editor kode, editor gambar, panel trading, SSH, browser) dari workspace ke desktop. Konfirmasi order tidak pernah mengambang. Tekan lagi untuk mengembalikan semuanya ke tempat semula.",
+  "ui.floating_documents.none": "Tidak ada window alat yang terbuka untuk dikeluarkan. Buka dulu satu (editor, panel trading, browser), lalu tekan lagi."
 }

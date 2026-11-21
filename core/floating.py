@@ -149,6 +149,89 @@ def fit(name: str, os_name: str = "", session: str = "") -> Fit:
     return Fit(allowed=True, always_on_top=on_top, note=note)
 
 
+# ── plugin windows ────────────────────────────────────────────────────────
+#
+# A plugin window is the SAME floating behaviour with two different questions
+# in front of it, and neither of them is answered by the catalogue above.
+#
+#   WHO DECIDES. The user, always — from the CONTROLS drawer, exactly like the
+#   captions. A manifest may SAY its window would rather float; that declaration
+#   is a description and it is logged when the window opens, and it does not
+#   float anything. This is not caution for its own sake: a plugin can be
+#   updated by its author between the read and the install (the sha256 exists
+#   precisely for that), and a window that appears on the desktop on its own is
+#   indistinguishable from malware doing it.
+#
+#   WHAT MAY FLOAT. Every non-modal document, minus a stated refusal list. The
+#   line is drawn around the CONFIRMATION, not around the plugin: `order_dialog`
+#   is the application-modal acknowledgement of a LIVE trade, and it stays in
+#   the window for the reason it always did.
+PLUGIN_DOCUMENTS = {
+    "code_editor": "a scratch editor; nothing in it is also shown elsewhere",
+    "image_editor": "the image being edited is the whole surface",
+    "trading": "the panel a user watches while doing something else",
+    "ssh_manager": "a session worth having beside the terminal it is not",
+    "workspace_browser": "the page itself, with its own navigation",
+    "narrative_content": "read-only",
+    "visual_content": "read-only",
+}
+
+NOT_FLOATABLE_PLUGIN = {
+    "order_dialog": "an application-modal LIVE acknowledgement. Floating it "
+                    "over other apps is how somebody approves an order they "
+                    "never saw — the same refusal as the main window's",
+}
+
+# Kinds that are documents but are NOT part of this feature yet, with the
+# reason. Unknown kinds are allowed: refusing a plugin's window because a new
+# `kind` string was invented would be a silent regression the day after.
+PLUGIN_NEEDS_WORK = {
+    "camera": "the camera window stops the capture stream on close and is not "
+              "an MDI document; it is a different mechanism",
+}
+
+# What a manifest's optional `window` field may say. Descriptive only.
+MANIFEST_WINDOW_HINTS = ("float", "docked")
+
+
+def plugin_hint(manifest_window: str) -> str:
+    """What to do with a manifest's request to float, which is: nothing.
+
+    Returns a sentence for the log, or "" when the plugin asked for nothing.
+    Kept as a function rather than an `if` at the call site so that the answer
+    has one spelling and a test can read it: a hint never becomes a permission.
+    """
+    hint = (manifest_window or "").strip().lower()
+    if hint not in MANIFEST_WINDOW_HINTS:
+        return ""
+    if hint == "float":
+        return ("this plugin says its window would rather float; only you can "
+                "do that, from CONTROLS → FLOAT WINDOWS")
+    return "this plugin says its window is meant to stay docked"
+
+
+def fit_document(kind: str, os_name: str = "", session: str = "") -> Fit:
+    """May a plugin's document window leave the MDI area for the desktop?
+
+    A refusal here is still a sentence, for the same reason as everywhere else
+    in this module: a row that does nothing and says nothing reads as broken.
+    """
+    kind = (kind or "").strip().lower()
+    if kind in NOT_FLOATABLE_PLUGIN:
+        return Fit(allowed=False, reason=NOT_FLOATABLE_PLUGIN[kind])
+    if kind in PLUGIN_NEEDS_WORK:
+        return Fit(allowed=False, reason=PLUGIN_NEEDS_WORK[kind])
+    on_top, note = platform_note(os_name, session)
+    if kind in PLUGIN_DOCUMENTS:
+        return Fit(allowed=True, always_on_top=on_top, note=note)
+    # An unlisted document kind is allowed, and says so, because the
+    # alternative is a plugin whose window silently will not float.
+    return Fit(allowed=True, always_on_top=on_top,
+               note=(note + "; " if note else "")
+               + f"'{kind}' is not a document kind this build knows, so it "
+                 "gets the default behaviour")
+
+
 # ── where it goes ─────────────────────────────────────────────────────────
 
 # Kept small on purpose: this is a position on a screen, and a widget that
@@ -255,5 +338,7 @@ class State:
         return sorted(self.floating)
 
 
-__all__ = ["FLOATABLE", "NOT_FLOATABLE", "RETIRED", "Fit", "Placement", "State",
-           "clamp", "fit", "place", "platform_note"]
+__all__ = ["FLOATABLE", "MANIFEST_WINDOW_HINTS", "NOT_FLOATABLE",
+           "NOT_FLOATABLE_PLUGIN", "PLUGIN_DOCUMENTS", "PLUGIN_NEEDS_WORK",
+           "RETIRED", "Fit", "Placement", "State", "clamp", "fit",
+           "fit_document", "place", "platform_note", "plugin_hint"]

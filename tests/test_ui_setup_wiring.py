@@ -192,8 +192,14 @@ def test_permissioned_plugin_can_be_enabled_on_first_consent(isolated_config):
     namespace = {"QPushButton": object}
     exec(compile(ast.Module(body=[method], type_ignores=[]), str(OVERLAYS), "exec"), namespace)
     styled, changes = [], []
+    # `_recall_floating` is part of the method now — switching a plugin off has
+    # to bring its floating windows home first — so the stand-in object carries
+    # it. This test is about the consent-and-save path, and a plugin that is not
+    # switched on yet has nothing floating: True is the honest answer here, and
+    # the recall itself is tested where it lives (`test_floating_documents.py`).
     obj = SimpleNamespace(_style_toggle=lambda btn, enabled: styled.append(enabled),
-                          on_changed=lambda: changes.append(True))
+                          on_changed=lambda: changes.append(True),
+                          _recall_floating=lambda name: True)
     namespace["_toggle"](obj, "gmail_inbox", object(), default_enabled=False)
     assert isolated_config.get_plugin_enabled("gmail_inbox", default=False)
     assert styled == [True] and changes == [True]

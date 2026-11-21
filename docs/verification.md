@@ -21,6 +21,7 @@ semua komputer. Hasil uji lokal tidak otomatis menjadi hasil CI atau rilis.
 | Interupsi suara (barge-in) | Palet keputusan murni: kapan memotong, kapan mengabaikan, gema sendiri, jeda, ruang bising, guard belum terkalibrasi; pemanggilan di callback mikrofon dan penekanannya per jawaban | Apakah memotong benar-benar terasa nyaman dengan mikrofon dan speaker sungguhan: berapa lama jeda sebelum berhenti, apakah tersela gema di ruang bergema, dan apakah suara latar memicu pemotongan |
 | Obsidian | Penemuan vault dari `obsidian.json`, penelusuran yang melewati `.obsidian`/`.trash`, pencarian dan kutipan baris, append yang menjaga CRLF, penolakan menimpa, penolakan symlink keluar, uji sumber yang melarang penghapusan | Vault Obsidian **sungguhan** milik pengguna: apakah Obsidian membaca ulang perubahan tanpa konflik, apakah nama catatan dengan spasi/emoji bekerja, dan apakah vault yang disinkronkan (Obsidian Sync/iCloud) tidak bentrok |
 | Widget mengambang | Kebijakan murni tanpa Qt: daftar boleh/tidak **beserta alasannya**, nama yang sudah dipensiunkan (`hud`, `camera_preview`, `metric_bar`) ditolak dengan alasan penggantinya, penolakan Wayland atas always-on-top, penguncian posisi ke layar, penyimpanan posisi per widget; baris drawer diuji dengan stub (label bukan tombol mati, tinggi tidak terpotong 26px, state dilukis ulang tiap kali drawer dibangun) | Desktop **sungguhan** di Windows, macOS, X11 dan Wayland: apakah caption benar-benar tetap di atas aplikasi lain, apakah ia kembali ke indeks layout yang sama, apakah sesi Wayland memberi tahu pengguna bahwa jendela bisa tertutup, apakah posisi bertahan setelah monitor dicabut atau resolusi berubah, dan apakah label catatan terbaca utuh di lebar drawer 220px |
+| Dokumen mengambang | Lapisan Qt diuji dengan stub yang mencatat: `removeSubWindow` saat keluar, `addSubWindow` saat kembali (subwindow yang hanya di-reparent adalah widget di 0,0), reset `WindowNoState` untuk subwindow yang semula maximised, Wayland tidak meminta always-on-top, `order_dialog` ditolak, kind tak dikenal diizinkan, manifest hanya boleh *menyebut* `window` dan tidak pernah mengambangkan, dan toggle plugin mengembalikan window-nya **sebelum** menyimpan status OFF | Desktop **sungguhan**: apakah dokumen yang mengambang benar-benar tetap di atas aplikasi lain, apakah ia kembali ke posisi dan ukuran MDI yang sama, apakah menutup window mengambang masih memunculkan dialog simpan, dan apakah mematikan plugin saat ada window mengambang benar-benar mengembalikannya tanpa kehilangan kerja |
 | Tangan → OS | Kebijakan murni: hanya tiga aksi, pembekuan saat fokus ada di JARVIS/konfirmasi/modal, pelepasan tombol saat tangan hilang atau mode dimatikan, penolakan lompatan sampel, margin sudut layar; uji AST yang melarang pemanggilan `press`/`hotkey`/`write` dan melarang impor allowlist shortcut | Desktop **Windows sungguhan**: apakah pointer benar-benar mengikuti tangan pada DPI dan monitor berbeda, apakah klik nyasar tidak pernah mengenai tombol tutup jendela, apakah tombol mouse benar-benar lepas saat tangan keluar frame, dan apakah tracking tetap layak dipakai di ruangan dengan cahaya redup |
 | Akses file penuh | Kebijakan murni: default = home saja, opt-in hanya dari `true` literal, penolakan kredensial (`~/.ssh`, `System32`, penyimpan sandi browser) meski folder induknya diizinkan, penolakan kunci milik aplikasi sendiri, resolusi symlink sebelum pemeriksaan, alasan penolakan, dan uji AST yang memastikan tidak ada tool/plugin yang bisa memanggil `save`/`disable` | Folder **sungguhan** di Windows (`C:\`), macOS (`~/Library`) dan Linux (`/`): apakah folder sistem benar-benar tertolak, apakah reparse point/junction Windows dan symlink OneDrive/Dropbox tidak menyelinap, dan apakah dialog pemilih folder mengembalikan path yang bisa disimpan |
 
@@ -251,6 +252,31 @@ perilaku shell yang sebenarnya, dan itu tidak dapat disimulasikan.
 - [ ] Minta asisten mengambangkan window plugin (terminal trading, editor gambar).
       **Belum didukung** — catat bila ia mengklaim bisa. Langkah ini memastikan
       tidak ada klaim palsu.
+
+### Dokumen mengambang
+
+- [ ] Buka editor kode atau panel trading, lalu tekan **FLOAT DOCUMENTS** di drawer
+      CONTROLS. Window itu harus keluar dari area workspace dan muncul di desktop
+      dengan ukuran dan posisi yang wajar — bukan layar penuh.
+- [ ] Pindah ke aplikasi lain. Window itu harus tetap terlihat (Windows/macOS/X11).
+      Di Wayland, catat bila ia tertutup, dan pastikan log menyebut alasannya.
+- [ ] Tekan lagi. Window harus kembali ke area workspace, di posisi dan ukuran
+      semula — **bukan** ke pojok kiri atas.
+- [ ] Maximise dulu di dalam workspace, lalu keluarkan, lalu kembalikan. Ia harus
+      kembali dalam keadaan maximised seperti semula.
+- [ ] Edit sesuatu tanpa menyimpan, lalu tutup window yang mengambang lewat tombol
+      tutupnya. Dialog "simpan?" harus tetap muncul.
+- [ ] Edit sesuatu tanpa menyimpan, lalu matikan plugin pemilik window itu lewat
+      panel plugin. Plugin **harus tetap AKTIF** dan log harus menjelaskan bahwa ada
+      kerja yang belum disimpan.
+- [ ] Simpan pekerjaannya, lalu matikan plugin itu. Window harus kembali ke workspace
+      dan hilang, dan plugin benar-benar menjadi OFF.
+- [ ] Buka konfirmasi order MT5. Pastikan tidak ada cara membuatnya mengambang, dan
+      catat bila asisten mengklaim bisa — itu janji "konfirmasi sensitif memerlukan
+      input fisik" yang dilanggar.
+- [ ] Ubah manifest sebuah plugin agar berisi `"window": "float"`, muat ulang, lalu
+      buka window-nya. Window **tidak** boleh mengambang sendiri; log boleh menyebut
+      permintaan itu, dan hanya drawer yang boleh mewujudkannya.
 
 ### Tangan → OS
 
