@@ -53,6 +53,11 @@ TESTED = {
     "core/plugin_loader.py":  "tests/test_loaders.py",
     "core/outcome.py":        "tests/test_outcome.py",
     "core/undo.py":           "tests/test_undo.py",
+    "core/risk_policy.py":    "tests/test_risk_policy.py",
+    "core/suggestion_quota.py": "tests/test_suggestion_quota.py",
+    "core/audit_log.py":      "tests/test_audit_log.py",
+    "core/presence_mode.py":  "tests/test_presence_mode.py",
+    "core/action_gate.py":    "tests/test_action_gate.py",
     "core/confirm.py":        "tests/test_confirm.py",
     "core/echo.py":           "tests/test_echo.py",
     "core/hotkey.py":         "tests/test_hotkey.py",
@@ -236,7 +241,8 @@ def test_the_exemptions_are_not_where_the_bugs_were():
     """A weak rule, but the one that matters: the modules that decide what the
     assistant DOES to the machine must not be exempt from having a test."""
     dangerous = ["core/action_loader.py", "core/plugin_loader.py", "core/undo.py",
-                 "core/confirm.py", "core/outcome.py", "core/echo.py"]
+                 "core/confirm.py", "core/outcome.py", "core/echo.py",
+                 "core/risk_policy.py", "core/action_gate.py"]
     for name in dangerous:
         assert name in TESTED, f"{name} decides real outcomes and has no test"
 
