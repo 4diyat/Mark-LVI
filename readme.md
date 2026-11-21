@@ -814,8 +814,12 @@ observed.
 ```
 Mark LVI/
 ├── main.py                   # Core loop — Gemini Live session, audio I/O, viseme extraction, tool dispatch
-├── ui/                       # PyQt6 HUD — window.py (widgets), theme.py (palette), metrics.py (sampler)
-│   ├── window.py             #   avatar canvas, waveform, log panel, settings drawer, camera feed
+├── ui/                       # PyQt6 HUD — window.py (the window), theme.py (palette), metrics.py (sampler)
+│   ├── window.py             #   the window itself: panels, drawers, layout, mode switching
+│   ├── metric_bar.py         #   one CPU/GPU/network bar — a name, a number, a fill
+│   ├── drop_zone.py          #   the box you drop a file or a project folder onto
+│   ├── setup_overlay.py      #   first run: an API key, and which OS to assume
+│   ├── camera_preview.py     #   the small window that shows what the camera just saw
 │   ├── lifecycle.py          #   launch, summon, dismiss — the three interface modes
 │   ├── tray.py               #   the notification-area icon: show, wake, sleep, settings, quit
 │   └── face_bubble.py        #   the always-on-top floating face, and its dragging

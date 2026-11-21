@@ -23,11 +23,14 @@ WINDOW = UI_PKG / "window.py"
 # Two ceilings, not targets. They exist so "just add it here" costs a
 # conversation: both files may shrink freely and grow a little, but not back to
 # the sizes that made them unreadable. The ceiling came down from 7,400 to
-# 7,000 when the three setting panels moved to ui/overlays.py — a ratchet that
-# is only ever loosened is not a ratchet.
-WINDOW_CEILING = 4_250
+# 7,000 when the three setting panels moved to ui/overlays.py, and from 4,250
+# to 3,800 when the metric bar, the drop zone, the camera preview and the setup
+# panel moved out — a ratchet that is only ever loosened is not a ratchet.
+WINDOW_CEILING = 3_800
 MODULES = [UI_PKG / "__init__.py", UI_PKG / "theme.py", UI_PKG / "metrics.py",
-           UI_PKG / "overlays.py", UI_PKG / "lifecycle.py", UI_PKG / "tray.py"]
+           UI_PKG / "overlays.py", UI_PKG / "lifecycle.py", UI_PKG / "tray.py",
+           UI_PKG / "metric_bar.py", UI_PKG / "drop_zone.py",
+           UI_PKG / "camera_preview.py", UI_PKG / "setup_overlay.py"]
 
 
 def _tree(path: Path) -> ast.Module:
@@ -355,8 +358,8 @@ def test_filesystem_model_is_imported_from_qtgui():
 # reading cost is.
 
 CLASS_CEILINGS = {
-    "MainWindow": 3_100,       # 3,066 today
-    "JarvisLive": 2_400,       # main.py, 2,357 today
+    "MainWindow": 3_000,       # 2,975 today, after the four widgets left
+    "JarvisLive": 2_400,       # main.py, 2,395 today
 }
 
 
