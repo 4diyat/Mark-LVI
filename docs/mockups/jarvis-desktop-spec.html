@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>JARVIS — Lembar Acuan Desktop 1440×900</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #eceef1; color: #1b1f27;
+    font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .sheet { max-width: 1600px; margin: 0 auto; padding: 28px 32px 64px; }
+  h1 { font-size: 20px; letter-spacing: .08em; text-transform: uppercase; margin: 0 0 4px; }
+  .lede { font-size: 13px; color: #4a5160; margin: 0 0 22px; max-width: 92ch; line-height: 1.6; }
+  .mono { font-family: "SFMono-Regular", Consolas, "Courier New", monospace; }
+  .artboard { background: #f7f8fa; border: 1px solid #c9ccd4; border-radius: 3px;
+    padding: 10px; margin: 0 0 10px; overflow-x: auto; }
+  .cap { font-size: 11px; color: #5a6070; margin: 0 0 8px; letter-spacing: .04em; text-transform: uppercase; }
+  svg { display: block; }
+  h2 { font-size: 13px; letter-spacing: .1em; text-transform: uppercase; margin: 34px 0 10px;
+    padding-bottom: 6px; border-bottom: 1px solid #c9ccd4; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; background: #fff; }
+  th, td { text-align: left; padding: 7px 10px; border: 1px solid #d5d8df; vertical-align: top; }
+  th { background: #e7e9ee; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; }
+  td.mono, th.mono { font-family: "SFMono-Regular", Consolas, "Courier New", monospace; font-size: 11px; }
+  .ok   { color: #0a7a45; font-weight: 700; }
+  .warn { color: #9a6a00; font-weight: 700; }
+  .bad  { color: #b3261e; font-weight: 700; }
+  .sw { display: inline-block; width: 11px; height: 11px; border: 1px solid #9aa0ac;
+    border-radius: 2px; vertical-align: -1px; margin-right: 5px; }
+  .note { font-size: 12px; line-height: 1.65; color: #333a48; background: #fff;
+    border-left: 3px solid #4b9fff; padding: 10px 14px; margin: 12px 0; }
+  .note.bad { border-left-color: #b3261e; }
+  ul { font-size: 12.5px; line-height: 1.7; padding-left: 20px; }
+  code { background: #e7e9ee; padding: 1px 4px; border-radius: 2px; font-size: 11.5px; }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+<h1>JARVIS — Lembar Acuan Desktop</h1>
+<p class="lede">
+  Setiap garis, warna, dan angka di bawah ini diambil dari kode pada
+  <span class="mono">bb02ce1</span>. Yang tidak bisa diturunkan dari kode ditandai
+  <b>USULAN</b> dan tidak digambar sebagai kalau sudah berjalan.
+  Gambar PNG di folder ini hanya ilustrasi; <b>lembar inilah acuannya</b>.
+</p>
+
+<!-- ===================== ARTBOARD 1 ===================== -->
+<h2>Bagian A — jendela 1440 × 900 (mode <span class="mono">hud</span>, default hari ini)</h2>
+<p class="cap">Artboard 1 — jendela penuh layar. Sesudah usulan A1/A2, ini adalah keadaan <b>saat dipanggil</b>, bukan keadaan saat dibuka.</p>
+<div class="artboard">
+<svg viewBox="0 0 1600 1090" width="1600" height="1090" xmlns="http://www.w3.org/2000/svg"
+     font-family="Arial, Helvetica, sans-serif">
+  <defs>
+    <linearGradient id="wall" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0"    stop-color="#0b1725"/>
+      <stop offset="0.55" stop-color="#192d43"/>
+      <stop offset="1"    stop-color="#091522"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.44" cy="0.37" r="0.75">
+      <stop offset="0"    stop-color="#39679c"/>
+      <stop offset="0.36" stop-color="#102b51"/>
+      <stop offset="0.66" stop-color="#071729"/>
+      <stop offset="1"    stop-color="#173f6b"/>
+    </radialGradient>
+  </defs>
+
+  <!-- annotation layer: thin, pale, outside the window -->
+  <g stroke="#a8aeba" stroke-width="1" fill="none">
+    <!-- overall width -->
+    <path d="M60 46 H1500"/>
+    <path d="M60 40 V52 M1500 40 V52"/>
+    <!-- body height -->
+    <path d="M1532 100 V970"/>
+    <path d="M1526 100 H1538 M1526 970 H1538"/>
+    <!-- header height -->
+    <path d="M1532 70 V100"/>
+    <!-- files panel -->
+    <path d="M88 78 H619"/>
+    <path d="M88 72 V84 M619 72 V84"/>
+    <!-- emblem gap -->
+    <path d="M619 78 H964" stroke-dasharray="3 3"/>
+    <!-- assistant width -->
+    <path d="M964 104 H1466"/>
+    <path d="M964 98 V110 M1466 98 V110"/>
+    <!-- dock -->
+    <path d="M510 902 H1046"/>
+    <path d="M510 896 V908 M1046 896 V908"/>
+    <!-- hidden footer -->
+    <path d="M60 1000 V1000"/>
+  </g>
+  <g fill="#5a6070" font-size="11" font-family="Consolas, monospace">
+    <text x="780" y="40" text-anchor="middle">1440 px</text>
+    <text x="1540" y="540" transform="rotate(90 1540 540)" text-anchor="middle">870 px (tanpa footer — footer disembunyikan)</text>
+    <text x="1540" y="86" font-size="10">30</text>
+    <text x="353" y="72" text-anchor="middle">531 px — files</text>
+    <text x="791" y="72" text-anchor="middle">celah 345 px → panggung emblem 320 px</text>
+    <text x="1215" y="98" text-anchor="middle">502 px — assistant</text>
+    <text x="778" y="922" text-anchor="middle">536 px — dock (8 tombol, 64 px/tombol, ikon 44 px)</text>
+    <text x="72" y="1000" fill="#b3261e">footer 22 px ADA di kode tapi dipanggil .hide()</text>
+  </g>
+
+  <!-- ===== window ===== -->
+  <g transform="translate(60,70)">
+    <rect x="0" y="0" width="1440" height="870" fill="#171719" stroke="#414146"/>
+
+    <!-- header 30px -->
+    <rect x="0" y="0" width="1440" height="30" fill="#0b1725"/>
+    <path d="M0 30 H1440" stroke="#3b5269"/>
+    <text x="14" y="21" font-size="17" font-weight="700" fill="#6ed8ff">◉</text>
+    <text x="40" y="19" font-size="10" font-weight="700" letter-spacing="1.4" fill="#eef5fd">JARVIS</text>
+    <g font-size="10" fill="#eef5fd">
+      <text x="100" y="19">File</text>
+      <text x="146" y="19">Edit</text>
+      <text x="192" y="19">View</text>
+      <text x="244" y="19">Window</text>
+      <text x="312" y="19">Help</text>
+    </g>
+    <rect x="998" y="6" width="62" height="18" rx="9" fill="#25384d" stroke="#326b66"/>
+    <text x="1029" y="19" font-size="8.5" font-weight="700" fill="#83e4b6" text-anchor="middle">● Hand control on</text>
+    <text x="1146" y="20" font-size="11" fill="#eef5fd">14:32:07</text>
+    <text x="1204" y="19" font-size="9" fill="#aabbd0">Thu 19 Nov 2026</text>
+
+    <!-- body / wallpaper -->
+    <rect x="1" y="31" width="1438" height="838" fill="url(#wall)"/>
+
+    <!-- files subwindow -->
+    <g>
+      <rect x="28" y="60" width="531" height="313" fill="#15212f" stroke="#3b5269"/>
+      <rect x="29" y="61" width="529" height="22" fill="#1b2a3b"/>
+      <text x="40" y="76" font-size="10" font-weight="700" fill="#eef5fd">Files</text>
+      <g stroke="#aabbd0" stroke-width="1.2" fill="none" opacity="0.75">
+        <path d="M500 68 h9 M513 68 h2"/>
+        <path d="M524 66 l7 7 M531 66 l-7 7"/>
+      </g>
+      <rect x="40" y="92" width="507" height="22" rx="3" fill="#0f1c2a" stroke="#3b5269"/>
+      <text x="50" y="107" font-size="9" fill="#7f8ea3">Search files…</text>
+      <text x="40" y="130" font-size="8" font-weight="700" fill="#3675bd">FAVORITES</text>
+      <g font-size="9.5" fill="#eef5fd">
+        <text x="44" y="149">▸ Projects</text>
+        <text x="44" y="166">▸ Home</text>
+        <text x="44" y="183">▸ Desktop</text>
+        <text x="44" y="200">▸ Documents</text>
+        <text x="44" y="217">▸ Downloads</text>
+      </g>
+      <path d="M40 236 H547" stroke="#3b5269"/>
+      <g font-size="8.5" fill="#7f8ea3">
+        <text x="40" y="256">Toolbar: ◂ ▸ ▴ · path · search · refresh · new folder</text>
+        <text x="40" y="272">Daftar folder &amp; berkas asli dari disk</text>
+      </g>
+      <rect x="40" y="288" width="507" height="70" fill="#101d2b" stroke="#3b5269" stroke-dasharray="2 3"/>
+      <text x="293" y="327" font-size="9" fill="#7f8ea3" text-anchor="middle">isi folder sebenarnya</text>
+    </g>
+
+    <!-- assistant subwindow -->
+    <g>
+      <rect x="904" y="86" width="502" height="693" fill="#15212f" stroke="#3b5269"/>
+      <rect x="905" y="87" width="500" height="22" fill="#1b2a3b"/>
+      <text x="916" y="102" font-size="10" font-weight="700" fill="#eef5fd">Assistant</text>
+      <path d="M1376 94 h9 M1389 94 h2 M1400 92 l7 7 M1407 92 l-7 7" stroke="#aabbd0" stroke-width="1.2" opacity="0.75"/>
+      <!-- panel header -->
+      <text x="916" y="134" font-size="18" font-weight="700" fill="#4b9fff">◉</text>
+      <text x="938" y="132" font-size="13" font-weight="700" fill="#f5f5f7">JARVIS</text>
+      <text x="1392" y="131" font-size="9" fill="#4b9fff" text-anchor="end">IDLE</text>
+      <!-- center split (HUD + tool panes) -->
+      <rect x="916" y="146" width="478" height="196" rx="4" fill="#0f1c2a" stroke="#3b5269"/>
+      <text x="1155" y="250" font-size="9" fill="#7f8ea3" text-anchor="middle">_center_split — HUD / kamera / konten / kuis / audio</text>
+      <!-- conversation -->
+      <rect x="916" y="352" width="478" height="286" rx="4" fill="#15212f" stroke="#3b5269"/>
+      <text x="928" y="372" font-size="9" fill="#7f8ea3">riwayat percakapan (log asli)</text>
+      <g fill="#25384d">
+        <rect x="928" y="384" width="300" height="26" rx="6"/>
+        <rect x="1082" y="420" width="300" height="26" rx="6" fill="#2b4257"/>
+        <rect x="928" y="456" width="260" height="26" rx="6"/>
+        <rect x="1082" y="492" width="300" height="26" rx="6" fill="#2b4257"/>
+      </g>
+      <!-- caption + voice hint -->
+      <rect x="916" y="646" width="478" height="16" rx="3" fill="#0f1c2a" stroke="#3b5269"/>
+      <text x="1155" y="658" font-size="8" fill="#7f8ea3" text-anchor="middle">SpeechCaption</text>
+      <text x="916" y="676" font-size="8" fill="#aabbd0">Push-to-talk: Ctrl+Space when enabled.</text>
+      <!-- buttons -->
+      <rect x="916" y="686" width="180" height="28" rx="6" fill="#25384d" stroke="#3b5269"/>
+      <text x="1006" y="705" font-size="9" fill="#eef5fd" text-anchor="middle">🎙 MICROPHONE ACTIVE</text>
+      <rect x="1104" y="686" width="150" height="28" rx="6" fill="#25384d" stroke="#3b5269"/>
+      <text x="1179" y="705" font-size="9" fill="#eef5fd" text-anchor="middle">✋ INTERRUPT [ESC]</text>
+      <!-- input box -->
+      <rect x="916" y="724" width="478" height="42" rx="6" fill="#0f1c2a" stroke="#3b5269"/>
+      <text x="930" y="750" font-size="9" fill="#7f8ea3">tulis perintah…</text>
+    </g>
+
+    <!-- emblem stage -->
+    <g>
+      <circle cx="731" cy="328" r="84" fill="url(#glow)" stroke="#70c8ff" stroke-width="2"/>
+      <circle cx="731" cy="328" r="77" fill="none" stroke="#4b95dd"/>
+      <text x="731" y="452" font-size="17" font-weight="700" fill="#eef5fd" text-anchor="middle">JARVIS</text>
+      <rect x="571" y="186" width="320" height="350" fill="none" stroke="#4b9fff"
+            stroke-dasharray="4 4" opacity="0.45"/>
+      <text x="731" y="180" font-size="9" fill="#9fd0ff" text-anchor="middle"
+            font-family="Consolas, monospace">panggung emblem 320×350</text>
+    </g>
+
+    <!-- dock -->
+    <g>
+      <rect x="450" y="782" width="536" height="76" rx="15" fill="#152231" fill-opacity="0.95" stroke="#3b5269"/>
+      <g>
+        <g><rect x="458" y="790" width="64" height="60" rx="8" fill="#268ce3"/><text x="490" y="826" font-size="8" fill="#0b1725" text-anchor="middle" font-weight="700">Chat</text></g>
+        <g><rect x="522" y="790" width="64" height="60" rx="8" fill="#287eac"/><text x="554" y="826" font-size="8" fill="#0b1725" text-anchor="middle" font-weight="700">Files</text></g>
+        <g><rect x="586" y="790" width="64" height="60" rx="8" fill="#268ce3"/><text x="618" y="826" font-size="8" fill="#0b1725" text-anchor="middle" font-weight="700">Browser</text></g>
+        <g><rect x="650" y="790" width="64" height="60" rx="8" fill="#417f85"/><text x="682" y="826" font-size="8" fill="#0b1725" text-anchor="middle" font-weight="700">Editors▾</text></g>
+        <g><rect x="714" y="790" width="64" height="60" rx="8" fill="#646e9a"/><text x="746" y="826" font-size="8" fill="#0b1725" text-anchor="middle" font-weight="700">Media▾</text></g>
+        <g><rect x="778" y="790" width="64" height="60" rx="8" fill="#8b746a"/><text x="810" y="826" font-size="8" fill="#0b1725" text-anchor="middle" font-weight="700">MT5▾</text></g>
+        <g><rect x="842" y="790" width="64" height="60" rx="8" fill="#485e73"/><text x="874" y="826" font-size="8" fill="#eef5fd" text-anchor="middle" font-weight="700">Apps▾</text></g>
+        <g><rect x="906" y="790" width="64" height="60" rx="8" fill="#485e73"/><text x="938" y="826" font-size="8" fill="#eef5fd" text-anchor="middle" font-weight="700">Settings</text></g>
+      </g>
+      <text x="718" y="776" font-size="9" fill="#9fd0ff" text-anchor="middle"
+            font-family="Consolas, monospace">dock: y = H − 86, tinggi 76, maks 1020 px, bisa digeser horizontal</text>
+    </g>
+  </g>
+</svg>
+</div>
+
+<!-- ===================== ARTBOARD 2 ===================== -->
+<p class="cap">Artboard 2 — panel “Controls” (170 px) yang tersembunyi secara default; dibuka dari dock ▸ Apps, menu Window, atau tombol ◻ di kiri</p>
+<div class="artboard">
+<svg viewBox="0 0 720 790" width="720" height="790" xmlns="http://www.w3.org/2000/svg"
+     font-family="Arial, Helvetica, sans-serif">
+  <g stroke="#a8aeba" fill="none">
+    <path d="M60 40 H300"/><path d="M60 34 V46 M300 34 V46"/>
+    <path d="M46 70 V740"/><path d="M40 70 H52 M40 740 H52"/>
+    <path d="M320 96 H480"/><path d="M320 90 V102 M480 90 V102"/>
+  </g>
+  <g fill="#5a6070" font-size="11" font-family="Consolas, monospace">
+    <text x="180" y="34" text-anchor="middle">240 px (nav.resize — bukan konstanta tetap)</text>
+    <text x="52" y="410" transform="rotate(-90 52 410)" text-anchor="middle">maks 700 px, min 350</text>
+    <text x="400" y="90" text-anchor="middle">32 px per tombol</text>
+  </g>
+
+  <g transform="translate(60,70)">
+    <rect x="0" y="0" width="240" height="670" fill="#1d1d1f" stroke="#414146"/>
+    <rect x="1" y="1" width="238" height="22" fill="#28282b"/>
+    <text x="12" y="16" font-size="10" font-weight="700" fill="#ededf2">Controls</text>
+    <path d="M200 8 h9 M213 8 h2" stroke="#9b9ba4"/>
+
+    <!-- the real panel: fixed 170 -->
+    <rect x="12" y="30" width="170" height="628" fill="#1d1d1f" stroke="#414146"/>
+    <text x="22" y="50" font-size="8" font-weight="700" letter-spacing="1" fill="#3675bd">NAVIGATION</text>
+    <g font-size="9.5" fill="#ededf2">
+      <rect x="22" y="58"  width="150" height="32" rx="5" fill="#222224" stroke="#414146"/><text x="31" y="78">Conversation</text>
+      <rect x="22" y="95"  width="150" height="32" rx="5" fill="#222224" stroke="#414146"/><text x="31" y="115">Activity log</text>
+      <rect x="22" y="132" width="150" height="32" rx="5" fill="#222224" stroke="#414146"/><text x="31" y="152">Plugins</text>
+      <rect x="22" y="169" width="150" height="32" rx="5" fill="#222224" stroke="#414146"/><text x="31" y="189">Remote control</text>
+      <rect x="22" y="206" width="150" height="32" rx="5" fill="#222224" stroke="#414146"/><text x="31" y="226">Settings</text>
+      <rect x="22" y="243" width="150" height="32" rx="5" fill="#222224" stroke="#414146"/><text x="31" y="263">Voice &amp; controls</text>
+    </g>
+    <text x="22" y="298" font-size="8" font-weight="700" letter-spacing="1" fill="#3675bd">SYSTEM</text>
+    <g font-size="8" fill="#b8b8c0">
+      <text x="22" y="318">CPU</text><rect x="52" y="313" width="94" height="4" rx="2" fill="#2a2a2e"/><rect x="52" y="313" width="11" height="4" rx="2" fill="#4b9fff"/><text x="152" y="318" fill="#ededf2">12%</text>
+      <text x="22" y="360">MEM</text><rect x="52" y="355" width="94" height="4" rx="2" fill="#2a2a2e"/><rect x="52" y="355" width="39" height="4" rx="2" fill="#ffcc00"/><text x="152" y="360" fill="#ededf2">42%</text>
+      <text x="22" y="402">NET</text><rect x="52" y="397" width="94" height="4" rx="2" fill="#2a2a2e"/><text x="152" y="402" fill="#ededf2">0%</text>
+      <text x="22" y="444">GPU</text><rect x="52" y="439" width="94" height="4" rx="2" fill="#2a2a2e"/><rect x="52" y="439" width="26" height="4" rx="2" fill="#ff6b00"/><text x="152" y="444" fill="#ededf2">28%</text>
+      <text x="22" y="486">TMP</text><rect x="52" y="481" width="94" height="4" rx="2" fill="#2a2a2e"/><rect x="52" y="481" width="11" height="4" rx="2" fill="#ff6688"/><text x="152" y="486" fill="#ededf2">12%</text>
+    </g>
+    <g font-size="8" fill="#aabbd0">
+      <text x="22" y="580">＋ kontrol gesture tangan</text>
+      <text x="22" y="598">(ditambahkan dinamis oleh hand_gesture.py)</text>
+    </g>
+
+    <path d="M182 30 V658" stroke="#b3261e" stroke-dasharray="3 3"/>
+    <text x="186" y="350" font-size="9" fill="#b3261e">sisa 70 px</text>
+  </g>
+</svg>
+</div>
+<div class="note bad">
+  <b>Ini temuan inti, bukan detail kosmetik.</b> Sidebar 170 px yang digambar pada mockup PNG
+  <b>tidak tampil saat aplikasi dibuka</b>: <code>_left_panel</code> dipindahkan ke dalam subwindow MDI
+  bernama <code>navigation</code> lalu dipanggil <code>.hide()</code> (<span class="mono">ui/desktop_workspace.py:695</span>),
+  dan <code>body.addWidget()</code> hanya menambahkan workspace shell. Footer 22 px juga
+  <code>.hide()</code> (<span class="mono">ui/window.py:575</span>). Jadi PNG itu menggambar dua elemen yang
+  memang ada di kode tetapi tidak terlihat di layar default.
+</div>
+
+<!-- ===================== TOKENS ===================== -->
+<h2>Token warna (dari ui/theme.py)</h2>
+<table>
+  <tr><th class="mono">Nama</th><th class="mono">Nilai</th><th>Dipakai di</th></tr>
+  <tr><td class="mono">BG</td><td class="mono"><span class="sw" style="background:#171719"></span>#171719</td><td>kulit jendela</td></tr>
+  <tr><td class="mono">DARK</td><td class="mono"><span class="sw" style="background:#1d1d1f"></span>#1d1d1f</td><td>panel navigasi, footer</td></tr>
+  <tr><td class="mono">PANEL</td><td class="mono"><span class="sw" style="background:#222224"></span>#222224</td><td>permukaan tombol navigasi</td></tr>
+  <tr><td class="mono">BORDER</td><td class="mono"><span class="sw" style="background:#414146"></span>#414146</td><td>garis 1 px di panel gelap</td></tr>
+  <tr><td class="mono">DESKTOP_BAR</td><td class="mono"><span class="sw" style="background:#0b1725"></span>#0b1725</td><td>menu bar 30 px</td></tr>
+  <tr><td class="mono">DESKTOP_BORDER</td><td class="mono"><span class="sw" style="background:#3b5269"></span>#3b5269</td><td>subwindow, dock, garis wallpaper</td></tr>
+  <tr><td class="mono">DESKTOP_PANEL</td><td class="mono"><span class="sw" style="background:#15212f"></span>#15212f</td><td>isi subwindow Files / Assistant</td></tr>
+  <tr><td class="mono">DESKTOP_SIDEBAR</td><td class="mono"><span class="sw" style="background:#1b2a3b"></span>#1b2a3b</td><td>title bar subwindow</td></tr>
+  <tr><td class="mono">DESKTOP_DOCK</td><td class="mono"><span class="sw" style="background:#25384d"></span>#25384d</td><td>hover tombol, badge tangan</td></tr>
+  <tr><td class="mono">PRI</td><td class="mono"><span class="sw" style="background:#4b9fff"></span>#4b9fff</td><td>aksen utama, state HUD, bar CPU</td></tr>
+  <tr><td class="mono">PRI_DIM</td><td class="mono"><span class="sw" style="background:#3675bd"></span>#3675bd</td><td>judul seksi NAVIGATION/SYSTEM, “By FatihMakes”</td></tr>
+  <tr><td class="mono">ACC2</td><td class="mono"><span class="sw" style="background:#ffcc00"></span>#ffcc00</td><td>peringatan, bar MEM</td></tr>
+  <tr><td class="mono">GREEN</td><td class="mono"><span class="sw" style="background:#00ff88"></span>#00ff88</td><td>selesai/ok, bar NET</td></tr>
+  <tr><td class="mono">ACC</td><td class="mono"><span class="sw" style="background:#ff6b00"></span>#ff6b00</td><td>aksen oranye, bar GPU</td></tr>
+  <tr><td class="mono">RED / MUTED_C</td><td class="mono"><span class="sw" style="background:#ff3355"></span>#ff3355 · <span class="sw" style="background:#ff3366"></span>#ff3366</td><td>gagal, keadaan mute, bar TMP</td></tr>
+  <tr><td class="mono">DESKTOP_TEXT</td><td class="mono"><span class="sw" style="background:#eef5fd"></span>#eef5fd</td><td>teks di atas wallpaper</td></tr>
+  <tr><td class="mono">DESKTOP_MUTED</td><td class="mono"><span class="sw" style="background:#aabbd0"></span>#aabbd0</td><td>teks sekunder, tanggal</td></tr>
+  <tr><td class="mono">#6ed8ff</td><td class="mono"><span class="sw" style="background:#6ed8ff"></span>#6ed8ff</td><td>mark ◉ di menu bar (literal, bukan token)</td></tr>
+  <tr><td class="mono">#83e4b6 / #326b66</td><td class="mono"><span class="sw" style="background:#83e4b6"></span>#83e4b6 · <span class="sw" style="background:#326b66"></span>#326b66</td><td>badge tangan (literal)</td></tr>
+  <tr><td class="mono">DOCK_BLUE</td><td class="mono"><span class="sw" style="background:#268ce3"></span>#268ce3</td><td>dasar gradasi ikon dock (dan #287eac, #646e9a, #485e73, #417f85, #8b746a)</td></tr>
+</table>
+
+<!-- ===================== GEOMETRY ===================== -->
+<h2>Geometri (angka, bukan taksiran)</h2>
+<table>
+  <tr><th class="mono">Elemen</th><th class="mono">Nilai</th><th>Sumber</th></tr>
+  <tr><td>Menu bar</td><td class="mono">tinggi 30</td><td class="mono">build_menu_bar → setFixedHeight(30)</td></tr>
+  <tr><td>Footer</td><td class="mono">tinggi 22, C.DARK</td><td class="mono">_build_footer → setFixedHeight(22)</td></tr>
+  <tr><td>Navigasi</td><td class="mono">lebar tetap 170; tombol 32; spacing 5; margin 10/14/10/10</td><td class="mono">build_navigation, window._LEFT_W</td></tr>
+  <tr><td>MetricBar</td><td class="mono">tinggi 38 per bar</td><td class="mono">ui/metric_bar.py</td></tr>
+  <tr><td>Subwindow navigasi</td><td class="mono">resize(240, clamp(H−40, 350…700))</td><td class="mono">desktop_workspace.py:842</td></tr>
+  <tr><td>Files (wide ≥1100)</td><td class="mono">x = 2%W, y = 7%H, w = 37%W, h = 36%H</td><td class="mono">initial_window_geometry</td></tr>
+  <tr><td>Assistant (wide)</td><td class="mono">x = 63%W, y = 10%H, w = 35%W, h = 80%H</td><td class="mono">initial_window_geometry</td></tr>
+  <tr><td>Lantai panel</td><td class="mono">min(H−90)</td><td class="mono">floor = height − 90</td></tr>
+  <tr><td>Panggung emblem</td><td class="mono">lebar min(320, celah−20); top 18%H; tinggi min(350, H−top−90)</td><td class="mono">position_emblem</td></tr>
+  <tr><td>Lingkaran emblem</td><td class="mono">diameter min(w−20, h−80, 168); cincin dalam −14</td><td class="mono">WorkspaceEmblem.paintEvent</td></tr>
+  <tr><td>Dock</td><td class="mono">tinggi 76, y = H−86, lebar min(1020, max(500, sizeHint+16), W−20), tengah</td><td class="mono">position_dock</td></tr>
+  <tr><td>Tombol dock</td><td class="mono">min 64 lebar; ikon 44; radius 15 pada dock, 8 pada tombol</td><td class="mono">desktop_workspace.py:801+</td></tr>
+  <tr><td>Breakpoint layout</td><td class="mono">lebar ≥ 1100 → wide; tinggi ≥ 650 untuk editor otomatis</td><td class="mono">initial_window_geometry / open_initial_editor</td></tr>
+  <tr><td>Dock: 8 tombol</td><td class="mono">Chat · Files · Browser · Editors▾ · Media▾ · MT5▾ · Apps▾ · Settings</td><td class="mono">buttons tuple</td></tr>
+</table>
+
+<!-- ===================== DELTA ===================== -->
+<h2>Selisih PNG vs kode (audit)</h2>
+<table>
+  <tr><th>Elemen di PNG</th><th>Kenyataan di kode</th><th class="mono">Status</th></tr>
+  <tr><td>Sidebar kiri 170 px, 6 tombol 32 px</td><td>Ada dan ukurannya benar, tapi berada di subwindow <code>navigation</code> yang <code>.hide()</code> saat start</td><td class="warn">tersembunyi</td></tr>
+  <tr><td>Strip bawah “By FatihMakes”</td><td>Dibangun tetapi <code>.hide()</code>; teks aslinya <code>[F4] Mute · [F11] Fullscreen</code></td><td class="bad">tidak tampil</td></tr>
+  <tr><td>Teks “STANDBY” di bawah emblem</td><td>Yang digambar adalah <b>nama asisten</b> (Arial 17 bold) di bawah lingkaran 168 px</td><td class="bad">salah label</td></tr>
+  <tr><td>Kartu tengah bergambar kepala</td><td>Di mode HUD <code>face</code>, proyeksi avatar menimpa emblem dan menulis nama + tagline + label state</td><td class="warn">dua kemungkinan</td></tr>
+  <tr><td>Panel Files pendek, Assistant tinggi</td><td>Benar secara proporsi; angka pastinya 531×313 dan 502×693 pada 1440×900</td><td class="ok">sesuai</td></tr>
+  <tr><td>Dock 7 ikon</td><td>Ada <b>8</b> tombol; empat di antaranya membuka menu, bukan langsung</td><td class="bad">jumlah salah</td></tr>
+  <tr><td>Badge “HAND”</td><td>Benar: <code>_hand_badge</code> dengan teks <code>● Hand control on</code> / <code>● Camera starting</code>, hanya muncul saat controller tangan aktif</td><td class="ok">sesuai</td></tr>
+  <tr><td>Jam <code>14:32:07</code> + tanggal</td><td>Benar: <code>%H:%M:%S</code> dan <code>%a %d %b %Y</code></td><td class="ok">sesuai</td></tr>
+  <tr><td>Menu File/Edit/View/Workspace/Help</td><td>Aslinya File / Edit / View / <b>Window</b> / Help</td><td class="warn">satu label salah</td></tr>
+</table>
+
+<!-- ===================== AMBIENT ===================== -->
+<h2>Bagian B — Keadaan ambient (permukaan yang sesungguhnya dari mode ini)</h2>
+
+<div class="note">
+  <b>Mode yang ada di kode sekarang:</b> <code>UI_MODES = ("hud", "ambient", "bubble")</code>
+  (<span class="mono">memory/config_manager.py:357</span>), dan <b>default-nya <code>"hud"</code></b>.
+  Jadi yang berjalan hari ini adalah jendela penuh layar. Bagian A menggambar keadaan
+  <i>hud</i>; bagian ini menggambar keadaan <i>ambient</i> yang menjadi tujuan desain.
+</div>
+
+<p class="cap">Artboard 3 — desktop pengguna saat ambient: tidak ada jendela JARVIS sama sekali</p>
+<div class="artboard">
+<svg viewBox="0 0 1600 900" width="1600" height="900" xmlns="http://www.w3.org/2000/svg"
+     font-family="Arial, Helvetica, sans-serif">
+  <defs>
+    <linearGradient id="userdesk" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2b3a4d"/><stop offset="1" stop-color="#16202b"/>
+    </linearGradient>
+  </defs>
+
+  <!-- the user's own desktop, deliberately neutral -->
+  <rect x="40" y="40" width="1520" height="700" rx="4" fill="url(#userdesk)"/>
+  <g fill="#8fa3b8" font-family="Consolas, monospace" font-size="11">
+    <text x="70" y="76">desktop pengguna — bukan milik JARVIS</text>
+  </g>
+  <g stroke="#ffffff" stroke-opacity="0.07">
+    <path d="M70 120 H1530 M70 200 H1530 M70 280 H1530 M70 360 H1530"/>
+  </g>
+  <rect x="120" y="140" width="420" height="300" rx="4" fill="#1b2531" stroke="#ffffff" stroke-opacity="0.1"/>
+  <text x="140" y="166" fill="#8fa3b8" font-size="11" font-family="Consolas, monospace">aplikasi lain milik pengguna</text>
+  <rect x="700" y="180" width="560" height="420" rx="4" fill="#1b2531" stroke="#ffffff" stroke-opacity="0.1"/>
+  <text x="720" y="206" fill="#8fa3b8" font-size="11" font-family="Consolas, monospace">tetap bisa dipakai — tidak tertutup apa pun</text>
+
+  <!-- taskbar -->
+  <rect x="40" y="744" width="1520" height="36" fill="#0e141b"/>
+  <g fill="#4d5c6d">
+    <rect x="56" y="752" width="20" height="20" rx="3"/>
+    <rect x="86" y="752" width="20" height="20" rx="3"/>
+    <rect x="116" y="752" width="20" height="20" rx="3"/>
+  </g>
+  <text x="980" y="766" fill="#8fa3b8" font-size="10" font-family="Consolas, monospace">area notifikasi →</text>
+
+  <!-- JARVIS tray icon: the ONE thing it adds -->
+  <circle cx="1500" cy="762" r="12" fill="none" stroke="#6ed8ff" stroke-width="1.5" stroke-dasharray="2 2" opacity="0.5"/>
+  <g>
+    <circle cx="1500" cy="762" r="7" fill="#0b1725" stroke="#6ed8ff" stroke-width="2"/>
+    <circle cx="1500" cy="762" r="2.4" fill="#6ed8ff"/>
+  </g>
+
+  <!-- annotation: the icon is the whole surface -->
+  <g stroke="#a8aeba" fill="none" stroke-width="1">
+    <path d="M1500 726 V742"/><path d="M1494 726 H1506"/>
+    <path d="M1500 782 V806 H1230"/>
+    <path d="M1230 800 V812"/>
+  </g>
+  <text x="1215" y="824" fill="#5a6070" font-size="11" font-family="Consolas, monospace" text-anchor="end">satu-satunya penanda: ikon tray 22 px + tooltip</text>
+
+  <!-- tooltip drawing, as the OS renders it -->
+  <g>
+    <rect x="1180" y="640" width="300" height="34" rx="5" fill="#f7f8fa" stroke="#b9bec8"/>
+    <path d="M1470 674 l6 8 l6 -8 z" fill="#f7f8fa" stroke="#b9bec8"/>
+    <text x="1194" y="662" font-size="12" fill="#1b1f27" font-family="Arial">JARVIS — LISTENING</text>
+  </g>
+  <g stroke="#a8aeba" fill="none" stroke-width="1">
+    <path d="M1330 640 V600 H1230"/>
+  </g>
+  <text x="1224" y="596" fill="#5a6070" font-size="11" font-family="Consolas, monospace" text-anchor="end">
+    tooltip: "JARVIS — {state}" — ui/tray.py:_tooltip
+  </text>
+
+  <!-- banner notification, as the OS renders it -->
+  <g>
+    <rect x="1120" y="440" width="380" height="92" rx="8" fill="#1d1d1f" stroke="#3b5269"/>
+    <rect x="1120" y="440" width="4" height="92" rx="2" fill="#4b9fff"/>
+    <text x="1140" y="466" font-size="11" font-weight="700" letter-spacing="0.6" fill="#eef5fd">J.A.R.V.I.S</text>
+    <text x="1140" y="488" font-size="11" fill="#aabbd0">Briefing pagi sudah siap — 3 agenda, 2 pengingat.</text>
+    <text x="1140" y="512" font-size="9.5" fill="#7f8ea3">muncul hanya saat jendela tidak terlihat · sekali per giliran · jeda 45 s</text>
+  </g>
+  <g stroke="#a8aeba" fill="none" stroke-width="1">
+    <path d="M1120 486 H1050"/>
+  </g>
+  <text x="1044" y="470" fill="#5a6070" font-size="11" font-family="Consolas, monospace" text-anchor="end">
+    core/notify.py — judul "J.A.R.V.I.S"
+  </text>
+  <text x="1044" y="486" fill="#5a6070" font-size="11" font-family="Consolas, monospace" text-anchor="end">
+    ANNOUNCE_ON=("LISTENING",) · COOLDOWN_S=45
+  </text>
+  <text x="1044" y="502" fill="#5a6070" font-size="11" font-family="Consolas, monospace" text-anchor="end">
+    teks isi = jawaban asli, bukan contoh
+  </text>
+</svg>
+</div>
+
+<p class="cap">Artboard 4 — varian <span class="mono">bubble</span>: wajah 260 px di sudut kanan bawah, margin 24 px dari area kerja (di luar taskbar)</p>
+<div class="artboard">
+<svg viewBox="0 0 1600 420" width="1600" height="420" xmlns="http://www.w3.org/2000/svg"
+     font-family="Arial, Helvetica, sans-serif">
+  <rect x="40" y="40" width="1520" height="300" rx="4" fill="#1b2531" stroke="#ffffff" stroke-opacity="0.1"/>
+  <text x="70" y="76" fill="#8fa3b8" font-size="11" font-family="Consolas, monospace">area kerja (availableGeometry — sudah dikurangi taskbar)</text>
+
+  <!-- the bubble, 260x260, margin 24 -->
+  <g>
+    <rect x="1276" y="56" width="260" height="260" rx="6" fill="none" stroke="#4b9fff" stroke-dasharray="4 4" opacity="0.5"/>
+    <circle cx="1406" cy="176" r="70" fill="none" stroke="#70c8ff" stroke-width="2" opacity="0.9"/>
+    <circle cx="1406" cy="176" r="62" fill="none" stroke="#4b95dd" opacity="0.7"/>
+    <ellipse cx="1406" cy="168" rx="26" ry="32" fill="#4b9fff" opacity="0.35"/>
+    <path d="M1360 216 q46 -34 92 0" stroke="#4b9fff" stroke-width="2" fill="none" opacity="0.45"/>
+    <text x="1406" y="300" font-size="10" fill="#aabbd0" text-anchor="middle" font-family="Consolas, monospace">260 × 260</text>
+  </g>
+
+  <g stroke="#a8aeba" fill="none" stroke-width="1">
+    <path d="M1536 56 V316"/><path d="M1530 56 H1542 M1530 316 H1542"/>
+    <path d="M1276 26 V40"/><path d="M1536 26 H1540"/>
+    <path d="M1276 340 V360 H1120"/>
+  </g>
+  <text x="1546" y="190" fill="#5a6070" font-size="11" font-family="Consolas, monospace">24</text>
+  <text x="1320" y="22" fill="#5a6070" font-size="11" font-family="Consolas, monospace">
+    x = kanan − 260 − 24 ; y = bawah − 260 − 24 (face_bubble._place)
+  </text>
+  <text x="1114" y="386" fill="#5a6070" font-size="11" font-family="Consolas, monospace" text-anchor="end">
+    selalu di atas (always-on-top) · bisa diseret · klik dua kali = panggil antarmuka · DEFAULT_SIZE = 260
+  </text>
+  <g stroke="#a8aeba" fill="none" stroke-width="1">
+    <path d="M1276 176 H1150"/>
+  </g>
+  <text x="1144" y="172" fill="#5a6070" font-size="11" font-family="Consolas, monospace" text-anchor="end">
+    saat jendela dipanggil, wajah disembunyikan (summon → _hide_bubble)
+  </text>
+</svg>
+</div>
+
+<p class="cap">Artboard 5 — bubble 260 px: wajah di dalamnya, kiri hari ini, kanan setelah usulan A5</p>
+<div class="artboard">
+<svg viewBox="0 0 900 420" width="900" height="420" xmlns="http://www.w3.org/2000/svg"
+     font-family="Arial, Helvetica, sans-serif">
+  <defs>
+    <radialGradient id="bg" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#0b1725"/><stop offset="1" stop-color="#091522"/>
+    </radialGradient>
+  </defs>
+  <g>
+    <rect x="55" y="45" width="260" height="260" rx="6" fill="url(#bg)" stroke="#3b5269"/>
+    <circle cx="190" cy="190" r="86" fill="#0d1e31" stroke="#4b9fff" opacity="0.95"/>
+    <g>
+<path d="M295.05 190.00 A105.05 105.05 0 0 0 140.68 97.25" stroke="#ffcc00" stroke-width="2.0" opacity="0.75" fill="none"/>
+<path d="M84.95 190.00 A105.05 105.05 0 0 0 239.32 282.75" stroke="#ffcc00" stroke-width="2.0" opacity="0.75" fill="none"/>
+<path d="M282.95 190.00 A92.95 92.95 0 0 0 202.94 97.95" stroke="#4b9fff" stroke-width="1.3" opacity="0.38" fill="none"/>
+<path d="M143.53 109.50 A92.95 92.95 0 0 0 103.82 224.82" stroke="#4b9fff" stroke-width="1.3" opacity="0.38" fill="none"/>
+<path d="M143.52 270.50 A92.95 92.95 0 0 0 263.25 247.23" stroke="#4b9fff" stroke-width="1.3" opacity="0.38" fill="none"/>
+<path d="M273.60 190.00 A83.60 83.60 0 0 0 117.60 148.20" stroke="#ffcc00" stroke-width="1.6" opacity="0.45" fill="none"/>
+<path d="M262.60 190.00 A72.60 72.60 0 0 0 221.83 124.75" stroke="#4b9fff" stroke-width="1.1" opacity="0.26" fill="none"/>
+<path d="M190.00 117.40 A72.60 72.60 0 0 0 124.75 158.17" stroke="#4b9fff" stroke-width="1.1" opacity="0.26" fill="none"/>
+<path d="M117.40 190.00 A72.60 72.60 0 0 0 158.17 255.25" stroke="#4b9fff" stroke-width="1.1" opacity="0.26" fill="none"/>
+<path d="M190.00 262.60 A72.60 72.60 0 0 0 255.25 221.83" stroke="#4b9fff" stroke-width="1.1" opacity="0.26" fill="none"/>
+<path d="M249.95 190.00 A59.95 59.95 0 0 0 153.09 142.76" stroke="#4b9fff" stroke-width="1.2" opacity="0.3" fill="none"/>
+<path d="M130.05 190.00 A59.95 59.95 0 0 0 226.91 237.24" stroke="#4b9fff" stroke-width="1.2" opacity="0.3" fill="none"/>
+    </g>
+    <text x="185" y="330" font-size="11" fill="#b3261e" text-anchor="middle" font-family="Consolas, monospace">HARI INI — cincin 2/3/1/4/2 busur</text>
+    <text x="185" y="348" font-size="10" fill="#5a6070" text-anchor="middle" font-family="Consolas, monospace">tiga dari lima baris tidak 180-mirror simetris</text>
+  </g>
+  <g>
+    <rect x="505" y="45" width="260" height="260" rx="6" fill="url(#bg)" stroke="#3b5269"/>
+    <circle cx="640" cy="190" r="86" fill="#0d1e31" stroke="#4b9fff" opacity="0.95"/>
+    <g>
+<path d="M745.05 190.00 A105.05 105.05 0 0 0 590.68 97.25" stroke="#ffcc00" stroke-width="2.0" opacity="0.75" fill="none"/>
+<path d="M534.95 190.00 A105.05 105.05 0 0 0 689.32 282.75" stroke="#ffcc00" stroke-width="2.0" opacity="0.75" fill="none"/>
+<path d="M732.95 190.00 A92.95 92.95 0 0 0 652.94 97.95" stroke="#4b9fff" stroke-width="1.3" opacity="0.38" fill="none"/>
+<path d="M640.00 97.05 A92.95 92.95 0 0 0 547.95 177.06" stroke="#4b9fff" stroke-width="1.3" opacity="0.38" fill="none"/>
+<path d="M547.05 190.00 A92.95 92.95 0 0 0 627.06 282.05" stroke="#4b9fff" stroke-width="1.3" opacity="0.38" fill="none"/>
+<path d="M640.00 282.95 A92.95 92.95 0 0 0 732.05 202.94" stroke="#4b9fff" stroke-width="1.3" opacity="0.38" fill="none"/>
+<path d="M723.60 190.00 A83.60 83.60 0 0 0 567.60 148.20" stroke="#ffcc00" stroke-width="1.6" opacity="0.45" fill="none"/>
+<path d="M556.40 190.00 A83.60 83.60 0 0 0 712.40 231.80" stroke="#ffcc00" stroke-width="1.6" opacity="0.45" fill="none"/>
+<path d="M712.60 190.00 A72.60 72.60 0 0 0 671.83 124.75" stroke="#4b9fff" stroke-width="1.1" opacity="0.26" fill="none"/>
+<path d="M640.00 117.40 A72.60 72.60 0 0 0 574.75 158.17" stroke="#4b9fff" stroke-width="1.1" opacity="0.26" fill="none"/>
+<path d="M567.40 190.00 A72.60 72.60 0 0 0 608.17 255.25" stroke="#4b9fff" stroke-width="1.1" opacity="0.26" fill="none"/>
+<path d="M640.00 262.60 A72.60 72.60 0 0 0 705.25 221.83" stroke="#4b9fff" stroke-width="1.1" opacity="0.26" fill="none"/>
+<path d="M699.95 190.00 A59.95 59.95 0 0 0 603.09 142.76" stroke="#4b9fff" stroke-width="1.2" opacity="0.3" fill="none"/>
+<path d="M580.05 190.00 A59.95 59.95 0 0 0 676.91 237.24" stroke="#4b9fff" stroke-width="1.2" opacity="0.3" fill="none"/>
+    </g>
+    <text x="635" y="330" font-size="11" fill="#0a7a45" text-anchor="middle" font-family="Consolas, monospace">USULAN A5 — 2/4/2/4/2 busur</text>
+    <text x="635" y="348" font-size="10" fill="#5a6070" text-anchor="middle" font-family="Consolas, monospace">setiap baris simetris terhadap pusat; rotasi tetap hidup</text>
+  </g>
+  <path d="M415 60 V300" stroke="#c9ccd4" stroke-dasharray="4 4"/>
+</svg>
+</div>
+<p class="lede" style="margin-top:-4px">
+  Angka dari <span class="mono">ui/hud_canvas.py:431-435</span>. Yang menentukan simetri adalah
+  <b>jumlah busur</b> per baris, bukan sudut mulainya: <code>count</code> genap berarti tiap busur
+  punya pasangan tepat di seberangnya. Busur <i>tidak</i> dibuat diam — ia tetap berputar; pada HUD
+  penuh ini justru disengaja (geraknya bagian dari karakter), jadi usulan A5 sebaiknya
+  <b>hanya berlaku untuk bubble</b>, bukan untuk HUD.
+</p>
+
+<h2>Bagian B — tabel permukaan ambient</h2>
+<table>
+  <tr><th>Permukaan</th><th class="mono">Nilai / perilaku asli</th><th>Sumber</th></tr>
+  <tr><td>Ikon tray</td><td class="mono">22 px, digambar on-demand ke <code>icon_path()</code></td><td class="mono">ui/tray.py, ui/icons.py</td></tr>
+  <tr><td>Tooltip</td><td class="mono">"JARVIS — {STATE}"</td><td class="mono">ui/tray.py:_tooltip</td></tr>
+  <tr><td>Menu tray (6 item)</td><td class="mono">Show JARVIS · Wake up · Go to sleep · Settings · Start with this computer (checkbox) · Quit</td><td class="mono">MENU_ITEMS, CHECKABLE_ITEMS</td></tr>
+  <tr><td>Notifikasi</td><td class="mono">judul "J.A.R.V.I.S"; hanya pada LISTENING setelah THINKING/SPEAKING; diam bila jendela terlihat; jeda 45 s</td><td class="mono">core/notify.py</td></tr>
+  <tr><td>Wajah melayang</td><td class="mono">260×260; margin 24 dari availableGeometry; selalu di atas; seret; klik-2 panggil</td><td class="mono">ui/face_bubble.py</td></tr>
+  <tr><td>Chord panggil</td><td class="mono">Ctrl+Shift+J (global; jatuh ke window-scope di Wayland dan dilaporkan)</td><td class="mono">SUMMON_CHORD, start_summon_hotkey</td></tr>
+  <tr><td>Saat dipanggil</td><td class="mono">showMaximized() — <b>bukan</b> jendela kecil</td><td class="mono">ui/lifecycle.py:summon</td></tr>
+  <tr><td>Pengecualian wajib</td><td class="mono">setup API key dan banner konfirmasi selalu memunculkan jendela</td><td class="mono">start_interface:194, blocking surfaces</td></tr>
+  <tr><td>Tanpa area notifikasi</td><td class="mono">degradasi ke jendela + catat alasannya — tidak pernah jadi proses hantu</td><td class="mono">start_tray → False</td></tr>
+</table>
+
+<div class="note bad">
+  <b>Satu kontradiksi desain yang harus diputuskan, bukan digambar.</b>
+  Kalau JARVIS hanya ambient, maka <code>summon()</code> yang memakai <code>showMaximized()</code>
+  berarti setiap panggilan menutupi seluruh desktop — persis yang ingin dihindari mode ambient.
+  Sampai itu diubah, ambient hanyalah “hud yang disembunyikan”. Artboard 1 tetap menggambar
+  jendela penuh; <b>Artboard 1 = keadaan saat dipanggil</b>, bukan keadaan saat dibuka.
+</div>
+
+<h2>Usulan ambient — belum ada di kode</h2>
+<ul>
+  <li><b>A1 — Jadikan <code>"ambient"</code> satu-satunya mode.</b> <code>hud</code> dan <code>bubble</code>
+    dihapus dari <code>UI_MODES</code>; tombol siklus mode di drawer diganti satu baris status.
+    Menyentuh 8 berkas tes, i18n <code>ui.iface.*</code>, tray, serta <code>--hidden</code>/<code>--show</code>.</li>
+  <li><b>A2 — Panggilan memakai jendela tersimpan, bukan layar penuh.</b> Ganti
+    <code>showMaximized()</code> menjadi geometri tersimpan (default 1200×800 di tengah). Inilah yang
+    membuat ambient terasa berbeda, bukan sekadar “disembunyikan”.</li>
+  <li><b>A3 — DITOLAK: wajah melayang tetap ada.</b> Keputusan Anda: bubble dipertahankan.
+    Lihat A5–A7 di bawah.</li>
+  <li><b>A5 — Cincin di dalam bubble dibuat simetris.</b> Hanya jumlah busur yang berubah
+    (2/3/1/4/2 → 2/4/2/4/2), bukan warna atau radius, dan hanya untuk bubble — HUD penuh tetap
+    bergerak bebas karena geraknya bagian dari karakter. Lihat Artboard 5.</li>
+  <li><b>A6 — Kembalikan bubble ke tengah bila dilepas dekat tengah.</b> Saat ini
+    <code>_on_release</code> hanya membuang status seret, jadi bubble bisa berakhir 40 px dari
+    tengah dan terlihat “mau simetris tapi tidak”. Usul: jepret ke tengah layar bila
+    |dx| &lt; 24 px, dan jepret ke margin 24 px bila lebih dekat (batas yang sama dengan
+    <code>_place</code>). Menghormati pilihan pengguna, tidak memaksa.</li>
+  <li><b>A7 — Ikon tray dengan dua garis simetris.</b> Sekarang ia huruf ‘J’ yang asimetris;
+    usul: dua kurung siku yang saling mencerminkan. Ini satu-satunya usulan yang menambah
+    aset visual baru, jadi paling akhir.</li>
+  <li><b>A4 — Tambahkan status tray yang lebih terbaca.</b> Ikon berubah warna per keadaan
+    (idle/listening/muted), karena tooltip butuh hover. Digambar di <code>ui/icons.py</code>, bukan
+    aset baru.</li>
+</ul>
+
+<!-- ===================== PROPOSALS ===================== -->
+<h2>Usulan — belum ada di kode, jangan digambar sebagai fakta</h2>
+<ul>
+  <li><b>U1 — JANGAN dikerjakan selama ambient-only.</b> Mengangkat panel navigasi 170 px
+    menjadi kolom tetap berarti menggambar kolom yang selalu terlihat di dalam jendela —
+    bertentangan dengan A1/A2. Disimpan di sini hanya karena angkanya sudah terverifikasi,
+    untuk dipakai kalau ambient-only dibatalkan.</li>
+  <li><b>U1b — Promosikan navigasi jadi kolom tetap 170 px.</b> Ini satu-satunya perubahan yang mengubah
+    perilaku start. Konsekuensi: subwindow <code>navigation</code> dihapus, <code>_left_panel</code> masuk ke
+    <code>body</code> sebelum workspace, dan <code>tests/test_window_smoke.py:962</code>,
+    <code>core/workspace_control.py</code>, <code>core/gesture_actions.py</code>, serta
+    <code>ui/workspace_commands.py</code> harus ikut diubah karena semuanya menyebut target <code>navigation</code>.</li>
+  <li><b>U2 — Tampilkan footer 22 px</b>, atau hapus kodenya. Sekarang ia dibangun lalu disembunyikan: biaya
+    tanpa manfaat.</li>
+  <li><b>U3 — Emblem diberi caption nama asisten</b> (bukan “STANDBY”), supaya satu sumber kebenaran dengan
+    <code>WorkspaceAvatar</code>.</li>
+  <li><b>U4 — Rapikan lebar subwindow navigasi</b>: 240 px diminta tetapi isinya <code>setFixedWidth(170)</code>,
+    sehingga 70 px menjadi ruang mati (lihat Artboard 2).</li>
+</ul>
+<p class="lede" style="margin-top:18px">
+  Lembar ini berhenti di taraf konsep. Tidak ada perubahan kode pada commit ini.
+  Dengan arah <b>ambient-only</b>, yang relevan adalah <b>A1–A4</b>; U2–U4 hanya berlaku di dalam
+  jendela yang dipanggil, dan U1 ditangguhkan.
+  Urutan yang disarankan: <b>A2 → A5 → A6 → A4 → A1</b> — A2 lebih dulu karena tanpanya “ambient”
+  masih berarti layar penuh, dan A2 belum menyentuh daftar mode sama sekali.
+  A3 dicabut: bubble tetap ada.
+</p>
+
+</div>
+</body>
+</html>
