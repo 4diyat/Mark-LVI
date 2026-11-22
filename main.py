@@ -114,6 +114,23 @@ SELF_GATED_ACTIONS = frozenset({"computer_settings", "code_helper", "dev_agent",
 def action_gate_self_gated(name: str) -> bool:
     """Whether this action is responsible for its own confirmation."""
     return name in SELF_GATED_ACTIONS
+
+
+def _presence_bound() -> str:
+    """Bind `core.presence_mode` to the config file and return the saved mode.
+
+    Small and module-level rather than inline in `run()`: the same four lines
+    are needed at startup and by the tray's menu, and a second copy is how the
+    read side and the write side start disagreeing.
+    """
+    from core import presence_mode
+    from memory.config_manager import get_presence_mode, save_presence_mode
+
+    try:
+        presence_mode.bind(read=get_presence_mode, write=save_presence_mode)
+    except Exception as e:                          # noqa: BLE001
+        print(f"[Presence] could not bind the saved mode: {type(e).__name__}: {e}")
+    return presence_mode.current()
 from core.echo                 import EchoGuard
 from core.viseme               import VisemeStream
 from core.wake_word            import (
@@ -2666,6 +2683,15 @@ class JarvisLive:
             log  = self.ui.write_log,
         )
         set_trim_notifier(self.ui.write_log)
+
+        # ── The presence mode, read from the file ────────────────────────────
+        # `core.presence_mode` holds Aktif / Fokus / Senyap for the scheduler
+        # thread, which has no widget to ask. Without this bind it answers
+        # "active" forever: the tray wrote the setting, the orb dimmed, and a
+        # restart silently forgot both. Bound here, next to the confirm gate and
+        # for the same reason — one wiring point, not one per caller.
+        _presence_bound()
+        self.ui.apply_presence(_presence_bound())
 
         # Tell the device picker the exact rates the streams open at, from the
         # constants that actually open them — so it can never list a device that

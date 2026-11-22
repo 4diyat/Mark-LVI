@@ -289,10 +289,14 @@ def start_tray(shell: "JarvisUI") -> bool:
         "show": lambda: summon(shell),
         "wake": lambda: request_wake(shell),
         "sleep": lambda: request_sleep(shell),
+        # One item that walks Aktif → Fokus → Senyap. The label is asked for
+        # after the mode changes, so the menu never shows the previous one.
+        "presence": lambda: cycle_presence_mode(shell),
         "settings": lambda: summon_settings(shell),
         "autostart": lambda: toggle_autostart(shell),
         "quit": lambda: quit_app(shell),
-    }, app=shell._app, checked=lambda key: autostart_state()["enabled"])
+    }, app=shell._app, checked=lambda key: autostart_state()["enabled"],
+       label=lambda key: presence_label(_current_presence()))
     if not tray.start():
         # Reported, not swallowed: "the mode you asked for could not be given"
         # is exactly the kind of thing a log is for.
@@ -437,6 +441,40 @@ def submit_from_bar(shell: "JarvisUI", text: str) -> None:
         shell._win._submit_text(text)
     except Exception as e:                          # noqa: BLE001
         note(shell, f"the command bar could not send: {type(e).__name__}: {e}")
+
+
+def cycle_presence_mode(shell: "JarvisUI") -> str:
+    """Aktif → Fokus → Senyap → Aktif. Returns the mode now in force.
+
+    A single cycling command rather than three menu items: the tray menu is
+    already six entries and the three modes are one decision ("how loud is it"),
+    so one item that walks them is shorter to read and impossible to choose
+    wrongly. The label carries the current mode; see `presence_label()`.
+    """
+    from core import presence_mode
+
+    order = presence_mode.MODES
+    current = presence_mode.current()
+    index = order.index(current) if current in order else 0
+    mode = order[(index + 1) % len(order)]
+    apply_presence_mode(shell, mode)
+    return mode
+
+
+def _current_presence() -> str:
+    """The mode in force, from the one place that holds it."""
+    from core import presence_mode
+
+    return presence_mode.current()
+
+
+def presence_label(mode: str) -> str:
+    """The tray item's text for a mode. Indonesian, like the rest of the UI."""
+    return {
+        "active": "Aktif — boleh menyela",
+        "focus": "Fokus — saran ditahan",
+        "quiet": "Senyap — orb meredup",
+    }.get(str(mode or "").lower(), "Aktif — boleh menyela")
 
 
 def apply_presence_mode(shell: "JarvisUI", mode: str) -> bool:
@@ -843,6 +881,36 @@ def needs_attention(shell: "JarvisUI", why: str) -> bool:
         note(shell, f"The interface opened because {why}. "
                     "Press Ctrl+Shift+J or use the tray to put it away again.")
     return visible
+
+
+def apply_state_everywhere(shell: "JarvisUI", state: str) -> None:
+    """Mirror one state word onto every surface that shows it.
+
+    THE TOOLTIP IS THE ONLY STATUS READOUT IN AMBIENT MODE.
+        With no window, "is it listening?" has exactly one answer the user can
+        see without summoning the interface. Cheap: one string assignment and
+        one setToolTip per transition, and this runs on state changes, not per
+        frame.
+
+    THE BUBBLE IS THE SECOND. In bubble mode it is the only surface on screen,
+    and a face that keeps breathing while the assistant is asleep is a lie told
+    in the most visible place.
+
+    `getattr` rather than `shell._tray`: the facade is built piecemeal in tests
+    and by plugins, and a status update must never be the thing that raises
+    because an attribute was not there. These are extra surfaces, not
+    preconditions.
+    """
+    tray = getattr(shell, "_tray", None)
+    if tray is not None:
+        tray.set_state(state)
+    bubble = getattr(shell, "_bubble", None)
+    if bubble is not None:
+        bubble.set_state(state)
+    # Desktop-notification policy for an answer that arrived while nobody was
+    # watching. Same reason it is not in window.py: it is a decision, and
+    # decisions belong with the rest of them.
+    announce_if_finished(shell, state)
 
 
 def announce_if_finished(shell: "JarvisUI", state: str) -> None:

@@ -39,10 +39,18 @@ from typing import Callable, Mapping
 #
 # "Show" is first because it is what a user clicking the icon most often wants.
 # "Quit" is last because it is the one item that must never be hit by accident.
+# `presence` sits between sleeping and settings: it answers the same kind of
+# question as "Go to sleep" (how much of the assistant is listening) but it is
+# a mode rather than a moment, so it belongs after the momentary items.
+#
+# ONE ITEM, THREE MODES. Three menu entries for Aktif / Fokus / Senyap would be
+# three chances to pick the wrong one and three labels to keep in step; a single
+# item that cycles them carries the current mode in its own label instead.
 MENU_ITEMS = (
     ("show", "Show JARVIS"),
     ("wake", "Wake up"),
     ("sleep", "Go to sleep"),
+    ("presence", "Aktif — boleh menyela"),
     ("settings", "Settings"),
     ("autostart", "Start with this computer"),
     ("quit", "Quit"),
@@ -54,6 +62,11 @@ MENU_ITEMS = (
 # guessing at one. The tray still decides nothing — the caller supplies
 # `checked` for these keys and gets the toggle back.
 CHECKABLE_ITEMS = frozenset({"autostart"})
+
+# Items whose label is rewritten after the menu is built, because it states a
+# value rather than naming an action. The tray itself still decides nothing:
+# the caller supplies the text, exactly as it supplies `checked`.
+DYNAMIC_ITEMS = frozenset({"presence"})
 
 
 def icon_path() -> Path:
@@ -80,8 +93,13 @@ class TrayIcon:
 
     def __init__(self, actions: Mapping[str, Callable[[], None]], app=None,
                  logger: Callable[[str], None] | None = None,
-                 checked: Callable[[str], bool] | None = None):
+                 checked: Callable[[str], bool] | None = None,
+                 label: Callable[[str], str] | None = None):
         self._actions = dict(actions)
+        # Asked once, while the menu is built, for every key in DYNAMIC_ITEMS.
+        # Same reason as `checked`: the answer is a value, not a constant, and
+        # a cached one is a menu that lies after the mode changes.
+        self._label = label
         # Asked once, while the menu is built, for every key in CHECKABLE_ITEMS.
         # A callable rather than a dict because the answer can change between
         # two builds of the menu, and the tray must not cache a stale tick.
@@ -170,6 +188,17 @@ class TrayIcon:
 
             menu = QMenu()
             for key, label in MENU_ITEMS:
+                # A dynamic item states a VALUE ("Aktif — boleh menyela"), so
+                # the constant in MENU_ITEMS is only the fallback for a caller
+                # that supplies no provider.
+                if key in DYNAMIC_ITEMS and self._label is not None:
+                    try:
+                        label = self._label(key) or label
+                    except Exception as e:          # noqa: BLE001
+                        # The menu is still usable with the fallback text; a
+                        # probe that throws must not cost the user the menu.
+                        self._note(f"label for {key!r} failed — "
+                                   f"{type(e).__name__}: {e}")
                 action = menu.addAction(label)
                 if key in CHECKABLE_ITEMS:
                     action.setCheckable(True)
@@ -248,6 +277,14 @@ class TrayIcon:
                 result = cb()
                 if action is not None and key in CHECKABLE_ITEMS and isinstance(result, bool):
                     action.setChecked(result)
+                if action is not None and key in DYNAMIC_ITEMS and self._label:
+                    # The callback just changed the value; the label has to say
+                    # so, or the menu shows the mode it had before the click.
+                    try:
+                        action.setText(self._label(key) or action.text())
+                    except Exception as e:          # noqa: BLE001
+                        self._note(f"relabelling {key!r} failed — "
+                                   f"{type(e).__name__}: {e}")
             except Exception as e:                  # noqa: BLE001
                 # A failing menu item must not take the icon down with it — the
                 # icon is how the user gets back to a working interface. Said

@@ -136,6 +136,35 @@ glow hilang, cincin jadi titik-titik) sekarang menjadi perilaku di
 `ui/orb_overlay.appearance()` dan diuji di `tests/test_orb_overlay.py` serta
 `tests/test_presence_wiring.py`.
 
+### Dari mana mode itu datang, dan ke mana perginya
+
+```
+baki: "Aktif / Fokus / Senyap"   (satu item, menelusuri tiga mode)
+        │  cycle_presence_mode()
+        ▼
+core.presence_mode.set_mode()  ──write──▶  config/api_keys.json
+        │                                      ("presence_mode")
+        ├─▶ ui.orb_overlay.set_mode()   orb meredup / menyala
+        └─▶ scheduler thread            offer() → show / hold / drop
+
+saat mulai: main.py  _presence_bound()
+        │  bind(read=get_presence_mode, write=save_presence_mode)
+        ▼
+   presence_mode.current()  ──▶  ui.apply_presence(mode)  ──▶  orb
+```
+
+Rantai ini sempat **putus dan semua tesnya hijau**: `apply_presence_mode` tidak
+pernah dipanggil, dan `presence_mode` tidak pernah di-`bind`, sehingga
+`current()` selalu menjawab `active`. Akibatnya pengaturan tersimpan, orb
+meredup sekali, lalu dilupakan saat restart. `tests/test_presence_chain.py`
+sekarang menguji rantainya, bukan potongannya — termasuk membaca `main.py`
+secara struktural untuk memastikan bind terjadi **sebelum** keputusan
+notifikasi pertama.
+
+Label item baki menyebut **mode**, bukan aksinya ("Fokus — saran ditahan"),
+dan dibaca ulang setelah setiap klik: menu yang masih menampilkan mode lama
+adalah bug yang sama dengan centang yang basi, satu baris lebih bawah.
+
 ---
 
 ## Anggaran harian saran
