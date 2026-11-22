@@ -242,11 +242,41 @@ class _Object:
     def sizeHint(self):
         return self
 
+    def setGeometry(self, *a, **k):
+        """Remember the rectangle, the way Qt's widget does.
+
+        WHY THIS IS STATE, AND WHY THE DEFAULT STAYED. `_RectF` above already
+        carries the lesson: a geometry that answers through `__getattr__` is a
+        lambda, not a number, and a test cannot tell a card at (24, 208) from
+        one at (0, 0). That is exactly how board 27's cards could be MISSING
+        from the page while a test "checked" their geometry.
+
+        Accepts `setGeometry(x, y, w, h)` and `setGeometry(QRect)`/`QRectF`.
+        Until a widget is given one, `width()`/`height()` keep the 980x700 that
+        other tests build against (`test_face_bubble` measures a window).
+        """
+        if len(a) == 1 and hasattr(a[0], "x"):
+            rect = a[0]
+            self._geom = (float(rect.x()), float(rect.y()),
+                          float(rect.width()), float(rect.height()))
+        else:
+            x, y, w, h = (tuple(a) + (0, 0, 0, 0))[:4]
+            self._geom = (float(x), float(y), float(w), float(h))
+
+    def geometry(self):
+        return self
+
+    def x(self):
+        return self._geom[0] if getattr(self, "_geom", None) else 0.0
+
+    def y(self):
+        return self._geom[1] if getattr(self, "_geom", None) else 0.0
+
     def width(self):
-        return 980
+        return self._geom[2] if getattr(self, "_geom", None) else 980
 
     def height(self):
-        return 700
+        return self._geom[3] if getattr(self, "_geom", None) else 700
 
     def document(self):
         # `QTextEdit.document()` returns a real object; the log viewer sets a

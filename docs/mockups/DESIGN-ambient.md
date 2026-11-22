@@ -153,6 +153,7 @@ stack-neutral dan berlaku apa adanya untuk implementasi Python.
 | Board 4: klik kiri → panel, klik kanan → menu cepat, drag menempel ke tepi | `ui/ambient_shell.py`, `ui/orb_snap.py` | `tests/test_orb_board4.py` |
 | Board 23: strip Fokus tanpa tenggat, tiga baris aksi sendiri, jeda penjadwalan yang tersimpan | `ui/tray_paint.py`, `ui/tray_panel_model.py`, `actions/proactive.py`, `ui/tray_panel_wiring.py` | `tests/test_focus_board23.py` |
 | Startup: setiap permukaan benar-benar dibangun saat aplikasi dijalankan | `main.py`, `ui/lifecycle.py` | `tests/test_startup_board7.py` |
+| Board 27: MODE TAMU dihapus, tombol hapus jujur, judul per halaman, kartu artboard | `ui/tray_pages.py`, `ui/tray_panel_model.py`, `ui/tray_panel_wiring.py` | `tests/test_privacy_board27.py` |
 | Command bar Ctrl+Space, Esc mengembalikan fokus | `ui/command_bar.py` | `tests/test_command_bar.py` |
 | Sambungan mode → orb, chord, dan baki | `ui/lifecycle.py`, `memory/config_manager.py` | `tests/test_presence_wiring.py` |
 
@@ -289,3 +290,36 @@ salinan yang berbeda perilaku.
   `start_*` tidak menangkap exception sendiri, dan mereka membuat objek Qt.
   Setiap permukaan sekarang punya pengamannya sendiri, dan kegagalannya dicatat
   dengan nama permukaannya.
+
+### Board 27 — Izin & Privasi
+
+- **MODE TAMU tidak digambar, dan itu keputusan, bukan kelalaian.** Artboard
+  menggambar switch "Sembunyikan memori & riwayat" yang bisa diklik; `set_guest`
+  hanya menulis "mode tamu belum ada" lalu mengembalikan False, dan paint
+  berikutnya mengembalikan switch ke posisi semula. Pemilik memilih **menghapus
+  section itu**, bukan menonaktifkannya: switch nonaktif tetap berjanji bahwa
+  fiturnya ada dan pengguna belum diizinkan. Itu berbeda dari `screen` dan
+  `microphone`, yang memang kemampuan nyata dan mesin yang memutuskan — dua itu
+  tetap digambar, nonaktif, dengan alasannya. Fungsi `set_guest` dihapus, bukan
+  dibiarkan sebagai no-op, dan ketiga kunci i18n-nya dihapus dari kedua bahasa.
+- **"Hapus semua data lokal" menjadi "Hapus audit log lokal".** Tombol itu selalu
+  hanya menghapus audit log: tidak menyentuh berkas riwayat percakapan, tidak
+  menyentuh API key, dan tidak bisa menjangkau apa pun yang sudah terkirim ke
+  model. Docstring-nya jujur sejak awal; labelnya tidak. Yang berubah labelnya —
+  perilakunya sudah benar, dan tesnya membuktikan keduanya.
+- **Setiap halaman punya dua barisnya sendiri.** Sebelumnya ketiga halaman
+  menulis "JARVIS / Panel baki · mengikuti posisi taskbar", yaitu identitas
+  APLIKASI, bukan halaman. `ui.panel.privacy.title` sudah ada di katalog dalam
+  dua bahasa dan **tidak dipanggil oleh apa pun**. Judul dibaca dari snapshot,
+  dan `paint()` menyesuaikannya dengan halaman yang sedang tampil — kalau tidak,
+  judulnya basi pada klik Riwayat pertama.
+- **Kartu artboard digambar.** `rect(24, 208, 412, 56)` di belakang tiap baris
+  izin dan `rect(x, 102, 132, 62)` di belakang tiap indikator. Tanpa keduanya,
+  empat baris izin terbaca sebagai satu paragraf, bukan empat keputusan terpisah.
+  Kuncinya diberi awalan sendiri (`permx_*`, `indicator_*`) karena `GEOMETRY`
+  yang lama adalah halaman utama board 5 dan dipatok `tests/test_tray_geometry.py`.
+- **Stub Qt sekarang merekam geometri.** `setGeometry` dulu tidak menyimpan
+  apa pun, jadi `card.x()` menjawab lewat `__getattr__` — sebuah lambda, bukan
+  angka. Itu persis kelas kesalahan yang sudah ditulis di docstring `_RectF`:
+  tes tidak bisa membedakan kartu di (24, 208) dari kartu di (0, 0). Itu sebabnya
+  kartu yang tidak pernah dibuat pun bisa "lulus" pemeriksaan geometri.

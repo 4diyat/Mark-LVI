@@ -49,6 +49,23 @@ def _t(key: str, **fields) -> str:
 # draws the Fokus one, which is the only mode with something to say beyond its
 # own name — notifications are HELD, not dropped, and a panel that stays silent
 # about that is a panel whose toast count later looks like a bug.
+# BOARD 27 (and 26) GIVE EACH PAGE ITS OWN TWO LINES.
+#
+# Every page used to draw "JARVIS / Panel baki · mengikuti posisi taskbar",
+# which is the identity of the APPLICATION, not of the page. Board 27's first
+# two lines are "Izin & Privasi / Semua data diproses lokal secara default";
+# board 26's are its own. `ui.panel.privacy.title` was already in the catalogue
+# in both languages and called by nothing — a key nobody reads is a translation
+# nobody notices is missing.
+#
+# The main page keeps the assistant's name: it IS the assistant, and the mode
+# subtitle under it is what changes with Aktif/Fokus/Senyap.
+PAGE_TITLES = {
+    "main": ("ui.panel.title", None),                       # None: the mode subtitle
+    "history": ("ui.panel.history.title", "ui.panel.history.subtitle"),
+    "privacy": ("ui.panel.privacy.title", "ui.panel.privacy.subtitle"),
+}
+
 MODE_SUBTITLES = {
     "active": "ui.panel.subtitle.active",
     "focus": "ui.panel.subtitle.focus",
@@ -127,6 +144,7 @@ class Snapshot:
     """
 
     mode: str = "active"
+    page: str = "main"
     held: int = 0
     quota_used: int = 0
     quota_limit: int = 3
@@ -148,11 +166,34 @@ class Snapshot:
 
     @property
     def title(self) -> str:
-        return _t("ui.panel.title")
+        """The page's own first line, or the assistant's name on the main page.
+
+        `page` is a field on the snapshot rather than an argument to `title`
+        because the panel repaints from the snapshot after every press: a title
+        that takes an argument is a title someone will forget to pass.
+        """
+        key, _sub = PAGE_TITLES.get(self.page, PAGE_TITLES["main"])
+        return _t(key)
 
     @property
     def subtitle(self) -> str:
+        """The page's own second line; on the main page, the presence mode.
+
+        The HISTORY subtitle carries a count, which is why it is formatted
+        here rather than looked up: `ui.panel.history.subtitle` is
+        "Hari ini · {count} bisa diurungkan", and a literal would be a lie the
+        first time the user undoes something.
+        """
+        _title, sub = PAGE_TITLES.get(self.page, PAGE_TITLES["main"])
+        if sub == "ui.panel.history.subtitle":
+            return _t(sub, count=self.undoable)
+        if sub is not None:
+            return _t(sub)
         return _t(MODE_SUBTITLES.get(self.mode, MODE_SUBTITLES["active"]))
+
+    @property
+    def undoable(self) -> int:
+        return sum(1 for row in self.history if row.get("undoable"))
 
     @property
     def held_line(self) -> str:
@@ -319,7 +360,7 @@ def _suggestion() -> str:
     return ""
 
 
-def snapshot() -> Snapshot:
+def snapshot(page: str = "main") -> Snapshot:
     """Read every value the panel needs, in one pass.
 
     Called on open and after every action, so it has to be cheap: these are
@@ -331,6 +372,7 @@ def snapshot() -> Snapshot:
     perms = _permissions()
     return Snapshot(
         mode=_mode(),
+        page=str(page or "main"),
         held=int(_safe(presence_mode.held_count, 0)),
         quota_used=used,
         quota_limit=limit,
@@ -345,6 +387,6 @@ def snapshot() -> Snapshot:
 
 
 __all__ = [
-    "ALL_QUICK_KEYS", "FOCUS_ACTIONS", "quota_note", "MODE_LABELS", "MODE_ORDER", "MODE_SUBTITLES", "PERMISSIONS", "QUICK_ACTIONS",
+    "ALL_QUICK_KEYS", "FOCUS_ACTIONS", "quota_note", "MODE_LABELS", "MODE_ORDER", "MODE_SUBTITLES", "PAGE_TITLES", "PERMISSIONS", "QUICK_ACTIONS",
     "Snapshot", "snapshot",
 ]

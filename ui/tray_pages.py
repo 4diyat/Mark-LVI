@@ -85,6 +85,19 @@ GEOMETRY = {
     # the circle is drawn by centre, a QPushButton by its corner, and 596 put
     # the disc two pixels high of the drawing.
     "send":  (386, 598, 36, 36),
+
+    # ── BOARD 27'S PAGE ──────────────────────────────────────────────────
+    # Its own keys, because the block above is board 5's main page and is
+    # pinned by `tests/test_tray_geometry.py`. Sharing names between two
+    # pages is how one of them gets measured against the other's drawing.
+    #
+    # The artboard gives each of these a card. Without them the three
+    # indicator words float loose and the four permissions read as one
+    # paragraph instead of four separate decisions.
+    "indicator_card":   (24, 102, 132, 62),
+    "indicator_pitch":  140,
+    "permx_card":       (24, 208, 412, 56),
+    "permx_pitch":      66,
 }
 
 # Which page the panel is showing. Board 26 and 27 are pages, not other
@@ -273,8 +286,18 @@ def build_privacy(panel, page) -> None:
 
     panel._labels["indicator_header"] = _at(
         page, QLabel, 24, 78, 240, 16, _t("ui.panel.section.indicators"))
+    g = GEOMETRY
     for index, (key, name, _sub) in enumerate(PERMISSIONS[:3]):
-        x = 24 + index * 140
+        x = g["indicator_card"][0] + index * g["indicator_pitch"]
+        # The card is a label with a border, like the suggestion card on the
+        # main page: a QFrame would be a second widget class for the same job.
+        card = _at(page, QLabel, *g["indicator_card"], "")
+        card.setGeometry(x, g["indicator_card"][1],
+                         g["indicator_card"][2], g["indicator_card"][3])
+        card.setStyleSheet(
+            f"background:{PALETTES['dark']['card']};"
+            f"border:1px solid {PALETTES['dark']['line']};border-radius:12px;")
+        panel._labels[f"indicator_card:{key}"] = card
         panel._labels[f"indicator:{key}"] = _at(
             page, QLabel, x + 12, 108, 110, 18, _t(name))
         panel._labels[f"indicator_state:{key}"] = _at(
@@ -283,7 +306,14 @@ def build_privacy(panel, page) -> None:
     panel._labels["permx_header"] = _at(
         page, QLabel, 24, 184, 240, 16, _t("ui.panel.section.explicit"))
     for index, (key, name, sub) in enumerate(PERMISSIONS):
-        y = 208 + index * 66
+        y = g["permx_card"][1] + index * g["permx_pitch"]
+        card = _at(page, QLabel, *g["permx_card"], "")
+        card.setGeometry(g["permx_card"][0], y,
+                         g["permx_card"][2], g["permx_card"][3])
+        card.setStyleSheet(
+            f"background:{PALETTES['dark']['card']};"
+            f"border:1px solid {PALETTES['dark']['line']};border-radius:12px;")
+        panel._labels[f"permx_card:{key}"] = card
         panel._labels[f"permx:{key}"] = _at(
             page, QLabel, 44, y + 10, 300, 20, _t(name))
         panel._labels[f"permx_sub:{key}"] = _at(
@@ -295,18 +325,18 @@ def build_privacy(panel, page) -> None:
             lambda checked=False, k=key: panel.press_permission(k, checked))
         panel._buttons[f"permx:{key}"] = button
 
-    panel._labels["guest_header"] = _at(
-        page, QLabel, 24, 472, 240, 16, _t("ui.panel.section.guest"))
-    panel._labels["guest"] = _at(
-        page, QLabel, 44, 496, 300, 20, _t("ui.panel.guest.title"))
-    panel._labels["guest_sub"] = _at(
-        page, QLabel, 44, 516, 300, 18, _t("ui.panel.guest.sub"))
-    guest = QPushButton("", page)
-    guest.setCheckable(True)
-    guest.setGeometry(378, 500, 42, 22)
-    guest.clicked.connect(lambda checked=False: panel._call("guest", checked))
-    panel._buttons["guest"] = guest
-
+    # MODE TAMU IS NOT DRAWN, AND THAT IS A RULING RATHER THAN AN OVERSIGHT.
+    #
+    # The artboard draws a "MODE TAMU — Sembunyikan memori & riwayat" switch
+    # here. Guest mode needs every surface to stop reading memory and history,
+    # and nothing in this tree does that: clicking the switch printed "mode tamu
+    # belum ada" and returned False, and the next paint put it back.
+    #
+    # It is also not drawn DISABLED. A disabled switch still says "this exists
+    # and you are not allowed yet", which is a promise about a feature that does
+    # not exist. With `screen` and `microphone` the promise is true — the
+    # capability is real and the machine decides — so those stay and explain
+    # themselves. This one has nothing behind it at all.
     panel._labels["camera_note"] = _at(
         page, QLabel, 24, 566, 412, 18, _t("ui.panel.camera.note"))
     erase = QPushButton(_t("ui.panel.erase"), page)

@@ -36,7 +36,7 @@ copy of the old code is in git.
 | 24 | Senyap — orb memudar | the orb dimmed, still there | `ui/orb_overlay.py`, `ui/orb_canvas.py` |
 | 25 | Risiko: konfirmasi | amber risk dialog, trusted UI | `ui/confirm_banner.py` |
 | 26 | Riwayat tugas + Urungkan | task history with undo, audit tail, export and clear | `ui/tray_panel.py` (history page) |
-| 27 | Izin & Privasi | three indicators, four explicit permissions, guest mode, erase | `ui/tray_panel.py` (privacy page) |
+| 27 | Izin & Privasi | three indicators with cards, four explicit permissions with cards, a per-page title, erase — and **no guest mode** (see below) | `ui/tray_pages.py`, `ui/tray_panel_model.py` |
 | 28 | Tema terang — panel baki | the same panel in light colours, plus the switch that reaches it | `ui/tray_pages.py` (`PALETTES["light"]`), `ui/tray_theme.py` |
 
 Plus the surfaces the owner explicitly kept that no board draws: the **face
@@ -57,7 +57,7 @@ than by omission:
 | Control | What it does today |
 |---|---|
 | **Susun jendela** | Refused out loud. There is no window-snapping code in this tree — it was never written. The row is on the artboard, so the row is drawn; pressing it explains that and points at the chord. |
-| **Mode tamu** | Refused out loud. Guest mode needs every surface to stop reading memory; nothing does that yet, so the switch changes nothing and says so. |
+| **Mode tamu** | **Deleted from the panel, the wiring and both catalogues.** Guest mode needs every surface to stop reading memory and history, and nothing does that. The switch used to be drawn and to answer a click with a sentence; a disabled switch was rejected too, because it still promises the feature exists. The owner's ruling: if it cannot be done, do not draw it — see `docs/mockups/DESIGN-ambient.md`, board 27. |
 | **Dikte** | Works, but it is a SIX-SECOND hold released on a timer — a button cannot express "until I let go". The press-and-hold version is the chord on the same row. |
 | **Cari berkas** | Opens the command bar with `Cari berkas ` already typed instead of searching: the search needs a query, and the bar is where the user already types one. |
 
