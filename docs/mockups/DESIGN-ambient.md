@@ -151,6 +151,7 @@ stack-neutral dan berlaku apa adanya untuk implementasi Python.
 | Sambungan gate ke `main.py` + daftar aksi berpagar sendiri | `main.py` | `tests/test_gate_wiring.py` |
 | Orb overlay 146 px (board 1), hanya cincin yang bisa diklik; meredup di Fokus/Senyap | `ui/orb_overlay.py`, `ui/orb_place.py`, `ui/orb_canvas.py` | `tests/test_orb_overlay_board1.py`, `tests/test_orb_place.py` |
 | Board 4: klik kiri → panel, klik kanan → menu cepat, drag menempel ke tepi | `ui/ambient_shell.py`, `ui/orb_snap.py` | `tests/test_orb_board4.py` |
+| Board 23: strip Fokus tanpa tenggat, tiga baris aksi sendiri, jeda penjadwalan yang tersimpan | `ui/tray_paint.py`, `ui/tray_panel_model.py`, `actions/proactive.py`, `ui/tray_panel_wiring.py` | `tests/test_focus_board23.py` |
 | Command bar Ctrl+Space, Esc mengembalikan fokus | `ui/command_bar.py` | `tests/test_command_bar.py` |
 | Sambungan mode → orb, chord, dan baki | `ui/lifecycle.py`, `memory/config_manager.py` | `tests/test_presence_wiring.py` |
 
@@ -220,3 +221,36 @@ salinan yang berbeda perilaku.
   sisi duduk di sisi itu pada jarak 24 px; drop di tengah tetap di tempat.
   Menempel saat pointer masih bergerak membuat orb melompat dari bawah tangan,
   jadi snap hanya terjadi saat dilepas.
+
+### Board 23 — Fokus (toast ditahan)
+
+- **Strip Fokus tidak menyebut tenggat, karena tidak ada tenggat.** Artboard
+  menulis "Fokus aktif sampai 17.00", dan `17.00` itu **literal di dalam
+  `ui/tray_paint.py`** — tidak ada satu pun durasi fokus di seluruh build. Pemilik
+  memilih kalimat yang jujur ("Fokus aktif. Notifikasi ditahan sampai Fokus
+  berakhir.") dan **menolak** dua alternatif: menambah timer 45 menit yang
+  mengakhiri Fokus sendiri, dan membiarkan 17.00. Kunci i18n
+  `ui.panel.focus.active_until` dihapus dari `id.json` dan `en.json`; tidak ada
+  baris pengganti yang menyebut jam.
+- **Empat baris "AKSI CEPAT" di artboard menjadi tiga baris nyata, dan "Ubah
+  durasi" sengaja tidak digambar.** Baris itu membuka pengaturan untuk durasi yang
+  tidak ada. Yang digambar: "Lihat yang tertahan" (dengan jumlah di kolom chord),
+  "Akhiri fokus sekarang", "Jeda semua penjadwalan". Panel 460 px memberi blok itu
+  empat baris; di Fokus baris keempat disembunyikan, bukan dihapus — mengubah
+  jumlah widget akan menggeser setiap bagian di bawahnya 48 px.
+- **"Lihat yang tertahan" hanya melihat.** Baris itu melaporkan jumlahnya dan
+  tidak mengosongkan antrean: panel di atasnya berjanji isi antrean muncul
+  *setelah* Fokus berakhir, dan rasa ingin tahu pengguna tidak boleh membatalkan
+  janji itu. Yang melepas adalah keluar dari Fokus, lewat `presence_mode.set_mode`.
+- **"Jeda semua penjadwalan" menjeda mesin yang benar-benar dipakai.**
+  `ProactiveEngine` mendapat `pause()`/`resume()`/`toggle_pause()`, dan jedanya
+  **disimpan di `config/api_keys.json`** supaya restart tidak membatalkan
+  keputusan pengguna. Jeda tidak menyentuh jam pendinginan: lanjut setelah satu jam
+  tidak boleh langsung memicu pesan, karena jeda bukan pesan.
+- **Kalimat kuota kedua hanya ada di Fokus, dan angkanya dihitung.** "Dua sisanya
+  ditahan sampai fokus berakhir" muncul dari `quota_note()` dengan `limit - used`
+  dari kuota yang sama dengan baris di atasnya. Di luar Fokus kalimatnya kosong —
+  di sana tidak ada yang ditahan, hanya belum terpakai. Kalimat ini duduk **di
+  bawah** kartu saran, bukan di dalamnya: kartu board 5 dipatok 62 px oleh
+  `tests/test_tray_geometry.py`, dan baris ketiga tidak muat tanpa mengubah kotak
+  yang diukur board lain.

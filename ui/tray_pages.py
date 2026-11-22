@@ -32,7 +32,8 @@ WHAT IS IN HERE
 """
 from __future__ import annotations
 
-from ui.tray_panel_model import PERMISSIONS, QUICK_ACTIONS, _t
+from ui.tray_panel_model import (ALL_QUICK_KEYS, PERMISSIONS,
+                                QUICK_ACTIONS, _t)  # noqa: F401 — used below
 
 # The artboard size. Defined here because this is the module that owns
 # geometry; the panel imports it so the two cannot disagree.
@@ -68,6 +69,14 @@ GEOMETRY = {
     "suggestion_bar":      (24, 392, 3, 38),
     "suggestion_title":    (44, 396, 372, 20),
     "suggestion_quota":    (44, 416, 372, 18),
+    # BOARD 23'S SECOND QUOTA SENTENCE. The artboard draws it INSIDE the card, at
+    # y=548 of a layout whose card sits at 504. This panel's card sits at 380 and
+    # is 62 px tall — board 5's, pinned by `tests/test_tray_geometry.py` — and a
+    # third line does not fit in 62 px without changing the card the other board
+    # is measured against. So it sits directly BENEATH the card: same column,
+    # same type, 4 px of air. The line is blank outside Fokus, where nothing is
+    # being held and the sentence would be false.
+    "quota_held":          (44, 446, 372, 18),
     # the three permission rows: text at x=24, toggle at x=396, pitch 30
     "perm_row_y": 492, "perm_pitch": 30, "perm_row_h": 26, "perm_toggle_x": 396,
     # the command line, and the send disc the artboard draws at cx=404
@@ -148,11 +157,25 @@ def build_main(panel, page) -> None:
 
     panel._labels["quick_header"] = _at(
         page, QLabel, *g["quick_header"], _t("ui.panel.section.quick"))
-    for index, (key, name, chord) in enumerate(QUICK_ACTIONS):
+    # FOUR ROWS ARE BUILT FOR THE LONGEST LIST AND REUSED, because the panel is
+    # 460 px and the artboard gives the block exactly four rows. Building them
+    # per mode would rebuild the page on a mode change; three keys in Fokus and
+    # four in Aktif would then need the fourth widget to disappear, which moves
+    # every section under it.
+    #
+    # So: one button per ROW INDEX, and `paint_quick` decides what each row says
+    # and which action it runs for the mode in force. The widget count is the
+    # layout's, not the mode's.
+    # ONE WIDGET PER ACTION, and the two modes' lists share this block. Fokus
+    # draws three rows where Aktif draws four, so the fourth keeps its geometry
+    # and is hidden in Fokus — a hidden widget, not a rebuilt page, because
+    # rebuilding on a mode change moves every section below it by 48 px.
+    for index, key in enumerate(ALL_QUICK_KEYS):
         y = g["quick_row_y"] + index * g["quick_pitch"]
-        button = QPushButton(f"{_t(name)}\t{chord}", page)
+        button = QPushButton("", page)
         button.setGeometry(24, y, 412, g["quick_row_h"])
         button.clicked.connect(lambda _checked=False, k=key: panel.press_quick(k))
+        button.hide()                       # `paint_quick` shows the live ones
         panel._buttons[f"quick:{key}"] = button
 
     # THE SUGGESTION CARD. The artboard draws a 412x62 card with an amber bar
@@ -173,6 +196,7 @@ def build_main(panel, page) -> None:
     panel._labels["suggestion"] = _at(
         page, QLabel, *g["suggestion_title"], "")
     panel._labels["quota"] = _at(page, QLabel, *g["suggestion_quota"], "")
+    panel._labels["quota_held"] = _at(page, QLabel, *g["quota_held"], "")
 
     panel._labels["perm_header"] = _at(
         page, QLabel, *g["perm_header"], _t("ui.panel.section.permissions"))
