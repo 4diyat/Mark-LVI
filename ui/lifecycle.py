@@ -138,6 +138,8 @@ def run_deeplink(shell: "AmbientShell") -> bool:
 # `main.py` and the tests call these through `lifecycle`, and the surface code
 # lives in a module of its own so this file stays readable. One import line is
 # the whole cost of the split on every caller's side.
+from ui.voice_wiring import start_voice_overlay
+
 from ui.ambient_shell import (                      # noqa: F401
     BAR_CHORD, apply_presence_mode, current_presence, cycle_presence_mode,
     open_command_bar,
@@ -178,6 +180,14 @@ def start_interface(shell: "AmbientShell") -> None:
         started.append("orb")
     if start_command_bar(shell):
         started.append("bar")
+
+    # BOARD 6 IS BUILT HERE AND SHOWN LATER. The overlay covers the screen, so
+    # it must exist before the first LISTENING and must not be up for it: a
+    # 1280×720 frame that appeared during start-up would be the first thing a
+    # user saw of this program. It is not appended to `started`: it is a
+    # decoration with no way back to the assistant, so its failure must not
+    # read as "nothing came up".
+    start_voice_overlay(shell)
 
     # `--hidden` MEANS "START, BUT DO NOT APPEAR ON SOMEONE'S SCREEN" — a login
     # entry runs while the user is working, and a face that pops up on the first
