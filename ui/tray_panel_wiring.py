@@ -59,16 +59,104 @@ def set_presence(shell: "AmbientShell", mode: str) -> bool:
 # ── quick actions ────────────────────────────────────────────────────────────
 
 def quick_action(shell: "AmbientShell", key: str) -> bool:
-    """One of board 5's four rows. False when the row cannot do anything."""
+    """One quick row. False when the row cannot do anything.
+
+    TWO BOARDS DRAW ROWS HERE. Board 5's four in Aktif and Senyap; board 23's
+    three in Fokus — "Lihat yang tertahan", "Akhiri fokus sekarang", "Jeda semua
+    penjadwalan". One table, because the panel decides which rows to DREW and
+    this decides what a row DOES: splitting them would let the two drift, and a
+    row drawn but not routed is a button that answers nothing.
+    """
     handler = {
         "screenshot": screenshot,
         "dictate": dictate,
         "find_file": find_file,
         "tidy_windows": tidy_windows,
+        "held": show_held,
+        "end_focus": end_focus,
+        "pause_scheduling": toggle_scheduling,
     }.get(key)
     if handler is None:
         return False
     return bool(handler(shell))
+
+
+# ── board 23: the three rows Fokus draws ────────────────────────────────────
+
+def show_held(shell: "AmbientShell") -> bool:
+    """Say what is waiting, and how much. Does NOT release it.
+
+    THE ARTBOARD'S ROW IS A LOOK, NOT A FLUSH — its own wording is "Lihat yang
+    tertahan", and the panel above it promises the held items appear *after*
+    Fokus ends. Draining the queue from here would break that promise the first
+    time a user was curious about the count. So this reads and reports; leaving
+    Fokus is what releases.
+    """
+    from core import presence_mode
+
+    try:
+        count = int(presence_mode.held_count())
+    except Exception as e:                          # noqa: BLE001
+        _say(shell, f"Tidak bisa membaca antrean — {type(e).__name__}: {e}")
+        return False
+    if count == 0:
+        _say(shell, "Tidak ada yang tertahan.")
+        return True
+    _say(shell, f"{count} tertahan, muncul setelah Fokus berakhir.")
+    return True
+
+
+def end_focus(shell: "AmbientShell") -> bool:
+    """Leave Fokus. Releasing the held queue is `presence_mode`'s job, not ours.
+
+    `set_mode` already drains the queue when it moves to a mode that allows a
+    banner (`_requeue`), so calling `take_held()` here as well would take the
+    items out of the queue before the release path can deliver them — the user
+    would press "Akhiri fokus sekarang" and lose exactly what was being held for
+    them.
+    """
+    from core import presence_mode
+
+    try:
+        changed = bool(presence_mode.set_mode("active"))
+    except Exception as e:                          # noqa: BLE001
+        _say(shell, f"Fokus tidak bisa diakhiri — {type(e).__name__}: {e}")
+        return False
+    if not changed:
+        return False
+    _say(shell, "Fokus berakhir. Yang tertahan menyusul.")
+    return True
+
+
+def toggle_scheduling(shell: "AmbientShell") -> bool:
+    """The real pause behind "Jeda semua penjadwalan".
+
+    IT PAUSES THE ENGINE THE APP ACTUALLY USES — `shell._proactive`, the one
+    `main.py` created — and the engine persists the change itself. A row that
+    only changed a flag somewhere else would look identical in the panel and
+    change nothing about whether a message arrives.
+    """
+    from core import presence_mode
+
+    engine = getattr(shell, "_proactive", None)
+    if engine is None or not hasattr(engine, "toggle_pause"):
+        _say(shell, "Penjadwalan tidak bisa dijeda di sesi ini.")
+        return False
+    try:
+        paused = bool(engine.toggle_pause())
+    except Exception as e:                          # noqa: BLE001
+        _say(shell, f"Jeda gagal — {type(e).__name__}: {e}")
+        return False
+    if paused:
+        _say(shell, "Penjadwalan dijeda, dan tetap dijeda setelah restart.")
+        return True
+    # Resuming into Fokus is a contradiction the user should hear about: the
+    # engine will trigger, and `presence_mode` will hold the result.
+    if presence_mode.current() == "focus":
+        _say(shell, "Penjadwalan jalan lagi — hasilnya tetap ditahan selama Fokus.")
+    else:
+        _say(shell, "Penjadwalan jalan lagi.")
+    return True
 
 
 def screenshot(shell: "AmbientShell") -> bool:

@@ -145,8 +145,26 @@ class _Object:
     def adjustSize(self):
         return None
 
-    def move(self, *_a):
+    def move(self, *a):
+        """Remember the position, as Qt does.
+
+        WHY THIS IS STATE AND NOT A NO-OP. `ui/orb_place` saves the orb's
+        position BY READING THE WINDOW BACK (`self.position` → `window.pos()`).
+        A stub whose `move` forgot and whose `pos` answered None made every
+        drag test save nothing — and the drag tests then "passed" against a
+        function that could not work. This is the same class of fake as the
+        echo-mode one below: a stub that answers plausibly hides the bug.
+        """
+        x, y = (a[0], a[1]) if len(a) >= 2 else (a[0].x(), a[0].y())
+        self._pos = (int(x), int(y))
         return None
+
+    def pos(self):
+        x, y = self.__dict__.get("_pos", (0, 0))
+        point = _Object()
+        point.x = lambda: x
+        point.y = lambda: y
+        return point
 
     def raise_(self):
         return None
@@ -644,7 +662,13 @@ def _install_qt() -> dict[str, types.ModuleType]:
                 raise AttributeError(name)
             return _PathEnum(self._path + (name,))
 
-    _KEY_ROOTS = ("Key", "KeyboardModifier")
+    # MOUSE BUTTONS ARE PATHS, LIKE KEYS. `Qt.MouseButton` used to fall into
+    # `_Enum`, whose `__eq__` is False even against itself — so
+    # `event.button() == Qt.MouseButton.RightButton` was ALWAYS false and no
+    # code could tell a right click from a left one. The stub made a real bug
+    # invisible: the canvas treated every press as a left click, and a test
+    # could not have caught it.
+    _KEY_ROOTS = ("Key", "KeyboardModifier", "MouseButton")
     core.Qt = _Enum()
     for _root in _KEY_ROOTS:
         setattr(core.Qt, _root, _PathEnum((_root,)))
@@ -656,8 +680,45 @@ def _install_qt() -> dict[str, types.ModuleType]:
                                              "timeout": _Signal(),
                                              "singleShot": staticmethod(lambda *a: None)})
     core.pyqtSignal = _Signal
-    for geom in ("QLineF", "QPointF", "QPoint", "QRectF", "QSizeF", "QRect", "QSize"):
+    class _RectF(_Object):
+        """A rect that REMEMBERS its four numbers, as Qt's does.
+
+        WHY THIS IS STATE. Every drawing test in this suite asserts against the
+        coordinates a painter was given, and `QRectF` used to be a bare `_Object`
+        whose `x()` answered through `__getattr__` — a lambda, not a number. The
+        result was that a test could not tell a card drawn at (100, 200) from one
+        drawn at (0, 0), and the first version of `tests/test_toast_card.py`
+        failed with "type NoneType doesn't define round" rather than with a bug.
+
+        Accepts both Qt shapes: `QRectF(x, y, w, h)` and `QRectF()`.
+        """
+
+        def __init__(self, *a, **k):
+            super().__init__()
+            x, y, w, h = (tuple(a) + (0, 0, 0, 0))[:4]
+            self._rect = (float(x), float(y), float(w), float(h))
+
+        def x(self):
+            return self._rect[0]
+
+        def y(self):
+            return self._rect[1]
+
+        def width(self):
+            return self._rect[2]
+
+        def height(self):
+            return self._rect[3]
+
+        def left(self):
+            return self._rect[0]
+
+        def top(self):
+            return self._rect[1]
+
+    for geom in ("QLineF", "QPointF", "QPoint", "QSizeF", "QRect", "QSize"):
         setattr(core, geom, type(geom, (_Object,), {}))
+    core.QRectF = _RectF
 
     gui = types.ModuleType("PyQt6.QtGui")
     for name in ("QBrush", "QColor", "QCursor", "QFont", "QKeySequence",

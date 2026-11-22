@@ -59,7 +59,8 @@ from ui.tray_pages import (
     build_history, build_main, build_privacy, panel_position,
 )
 from ui.tray_panel_model import (
-    MODE_LABELS, MODE_ORDER, PERMISSIONS, QUICK_ACTIONS, Snapshot, _t, snapshot,
+    ALL_QUICK_KEYS, MODE_LABELS, MODE_ORDER, PERMISSIONS, Snapshot, _t,
+    snapshot,
 )
 
 
@@ -69,7 +70,7 @@ class TrayPanel:
     `actions` maps a key to a callable, exactly like `TrayIcon`'s dictionary:
 
         presence_set(mode)   the user pressed a segment
-        quick(key)           one of QUICK_ACTIONS
+        quick(key)           one of ALL_QUICK_KEYS
         permission(key, on)  one of PERMISSIONS (never a `fixed` one)
         undo()               board 26's Urungkan
         history_export()     board 26's Ekspor log
@@ -350,7 +351,13 @@ class TrayPanel:
         return True
 
     def press_quick(self, key: str) -> bool:
-        if key not in {k for k, _n, _c in QUICK_ACTIONS}:
+        """Press one quick row. Accepts BOTH modes' rows.
+
+        Board 5 draws four and board 23 draws three — "Lihat yang tertahan",
+        "Akhiri fokus sekarang", "Jeda semua penjadwalan". A panel that refused
+        the second list would have three rows that answer False.
+        """
+        if key not in ALL_QUICK_KEYS:
             return False
         self._call("quick", key)
         return True

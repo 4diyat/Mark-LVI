@@ -5,6 +5,45 @@ Gemini decides what to say; this module decides WHEN and builds a rich context s
 import time
 from datetime import datetime
 
+# ── the pause, and why it is a setting rather than a switch on the object ────
+#
+# Board 23 draws "Jeda semua penjadwalan" as a row the user presses. That is a
+# decision that outlives the process: a pause a restart forgets is a promise the
+# user has to keep making every morning, and the machine that most needs it is
+# the one that reboots.
+#
+# Kept in `api_keys.json` through the same helpers every other setting uses, so
+# a read-only folder or a corrupt file behaves the way it already does
+# everywhere else: the pause still applies for this session and the failure is
+# said out loud.
+PAUSE_KEY = "scheduling_paused"
+
+
+def _read_paused() -> bool:
+    """Whether scheduling was paused in a previous session. Never raises."""
+    try:
+        from memory.config_manager import load_api_keys
+
+        return bool(load_api_keys().get(PAUSE_KEY, False))
+    except Exception as e:                          # noqa: BLE001
+        print(f"[Proactive] could not read the pause: {e}")
+        return False
+
+
+def _write_paused(paused: bool) -> None:
+    """Persist the pause. Raises, so the caller can report it honestly.
+
+    `set_config_values` REPORTS failure by returning False instead of raising —
+    a read-only folder is an expected case there, not an exception. Turning that
+    False into an error here is the whole point: a caller that ignored it would
+    print nothing and let the user believe the pause survives a restart when it
+    does not.
+    """
+    from memory.config_manager import set_config_values
+
+    if not set_config_values(**{PAUSE_KEY: bool(paused)}):
+        raise OSError("the config file refused the write")
+
 
 class ProactiveEngine:
     """
@@ -31,10 +70,59 @@ class ProactiveEngine:
         self.check_cooldown   = check_cooldown
         self._last_triggered  = 0.0
         self._rotation        = 0          # cycles through context focus areas
+        # Read at construction, so a paused machine starts paused rather than
+        # sending one message before the panel is opened to notice.
+        self._paused          = _read_paused()
+
+    # ── the pause ──────────────────────────────────────────────────────────────
+
+    @property
+    def paused(self) -> bool:
+        return self._paused
+
+    def pause(self) -> None:
+        """Stop triggering, and remember it. Never leaves the object ambiguous.
+
+        THE IN-MEMORY STATE IS SET FIRST. If the write fails — a read-only
+        folder, a full disk — the pause still holds for this session and the
+        failure is printed. Refusing the pause to protect a disk would take the
+        user's decision away, and the decision is the thing they asked for.
+        """
+        self._paused = True
+        try:
+            _write_paused(True)
+        except Exception as e:                      # noqa: BLE001
+            print(f"[Proactive] paused for this session only — {e}")
+
+    def resume(self) -> None:
+        self._paused = False
+        try:
+            _write_paused(False)
+        except Exception as e:                      # noqa: BLE001
+            print(f"[Proactive] resumed for this session only — {e}")
+
+    def toggle_pause(self) -> bool:
+        """The row's action. Returns the NEW state, so a caller can report it."""
+        if self._paused:
+            self.resume()
+        else:
+            self.pause()
+        return self._paused
 
     # ── Trigger gate ───────────────────────────────────────────────────────────
 
     def should_trigger(self, last_user_speech: float) -> bool:
+        """Whether a proactive message may fire now.
+
+        THE PAUSE IS CHECKED FIRST, AND IT DOES NOT TOUCH THE CLOCKS. Resuming
+        after an hour must not fire immediately: the cooldown is measured from
+        the last message the assistant actually sent, and a pause is not a
+        message. Advancing `_last_triggered` on resume would be a second way to
+        lose the "it was waiting to interrupt you" impression, and clearing it
+        would be a way to gain one.
+        """
+        if self._paused:
+            return False
         now = time.monotonic()
         return (
             (now - last_user_speech) >= self.min_silence_secs

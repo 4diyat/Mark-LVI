@@ -80,6 +80,22 @@ def test_the_package_has_exactly_the_mockup_modules():
         # reason the tray panel has three: `setup_window` decides and draws,
         # `setup_screen` is the thread hop that a headless test can skip.
         "setup_screen.py", "setup_window.py",
+        # Board 1, split off `orb_overlay` at the 600-line ceiling. Two new
+        # modules, and the boundary is the one this file keeps drawing:
+        # `orb_place` is pure functions (size, clickable circle, mask, saved
+        # drag, corner anchor) and builds nothing; `orb_canvas` is the paint
+        # half (the QWidget, its `paintEvent`, and the one `paint_orb`).
+        "orb_place.py", "orb_canvas.py",
+        # Board 2's card. `toast_queue` is the DATA (a scheduler thread may
+        # produce a toast, so no Qt), `toast_card` is the DRAWING (one function,
+        # one Toast, marks on a painter), and the window that stacks them is
+        # `toast_stack`. Three files for the same reason the tray panel has
+        # three: each answers a different question.
+        "toast_card.py", "toast_stack.py",
+        # Board 4's edge snap: what a dropped orb settles against. Pure
+        # arithmetic about a screen and a window — the canvas keeps the pointer,
+        # this keeps the rule, and that split is what makes a drag testable.
+        "orb_snap.py",
     }
     present = {p.name for p in _modules()}
     assert present == expected, (

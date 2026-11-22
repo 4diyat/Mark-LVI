@@ -73,6 +73,37 @@ QUICK_ACTIONS = (
     ("tidy_windows", "ui.panel.quick.tidy_windows", "Ctrl+Shift+J"),
 )
 
+# BOARD 23 DRAWS THREE DIFFERENT ROWS IN FOKUS, and until this tuple existed the
+# panel showed board 5's four in every mode — so a user who had just asked for
+# quiet was offered "Tangkap layar".
+#
+# "Ubah durasi (45 mnt)" is OMITTED ON PURPOSE. There is no focus duration in
+# this build: no deadline, no timer, nothing that ends Fokus on its own. A row
+# that opens a dialog for a setting which does not exist is worse than a row that
+# is not drawn, and the panel's honest sentence says what happens instead. The
+# owner chose this over inventing a timer to justify the row.
+#
+# The chord column is where a shortcut goes, and in Fokus it carries the count
+# for the first row, exactly as the artboard draws "3" right-aligned there.
+FOCUS_ACTIONS = (
+    ("held", "ui.panel.focus.quick.held", "{count}"),
+    ("end_focus", "ui.panel.focus.quick.end", ""),
+    ("pause_scheduling", "ui.panel.focus.quick.pause", ""),
+)
+
+
+# Every action key the panel can press, in the order a row appears: board 5's
+# four first, then Fokus's own. The page builds one widget per entry.
+ALL_QUICK_KEYS = tuple(dict.fromkeys(
+    [key for key, _n, _c in QUICK_ACTIONS] + [key for key, _n, _c in FOCUS_ACTIONS]))
+
+
+def quick_actions_for(mode: str) -> tuple:
+    """Which rows the panel shows. One function, because two lists plus an `if`
+    in two places is how the panel draws Fokus's rows while acting on board 5's.
+    """
+    return FOCUS_ACTIONS if str(mode or "").strip().lower() == "focus" else QUICK_ACTIONS
+
 # Board 27's explicit list. `key` is what `act()` receives; `label` and `sub` are
 # what the user reads. Kept here rather than in the widget so the test asserts
 # the same four rows the artboard draws.
@@ -128,6 +159,17 @@ class Snapshot:
         """Board 23's count, spelled out. Never hidden when it is zero —
         "0 tertahan" is a fact, a missing line is a question."""
         return _t("ui.panel.focus.held_count", count=self.held)
+
+    def quick_chord(self, chord: str) -> str:
+        """A row's right-hand text, with `{count}` filled from the held queue.
+
+        The count comes from the queue, never from a literal: "3 tertahan" with
+        3 hardcoded is the same class of bug as "Fokus aktif sampai 17.00".
+        """
+        text = str(chord or "")
+        if "{count}" not in text:
+            return text
+        return text.replace("{count}", str(int(self.held)))
 
     @property
     def quota_line(self) -> str:
@@ -234,6 +276,34 @@ def _quota() -> tuple[int, int]:
     return int(_safe(quota.used, 0)), int(_safe(quota.limit, 3))
 
 
+def quota_note() -> str:
+    """The second quota sentence: board 23's "Dua sisanya ditahan sampai fokus
+    berakhir". Empty outside Fokus.
+
+    WHY IT EXISTS ONLY IN FOKUS. Outside Fokus nothing is being held — the
+    remainder is simply unused, and the line above already says "1 dari 3".
+    Printing the sentence in Aktif would teach the user that their suggestion is
+    being withheld when it is only unspent. So this is not decoration on the
+    quota line: it is the one place the panel says what Fokus DOES to the
+    suggestions.
+
+    THE NUMBER IS DERIVED, NOT WRITTEN. It is `limit - used` from the same quota
+    the line above reads. A literal "2" would drift the first time the limit
+    changed, and a sentence that outlives its own arithmetic is exactly the
+    "17.00" failure with more words.
+    """
+    if _mode() != "focus":
+        return ""
+    used, limit = _quota()
+    remaining = max(0, int(limit) - int(used))
+    if remaining == 0:
+        # Nothing is being held, so there is no remainder to describe. Saying
+        # "0 held" over a quota that is fully spent is a promise about a queue
+        # that does not exist.
+        return ""
+    return _t("ui.panel.quota.held", remaining=remaining)
+
+
 def _suggestion() -> str:
     """The one line under SARAN HARI INI, or "" when there is nothing today.
 
@@ -275,6 +345,6 @@ def snapshot() -> Snapshot:
 
 
 __all__ = [
-    "MODE_LABELS", "MODE_ORDER", "MODE_SUBTITLES", "PERMISSIONS", "QUICK_ACTIONS",
+    "ALL_QUICK_KEYS", "FOCUS_ACTIONS", "quota_note", "MODE_LABELS", "MODE_ORDER", "MODE_SUBTITLES", "PERMISSIONS", "QUICK_ACTIONS",
     "Snapshot", "snapshot",
 ]

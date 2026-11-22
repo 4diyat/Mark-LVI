@@ -27,7 +27,12 @@ from __future__ import annotations
 
 from ui.tray_pages import PALETTES
 from ui.tray_theme import _rgba
-from ui.tray_panel_model import MODE_ORDER, PERMISSIONS, _t
+from ui.tray_panel_model import (ALL_QUICK_KEYS, MODE_ORDER, PERMISSIONS,
+                                _t, quick_actions_for)
+# `quota_note` is called THROUGH the module, not imported by name: the tests
+# patch it on `tray_panel_model`, and a by-name import would make that patch
+# invisible here — the seam would look tested and paint a stale answer.
+from ui import tray_panel_model
 
 
 def paint(panel, snap) -> None:
@@ -37,6 +42,9 @@ def paint(panel, snap) -> None:
     labels["title"].setText(snap.title)
     labels["subtitle"].setText(snap.subtitle)
     labels["quota"].setText(snap.quota_line)
+    # Empty in every mode but Fokus — `quota_note()` decides, because it is the
+    # only thing that knows whether anything is actually being held.
+    labels["quota_held"].setText(tray_panel_model.quota_note())
     paint_theme(panel)
     labels["suggestion"].setText(
         snap.suggestion or _t("ui.panel.suggestion.empty"))
@@ -45,10 +53,16 @@ def paint(panel, snap) -> None:
         panel._buttons[f"mode:{mode}"].setChecked(mode == snap.mode)
     mark_segments(panel, snap)
 
+    paint_quick(panel, snap)
+
     # Board 23's strip: only in Fokus, because only Fokus holds anything.
     held = labels["held"]
     if snap.mode == "focus":
-        held.setText("\n".join((_t("ui.panel.focus.active_until", time="17.00"),
+        # NO DEADLINE LINE. It used to read "Fokus aktif sampai 17.00" with 17.00
+        # HARDCODED here — there is no focus duration anywhere in the build, so
+        # the panel was stating a time nobody computed. The owner chose the
+        # honest sentence: what Fokus does, and how much is waiting.
+        held.setText("\n".join((_t("ui.panel.focus.title"),
                                  _t("ui.panel.focus.held"),
                                  snap.held_line)))
         held.show()
@@ -60,10 +74,68 @@ def paint(panel, snap) -> None:
         state = snap.permissions.get(key, {})
         button.setChecked(bool(state.get("on")))
         button.setEnabled(not bool(state.get("fixed")))
+        _paint_dot(panel, key, state)
 
     paint_history(panel, snap)
     paint_privacy(panel, snap)
 
+
+
+def paint_quick(panel, snap) -> None:
+    """Board 5's four rows in Aktif/Senyap, board 23's three in Fokus.
+
+    THE ROWS ARE SET HERE AND NOT AT BUILD TIME, because the list depends on the
+    mode and the mode changes while the panel is open. Each widget is looked up
+    by ACTION KEY from the union of both lists, so a row that does not exist in
+    this mode is hidden rather than emptied — an empty 40 px button is a hole a
+    user will click.
+    """
+    rows = quick_actions_for(snap.mode)
+    live = {key for key, _n, _c in rows}
+    for key in ALL_QUICK_KEYS:
+        button = panel._buttons.get(f"quick:{key}")
+        if button is None:
+            continue
+        if key not in live:
+            button.hide()
+            continue
+        name, chord = "", ""
+        for row_key, row_name, row_chord in rows:
+            if row_key == key:
+                name, chord = _t(row_name), snap.quick_chord(row_chord)
+                break
+        # A tab separates the label from the right-aligned chord: it is what
+        # board 5's `txt(420, ..., anchor="end")` draws, and Qt renders it the
+        # same way in a QPushButton's text.
+        button.setText(f"{name}\t{chord}" if chord else name)
+        button.show()
+
+
+def _paint_dot(panel, key: str, state: dict) -> None:
+    """The 40x22 track at x=396: cyan with the knob to the right when on.
+
+    IT IS A READOUT, NOT A CONTROL — the row's label is the click target, and
+    a second control for one boolean would be two places to disagree. But an
+    unlit dot that never moves would be a lie of a worse kind: it would show
+    "off" for a permission that is on, which is the exact failure the panel
+    was built to avoid. `fixed` (a Microphone that does not exist) draws
+    muted, because there is nothing behind the switch to permit.
+    """
+    dot = panel._labels.get(f"perm_dot:{key}")
+    if dot is None:
+        return
+    pal = PALETTES[panel._theme]
+    if state.get("fixed"):
+        track, border = pal["card"], pal["line"]
+    elif state.get("on"):
+        track, border = pal["accent"], pal["accent"]
+    else:
+        track, border = pal["card"], pal["line"]
+    try:
+        dot.setStyleSheet(
+            f"background:{track};border:1px solid {border};border-radius:11px;")
+    except Exception as e:                       # noqa: BLE001
+        panel._note(f"permission dot {key!r} refused — {type(e).__name__}: {e}")
 
 
 def paint_theme(panel) -> None:

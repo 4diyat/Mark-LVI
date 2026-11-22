@@ -42,8 +42,30 @@ from typing import Callable
 # module that asks "how big is the ring" (`lifecycle`, the tray, the tests) has
 # always asked this file, and a move is not a rename.
 from ui.orb_paint import (                      # noqa: F401 — re-exported
-    _APPEARANCE, GLOW, HIT_RING, RADIUS, SIZE, Appearance, appearance,
-    paint_ring,
+    _APPEARANCE, GLOW, HIT_RING, OVERLAY_PX, RADIUS, SIZE, Appearance,
+    appearance, paint_overlay_box, paint_ring,
+)
+
+# The window's arithmetic moved to `ui/orb_place.py` when this file reached 739
+# lines: the size, the clickable circle, the mask and the remembered drag are
+# pure functions with no display in them, and they are what a test can hold.
+# Re-exported here because every caller has always asked this module.
+from ui.orb_snap import snap_to_edge
+
+from ui.orb_place import (                      # noqa: F401 — re-exported
+    POSITION_KEY, corner_anchor, hit_region, inside_hit_region, overlay_mask,
+    read_position, save_position, screen_area as _screen_area, window_size,
+    write_position,
+)
+
+# THE CANVAS AND ITS PAINTER LIVE IN `ui/orb_canvas.py`, split off when this
+# file crossed the 600-line ceiling. The boundary is the one this module has
+# always had: everything above is the WINDOW (flags, size, placement, timer,
+# mask, press routing); the canvas is the only code that puts a pixel on
+# screen. Imported at the top because `start()` calls it, and re-exported
+# because `paint_orb` has always been reachable from this module.
+from ui.orb_canvas import (                     # noqa: F401 — re-exported
+    _build_canvas, _painter_for, paint_orb,
 )
 
 # Where the window's three flags are named. A missing name is a TypeError on the
@@ -51,37 +73,14 @@ from ui.orb_paint import (                      # noqa: F401 — re-exported
 _FLAGS = ("FramelessWindowHint", "Tool", "WindowStaysOnTopHint")
 
 # Redrawn at 12 fps, not 30: the orb has no mouth to animate and the glow is
-# static except while speaking. A 30 fps timer on a 96 px window is a wake-up
+# static except while speaking. A 30 fps timer on a 146 px window is a wake-up
 # 30 times a second to draw the same ellipse.
 FRAME_MS = 83
 
-
-def window_size(mode: str) -> tuple[int, int]:
-    """The window is the same size in every mode, on purpose.
-
-    Resizing the window would move its centre unless the position is recomputed,
-    and a window that changes size under the cursor is a click that lands on
-    nothing. So the ring shrinks inside a fixed frame.
-    """
-    return (SIZE, SIZE)
-
-
-def hit_region(mode: str = "active") -> tuple[int, int, int]:
-    """(cx, cy, radius) of the clickable circle, in window coordinates."""
-    centre = SIZE // 2
-    ring = min(HIT_RING, appearance(mode).radius + 9)
-    return (centre, centre, ring)
-
-
-def inside_hit_region(x: int, y: int, mode: str = "active") -> bool:
-    """Whether a point in window coordinates lands on the orb.
-
-    Used instead of a Qt input mask: the mask needs a `QRegion` per mode and is
-    the part that cannot be verified without a window manager. This answers the
-    question the mask exists for, and a wrong answer here is testable.
-    """
-    cx, cy, r = hit_region(mode)
-    return (x - cx) ** 2 + (y - cy) ** 2 <= r * r
+# How far the pointer may move between press and release and still be a click.
+# 4 px absorbs a shaky hand; anything larger turns a deliberate nudge into a
+# click, and anything smaller turns a click into a 1 px drag.
+DRAG_THRESHOLD = 4
 
 
 def window_flags(Qt) -> int:
@@ -95,19 +94,6 @@ def window_flags(Qt) -> int:
     flags = Qt.WindowType
     return (getattr(flags, _FLAGS[0]) | getattr(flags, _FLAGS[1])
             | getattr(flags, _FLAGS[2]))
-
-
-def corner_anchor(area, size: int, margin: int = 24) -> tuple[int, int]:
-    """Where the orb sits: bottom-right, clear of the taskbar.
-
-    `area` is a screen's available geometry (a rect with x/y/width/height) — the
-    one thing about placement that can be decided without a window manager, and
-    the one thing that was wrong for the bubble on its first try (it sat on the
-    taskbar).
-    """
-    x = area.x() + area.width() - size - margin
-    y = area.y() + area.height() - size - margin
-    return (max(area.x(), x), max(area.y(), y))
 
 
 def _assistant_name() -> str:
@@ -135,9 +121,16 @@ class OrbOverlay:
     """
 
     def __init__(self, mode: str = "active",
-                 on_click: Callable[[], None] | None = None):
+                 on_click: Callable[[], None] | None = None,
+                 on_menu: Callable[[], None] | None = None):
         self._mode = mode
         self._on_click = on_click
+        # Board 4: "KLIK KANAN — menu cepat". Optional, because a caller that
+        # only wants the panel must not be forced to build a menu, and a right
+        # click with no handler is consumed and does nothing — it must not fall
+        # through to the left handler, which would make the same click open the
+        # panel on a machine with no menu.
+        self._on_menu = on_menu
         self._window = None
         self._canvas = None
         self._state = "idle"
@@ -145,6 +138,12 @@ class OrbOverlay:
         self._placed = False
         self._timer = None
         self._error = ""
+        # Whether `setMask` was actually applied. Public-ish because "the mask
+        # failed" and "the mask was never attempted" are different problems, and
+        # the difference is invisible from a screenshot.
+        self._mask_applied = False
+        self._press_at: tuple[int, int] | None = None
+        self._drag_from: tuple[int, int, int, int] | None = None
 
     # ── what happened ────────────────────────────────────────────────────────
 
@@ -159,6 +158,26 @@ class OrbOverlay:
     @property
     def mode(self) -> str:
         return self._mode
+
+    @property
+    def mask_applied(self) -> bool:
+        """Whether clicks outside the ring reach the desktop."""
+        return self._mask_applied
+
+    @property
+    def position(self) -> tuple[int, int] | None:
+        """Where the window is now, in screen coordinates, or None."""
+        if self._window is None:
+            return None
+        try:
+            point = self._window.pos()
+            return (int(point.x()), int(point.y()))
+        except Exception:                           # noqa: BLE001
+            return None
+
+    def saved_position(self) -> tuple[int, int] | None:
+        """The remembered corner, so a caller can show it or assert on it."""
+        return read_position()
 
     @property
     def state(self) -> str:
@@ -210,6 +229,7 @@ class OrbOverlay:
 
             self._window, self._canvas = window, canvas
             self._place()
+            self._apply_mask()
             window.show()
             self._start_timer()
             return True
@@ -270,8 +290,15 @@ class OrbOverlay:
             self._repaint()
 
     def set_mode(self, mode: str) -> None:
-        """Active / focus / quiet. Redraws, never resizes the window."""
+        """Active / focus / quiet. Redraws and re-masks, never resizes.
+
+        THE MASK HAS TO MOVE WITH THE RING. Focus drops the clickable circle
+        from 37 px to 27 px; a mask left at active's size would keep a 10 px
+        ring of invisible click target around a smaller orb — the user would
+        click what looks like the orb and hit nothing.
+        """
         self._mode = str(mode or "active").strip().lower() or "active"
+        self._apply_mask()
         self._repaint()
 
     def _repaint(self) -> None:
@@ -312,112 +339,166 @@ class OrbOverlay:
     # ── placement and clicks ─────────────────────────────────────────────────
 
     def _place(self) -> None:
-        """First show: bottom-right, clear of the taskbar. The user's drag wins."""
+        """First show: the user's saved drag if it is still on a screen,
+        otherwise bottom-right, clear of the taskbar.
+
+        THE SAVED POSITION IS CHECKED, NOT OBEYED — `_read_position` returns
+        None for a point on a monitor that has since been unplugged, and this
+        falls through to the corner. Restoring a window onto a screen that no
+        longer exists is how an orb becomes "missing" while running fine.
+        """
         if self._placed or self._window is None:
             return
         try:
-            from PyQt6.QtWidgets import QApplication
-            screen = QApplication.primaryScreen()
-            if screen is None:
+            saved = read_position()
+            if saved is not None:
+                self._window.move(*saved)
+                self._placed = True
                 return
-            x, y = corner_anchor(screen.availableGeometry(), SIZE)
+            area = _screen_area()
+            if area is None:
+                return
+            x, y = corner_anchor(area, OVERLAY_PX)
             self._window.move(x, y)
             self._placed = True
         except Exception as e:                      # noqa: BLE001
             print(f"[JARVIS] Orb overlay: could not choose a corner — "
                   f"{type(e).__name__}: {e}")
 
-    def handle_click(self, x: int, y: int) -> bool:
+    def _apply_mask(self) -> None:
+        """Hand the clickable circle to the window manager. Never fatal.
+
+        A window with no mask is the old behaviour — clicks in the corners are
+        swallowed — which is bad but visible. A window that is not there is
+        worse, so a failure is recorded in `mask_applied` and the orb stays.
+        """
+        if self._window is None:
+            return
+        try:
+            self._window.setMask(overlay_mask(self._mode))
+            self._mask_applied = True
+        except Exception as e:                      # noqa: BLE001
+            self._mask_applied = False
+            print(f"[JARVIS] Orb overlay: no click mask — clicks in the "
+                  f"transparent corners will be swallowed ({type(e).__name__}: {e})")
+
+    def drag_to(self, x: int, y: int, moved: bool = True) -> bool:
+        """Move the window and remember it, if this was a real drag.
+
+        `moved=False` is a press-and-release on the same pixel: that is the
+        click that opens the command bar, not a drag. Treating a zero-length
+        drag as a move would swallow the click, and the orb would stop opening
+        anything at all. Returns whether the position was saved.
+        """
+        if not moved or self._window is None:
+            return False
+        try:
+            self._window.move(int(x), int(y))
+        except Exception as e:                      # noqa: BLE001
+            print(f"[JARVIS] Orb overlay: could not move — "
+                  f"{type(e).__name__}: {e}")
+            return False
+        return save_position(int(x), int(y))
+
+    def begin_drag(self, x: int, y: int,
+                   gx: int | None = None, gy: int | None = None) -> None:
+        """Record where a press started, so the release can measure the move.
+
+        `gx`/`gy` are the SCREEN coordinates of the press. Without them the
+        release can still tell a drag from a click, but the orb cannot follow
+        the pointer — which is the difference between a movable orb and an orb
+        that jumps when the mouse is released.
+        """
+        self._press_at = (int(x), int(y))
+        self._drag_from = None
+        if gx is None or gy is None:
+            return
+        origin = self.position
+        if origin is not None:
+            self._drag_from = (int(gx), int(gy), origin[0], origin[1])
+
+    def drag_move(self, gx: int, gy: int) -> bool:
+        """Follow the pointer, expressed as a DELTA from where the press started.
+
+        A delta rather than "centre the window on the cursor": the user grabbed
+        the orb somewhere, and moving it under their finger on the first pixel
+        of a drag is the paper-cut that makes a drag feel broken.
+
+        No position is written here — `end_drag` does that once, on release. A
+        file write per mouse-move event is 60 writes a second of the same two
+        integers.
+        """
+        if self._drag_from is None or self._window is None:
+            return False
+        x0, y0, wx, wy = self._drag_from
+        try:
+            self._window.move(wx + int(gx) - x0, wy + int(gy) - y0)
+            return True
+        except Exception as e:                      # noqa: BLE001
+            print(f"[JARVIS] Orb overlay: drag move refused — "
+                  f"{type(e).__name__}: {e}")
+            return False
+
+    def end_drag(self, x: int, y: int, threshold: int | None = None) -> bool:
+        """On release: a real move is remembered, a click is passed to `_on_click`.
+
+        Returns whether the release was treated as a drag. `threshold` is small
+        on purpose — 4 px absorbs a shaky hand without turning a deliberate
+        nudge into a click.
+        """
+        start, self._press_at = self._press_at, None
+        if start is None:
+            return False
+        limit = DRAG_THRESHOLD if threshold is None else int(threshold)
+        dx, dy = int(x) - start[0], int(y) - start[1]
+        if max(abs(dx), abs(dy)) < limit:
+            return False
+        here = self.position
+        if here is not None:
+            # BOARD 4: "menempel ke tepi". The snap runs on RELEASE, not during
+            # the drag: snapping while the pointer moves makes the orb jump out
+            # from under the hand, which reads as a stuck window.
+            area = _screen_area()
+            if area is not None:
+                here = snap_to_edge(area, here[0], here[1], OVERLAY_PX)
+                try:
+                    self._window.move(*here)
+                except Exception as e:              # noqa: BLE001
+                    print(f"[JARVIS] Orb overlay: could not settle on an edge — "
+                          f"{type(e).__name__}: {e}")
+            save_position(*here)
+        # TRUE EVEN IF THE POSITION COULD NOT BE READ. "Was this a drag" decides
+        # whether the release also counts as a click, and that answer must not
+        # depend on whether the window manager let us query the window.
+        return True
+
+    def handle_click(self, x: int, y: int, button: str = "left") -> bool:
         """Route one click. True if it landed on the ring and was handled.
 
-        Separate from the Qt event so the rule — a click three pixels outside
-        the ring belongs to the desktop, not to us — can be tested without a
-        display.
+        Board 4 gives the two buttons two jobs — left opens the tray panel,
+        right opens the quick menu — so the button is part of the question. It
+        is a STRING rather than a Qt enum so this rule stays testable without a
+        display; the canvas translates.
+
+        A right click with no handler returns False and does NOT fall through to
+        the left one: the same press opening the panel on a machine with no menu
+        is worse than the press doing nothing.
         """
         if not inside_hit_region(x, y, self._mode):
             return False
-        cb = self._on_click
+        cb = self._on_menu if str(button).lower() == "right" else self._on_click
         if cb is None:
             return False
         try:
             cb()
             return True
         except Exception as e:                      # noqa: BLE001
-            print(f"[JARVIS] Orb overlay: click handler failed — "
+            print(f"[JARVIS] Orb overlay: {button} click handler failed — "
                   f"{type(e).__name__}: {e}")
             return False
 
-
-def _build_canvas(parent, owner: "OrbOverlay"):
-    """Build the widget that actually paints the ring.
-
-    WHY THIS IS A FUNCTION AND NOT A CLASS AT MODULE SCOPE
-        A `QWidget` subclass has to import Qt when the class is created, and this
-        module is imported by tests on machines with no display and by CI that
-        installs only the test tooling. So the class is created inside `start()`,
-        where Qt is already being imported anyway.
-
-    WHY IT EXISTS AT ALL, AND THE BUG IT FIXES
-        The first version kept the painter in a plain object with an `update()`
-        that forwarded to the window, and there was no `paintEvent` anywhere.
-        Nothing ever called `paint_orb`, so the orb window was created, shown,
-        translucent — and empty. Every test passed, because the geometry, the
-        modes and the hit region were all correct and none of them is what puts
-        a pixel on screen. That is the difference between the design being
-        implemented and being VISIBLE.
-    """
-    from PyQt6.QtWidgets import QWidget
-
-    class _OrbCanvas(QWidget):
-        """The ring. Owns no state: it asks the overlay what to draw."""
-
-        def paintEvent(self, _event):               # noqa: N802 — Qt's name
-            try:
-                from PyQt6.QtGui import QPainter
-
-                painter = QPainter(self)
-                try:
-                    # `SIZE` rather than `self.width()`: the test stub has no
-                    # geometry, and the window is a fixed size anyway. A painter
-                    # that trusted the widget's reported size would draw nothing
-                    # under the stub and so could not be tested at all.
-                    paint_orb(painter, SIZE, owner.mode, owner.state,
-                              owner.audio_level)
-                finally:
-                    painter.end()
-            except Exception as e:                  # noqa: BLE001
-                # A failed repaint costs a frame. Letting it escape would take
-                # down the event loop of a window with no other purpose.
-                print(f"[JARVIS] Orb overlay: could not paint — "
-                      f"{type(e).__name__}: {e}")
-
-        def mousePressEvent(self, event):           # noqa: N802 — Qt's name
-            """Route the press: the child covers the window, so it comes first."""
-            try:
-                pos = event.position()
-                if owner.handle_click(int(pos.x()), int(pos.y())):
-                    event.accept()
-            except Exception as e:                  # noqa: BLE001
-                print(f"[JARVIS] Orb overlay: press not handled — "
-                      f"{type(e).__name__}: {e}")
-
-    return _OrbCanvas(parent)
-
-
-def paint_orb(painter, size: int, mode: str, state: str, level: float = 0.0) -> None:
-    """Draw this window's orb. Delegates to `ui.orb_paint.paint_ring`.
-
-    WHY THIS IS NOW THREE LINES
-        It used to be the only painter that knew about presence modes, and the
-        main window had a second one that did not. Two painters meant the design
-        work reached whichever surface was edited last — which was this one, so
-        the 56 px ring dimmed in Fokus while the HUD kept drawing the old orb.
-        The sizes stay here (the window is 96 px and its hit test depends on
-        that); the drawing lives in one module for every surface.
-
-    THE BACKGROUND IS NOT FILLED, and that is deliberate. Drawing happens on a
-    translucent frameless window, where a filled rect is an opaque square on
-    the user's wallpaper.
-    """
-    paint_ring(painter, size / 2.0, size / 2.0, float(appearance(mode).radius),
-               mode=mode, state=state, level=level)
+    def menu_point(self) -> tuple[int, int]:
+        """Where a quick menu should open: the window's top-left, in screen
+        coordinates. The caller positions its own menu; this is the one place
+        that knows it should be next to the orb rather than at the cursor."""
+        return self.position or (0, 0)

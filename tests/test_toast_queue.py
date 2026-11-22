@@ -83,9 +83,11 @@ def test_the_overflow_label_is_empty_until_something_is_lost():
     q.push("b")
     assert q.overflow_label() == ""
     q.push("c")
-    assert q.overflow_label() == "1 lagi"
+    # Board 2's phrase, not "1 lagi" — see `test_toast_board2.py` for why the
+    # older wording was wrong rather than merely shorter.
+    assert q.overflow_label() == "+1 lain dalam antrean"
     q.push("d")
-    assert q.overflow_label() == "2 lagi"
+    assert q.overflow_label() == "+2 lain dalam antrean"
 
 
 def test_clearing_the_dropped_count_does_not_clear_the_stack():

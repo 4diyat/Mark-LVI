@@ -695,7 +695,7 @@
   "ui.panel.subtitle.active": "Tray panel · follows the taskbar",
   "ui.panel.subtitle.focus": "Tray panel · Focus mode",
   "ui.panel.subtitle.quiet": "Tray panel · Quiet mode",
-  "ui.panel.focus.active_until": "Focus on until {time}",
+  "ui.panel.focus.title": "Focus is on. Notifications are held until it ends.",
   "ui.panel.focus.held": "Notifications are held, not dropped.",
   "ui.panel.focus.held_count": "{count} held · they appear afterwards",
   "ui.panel.section.quick": "QUICK ACTIONS",
@@ -747,5 +747,9 @@
   "ui.panel.mode.active": "Aktif",
   "ui.panel.mode.focus": "Fokus",
   "ui.panel.mode.quiet": "Senyap",
-  "ui.panel.theme": "Panel theme: auto, dark or light"
+  "ui.panel.theme": "Panel theme: auto, dark or light",
+  "ui.panel.focus.quick.held": "See what was held",
+  "ui.panel.focus.quick.end": "End focus now",
+  "ui.panel.focus.quick.pause": "Pause all scheduling",
+  "ui.panel.quota.held": "{remaining} more are held until focus ends"
 }

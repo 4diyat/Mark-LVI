@@ -52,7 +52,15 @@ def start_orb(shell: "JarvisUI") -> bool:
     except Exception:                               # noqa: BLE001
         mode = "active"
 
-    orb = OrbOverlay(mode=mode, on_click=lambda: open_command_bar(shell))
+    # BOARD 4: "KLIK KIRI — buka panel baki", "KLIK KANAN — menu cepat".
+    # The left click used to open the command bar, which is a different surface
+    # (board 3, one line) and left the 460x660 panel reachable only from the
+    # tray icon. The bar keeps its own chord — Ctrl+Space, below — so nothing is
+    # orphaned by this, and the panel already has a command field of its own.
+    orb = OrbOverlay(
+        mode=mode,
+        on_click=lambda: toggle_orb_panel(shell),
+        on_menu=lambda: open_quick_menu(shell))
     if not orb.start():
         _note(shell, f"Orb unavailable ({orb.error}); the tray is still there.")
         return False
@@ -64,6 +72,123 @@ def start_orb(shell: "JarvisUI") -> bool:
 # feature a user is told. Kept next to the bar's own code rather than in
 # `core.hotkey`, because that module's DEFAULT_CHORD is push-to-talk's.
 BAR_CHORD = ("ctrl", "space")
+
+
+def toggle_orb_panel(shell: "JarvisUI") -> bool:
+    """A left click on the orb: the tray panel, opened beside it.
+
+    THE ANCHOR POINT IS THE ORB, not the cursor: `panel_position` opens the
+    panel above and right-aligned to the point it is given, which is where a
+    Windows tray menu opens. Passing the orb's own corner makes the panel appear
+    attached to the thing that was clicked, rather than a knife's throw from it.
+    """
+    from ui import tray_panel_wiring
+
+    orb = getattr(shell, "_orb", None)
+    point = None
+    try:
+        point = orb.menu_point() if orb is not None else None
+    except Exception as e:                          # noqa: BLE001
+        _note(shell, f"panel anchor unavailable — {type(e).__name__}: {e}")
+    return bool(tray_panel_wiring.toggle_panel(shell, point))
+
+
+def open_quick_menu(shell: "JarvisUI") -> bool:
+    """A right click on the orb: the short menu board 4 draws.
+
+    "menu cepat" with no list in the artboard, so it carries what a user asks
+    for at the orb and nothing else: the three presence modes, the two pages of
+    the panel, and Quit. Everything longer already lives in the panel, and a
+    menu that repeats it is a second place for the same action to be wrong.
+
+    Built on demand and thrown away on close: it is five items, and a cached
+    popup is a popup that shows yesterday's checkmark.
+    """
+    orb = getattr(shell, "_orb", None)
+    if orb is None or not getattr(orb, "available", False):
+        return False
+    try:
+        from PyQt6.QtGui import QCursor
+        from PyQt6.QtWidgets import QMenu
+    except Exception as e:                          # noqa: BLE001
+        _note(shell, f"menu cepat tidak tersedia ({type(e).__name__}: {e})")
+        return False
+
+    from ui import tray_panel_wiring
+
+    try:
+        menu = QMenu()
+        # The mode items are NOT a cycling toggle: the menu shows all three, so
+        # it sets the one that was chosen. `set_presence` is the same call the
+        # panel's segmented control makes, which is what keeps the two surfaces
+        # telling the user the same truth.
+        for mode, label in (("active", "Aktif"), ("focus", "Fokus"),
+                            ("quiet", "Senyap")):
+            menu.addAction(label).triggered.connect(
+                lambda _checked=False, m=mode: tray_panel_wiring.set_presence(shell, m))
+        menu.addSeparator()
+        for page, label in (("history", "Riwayat"), ("privacy", "Privasi")):
+            menu.addAction(label).triggered.connect(
+                lambda _checked=False, p=page: _open_panel_page(shell, p))
+        menu.addSeparator()
+        menu.addAction("Keluar").triggered.connect(lambda: _quit_from_menu(shell))
+
+        # BESIDE THE ORB, NOT AT THE CURSOR. The cursor is already on the orb
+        # when this runs, and a menu that opens under the pointer can be
+        # dismissed by the release of the very click that opened it.
+        menu.popup(_qpoint(orb.menu_point() or QCursor.pos()))
+        shell._quick_menu = menu               # keep a reference: Qt needs one
+        return True
+    except Exception as e:                          # noqa: BLE001
+        _note(shell, f"menu cepat gagal ({type(e).__name__}: {e})")
+        return False
+
+
+def _qpoint(point):
+    """A QPoint from an (x, y) pair or from a QPoint, which `QCursor.pos()` is."""
+    if hasattr(point, "x") and hasattr(point, "y"):
+        return point                           # already a QPoint
+    from PyQt6.QtCore import QPoint
+
+    return QPoint(int(point[0]), int(point[1]))
+
+
+def _open_panel_page(shell: "JarvisUI", page: str) -> None:
+    """Open the panel on one of its pages, from the quick menu."""
+    from ui import tray_panel_wiring
+
+    orb = getattr(shell, "_orb", None)
+    point = orb.menu_point() if orb is not None else None
+    if not tray_panel_wiring.open_panel(shell, point):
+        return
+    panel = getattr(shell, "_panel", None)
+    if panel is not None:
+        try:
+            panel.set_page(page)
+        except Exception as e:                      # noqa: BLE001
+            _note(shell, f"page {page} tidak bisa dibuka — {type(e).__name__}: {e}")
+
+
+def _quit_from_menu(shell: "JarvisUI") -> None:
+    """Quit through the shell's own quit path, if it has one.
+
+    A menu action that calls `sys.exit` directly would skip the shutdown that
+    stops the orb's timer and writes the config — the difference between a clean
+    exit and a window left on screen after the process is gone.
+    """
+    quit_fn = getattr(shell, "quit", None) or getattr(shell, "_quit", None)
+    if callable(quit_fn):
+        try:
+            quit_fn()
+            return
+        except Exception as e:                      # noqa: BLE001
+            _note(shell, f"quit failed — {type(e).__name__}: {e}")
+    try:
+        from PyQt6.QtWidgets import QApplication
+
+        QApplication.quit()
+    except Exception as e:                          # noqa: BLE001
+        _note(shell, f"quit unavailable — {type(e).__name__}: {e}")
 
 
 def start_bar_hotkey(shell: "JarvisUI") -> str:

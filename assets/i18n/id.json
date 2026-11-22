@@ -695,7 +695,7 @@
   "ui.panel.subtitle.active": "Panel baki · mengikuti posisi taskbar",
   "ui.panel.subtitle.focus": "Panel baki · mode Fokus",
   "ui.panel.subtitle.quiet": "Panel baki · mode Senyap",
-  "ui.panel.focus.active_until": "Fokus aktif sampai {time}",
+  "ui.panel.focus.title": "Fokus aktif. Notifikasi ditahan sampai Fokus berakhir.",
   "ui.panel.focus.held": "Toast ditahan, bukan dibuang.",
   "ui.panel.focus.held_count": "{count} tertahan · akan muncul setelahnya",
   "ui.panel.section.quick": "AKSI CEPAT",
@@ -747,5 +747,9 @@
   "ui.panel.mode.active": "Aktif",
   "ui.panel.mode.focus": "Fokus",
   "ui.panel.mode.quiet": "Senyap",
-  "ui.panel.theme": "Tema panel: otomatis, gelap, atau terang"
+  "ui.panel.theme": "Tema panel: otomatis, gelap, atau terang",
+  "ui.panel.focus.quick.held": "Lihat yang tertahan",
+  "ui.panel.focus.quick.end": "Akhiri fokus sekarang",
+  "ui.panel.focus.quick.pause": "Jeda semua penjadwalan",
+  "ui.panel.quota.held": "{remaining} sisanya ditahan sampai fokus berakhir"
 }
