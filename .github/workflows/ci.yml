@@ -398,6 +398,7 @@ jobs:
       # exit code on disk; the bash step prints the transcript, converts FAIL
       # lines into annotations, and exits with the recorded code.
       - name: Providers self-test (runs offline; owns its own mocks)
+        id: providers
         shell: python
         # encoding= is not optional here. On Windows the child writes its
         # output in the console's code page, and decoding it as UTF-8 with the
@@ -440,7 +441,13 @@ jobs:
           print(f"self-test exit code: {proc.returncode}")
 
       - name: Report the self-test (annotations + status)
-        if: always()
+        # ONLY WHEN THE SUITE STEP RAN. With `always()` this step also ran when
+        # an EARLIER step failed — and then exited 1 with "the self-test step
+        # left no transcript", which reads as a second, unrelated failure. On a
+        # run where the ambient Qt smoke aborted, the annotation that mattered
+        # was buried under one about a transcript that was never meant to exist.
+        if: always() && steps.providers.outcome != 'skipped'
+        id: report
         shell: bash
         run: |
           if [ -f providers-test.txt ]; then

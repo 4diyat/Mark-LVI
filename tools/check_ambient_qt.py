@@ -32,9 +32,17 @@ Run: `QT_QPA_PLATFORM=offscreen python tools/check_ambient_qt.py`
 """
 from __future__ import annotations
 
+import faulthandler
 import sys
 import traceback
 from pathlib import Path
+
+# A Qt FAIL-FAST IS NOT AN EXCEPTION. `QWidget: Must construct a QApplication
+# before a QWidget` calls `qFatal`, which aborts the process: no traceback, no
+# unwinding, no chance for the per-check `try` to catch it. The first CI run of
+# this tool reported only that one line and it was impossible to tell which
+# check produced it — so the stack is dumped on the way down.
+faulthandler.enable()
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -67,16 +75,40 @@ def _repaint(widget) -> None:
     widget.render(pixmap)
 
 
+def _require_app():
+    """The one `QApplication`, built on demand, or a real exception.
+
+    Every check calls this FIRST. Creating a widget with no application is
+    `qFatal` and kills the process instead of failing a check, so the guard has
+    to be here rather than in a setup step that could itself have failed — the
+    first version had exactly that shape and aborted silently in CI.
+    """
+    from PyQt6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication(sys.argv[:1] or ["jarvis-check"])
+    if app is None:
+        raise RuntimeError("Qt refused to build a QApplication")
+    return app
+
+
 @check("the application is built")
 def _application():
-    from PyQt6.QtWidgets import QApplication
-    app = QApplication.instance() or QApplication([])
-    assert app is not None
-    print(f"  platform: {app.platformName()}")
+    app = _require_app()
+    platform = app.platformName()
+    print(f"  platform: {platform or '(unnamed)'}", flush=True)
+    # The offscreen plugin is what CI promises to run under. Saying which one
+    # actually came up is the difference between "the surfaces work" and "they
+    # were never drawn".
+    if platform != "offscreen":
+        print(f"  WARNING: expected the offscreen platform, got {platform!r}",
+              flush=True)
 
 
 @check("the orb draws at every presence size")
 def _orb():
+    _require_app()
     from ui import orb_overlay
 
     for mode in ("active", "focus", "quiet"):
@@ -96,6 +128,7 @@ def _orb():
 
 @check("the command bar opens, takes text, submits and closes")
 def _bar():
+    _require_app()
     from PyQt6.QtCore import Qt
     from PyQt6.QtTest import QTest
 
@@ -126,6 +159,7 @@ def _bar():
 
 @check("the toast queue keeps three and counts the rest")
 def _toasts():
+    _require_app()
     from ui.toast_queue import ToastQueue
 
     queue = ToastQueue()
@@ -140,6 +174,7 @@ def _toasts():
 
 @check("the face bubble is frameless and on top")
 def _bubble():
+    _require_app()
     from PyQt6.QtCore import Qt
 
     from ui.face_bubble import FaceBubble, window_flags
@@ -160,6 +195,7 @@ def _bubble():
 
 @check("the confirmation is its own window, never a child")
 def _confirm():
+    _require_app()
     from PyQt6.QtCore import Qt
 
     from ui.confirm_banner import build_confirm_window
@@ -179,6 +215,7 @@ def _confirm():
 
 @check("the shell starts with no surfaces and stays quiet about it")
 def _shell():
+    _require_app()
     from ui.shell import AmbientShell
 
     shell = AmbientShell("face.png", "JARVIS")
@@ -196,17 +233,18 @@ def _shell():
 def main() -> int:
     failures = 0
     for name, fn in CHECKS:
-        print(f"- {name}")
+        print(f"- {name}", flush=True)
         try:
             fn()
         except Exception:                           # noqa: BLE001
             failures += 1
-            print("  FAILED")
+            print("  FAILED", flush=True)
             traceback.print_exc()
+            sys.stdout.flush()
     if failures:
-        print(f"{failures} of {len(CHECKS)} checks failed")
+        print(f"{failures} of {len(CHECKS)} checks failed", flush=True)
         return 1
-    print(f"all {len(CHECKS)} checks passed")
+    print(f"all {len(CHECKS)} checks passed", flush=True)
     return 0
 
 
