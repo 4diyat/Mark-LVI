@@ -225,6 +225,32 @@ def _confirm():
     print(f"  {banner.width()}px wide, on top, no parent")
 
 
+@check("the tray panel draws three pages in two palettes and closes on Esc")
+def _panel():
+    _require_app()
+    from PyQt6.QtCore import Qt
+
+    from ui.tray_panel import TrayPanel
+
+    panel = TrayPanel({})
+    assert panel.open(), f"the panel could not open: {panel.error}"
+    assert panel._window.width() == 460 and panel._window.height() == 660
+    flags = panel._window.windowFlags()
+    for wanted in ("FramelessWindowHint", "Tool", "WindowStaysOnTopHint"):
+        assert flags & getattr(Qt.WindowType, wanted), f"{wanted} missing"
+    for page in ("main", "history", "privacy"):
+        assert panel.set_page(page), page
+        _repaint(panel._window)
+    assert panel.set_page("trading") is False, "an unknown page was accepted"
+    assert panel.set_theme("light") and panel.theme == "light"
+    _repaint(panel._window)
+    assert panel.set_theme("dark")
+    panel.close()
+    assert panel.available, "closing must not destroy the widget"
+    panel.stop()
+    print("  460x660, three pages, both palettes, on top, no raise")
+
+
 @check("the shell starts with no surfaces and stays quiet about it")
 def _shell():
     _require_app()

@@ -30,18 +30,49 @@ copy of the old code is in git.
 | 2 | Toast — antrean & batas harian | three toasts, the rest counted | `ui/toast_queue.py` |
 | 3 | Command bar — Ctrl+Space | one line, Esc gives focus back | `ui/command_bar.py` |
 | 4 | Orb overlay — interaksi & status | the same ring, five states | `ui/orb_paint.py` |
-| 5 | Panel baki sistem | the tray menu panel: quick actions, suggestion, permissions, one line to type in | `ui/tray.py` |
+| 5 | Panel baki sistem | the 460×660 tray panel: three segments, four quick actions with chords, today's suggestion, permissions, one line to type in | `ui/tray_panel.py`, `ui/tray_pages.py`, `ui/tray_panel_model.py` |
 | 6 | Overlay suara + kamera gestur | listening overlay, gesture camera tile | **proposal — see below** |
 | 23 | Fokus — toast ditahan | held notifications, counted | `ui/toast_queue.py` |
 | 24 | Senyap — orb memudar | the orb dimmed, still there | `ui/orb_overlay.py` |
 | 25 | Risiko: konfirmasi | amber risk dialog, trusted UI | `ui/confirm_banner.py` |
-| 26 | Riwayat tugas + Urungkan | task history with undo | `ui/tray.py` (list) |
-| 27 | Izin & Privasi | mic / camera / screen switches | `ui/tray.py` (toggles) |
-| 28 | Tema terang — panel baki | the same panel, light palette | `ui/theme.py` |
+| 26 | Riwayat tugas + Urungkan | task history with undo, audit tail, export and clear | `ui/tray_panel.py` (history page) |
+| 27 | Izin & Privasi | three indicators, four explicit permissions, guest mode, erase | `ui/tray_panel.py` (privacy page) |
+| 28 | Tema terang — panel baki | the same panel, light palette | `ui/tray_pages.py` (`PALETTES["light"]`) |
 
 Plus the surfaces the owner explicitly kept that no board draws: the **face
 bubble** (`ui/face_bubble.py`, `ui/face_canvas.py`) and the **orchestrator**
 (`ui/shell.py`, `ui/lifecycle.py`, `ui/ambient_shell.py`).
+
+### The tray panel, and what each part of it really does
+
+`ui/tray_panel_model.py` reads the world; `ui/tray_pages.py` is the geometry and
+the two palettes; `ui/tray_panel.py` is lifecycle, dispatch and paint;
+`ui/tray_panel_wiring.py` says which function is behind which control. A left
+click on the tray icon opens it; the right click still opens the old `QMenu`,
+because that menu is the fallback when the panel cannot be built.
+
+Four things are drawn but NOT fully backed, and each says so on screen rather
+than by omission:
+
+| Control | What it does today |
+|---|---|
+| **Susun jendela** | Refused out loud. There is no window-snapping code in this tree — it was never written. The row is on the artboard, so the row is drawn; pressing it explains that and points at the chord. |
+| **Mode tamu** | Refused out loud. Guest mode needs every surface to stop reading memory; nothing does that yet, so the switch changes nothing and says so. |
+| **Dikte** | Works, but it is a SIX-SECOND hold released on a timer — a button cannot express "until I let go". The press-and-hold version is the chord on the same row. |
+| **Cari berkas** | Opens the command bar with `Cari berkas ` already typed instead of searching: the search needs a query, and the bar is where the user already types one. |
+
+The chords printed on the rows (`Ctrl+Shift+S`, `Ctrl+Win`, `Ctrl+Shift+F`,
+`Ctrl+Shift+J`) are the ARTBOARD'S. Only `Ctrl+Shift+J` (summon) and `Ctrl+Space`
+(command bar) are actually bound by this program; the other three are printed
+labels, not registered hotkeys. A chord on a row is not a promise the OS owns it.
+
+The suggestion row is empty in this build and says "Belum ada saran hari ini."
+`core.suggestion_quota` counts suggestions; nothing generates them yet.
+
+**Hapus semua data lokal** erases the audit log — the record of what the
+assistant did. It does not touch `config/api_keys.json`, the conversation
+history files, or anything already sent to the model. **Hapus riwayat** clears
+the undo stack only. Two buttons for two stores, deliberately.
 
 ---
 
@@ -70,11 +101,11 @@ UI. There is no screen on which to change them.
 | Accent colour | `config/config.json` → `ui_accent`, or `ui.theme.apply_ui_accent` |
 | Plugin Manager | `plugins/*.json` manifests, plus `config/plugins_state.json` for on/off |
 | API key | `config/api_keys.json` |
-| Presence mode | the tray panel (board 5) — the only setting with a surface |
+| Presence mode | the tray panel (board 5) — the segments, or the tray menu's one cycling item |
 | Notifications on/off | `config/config.json` → `desktop_notifications` |
 | Language | `config/config.json` → `language` |
 | Register `jarvis://` links | `python -c "from core import deeplink; deeplink.register()"` — the drawer's Link button is gone; `deeplink.registered()` still reads the OS |
-| Microphone / camera / screen | the tray panel's IZIN section (boards 5, 27) |
+| Microphone / camera / screen | the tray panel's IZIN section (boards 5, 27). Mikrofon is a FACT, not a switch: it is disabled and says so when no device exists. Files and app control are real toggles: they write plugin enablement. |
 
 ### The desktop workspace — 11 modules, 3,200 lines
 

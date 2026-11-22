@@ -116,6 +116,15 @@ def test_the_two_locales_are_not_the_same_file():
         "desktop.menu_edit",       # "Edit" is also standard Indonesian UI terminology
         "trading.quote",            # market notation and placeholders
         "trading.session_asia", "trading.session_london", "trading.session_new_york",  # proper names
+        # The tray panel (boards 5/23/26/27/28). These are identical in both
+        # locales BY THE ARTBOARD: the mockup draws "JARVIS", "Aktif / Fokus /
+        # Senyap", "AUDIT LOG" and a "{t} · {risk} · {state}" template, and
+        # translating them would make the panel disagree with the design it
+        # was built from. The keys exist in both catalogues so a future locale
+        # can translate them; today the user asked for the mockup's words.
+        "ui.panel.title", "ui.panel.history.meta", "ui.panel.section.audit",
+        "ui.panel.mode.active", "ui.panel.mode.focus", "ui.panel.mode.quiet",
+        "ui.panel.page.main",
     }
     shared = [key for key in shared
               if any(ch.isalpha() for ch in en[key])

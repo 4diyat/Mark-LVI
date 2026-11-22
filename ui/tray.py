@@ -298,11 +298,27 @@ class TrayIcon:
         return _fire
 
     def _on_activated(self, reason) -> None:
-        """Left click summons the interface; right click is Qt's own menu."""
+        """Left click opens the PANEL; right click is Qt's own menu.
+
+        IT USED TO CALL "show", AND BOARD 5 IS WHY IT DOES NOT ANY MORE.
+            A left click on a tray icon is the fastest gesture the user has, and
+            spending it on "bring the orb forward when the orb is already on
+            screen" is a click that does nothing visible. The mockup gives that
+            click a 460×660 panel with the mode, the quick actions and the
+            command field, which is what somebody clicking a tray icon is
+            asking for.
+
+            `panel` is an optional handler, so a caller that has not wired one
+            keeps the old behaviour: falling back to "show" is the difference
+            between an older host and a broken tray.
+        """
         try:
             from PyQt6.QtWidgets import QSystemTrayIcon
         except ImportError:
             return                 # no Qt to ask; nothing was clicked after all
         if reason != QSystemTrayIcon.ActivationReason.Trigger:
+            return
+        if "panel" in self._actions:
+            self._make_handler("panel")()
             return
         self._make_handler("show")()

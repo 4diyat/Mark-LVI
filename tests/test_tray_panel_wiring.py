@@ -1,0 +1,297 @@
+"""What the panel's controls DO, proved without Qt and without a real session.
+
+WHY THESE EXIST RATHER THAN "THE PANEL OPENS"
+    A control that reports success and changes nothing is the failure this
+    project keeps removing: a switch with no flag behind it, an Undo that calls
+    nothing, a screenshot row that opens a window and takes no picture. Each
+    test below drives the real module the control is supposed to call and
+    checks the real state it is supposed to change — `core.undo`'s stack,
+    `config_manager`'s plugin enablement, the shell's push-to-talk callback.
+
+    Two controls CANNOT work in this build (mode tamu, susun jendela). The
+    tests for those assert the honest answer — False plus a sentence — because
+    a test that only checked "it does not raise" would pass on a stub that
+    silently did nothing, which is exactly what the panel must not be.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+
+class FakeShell:
+    """The shell surface these functions touch, and nothing else."""
+
+    def __init__(self):
+        self.lines = []
+        self.ptt = []
+        self.ptt_hold = self.ptt.append
+        self._panel = None
+        self._command_bar = None
+
+    def write_log(self, line):
+        self.lines.append(line)
+
+
+@pytest.fixture()
+def wiring():
+    from ui import tray_panel_wiring
+
+    return tray_panel_wiring
+
+
+# ── presence ────────────────────────────────────────────────────────────────
+
+def test_a_segment_applies_that_exact_mode_not_the_next_one(wiring, monkeypatch):
+    """The panel does not cycle. Pressing Senyap twice must stay on Senyap."""
+    from core import presence_mode
+    from ui import ambient_shell
+
+    presence_mode.reset()
+    applied = []
+    monkeypatch.setattr(ambient_shell, "apply_presence_mode",
+                        lambda shell, mode: applied.append(mode) or True)
+
+    assert wiring.set_presence(FakeShell(), "quiet") is True
+    assert wiring.set_presence(FakeShell(), "quiet") is True
+    assert applied == ["quiet", "quiet"]
+    presence_mode.reset()
+
+
+# ── quick actions ───────────────────────────────────────────────────────────
+
+def test_screenshot_goes_through_the_existing_capture(wiring, monkeypatch):
+    import actions.computer_control as cc
+
+    calls = []
+    monkeypatch.setattr(cc, "_screenshot",
+                        lambda path=None: calls.append(path) or "Screenshot saved: X")
+
+    shell = FakeShell()
+    assert wiring.screenshot(shell) is True
+    assert calls == [None]
+    assert any("Screenshot saved: X" in line for line in shell.lines)
+
+
+def test_a_failing_screenshot_is_reported_and_returns_false(wiring, monkeypatch):
+    import actions.computer_control as cc
+
+    def _boom(path=None):
+        raise RuntimeError("no display")
+
+    monkeypatch.setattr(cc, "_screenshot", _boom)
+    shell = FakeShell()
+
+    assert wiring.screenshot(shell) is False
+    assert any("RuntimeError" in line and "no display" in line for line in shell.lines)
+
+
+def test_dictate_holds_the_microphone_and_releases_it(wiring, monkeypatch):
+    """The release is the whole feature: a hold that never ends is a hot mic."""
+    shell = FakeShell()
+    started = []
+    released = []
+
+    def _hold(on):
+        (started if on else released).append(on)
+
+    shell.ptt_hold = _hold
+    monkeypatch.setattr(wiring, "_release_later",
+                        lambda sh, seconds: released.append(False))
+
+    assert wiring.dictate(shell) is True
+    assert started == [True]
+    assert released == [False]
+    assert any("6 detik" in line for line in shell.lines)
+
+
+def test_dictate_on_a_session_that_is_not_running_says_so(wiring):
+    shell = FakeShell()
+    shell.ptt_hold = None
+
+    assert wiring.dictate(shell) is False
+    assert any("belum siap" in line for line in shell.lines)
+
+
+def test_the_release_runs_even_when_the_hold_itself_would_throw(wiring, monkeypatch):
+    """A hold that throws must not leave the microphone open."""
+    shell = FakeShell()
+    released = []
+    monkeypatch.setattr(wiring, "_release_later",
+                        lambda sh, seconds: released.append(False))
+
+    def _hold(on):
+        raise RuntimeError("audio device gone")
+
+    shell.ptt_hold = _hold
+    assert wiring.dictate(shell) is False
+    assert released == []       # nothing was ever opened, so nothing to close
+    assert any("audio device gone" in line for line in shell.lines)
+
+
+def test_arranging_windows_is_refused_out_loud(wiring):
+    shell = FakeShell()
+    assert wiring.tidy_windows(shell) is False
+    assert any("belum ada di build ini" in line for line in shell.lines)
+
+
+def test_find_a_file_opens_the_bar_and_prefills_a_request(wiring, monkeypatch):
+    from ui import ambient_shell
+
+    class _Field:
+        def __init__(self):
+            self.value = ""
+            self.focused = False
+
+        def setText(self, text):
+            self.value = text
+
+        def setFocus(self):
+            self.focused = True
+
+    class _Bar:
+        is_open = False
+
+        def __init__(self):
+            self._field = _Field()
+
+    shell = FakeShell()
+    shell._command_bar = _Bar()
+    monkeypatch.setattr(ambient_shell, "open_command_bar", lambda sh: True)
+
+    assert wiring.find_file(shell) is True
+    assert shell._command_bar._field.value == "Cari berkas "
+    assert shell._command_bar._field.focused is True
+
+
+# ── history ────────────────────────────────────────────────────────────────
+
+def test_undo_last_empties_one_entry_from_the_real_stack(wiring):
+    from core import undo
+
+    undo.clear()
+    undo.push_undo("Ringkas 14 baris", lambda: "diringkas")
+    shell = FakeShell()
+
+    assert wiring.undo_last(shell) is True
+    assert undo.can_undo() is False
+    assert any("diringkas" in line for line in shell.lines)
+    undo.clear()
+
+
+def test_exporting_writes_the_real_history_to_the_desktop(wiring, monkeypatch):
+    from core import undo
+
+    undo.clear()
+    undo.push_undo("Susun jendela 2 kolom", lambda: "ok")
+    monkeypatch.setattr(wiring, "_desktop_path", lambda: Path("/tmp"))
+    shell = FakeShell()
+    target = Path("/tmp/jarvis-history.txt")
+    target.unlink(missing_ok=True)
+
+    try:
+        assert wiring.export_history(shell) is True
+        assert target.read_text(encoding="utf-8").strip() == "Susun jendela 2 kolom"
+        assert any(str(target) in line for line in shell.lines)
+    finally:
+        target.unlink(missing_ok=True)
+        undo.clear()
+
+
+def test_clearing_history_leaves_the_audit_log_alone(wiring, tmp_path, monkeypatch):
+    """Two buttons, two different stores — merging them would make the smaller
+    one do the larger thing."""
+    from core import audit_log, undo
+
+    undo.clear()
+    undo.push_undo("satu", lambda: "ok")
+    log = audit_log.AuditLog(tmp_path / "audit.jsonl")
+    log.record("send_email", "high", "menunggu konfirmasi")
+    monkeypatch.setattr(audit_log, "shared", lambda: log)
+
+    assert wiring.clear_history(FakeShell()) is True
+    assert undo.can_undo() is False
+    assert len(log.entries()) == 1, "clearing the undo stack must not erase the audit"
+
+
+def test_erasing_local_data_empties_the_audit_and_says_what_it_did_not_touch(
+        wiring, tmp_path, monkeypatch):
+    from core import audit_log
+
+    log = audit_log.AuditLog(tmp_path / "audit.jsonl")
+    log.record("screen_processor", "low", "selesai")
+    monkeypatch.setattr(audit_log, "shared", lambda: log)
+    shell = FakeShell()
+
+    assert wiring.erase_local(shell) is True
+    assert log.entries() == []
+    assert any("Audit log dihapus" in line for line in shell.lines)
+
+
+# ── permissions and guest mode ─────────────────────────────────────────────
+
+def test_a_real_switch_writes_plugin_enablement(wiring, monkeypatch):
+    from memory import config_manager
+
+    written = []
+    monkeypatch.setattr(config_manager, "save_plugin_enabled",
+                        lambda name, on: written.append((name, on)) or True)
+
+    assert wiring.set_permission(FakeShell(), "files", False) is True
+    assert written == [("file_controller", False)]
+    assert wiring.set_permission(FakeShell(), "apps", True) is True
+    assert written[-1] == ("computer_control", True)
+
+
+def test_a_switch_with_nothing_behind_it_is_refused_by_name(wiring):
+    shell = FakeShell()
+    assert wiring.set_permission(shell, "screen", False) is False
+    assert any("bukan pengaturan" in line for line in shell.lines)
+
+
+def test_guest_mode_reports_itself_unbuilt_rather_than_pretending(wiring):
+    shell = FakeShell()
+    assert wiring.set_guest(shell, True) is False
+    assert any("Mode tamu belum ada" in line for line in shell.lines)
+
+
+# ── the field, and the map itself ─────────────────────────────────────────
+
+def test_the_command_field_sends_through_the_command_bar_door(wiring, monkeypatch):
+    from ui import ambient_shell
+
+    sent = []
+    monkeypatch.setattr(ambient_shell, "submit_from_bar",
+                        lambda shell, text: sent.append(text))
+
+    assert wiring.send_command(FakeShell(), "  rangkum laporan ") is True
+    assert sent == ["  rangkum laporan "]     # the panel trimmed it already
+    assert wiring.send_command(FakeShell(), "   ") is False
+    assert len(sent) == 1
+
+
+def test_every_key_the_panel_can_press_has_a_handler(wiring):
+    """A missing key is a control that does nothing; the panel reports it, but
+    a report is not a substitute for the wiring existing."""
+    from tests.qtstub import fresh_ui, restore_ui
+
+    saved = fresh_ui()
+    try:
+        from ui.tray_panel import TrayPanel
+
+        actions = wiring.actions_for(FakeShell())
+        assert set(actions) == {
+            "presence_set", "quick", "permission", "undo", "history_export",
+            "history_clear", "guest", "erase", "command"}
+
+        panel = TrayPanel(actions)
+        assert panel.open() is True
+        pressed = {key.split(":", 1)[0] for key in panel._buttons}
+        assert pressed <= {"mode", "quick", "perm", "permx", "undo", "export",
+                           "clear", "guest", "erase", "send"}
+        # Every button group the panel draws has a handler behind it.
+        assert {"mode", "quick", "perm", "permx", "undo", "export", "clear",
+                "guest", "erase", "send"} <= pressed
+    finally:
+        restore_ui(saved)

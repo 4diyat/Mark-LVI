@@ -30,6 +30,15 @@ semua komputer. Hasil uji lokal tidak otomatis menjadi hasil CI atau rilis.
 > Yang **masih** berlaku dan masih diuji: mikrofon, briefing, bibir/jadwal audio,
 > transkrip, prompt, reconnect, provider, plugin, integrasi OS, Obsidian,
 > riwayat percakapan, dan seluruh permukaan ambient.
+>
+> **Panel baki (papan 5, 23, 26, 27, 28) sekarang ada.** Empat hal yang
+> digambar tetapi belum sepenuhnya didukung, dan mengatakannya di layar:
+> *Susun jendela* (tidak ada kode window-snapping di pohon ini), *Mode tamu*
+> (belum ada yang berhenti membaca memori), *Dikte* (tahan enam detik lewat
+> timer, bukan tekan-tahan), dan *Cari berkas* (membuka command bar dengan
+> awalan, bukan mencari sendiri). Tiga chord di baris aksi cepat adalah milik
+> artboard dan **tidak** terdaftar sebagai hotkey; hanya summon dan command bar
+> yang benar-benar terikat. Rinciannya di `docs/mockups/NOT-IN-MOCKUP.md`.
 
 ## Matriks verifikasi
 
