@@ -96,6 +96,37 @@ sumber setiap aksi dan gagal kalau namanya ada di daftar tetapi aksinya tidak
 pernah memanggil `confirm.request`. Menambah nama di sana tanpa pagar sungguhan
 berarti melewati gate sepenuhnya.
 
+## Plugin dan tool stateless juga lewat gate
+
+Gate sudah terpasang di jalur **aksi** selama beberapa commit. Dua jalur lain
+masih menjalankan tool tanpa bertanya sama sekali:
+
+- **plugin** — jatuh ke `run_in_executor` kedua tanpa gate, sehingga ke-17
+  plugin berjalan dengan wewenang asisten dan tanpa banner, sementara
+  `core/action_gate` punya banyak tes hijau dan docstring yang menyebut dirinya
+  "tempat sebuah panggilan tool diizinkan";
+- **tool stateless** (`undo`, `manage_monitor`) — keduanya berlevel `risky` dan
+  berjalan tanpa banner maupun baris audit.
+
+Masalahnya, plugin tidak bisa diklasifikasi seperti aksi: `tool_risk.classify`
+tidak pernah mendengar nama plugin, jadi jawabannya selalu `risky`. Itu aman
+dan tetap gagal — banner untuk membaca kurs publik adalah cara pengguna belajar
+menutup banner tanpa membaca, termasuk banner yang penting.
+
+Jadi plugin **menyatakan sendiri** tingkatnya di manifest (`"level": "safe" |
+"medium" | "risky"`), dan **tidak menyatakan** berarti `risky` dengan alasan
+yang menyebut kelalaiannya — supaya bisa diperbaiki dengan satu baris. Yang
+tidak berubah: setelah klasifikasi, jalurnya sama persis (baris audit, banner,
+tidak-dijalankan), karena jalur kedua adalah jalur yang menyimpang.
+
+Satu tes menangkap kesalahan saya sendiri: `mt5_orb` saya tandai `safe`, padahal
+permintaan grafik menyimpan PNG dan bisa membuka terminal — perubahan yang tidak
+bisa dibatalkan asisten. Sekarang `medium`.
+
+`manage_monitor` juga harus dipindah ke executor: `core.confirm.request`
+menjalankan aksi setelah pengguna menekan tombol, dan menjalankannya langsung di
+thread event loop akan menghentikan loop tempat ia antre.
+
 ## Konfirmasi tidak bisa dipalsukan model
 
 `core.action_gate.check()` tidak punya parameter `confirmed`, `force`, `yes`,

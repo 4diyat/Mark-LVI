@@ -8,5 +8,7 @@
     "network",
     "files"
   ],
-  "sha256": "c68b85085fba2e2b03f7f9b8a7511c4d51875372eabac5f93222707a07e8d862"
+  "level": "medium",
+  "sha256": "c68b85085fba2e2b03f7f9b8a7511c4d51875372eabac5f93222707a07e8d862",
+  "_level_comment": "medium, not safe: it only READS the opening range, but saving a PNG and opening the terminal leaves something behind that the assistant cannot undo."
 }

@@ -8,6 +8,7 @@
     "network",
     "files"
   ],
+  "level": "safe",
   "sha256": "c6e08f1ee19afebe34bffb6e87712c38d19a5f1b4e47929d3a92b912476762f5",
   "homepage": "https://mail.google.com"
 }

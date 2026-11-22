@@ -634,3 +634,175 @@
 {"at": "2026-11-22T05:43:19", "tool": "computer_settings:shutdown", "level": "risky", "outcome": "done", "detail": "off"}
 {"at": "2026-11-22T05:43:19", "tool": "computer_settings:volume_up", "level": "medium", "outcome": "requested", "detail": ""}
 {"at": "2026-11-22T05:43:19", "tool": "computer_settings:volume_up", "level": "medium", "outcome": "done", "detail": "ok"}
+{"at": "2026-11-22T05:44:03", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Shut down"}
+{"at": "2026-11-22T05:44:04", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Delete the folder"}
+{"at": "2026-11-22T05:44:04", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Empty the trash"}
+{"at": "2026-11-22T05:44:04", "tool": "confirm", "level": "risky", "outcome": "confirmed", "detail": "Empty the trash"}
+{"at": "2026-11-22T05:44:04", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Empty the trash"}
+{"at": "2026-11-22T05:44:04", "tool": "confirm", "level": "risky", "outcome": "cancelled", "detail": "Empty the trash"}
+{"at": "2026-11-22T05:44:04", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Shut down"}
+{"at": "2026-11-22T05:44:04", "tool": "confirm", "level": "risky", "outcome": "confirmed", "detail": "Shut down"}
+{"at": "2026-11-22T05:44:04", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Wipe the disk"}
+{"at": "2026-11-22T05:44:04", "tool": "confirm", "level": "risky", "outcome": "failed", "detail": "Wipe the disk"}
+{"at": "2026-11-22T05:44:04", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Shut down"}
+{"at": "2026-11-22T05:44:04", "tool": "confirm", "level": "risky", "outcome": "expired", "detail": "Shut down"}
+{"at": "2026-11-22T05:44:04", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Shut down"}
+{"at": "2026-11-22T05:44:04", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Shut down the machine"}
+{"at": "2026-11-22T05:44:04", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Empty"}
+{"at": "2026-11-22T05:44:04", "tool": "confirm", "level": "risky", "outcome": "confirmed", "detail": "Empty"}
+{"at": "2026-11-22T05:44:04", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "First"}
+{"at": "2026-11-22T05:44:04", "tool": "confirm", "level": "risky", "outcome": "cancelled", "detail": "First"}
+{"at": "2026-11-22T05:44:04", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Second"}
+{"at": "2026-11-22T05:44:04", "tool": "confirm", "level": "risky", "outcome": "confirmed", "detail": "Second"}
+{"at": "2026-11-22T05:44:04", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "11"}
+{"at": "2026-11-22T05:44:04", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Second"}
+{"at": "2026-11-22T05:45:25", "tool": "web_search", "level": "safe", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T05:45:25", "tool": "web_search", "level": "safe", "outcome": "done", "detail": "3 results"}
+{"at": "2026-11-22T05:45:25", "tool": "computer_settings:shutdown", "level": "risky", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T05:45:25", "tool": "computer_settings:shutdown", "level": "risky", "outcome": "done", "detail": "off"}
+{"at": "2026-11-22T05:45:25", "tool": "computer_settings:volume_up", "level": "medium", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T05:45:25", "tool": "computer_settings:volume_up", "level": "medium", "outcome": "done", "detail": "ok"}
+{"at": "2026-11-22T06:27:32", "tool": "web_search", "level": "safe", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:27:32", "tool": "web_search", "level": "safe", "outcome": "done", "detail": "3 results"}
+{"at": "2026-11-22T06:27:32", "tool": "computer_settings:shutdown", "level": "risky", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:27:32", "tool": "computer_settings:shutdown", "level": "risky", "outcome": "done", "detail": "off"}
+{"at": "2026-11-22T06:27:32", "tool": "computer_settings:volume_up", "level": "medium", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:27:32", "tool": "computer_settings:volume_up", "level": "medium", "outcome": "done", "detail": "ok"}
+{"at": "2026-11-22T06:27:36", "tool": "web_search", "level": "safe", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:27:36", "tool": "web_search", "level": "safe", "outcome": "done", "detail": "3 results"}
+{"at": "2026-11-22T06:27:36", "tool": "computer_settings:shutdown", "level": "risky", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:27:36", "tool": "computer_settings:shutdown", "level": "risky", "outcome": "done", "detail": "off"}
+{"at": "2026-11-22T06:27:36", "tool": "computer_settings:volume_up", "level": "medium", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:27:36", "tool": "computer_settings:volume_up", "level": "medium", "outcome": "done", "detail": "ok"}
+{"at": "2026-11-22T06:27:43", "tool": "web_search", "level": "safe", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:27:43", "tool": "web_search", "level": "safe", "outcome": "done", "detail": "3 results"}
+{"at": "2026-11-22T06:27:43", "tool": "computer_settings:shutdown", "level": "risky", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:27:43", "tool": "computer_settings:shutdown", "level": "risky", "outcome": "done", "detail": "off"}
+{"at": "2026-11-22T06:27:43", "tool": "computer_settings:volume_up", "level": "medium", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:27:43", "tool": "computer_settings:volume_up", "level": "medium", "outcome": "done", "detail": "ok"}
+{"at": "2026-11-22T06:27:53", "tool": "web_search", "level": "safe", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:27:53", "tool": "web_search", "level": "safe", "outcome": "done", "detail": "3 results"}
+{"at": "2026-11-22T06:27:53", "tool": "computer_settings:shutdown", "level": "risky", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:27:53", "tool": "computer_settings:shutdown", "level": "risky", "outcome": "done", "detail": "off"}
+{"at": "2026-11-22T06:27:53", "tool": "computer_settings:volume_up", "level": "medium", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:27:53", "tool": "computer_settings:volume_up", "level": "medium", "outcome": "done", "detail": "ok"}
+{"at": "2026-11-22T06:28:00", "tool": "web_search", "level": "safe", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:28:00", "tool": "web_search", "level": "safe", "outcome": "done", "detail": "3 results"}
+{"at": "2026-11-22T06:28:00", "tool": "computer_settings:shutdown", "level": "risky", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:28:00", "tool": "computer_settings:shutdown", "level": "risky", "outcome": "done", "detail": "off"}
+{"at": "2026-11-22T06:28:00", "tool": "computer_settings:volume_up", "level": "medium", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:28:00", "tool": "computer_settings:volume_up", "level": "medium", "outcome": "done", "detail": "ok"}
+{"at": "2026-11-22T06:28:59", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Shut down"}
+{"at": "2026-11-22T06:29:00", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Delete the folder"}
+{"at": "2026-11-22T06:29:00", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Empty the trash"}
+{"at": "2026-11-22T06:29:00", "tool": "confirm", "level": "risky", "outcome": "confirmed", "detail": "Empty the trash"}
+{"at": "2026-11-22T06:29:00", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Empty the trash"}
+{"at": "2026-11-22T06:29:00", "tool": "confirm", "level": "risky", "outcome": "cancelled", "detail": "Empty the trash"}
+{"at": "2026-11-22T06:29:00", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Shut down"}
+{"at": "2026-11-22T06:29:00", "tool": "confirm", "level": "risky", "outcome": "confirmed", "detail": "Shut down"}
+{"at": "2026-11-22T06:29:00", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Wipe the disk"}
+{"at": "2026-11-22T06:29:00", "tool": "confirm", "level": "risky", "outcome": "failed", "detail": "Wipe the disk"}
+{"at": "2026-11-22T06:29:00", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Shut down"}
+{"at": "2026-11-22T06:29:00", "tool": "confirm", "level": "risky", "outcome": "expired", "detail": "Shut down"}
+{"at": "2026-11-22T06:29:00", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Shut down"}
+{"at": "2026-11-22T06:29:00", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Shut down the machine"}
+{"at": "2026-11-22T06:29:00", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Empty"}
+{"at": "2026-11-22T06:29:00", "tool": "confirm", "level": "risky", "outcome": "confirmed", "detail": "Empty"}
+{"at": "2026-11-22T06:29:00", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "First"}
+{"at": "2026-11-22T06:29:00", "tool": "confirm", "level": "risky", "outcome": "cancelled", "detail": "First"}
+{"at": "2026-11-22T06:29:00", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Second"}
+{"at": "2026-11-22T06:29:00", "tool": "confirm", "level": "risky", "outcome": "confirmed", "detail": "Second"}
+{"at": "2026-11-22T06:29:00", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "11"}
+{"at": "2026-11-22T06:29:00", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Second"}
+{"at": "2026-11-22T06:30:21", "tool": "web_search", "level": "safe", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:30:21", "tool": "web_search", "level": "safe", "outcome": "done", "detail": "3 results"}
+{"at": "2026-11-22T06:30:21", "tool": "computer_settings:shutdown", "level": "risky", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:30:21", "tool": "computer_settings:shutdown", "level": "risky", "outcome": "done", "detail": "off"}
+{"at": "2026-11-22T06:30:21", "tool": "computer_settings:volume_up", "level": "medium", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:30:21", "tool": "computer_settings:volume_up", "level": "medium", "outcome": "done", "detail": "ok"}
+{"at": "2026-11-22T06:30:49", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Shut down"}
+{"at": "2026-11-22T06:30:50", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Delete the folder"}
+{"at": "2026-11-22T06:30:50", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Empty the trash"}
+{"at": "2026-11-22T06:30:50", "tool": "confirm", "level": "risky", "outcome": "confirmed", "detail": "Empty the trash"}
+{"at": "2026-11-22T06:30:50", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Empty the trash"}
+{"at": "2026-11-22T06:30:50", "tool": "confirm", "level": "risky", "outcome": "cancelled", "detail": "Empty the trash"}
+{"at": "2026-11-22T06:30:50", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Shut down"}
+{"at": "2026-11-22T06:30:50", "tool": "confirm", "level": "risky", "outcome": "confirmed", "detail": "Shut down"}
+{"at": "2026-11-22T06:30:50", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Wipe the disk"}
+{"at": "2026-11-22T06:30:50", "tool": "confirm", "level": "risky", "outcome": "failed", "detail": "Wipe the disk"}
+{"at": "2026-11-22T06:30:50", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Shut down"}
+{"at": "2026-11-22T06:30:50", "tool": "confirm", "level": "risky", "outcome": "expired", "detail": "Shut down"}
+{"at": "2026-11-22T06:30:50", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Shut down"}
+{"at": "2026-11-22T06:30:50", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Shut down the machine"}
+{"at": "2026-11-22T06:30:50", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Empty"}
+{"at": "2026-11-22T06:30:50", "tool": "confirm", "level": "risky", "outcome": "confirmed", "detail": "Empty"}
+{"at": "2026-11-22T06:30:50", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "First"}
+{"at": "2026-11-22T06:30:50", "tool": "confirm", "level": "risky", "outcome": "cancelled", "detail": "First"}
+{"at": "2026-11-22T06:30:50", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Second"}
+{"at": "2026-11-22T06:30:50", "tool": "confirm", "level": "risky", "outcome": "confirmed", "detail": "Second"}
+{"at": "2026-11-22T06:30:50", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "11"}
+{"at": "2026-11-22T06:30:50", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Second"}
+{"at": "2026-11-22T06:32:11", "tool": "web_search", "level": "safe", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:32:11", "tool": "web_search", "level": "safe", "outcome": "done", "detail": "3 results"}
+{"at": "2026-11-22T06:32:11", "tool": "computer_settings:shutdown", "level": "risky", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:32:11", "tool": "computer_settings:shutdown", "level": "risky", "outcome": "done", "detail": "off"}
+{"at": "2026-11-22T06:32:11", "tool": "computer_settings:volume_up", "level": "medium", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:32:11", "tool": "computer_settings:volume_up", "level": "medium", "outcome": "done", "detail": "ok"}
+{"at": "2026-11-22T06:32:42", "tool": "web_search", "level": "safe", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:32:42", "tool": "web_search", "level": "safe", "outcome": "done", "detail": "3 results"}
+{"at": "2026-11-22T06:32:42", "tool": "computer_settings:shutdown", "level": "risky", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:32:42", "tool": "computer_settings:shutdown", "level": "risky", "outcome": "done", "detail": "off"}
+{"at": "2026-11-22T06:32:42", "tool": "computer_settings:volume_up", "level": "medium", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:32:42", "tool": "computer_settings:volume_up", "level": "medium", "outcome": "done", "detail": "ok"}
+{"at": "2026-11-22T06:32:46", "tool": "web_search", "level": "safe", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:32:46", "tool": "web_search", "level": "safe", "outcome": "done", "detail": "3 results"}
+{"at": "2026-11-22T06:32:46", "tool": "computer_settings:shutdown", "level": "risky", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:32:46", "tool": "computer_settings:shutdown", "level": "risky", "outcome": "done", "detail": "off"}
+{"at": "2026-11-22T06:32:46", "tool": "computer_settings:volume_up", "level": "medium", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:32:46", "tool": "computer_settings:volume_up", "level": "medium", "outcome": "done", "detail": "ok"}
+{"at": "2026-11-22T06:32:47", "tool": "web_search", "level": "safe", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:32:47", "tool": "web_search", "level": "safe", "outcome": "done", "detail": "3 results"}
+{"at": "2026-11-22T06:32:47", "tool": "computer_settings:shutdown", "level": "risky", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:32:47", "tool": "computer_settings:shutdown", "level": "risky", "outcome": "done", "detail": "off"}
+{"at": "2026-11-22T06:32:47", "tool": "computer_settings:volume_up", "level": "medium", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:32:47", "tool": "computer_settings:volume_up", "level": "medium", "outcome": "done", "detail": "ok"}
+{"at": "2026-11-22T06:32:49", "tool": "web_search", "level": "safe", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:32:49", "tool": "web_search", "level": "safe", "outcome": "done", "detail": "3 results"}
+{"at": "2026-11-22T06:32:49", "tool": "computer_settings:shutdown", "level": "risky", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:32:49", "tool": "computer_settings:shutdown", "level": "risky", "outcome": "done", "detail": "off"}
+{"at": "2026-11-22T06:32:49", "tool": "computer_settings:volume_up", "level": "medium", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:32:49", "tool": "computer_settings:volume_up", "level": "medium", "outcome": "done", "detail": "ok"}
+{"at": "2026-11-22T06:32:50", "tool": "web_search", "level": "safe", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:32:50", "tool": "web_search", "level": "safe", "outcome": "done", "detail": "3 results"}
+{"at": "2026-11-22T06:32:50", "tool": "computer_settings:shutdown", "level": "risky", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:32:50", "tool": "computer_settings:shutdown", "level": "risky", "outcome": "done", "detail": "off"}
+{"at": "2026-11-22T06:32:50", "tool": "computer_settings:volume_up", "level": "medium", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:32:50", "tool": "computer_settings:volume_up", "level": "medium", "outcome": "done", "detail": "ok"}
+{"at": "2026-11-22T06:33:03", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Shut down"}
+{"at": "2026-11-22T06:33:04", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Delete the folder"}
+{"at": "2026-11-22T06:33:04", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Empty the trash"}
+{"at": "2026-11-22T06:33:04", "tool": "confirm", "level": "risky", "outcome": "confirmed", "detail": "Empty the trash"}
+{"at": "2026-11-22T06:33:04", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Empty the trash"}
+{"at": "2026-11-22T06:33:04", "tool": "confirm", "level": "risky", "outcome": "cancelled", "detail": "Empty the trash"}
+{"at": "2026-11-22T06:33:04", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Shut down"}
+{"at": "2026-11-22T06:33:04", "tool": "confirm", "level": "risky", "outcome": "confirmed", "detail": "Shut down"}
+{"at": "2026-11-22T06:33:04", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Wipe the disk"}
+{"at": "2026-11-22T06:33:04", "tool": "confirm", "level": "risky", "outcome": "failed", "detail": "Wipe the disk"}
+{"at": "2026-11-22T06:33:04", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Shut down"}
+{"at": "2026-11-22T06:33:04", "tool": "confirm", "level": "risky", "outcome": "expired", "detail": "Shut down"}
+{"at": "2026-11-22T06:33:04", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Shut down"}
+{"at": "2026-11-22T06:33:04", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Shut down the machine"}
+{"at": "2026-11-22T06:33:04", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Empty"}
+{"at": "2026-11-22T06:33:04", "tool": "confirm", "level": "risky", "outcome": "confirmed", "detail": "Empty"}
+{"at": "2026-11-22T06:33:04", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "First"}
+{"at": "2026-11-22T06:33:04", "tool": "confirm", "level": "risky", "outcome": "cancelled", "detail": "First"}
+{"at": "2026-11-22T06:33:04", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Second"}
+{"at": "2026-11-22T06:33:04", "tool": "confirm", "level": "risky", "outcome": "confirmed", "detail": "Second"}
+{"at": "2026-11-22T06:33:04", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "11"}
+{"at": "2026-11-22T06:33:04", "tool": "confirm", "level": "risky", "outcome": "awaiting", "detail": "Second"}
+{"at": "2026-11-22T06:34:25", "tool": "web_search", "level": "safe", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:34:25", "tool": "web_search", "level": "safe", "outcome": "done", "detail": "3 results"}
+{"at": "2026-11-22T06:34:25", "tool": "computer_settings:shutdown", "level": "risky", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:34:25", "tool": "computer_settings:shutdown", "level": "risky", "outcome": "done", "detail": "off"}
+{"at": "2026-11-22T06:34:25", "tool": "computer_settings:volume_up", "level": "medium", "outcome": "requested", "detail": ""}
+{"at": "2026-11-22T06:34:25", "tool": "computer_settings:volume_up", "level": "medium", "outcome": "done", "detail": "ok"}

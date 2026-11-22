@@ -113,6 +113,22 @@ class PluginRegistry:
     def has(self, name: str) -> bool:
         return name in self._plugins
 
+    def declared_level(self, name: str) -> str:
+        """The risk level the plugin's manifest claims, or '' if it said nothing.
+
+        Empty is meaningful: `core.action_gate` treats an unstated level as
+        `risky` and puts a banner up. That is the default this project already
+        applies to every unknown name, and applying it to plugins is what makes
+        a plugin's own claim load-bearing instead of decorative.
+
+        A plugin with no manifest at all also answers '' — it has not said
+        anything, so it does not get to skip the question by omission.
+        """
+        rec = self._plugins.get(name)
+        if rec is None:
+            return ""
+        return str(getattr(rec.manifest, "level", "") or "").strip().lower()
+
     def scheduling(self, name: str) -> Optional[str]:
         """How this plugin's result should re-enter the conversation, if it said."""
         rec = self._plugins.get(name)

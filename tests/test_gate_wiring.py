@@ -61,13 +61,27 @@ def test_the_run_callable_is_the_registry_call():
 
 def test_the_result_of_the_gate_decides_what_is_reported():
     """A parked call must not be reported as done — and must not be mirrored
-    into the content panel as if it had produced output."""
+    into the content panel as if it had produced output.
+
+    EVERY CALL SITE, not just the first one. This test used to grab the first
+    `if not _verdict.ran` in the file, which was the action branch; once the
+    plugin and stateless paths got gates of their own, that assertion silently
+    started describing a DIFFERENT branch — the exact drift it exists to catch.
+    So the count is compared: one gate call, one place that notices the call
+    did not run.
+    """
     source = _main_source()
     block = source[source.index("_verdict = await"):]
     block = block[:block.index("result = r or")]
     assert "_verdict.message" in block
-    tail = source[source.index("if not _verdict.ran"):]
-    assert 'r = ""' in tail[:200]
+
+    gates = source.count("_gate.check(")
+    blanked = source.count('result = ""') + source.count('r = ""')
+    assert gates >= 3, (
+        "fewer gate call sites than paths: action, plugin and stateless tool")
+    assert blanked >= gates, (
+        f"{gates} gate call sites but only {blanked} places that stop a parked "
+        "call from being reported as done")
 
 
 def test_the_self_gated_list_is_checked_against_the_actions_that_really_gate():

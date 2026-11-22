@@ -7,5 +7,6 @@
     "network",
     "files"
   ],
+  "level": "safe",
   "sha256": "2ee21b59fcf411aeffe68ced9924166c7547cfa2bc8d2154156efc3d9f520d17"
 }

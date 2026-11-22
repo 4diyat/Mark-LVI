@@ -7,6 +7,7 @@
   "permissions": [
     "network"
   ],
+  "level": "safe",
   "sha256": "52f5b788abe883ddd3417bfa4268b8356448dbe552b1d2a6ed40e13c45c70c94",
   "homepage": "https://finance.yahoo.com"
 }
