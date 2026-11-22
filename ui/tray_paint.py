@@ -88,6 +88,89 @@ def paint(panel, snap) -> None:
 
     paint_history(panel, snap)
     paint_permissions(panel, snap)
+    paint_board_pages(panel, snap)
+
+
+# WHICH PAINTER RUNS, AND WHY IT IS A TABLE
+#
+# Every page has a painter, and every open page is repainted on every refresh —
+# board 9's count must change when a fact is deleted while the list is on
+# screen. Painting ALL of them would read thirteen stores on every keystroke in
+# the panel's command field; painting none of them would leave a page showing
+# whatever it said when it was built, which is the class of lie this panel was
+# built to avoid. So: one table, looked up by the open page, `only`.
+#
+# The core three pages are painted unconditionally above, as they always were:
+# their painters are cheap and `paint_quick`/`paint_history` already run on both
+# of them. This table is only the board pages.
+_PAGE_PAINTERS = {
+    "memory": "paint_memory",
+    "memory_one": "paint_memory_one",
+    "more": None,                     # its labels are constants; see below
+    "routines": "paint_routines",
+    "tools": "paint_tools",
+    "gestures": "paint_gestures",
+    "consent": "paint_consent",
+    "help": "paint_help",
+    "security": "paint_security",
+    "access": "paint_access",
+    "plugins": "paint_plugins",
+    "light": "paint_light",
+    "brand": "paint_brand",
+    "installer": "paint_installer",
+}
+
+
+def paint_board_pages(panel, snap) -> None:
+    """Paint the open board page, and only it.
+
+    THE MORE-LIST IS PAINTED TOO, and it is the reason this function takes the
+    palette seriously: its rows are buttons whose TEXT is a constant, set at
+    build time, but the page's own title pair changes with the locale, so it is
+    repainted on every locale switch like the rest.
+    """
+    from ui import pages_paint
+
+    name = getattr(panel, "_page", "main")
+    if name == "more":
+        _paint_more(panel)
+        return
+    attr = _PAGE_PAINTERS.get(name)
+    if not attr:
+        return
+    painter = getattr(pages_paint, attr, None)
+    if painter is None:
+        panel._note(f"no painter for page {name!r}")
+        return
+    try:
+        painter(panel, snap)
+    except KeyError as e:
+        # A MISSING WIDGET IS A BUILDER BUG and is reported, not swallowed:
+        # a painter that skipped a key would leave that widget saying whatever
+        # it said at build time.
+        panel._note(f"page {name!r} is missing widget {e}")
+    except Exception as e:                       # noqa: BLE001
+        panel._note(f"page {name!r} would not paint — {type(e).__name__}: {e}")
+
+
+def _paint_more(panel) -> None:
+    """The list of pages: one name and one board number per cell."""
+    from ui.page_registry import PAGE_BOARD, PAGE_LABEL, PAGES
+
+    labels = panel._labels
+    labels["more_head"].setText(_t("ui.page.more.title"))
+    labels["more_sub"].setText(_t("ui.page.more.subtitle", count=len(PAGES)))
+    for key, label_key, _title, board in PAGES:
+        name = labels.get(f"more_name:{key}")
+        if name is not None:
+            name.setText(_t(PAGE_LABEL[key]))
+        number = labels.get(f"more_board:{key}")
+        if number is not None:
+            number.setText(f"BOARD {PAGE_BOARD[key]:02d}")
+        button = panel._buttons.get(f"more:{key}")
+        if button is not None:
+            button.setText("")
+    panel._buttons["more_back"].setText(_t("ui.page.more.back"))
 
 
 

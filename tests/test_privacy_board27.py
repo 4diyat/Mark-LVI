@@ -96,6 +96,15 @@ def test_the_panel_draws_no_guest_switch_because_nothing_happens_behind_it():
         assert leftovers == [], (
             f"the privacy page still builds {leftovers} — a switch for a mode "
             "that cannot be entered is a control that lies")
+
+        # AND NO OTHER PAGE EITHER. Board 14 draws a MODE TAMU card, and when
+        # its page was built it drew a heading and a sentence under that name —
+        # no control, but a widget keyed `sec_guest`, which is how a disabled
+        # switch comes back: one commit later somebody gives it a button.
+        throughout = sorted(k for k in drawn if "guest" in k.lower())
+        assert throughout == [], (
+            f"a page builds {throughout}: the ruling is that guest mode is not "
+            "drawn anywhere, not even as a label waiting for a switch")
     finally:
         restore_ui(saved)
 

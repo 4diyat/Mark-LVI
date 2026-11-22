@@ -479,6 +479,8 @@ def actions_for(shell: "AmbientShell") -> dict:
     handler — a missing key is a control that does nothing, and the panel
     reports it, but the report is not a substitute for the wiring existing.
     """
+    from ui import pages_actions
+
     return {
         "presence_set": lambda mode: set_presence(shell, mode),
         "quick": lambda key: quick_action(shell, key),
@@ -490,6 +492,19 @@ def actions_for(shell: "AmbientShell") -> dict:
         "export_audit": lambda: export_audit(shell),
         "theme": lambda name: set_theme(shell, name),
         "command": lambda text: send_command(shell, text),
+        # ── the board pages (ui/pages_actions.py) ────────────────────────
+        "memory_forget": lambda: pages_actions.memory_forget(shell),
+        "memory_clear": lambda: pages_actions.memory_clear(shell),
+        "routines_pause": lambda: pages_actions.routines_pause(shell),
+        "tools_copy": lambda: pages_actions.tools_copy(shell),
+        "tools_clear": lambda: pages_actions.tools_clear(shell),
+        "tools_safe": lambda: pages_actions.tools_mark_safe(shell),
+        "plugin_toggle": lambda index: pages_actions.plugin_toggle(shell, index),
+        "consent": lambda allowed: pages_actions.consent_answer(shell, allowed),
+        "language": lambda code: pages_actions.language_set(shell, code),
+        "text_scale": lambda scale: pages_actions.text_scale_set(shell, scale),
+        "motion_toggle": lambda: pages_actions.motion_toggle(shell),
+        "install_mode": lambda index: pages_actions.install_mode(shell, index),
     }
 
 

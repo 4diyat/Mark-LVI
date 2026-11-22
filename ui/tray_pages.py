@@ -110,12 +110,130 @@ GEOMETRY = {
     "p6_clear":  (24, 594, 200, 40),          # 574 + 20
     "p6_export": (236, 594, 200, 40),
 
+    # ── boards 9 and 10: memory ──────────────────────────────────────────
+    # Board 9's own header carries a COUNT of what is stored, which is why it
+    # is a separate line from the title: the title is the artboard's, the count
+    # is the store's, and a page that merged them would have to choose which
+    # one to keep when they disagree.
+    "mem_head":    (24, 30, 412, 24),         # "Memori personal"
+    "mem_count":   (24, 54, 412, 18),         # "12 hal yang JARVIS ingat"
+    "mem_section": (24, 86, 240, 16),         # "FAKTA TENTANG ANDA"
+    "mem_more":    (24, 640, 412, 16),        # "dan 4 lagi"
+    "mem_add":     (24, 600, 200, 36),
+    "mem_clear":   (236, 600, 200, 36),
+
+    # Board 10 packs three fields into the space board 9 gives one row, so its
+    # pitch is 74 and not 72. The artboard is tighter here on purpose: this page
+    # shows ONE memory, and the detail is the point.
+    "m1_head":   (24, 30, 412, 24),
+    "m1_sub":    (24, 54, 412, 18),
+    "m1_absent": (24, 470, 412, 40),          # the honest line about missing data
+    "m1_back":   (24, 596, 130, 36),
+    "m1_forget": (306, 596, 130, 36),
+
+    # ── the list that reaches every board page ───────────────────────────
+    "more_head": (24, 30, 412, 24),
+    "more_sub":  (24, 54, 412, 18),
+    "more_back": (24, 604, 140, 36),
+
+    # ── boards 11 and 12: routines, quick tools ──────────────────────────
+    "rt_head":    (24, 30, 412, 24),
+    "rt_count":   (24, 54, 412, 18),
+    "rt_section": (24, 86, 240, 16),
+    "rt_absent":  (24, 168, 412, 44),     # "tidak ada rutinitas terjadwal"
+    "rt_suggest": (24, 226, 240, 16),
+    "rt_suggest_note": (24, 248, 412, 40),
+    "rt_pause":   (24, 600, 220, 36),
+
+    "tl_head":        (24, 30, 412, 24),
+    "tl_clip_header": (24, 70, 240, 16),
+    "tl_clip":        (24, 94, 412, 40),
+    "tl_kind":        (24, 138, 412, 18),
+    "tl_btns_y": 166,
+    "tl_find_header": (24, 214, 300, 16),
+    "tl_find_field":  (24, 236, 412, 34),
+    "tl_hits_y": 282,
+    "tl_snap_header": (24, 366, 240, 16),
+    "tl_snap_absent": (24, 388, 412, 40),
+
+    # ── boards 19, 7, 13 ─────────────────────────────────────────────────
+    "gs_head":   (24, 30, 412, 24),
+    "gs_absent": (24, 404, 412, 20),
+    "gs_note":   (24, 432, 412, 44),
+
+    "cn_head":  (24, 30, 412, 24),
+    "cn_step":  (24, 54, 412, 18),
+    "cn_name":  (24, 96, 412, 26),
+    "cn_why":   (24, 130, 412, 40),
+    "cn_when":  (24, 178, 412, 20),
+    "cn_done":  (24, 230, 412, 40),
+    "cn_allow": (24, 600, 200, 40),
+    "cn_deny":  (236, 600, 200, 40),
+
+    "hp_head":       (24, 30, 412, 24),
+    "hp_dictate_h":  (24, 78, 240, 16),
+    "hp_dictate":    (24, 100, 412, 44),
+    "hp_read_h":     (24, 176, 240, 16),
+    "hp_read":       (24, 198, 412, 44),
+    "hp_form_h":     (24, 274, 240, 16),
+    "hp_form_absent": (24, 296, 412, 44),
+
+    # ── boards 14, 15, 16, 18, 21, 22 ────────────────────────────────────
+    "sec_head":    (24, 30, 412, 24),
+    "sec_levels":  (24, 78, 240, 16),
+    "sec_rows_y": 92, "sec_pitch": 66,
+    "sec_guest_h": (24, 300, 240, 16),
+    "sec_guest":   (24, 322, 412, 40),
+    "sec_os_h":    (24, 386, 240, 16),
+    "sec_os":      (24, 408, 412, 40),
+
+    "ac_head":     (24, 30, 412, 24),
+    "ac_lang_h":   (24, 78, 240, 16),
+    "ac_lang_y": 100,
+    "ac_size_h":   (24, 164, 240, 16),
+    "ac_size_note": (24, 186, 412, 18),
+    "ac_size_y": 212,
+    "ac_motion_h": (24, 272, 240, 16),
+    "ac_motion":   (24, 294, 220, 36),
+    "ac_gest_h":   (24, 356, 240, 16),
+    "ac_gest":     (24, 378, 412, 40),
+
+    "pl_head":     (24, 30, 412, 24),
+    "pl_count":    (24, 54, 412, 18),
+    "pl_section":  (24, 84, 240, 16),
+    "pl_rows_y": 104, "pl_pitch": 56,
+    "pl_phone_h":  (24, 470, 240, 16),
+    "pl_phone":    (24, 492, 412, 24),
+    "pl_phone2":   (24, 518, 412, 40),
+
+    "l18_head":    (24, 30, 412, 24),
+    "l18_sub":     (24, 54, 412, 18),
+    "l18_perm_h":  (24, 90, 240, 16),
+    "l18_log_h":   (24, 432, 240, 16),
+    "l18_log_y": 452,
+    "l18_note":    (24, 560, 412, 40),
+
+    "br_head":     (24, 30, 412, 24),
+    "br_icons_h":  (24, 272, 240, 16),
+    "br_app":      (24, 372, 412, 20),
+    "br_spec":     (24, 404, 412, 40),
+
+    "in_head":     (24, 30, 412, 24),
+    "in_sub":      (24, 54, 412, 18),
+    "in_rows_y": 92,
+
 }
 
 # Which page the panel is showing. Board 08a and 27 are pages, not other
 # windows: a tray panel that spawns three windows is three things to close.
 PAGE_MAIN, PAGE_HISTORY, PAGE_PRIVACY = "main", "history", "privacy"
-PAGES = (PAGE_MAIN, PAGE_HISTORY, PAGE_PRIVACY)
+
+# THE FULL SET, from the registry rather than a second list. `more` is the list
+# that reaches the board pages, so it belongs with them and not with the three
+# the panel has always had.
+from ui.page_registry import ALL_PAGES as _PAGES  # noqa: E402  (after the constants)
+
+PAGES = _PAGES
 
 
 # Boards 5/23/27 (dark) and 28 (light), transcribed from `docs/mockups/build.py`

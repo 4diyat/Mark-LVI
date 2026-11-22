@@ -109,6 +109,16 @@ class TrayPanel:
         # someone will forget to update.
         self._labels: dict = {}
         self._buttons: dict = {}
+        # What the last click on a memory or a search chose. See
+        # `ui/panel_target.py` — extracted because it is view state, and it was
+        # the second thing to push this module over the 600-line ceiling.
+        from ui.panel_target import PanelTarget
+
+        self._view = PanelTarget()
+        # Board 12's "Tandai aman": a DISPLAY decision that lasts until the
+        # clipboard text changes or the panel is reopened. See
+        # `pages_actions.tools_mark_safe` for why it cannot be more than that.
+        self._marked_safe = False
         self._error = ""
 
     # ── what happened ────────────────────────────────────────────────────────
@@ -132,6 +142,33 @@ class TrayPanel:
     @property
     def theme(self) -> str:
         return self._theme
+
+    # ── board 10's target, and board 12's hits ───────────────────────────────
+
+    @property
+    def target(self) -> tuple[str, str]:
+        """The `(category, key)` the memory detail page is showing."""
+        return self._view.target
+
+    def target_memory(self) -> tuple[str, str]:
+        """Same as `target`, as a method — `pages_paint` calls it."""
+        return self._view.target
+
+    def open_memory(self, index: int) -> bool:
+        """Board 9's row button -> board 10, holding the memory that was clicked."""
+        opened = self._view.open_memory(index)
+        if opened:
+            self.set_page("memory_one")
+        return opened
+
+    def run_search(self, query: str) -> int:
+        """Board 12's file search, run on the click path. Returns how many hits."""
+        return self._view.run_search(query, refresh=self.refresh)
+
+    @property
+    def hits(self) -> tuple:
+        """The last search's results, for `pages_paint.paint_tools`."""
+        return self._view.hits
 
     @property
     def snapshot(self) -> Snapshot:
@@ -310,6 +347,14 @@ class TrayPanel:
     # ── dispatch ─────────────────────────────────────────────────────────────
 
     def _call(self, key: str, *args):
+        # A PAGE ACTION FIRST, THEN THE SHELL'S HANDLERS.
+        #
+        # Switching pages, remembering which memory board 10 shows and storing a
+        # hit list are the panel's own state; every host that builds a panel
+        # would otherwise have to wire them, including the tests.
+        local = self._local_action(key)
+        if local is not None:
+            return local(*args)
         cb = self._actions.get(key)
         if cb is None:
             self._note(f"no handler for {key!r}")
@@ -318,7 +363,21 @@ class TrayPanel:
             return cb(*args)
         except Exception as e:                       # noqa: BLE001
             self._note(f"{key!r} failed — {type(e).__name__}: {e}")
-            return None
+
+    def _local_action(self, key: str):
+        """The handlers the panel owns. None for anything it does not.
+
+        THE BOUNDARY IS "DOES IT NEED THE SHELL". Switching pages and picking a
+        row are panel state; everything that reaches a store goes to the shell,
+        because the shell is what owns those modules.
+        """
+        if key == "page":
+            return lambda name: self.set_page(str(name))
+        if key == "memory_open":
+            return lambda index: self.open_memory(int(index))
+        if key == "tools_find":
+            return lambda query: self.run_search(str(query))
+        return None
 
     def press_mode(self, mode: str) -> bool:
         """One segment. The mode is applied by the caller, then re-read."""
@@ -459,13 +518,20 @@ class TrayPanel:
         self._labels["held"].hide()
 
         page = QWidget(window)
-        page.setGeometry(0, 0, PANEL_W, PANEL_H)
+        from ui.pages_build import make_page
+
+        page = make_page(window, QWidget, PAGE_MAIN)
         self._pages[PAGE_MAIN] = page
         build_main(self, page)
-        self._pages[PAGE_HISTORY] = _page(window, QWidget, PAGE_HISTORY)
+        self._pages[PAGE_HISTORY] = make_page(window, QWidget, PAGE_HISTORY)
         build_history(self, self._pages[PAGE_HISTORY])
-        self._pages[PAGE_PRIVACY] = _page(window, QWidget, PAGE_PRIVACY)
+        self._pages[PAGE_PRIVACY] = make_page(window, QWidget, PAGE_PRIVACY)
         build_permissions(self, self._pages[PAGE_PRIVACY])
+        # Every board page, from one list in `ui/pages_build.py`. Fourteen
+        # `_page(...)` pairs inline put this method at exactly 600 lines.
+        from ui.pages_build import build_board_pages
+
+        build_board_pages(self, window)
 
     def _load_saved_theme(self) -> None:
         """Start from the saved setting, once, when the window is first built.
@@ -479,8 +545,6 @@ class TrayPanel:
             self.set_theme(get_ui_theme())
         except Exception as e:                       # noqa: BLE001
             self._note(f"saved theme not applied — {type(e).__name__}: {e}")
-
-    # ── painting ─────────────────────────────────────────────────────────────
 
     # ── painting ─────────────────────────────────────────────────────────────
     #
@@ -522,15 +586,6 @@ def _placed(parent, cls, x: int, y: int, w: int, h: int, text: str):
     label.setGeometry(x, y, w, h)
     label.setText(text)
     return label
-
-
-def _page(window, cls, name: str):
-    """A hidden child page, ready to be filled. Hidden: board 5 is what opens."""
-    page = cls(window)
-    page.setGeometry(0, 0, PANEL_W, PANEL_H)
-    page.setObjectName(name)
-    page.hide()
-    return page
 
 
 __all__ = [

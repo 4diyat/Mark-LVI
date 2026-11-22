@@ -127,7 +127,13 @@ def open_quick_menu(shell: "JarvisUI") -> bool:
             menu.addAction(label).triggered.connect(
                 lambda _checked=False, m=mode: tray_panel_wiring.set_presence(shell, m))
         menu.addSeparator()
-        for page, label in (("history", "Riwayat"), ("privacy", "Privasi")):
+        # THE PAGE LIST IS THE MENU'S, not a copy: the two the panel always had,
+        # then the more-list that reaches the other thirteen. A menu that named
+        # thirteen pages would be a menu of twenty items and board 4 draws a
+        # SHORT one — so the long list lives in a page and the menu has one
+        # entry for it.
+        for page, label in (("history", "Riwayat"), ("privacy", "Privasi"),
+                            ("more", "Lainnya…")):
             menu.addAction(label).triggered.connect(
                 lambda _checked=False, p=page: _open_panel_page(shell, p))
         menu.addSeparator()
