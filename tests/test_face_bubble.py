@@ -1,12 +1,12 @@
 """The floating face: a small always-on-top window with the avatar in it.
 
-WHY IT IS TESTED AGAINST THE REAL `HudCanvas`
+WHY IT IS TESTED AGAINST THE REAL CANVAS
     The interesting failure is not "did we create a QWidget" — it is whether a
-    `HudCanvas` survives being re-parented into a fixed 260-pixel frameless
+    the canvas survives being re-parented into a fixed 260-pixel frameless
     window and being told the assistant's state in words it already understands.
-    `HudCanvas` is a 548-line animated widget that starts its own QTimer; if the
+    the canvas is an animated widget that starts its own QTimer; if the
     bubble got any of that wrong the symptom on the user's desktop would be a
-    grey square, which is exactly the class of bug `test_window_smoke.py` exists
+    grey square, which is exactly the class of bug `qtstub.py` exists
     to catch. So this builds the real thing over the repo's own PyQt stub.
 
 WHAT CANNOT BE TESTED HERE
@@ -22,6 +22,8 @@ import types
 from pathlib import Path
 
 import pytest
+
+from tests import qtstub
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -88,14 +90,10 @@ def qt(monkeypatch):
     Imported by path and installed the same way `test_window_smoke` does, so
     this file cannot drift from the Qt surface the rest of the suite trusts.
     """
-    import importlib.util
-    spec = importlib.util.spec_from_file_location(
-        "smoke_for_bubble", ROOT / "tests" / "test_window_smoke.py")
-    smoke = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(smoke)
+    stubs = qtstub.install_qt()
     saved = {k: v for k, v in sys.modules.items()
              if k == "PyQt6" or k.startswith("PyQt6.") or k == "ui" or k.startswith("ui.")}
-    sys.modules.update(smoke._install_qt())
+    sys.modules.update(stubs)
     for name in [k for k in sys.modules if k == "ui" or k.startswith("ui.")]:
         sys.modules.pop(name, None)
     try:
@@ -120,7 +118,7 @@ class _FakeWindow:
     there. A widget per test would have to re-implement the stub's whole
     constructor surface; this is only what the bubble itself uses. The REAL
     construction is covered by `test_the_face_is_an_actual_hud_canvas`, which
-    builds a genuine `HudCanvas` inside the genuine stub window — geometry is
+    builds a genuine canvas inside the genuine stub window — geometry is
     the part this fake takes over, and Qt places windows, not this file.
     """
 
@@ -200,14 +198,13 @@ def _attach_fake(shell_or_bubble, size):
 @pytest.fixture()
 def bubble(qt):
     """A real `FaceBubble` whose window is the fake above."""
-    from ui.hud_canvas import HudCanvas
     made = qt.face_bubble.FaceBubble(
         "face.png", "JARVIS", on_double_click=lambda: made.double_clicked.append(1))
     made.double_clicked = []
     assert made.start() is True, "the real construction must work"
     # Real canvas kept; window swapped for one with geometry.
     real_canvas = made.canvas
-    assert isinstance(real_canvas, HudCanvas)
+    assert type(real_canvas).__name__ == "FaceCanvas"
     made._window = _FakeWindow(made._size)
     made._placed = False
     made._place()
@@ -215,10 +212,9 @@ def bubble(qt):
     made._window = _FakeWindow(made._size)
 
 
-def test_the_face_is_an_actual_hud_canvas(qt, bubble):
+def test_the_face_is_an_actual_avatar_canvas(qt, bubble):
     """A placeholder widget would look identical here and broken on screen."""
-    from ui.hud_canvas import HudCanvas
-    assert isinstance(bubble.canvas, HudCanvas)
+    assert type(bubble.canvas).__name__ == "FaceCanvas"
     assert bubble._size == bubble._window.width() == bubble._window.height(), (
         "the face must be square")
 
@@ -234,11 +230,10 @@ def test_the_bubble_places_itself_into_a_corner_and_only_once(qt, bubble):
 def test_the_bubble_is_frameless_and_on_top(qt):
     """Construction itself, over the real stub — the flags are pinned by name in
     `test_window_flags_asks_for_all_three` because the stub cannot compare them."""
-    from ui.hud_canvas import HudCanvas
     made = qt.face_bubble.FaceBubble("face.png", "JARVIS")
     assert made.start() is True
     assert made.available is True
-    assert isinstance(made.canvas, HudCanvas), "no face was put in the window"
+    assert type(made.canvas).__name__ == "FaceCanvas", "no face was put in the window"
     made.stop()
 
 
@@ -380,7 +375,7 @@ def test_a_canvas_fault_never_escapes_into_the_audio_thread(qt, bubble):
     bubble.push_visemes([], 0.02, 0.0)
 
 
-# ── the modes, driven ─────────────────────────────────────────────────────
+# ── the surfaces, driven ──────────────────────────────────────────────────
 
 class _Event:
     def __init__(self):
@@ -393,133 +388,160 @@ class _Event:
         self.outcome.append("accepted")
 
 
-def _launch(monkeypatch, mode="bubble", tray_ok=True, bubble_ok=True, ready=True,
-            qt=None):
-    """Build a real `JarvisUI` with the mode matrix as parameters."""
-    if qt is None:
-        raise RuntimeError("pass the qt fixture")
-    ui = qt
-    # Imported for its side effect (binding `ui.tray` so the patches below can
-    # reach it) — but reach it through the module object, which is what a
-    # redefinition lint cannot see past.
+class _FakeBubble:
+    """A face that records show/hide instead of drawing."""
+
+    def __init__(self, ok=True):
+        self.ok = ok
+        self.available = ok
+        self.shown = True
+        self._window = self
+        self.started = False
+
+    def start(self):
+        self.started = True
+        return self.ok
+
+    def setVisible(self, visible):
+        self.shown = bool(visible)
+
+    @property
+    def visible(self):
+        return self.shown
+
+    def set_state(self, state):
+        self.state = state
+
+
+def _shell(monkeypatch, qt, tray_ok=True, bubble_ok=True):
+    """A real `AmbientShell`, with the surfaces replaced by recorders.
+
+    The real construction of each surface has its own test above; this fixture
+    is for the LIFECYCLE — what `start_interface`, `summon` and `dismiss` do to
+    them, which only needs the calls to mean something.
+    """
     import importlib
     tray_mod = importlib.import_module("ui.tray")
-    from memory import config_manager as cm
+    from ui import lifecycle
 
-    state = {"visible": False, "shown": 0, "hidden": 0, "full": 0,
-             "tray_ok": tray_ok, "bubble_ok": bubble_ok, "mode": mode,
-             "ready": ready}
-    monkeypatch.setattr(ui.MainWindow, "showFullScreen",
-                        lambda self: state.__setitem__("full", state["full"] + 1))
-    monkeypatch.setattr(ui.MainWindow, "showMaximized",
-                        lambda self: state.__setitem__("visible", True))
-    monkeypatch.setattr(ui.MainWindow, "hide",
-                        lambda self: state.__setitem__("visible", False))
-    monkeypatch.setattr(ui.MainWindow, "isVisible", lambda self: state["visible"])
-    monkeypatch.setattr(ui.MainWindow, "isFullScreen", lambda self: False)
-    monkeypatch.setattr(ui.MainWindow, "raise_", lambda self: None)
-    monkeypatch.setattr(ui.MainWindow, "activateWindow", lambda self: None)
-    for base in ui.MainWindow.__mro__[1:]:
-        if not hasattr(base, "closeEvent"):
-            monkeypatch.setattr(base, "closeEvent", lambda self, event: None,
-                                raising=False)
-            break
-    monkeypatch.setattr(cm, "get_ui_mode", lambda: state["mode"])
-    monkeypatch.setattr(cm, "save_ui_mode", lambda m: state.__setitem__("mode", m))
-    monkeypatch.setattr(cm, "get_assistant_name", lambda: "JARVIS")
-    monkeypatch.setattr(ui.MainWindow, "_check_config", lambda self: state["ready"])
-    monkeypatch.setattr(tray_mod.TrayIcon, "start", lambda self: state["tray_ok"])
+    state = {"tray_ok": tray_ok, "bubble_ok": bubble_ok, "tray_starts": 0,
+             "orb_starts": 0, "bar_starts": 0}
+
+    def _tray_start(self):
+        state["tray_starts"] += 1
+        return state["tray_ok"]
+
+    monkeypatch.setattr(tray_mod.TrayIcon, "start", _tray_start)
     monkeypatch.setattr(tray_mod.TrayIcon, "available",
                         property(lambda self: state["tray_ok"]))
-    def _fake_start(self):
-        # Mirrors the real `start`'s contract: build a window (the fake, which
-        # has geometry) and report whether the desktop would have it. The real
-        # construction is covered by the tests above; this fixture is for the
-        # MODE logic, which only needs show/hide to mean something.
+
+    def _bubble_start(self):
         if not state["bubble_ok"]:
+            self.error = "no window"
             return False
-        self._window = _FakeWindow(self._size)
+        self._window = _FakeBubble(True)
         return True
-    monkeypatch.setattr(ui.face_bubble.FaceBubble, "start", _fake_start)
-    monkeypatch.setattr(ui.face_bubble.FaceBubble, "available",
-                        property(lambda self: state["bubble_ok"]))
-    instance = ui.JarvisUI("face.png")
-    instance.state = state
-    return instance
+
+    monkeypatch.setattr(qt.face_bubble.FaceBubble, "available",
+                        property(lambda self: getattr(self, "_window", None) is not None))
+    monkeypatch.setattr(qt.face_bubble.FaceBubble, "start", _bubble_start)
+    monkeypatch.setattr(qt.face_bubble.FaceBubble, "visible",
+                        property(lambda self: bool(getattr(self._window, "shown", False))))
+
+    monkeypatch.setattr(lifecycle, "start_orb",
+                        lambda shell: state.__setitem__("orb_starts", state["orb_starts"] + 1) or True)
+    monkeypatch.setattr(lifecycle, "start_command_bar",
+                        lambda shell: state.__setitem__("bar_starts", state["bar_starts"] + 1) or True)
+
+    shell = qt.AmbientShell("face.png", "JARVIS")
+    shell.state = state
+    lifecycle.start_interface(shell)
+    return shell
 
 
 @pytest.fixture()
 def shell(monkeypatch, qt):
-    """A real `JarvisUI` in bubble mode with a working face."""
-    return _launch(monkeypatch, qt=qt), None
+    """A real `AmbientShell` with a working tray and a working face."""
+    return _shell(monkeypatch, qt)
 
 
-def test_bubble_mode_builds_the_face_and_leaves_the_screen_alone(shell):
-    instance, _ = shell
-    assert instance.state["full"] == 0, "bubble mode must not fill the screen"
-    assert instance.ambient is True
-    assert instance._bubble is not None
+def test_every_surface_is_started(shell):
+    assert shell.state["tray_starts"] == 1
+    assert shell.state["orb_starts"] == 1
+    assert shell.state["bar_starts"] == 1
+    assert shell._bubble is not None
+    assert shell.ambient is True
 
 
-def test_a_failed_bubble_degrades_to_the_tray_not_to_a_window(monkeypatch, qt):
-    """"Less" is acceptable; "a window the user asked not to have" is not.
+def test_a_failed_face_degrades_to_the_tray_not_to_a_window(monkeypatch, qt):
+    """"Less" is acceptable; a window the user asked not to have is not.
 
-    This needs a face that fails at LAUNCH, so it builds its own shell rather
-    than reusing the one that succeeds — the first version asserted on a bubble
-    that had never been asked to start, which is a test that passes by not
-    happening.
+    The face is the one surface with a picture in it, so its failure is the one
+    that tempts a fallback to "show the window". There is no window in this
+    build — which makes the temptation smaller and the rule easier to keep.
     """
-    ui = _launch(monkeypatch, mode="bubble", tray_ok=True, bubble_ok=False, qt=qt)
-    assert ui._ambient is True, "a failed face must not leave the mode"
-    assert ui._bubble is None
-    assert ui.state["full"] == 0, "the user asked for no window and got one"
+    shell = _shell(monkeypatch, qt, bubble_ok=False)
+    assert shell._bubble is None
+    assert shell._tray is not None, "the tray is the fallback for everything"
+    assert shell.ambient is True
 
 
-def test_the_face_steps_aside_while_the_window_is_up(shell):
-    instance, _state = shell
-    b = instance._bubble
-    shown = {"v": True}
-    b._window.show = lambda: shown.__setitem__("v", True)
-    b._window.hide = lambda: shown.__setitem__("v", False)
-    instance.summon()
-    assert shown["v"] is False, "two copies of the avatar on screen at once"
-    instance.dismiss()
-    assert shown["v"] is True, "the face must come back when the window goes away"
+def test_a_failure_to_build_a_surface_does_not_stop_the_others(monkeypatch, qt):
+    """Each surface starts on its own. One refusal is not a cascade.
+
+    This is the failure that leaves an assistant holding a microphone with
+    nothing on screen, so it is asserted rather than assumed.
+    """
+    shell = _shell(monkeypatch, qt, tray_ok=False, bubble_ok=False)
+    assert shell._tray is None
+    assert shell._bubble is None
+    assert shell.state["orb_starts"] == 1, "the orb gave up because the tray did"
+    assert shell.state["bar_starts"] == 1
 
 
-def test_switching_to_the_tray_mode_removes_the_face(shell):
-    instance, _ = shell
-    assert instance._bubble is not None
-    assert instance.set_interface_mode("ambient") is True
-    assert instance._bubble is None, "the face outlived the mode it belonged to"
-    assert instance.state["mode"] == "ambient"
+def test_the_orb_starts_even_when_the_face_cannot(monkeypatch, qt):
+    shell = _shell(monkeypatch, qt, bubble_ok=False)
+    assert shell.state["orb_starts"] == 1
 
 
-def test_switching_to_hud_removes_both_the_face_and_the_tray(shell):
-    instance, _ = shell
-    instance.set_interface_mode("hud")
-    assert instance._bubble is None
-    assert instance.state["full"] >= 1, "hud mode must show the window"
-    assert instance.ambient is False
+def test_the_face_steps_aside_and_comes_back(shell):
+    """Summon shows the face, dismiss hides it — and the orb is never hidden."""
+    bubble = shell._bubble._window
+    shell.dismiss()
+    assert bubble.shown is False, "the face stayed up after a dismiss"
+    shell.summon()
+    assert bubble.shown is True, "the face did not come back"
 
 
-def test_a_mode_that_cannot_be_delivered_is_refused_not_saved(shell):
-    """A stored setting that does nothing is one the user re-toggles forever."""
-    instance, _ = shell
-    state = instance.state
-    state["bubble_ok"] = False
-    state["mode"] = "ambient"
-    instance._bubble = None
-    assert instance.set_interface_mode("bubble") is False
-    assert state["mode"] == "ambient", "the refusal was saved as if it worked"
+def test_dismiss_never_hides_the_orb(shell):
+    """The orb is the mark that says the assistant is there.
+
+    Hiding it from a tray item would leave a process the user cannot see, which
+    is the one state this project refuses to create. Quiet dims the orb; it
+    never removes it.
+    """
+    source = (ROOT / "ui" / "lifecycle.py").read_text(encoding="utf-8")
+    start = source.index("def dismiss(shell")
+    body = source[start:source.index("def toggle_interface(shell")]
+    assert "_orb" not in body, "dismiss touches the orb"
 
 
-def test_bubble_mode_without_a_tray_falls_back_to_the_window(monkeypatch):
-    """The tray is the fallback for everything, in every ambient variant."""
+def test_the_tray_is_started_before_anything_that_could_fail(shell):
+    """The tray is the only surface that can always get the user back."""
     source = (ROOT / "ui" / "lifecycle.py").read_text(encoding="utf-8")
     start = source.index("def start_interface(shell")
-    body = source[start:source.index("def start_tray(shell")]
-    guard = "if not start_tray(shell):"
-    assert guard in body
-    assert body.index(guard) < body.index("start_bubble(shell)"), (
-        "the face must not be built before there is a tray to fall back on")
+    body = source[start:source.index("def start_summon_hotkey(shell")]
+    assert body.index("start_tray(shell)") < body.index("start_orb(shell)")
+    assert body.index("start_tray(shell)") < body.index("start_bubble(shell)")
+
+
+def test_no_surface_at_all_is_said_out_loud(monkeypatch, qt, capsys):
+    """Running, listening, and invisible is the one outcome worth shouting about."""
+    shell = _shell(monkeypatch, qt, tray_ok=False, bubble_ok=False)
+    monkeypatch.setattr(shell, "state", dict(shell.state, orb_starts=0, bar_starts=0))
+    from ui import lifecycle
+    lifecycle.start_orb = lambda s: False
+    lifecycle.start_command_bar = lambda s: False
+    lifecycle.start_interface(shell)
+    out = capsys.readouterr().out
+    assert "No ambient surface" in out

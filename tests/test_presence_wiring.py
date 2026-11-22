@@ -175,15 +175,32 @@ def test_the_orb_click_opens_the_bar(lifecycle):
 def test_the_orb_follows_the_assistant_state(lifecycle):
     """A ring that keeps drawing "idle" while the assistant speaks is a still
     picture pretending to be a status light — and in ambient mode it is the
-    only status light there is."""
-    orb = _Orb()
-    lifecycle.apply_state_everywhere(_Shell(orb=orb), "SPEAKING")
-    assert orb.states == ["SPEAKING"]
+    only status light there is.
+
+    `apply_state_everywhere` was a `lifecycle` free function taking a shell. It
+    is `AmbientShell.set_state` now: the shell already owned every surface, and
+    a module-level function that reached into three private attributes was the
+    same code with a longer walk to it.
+    """
+    from ui.shell import AmbientShell
+
+    orb, tray = _Orb(), _Orb()
+    shell = AmbientShell.__new__(AmbientShell)      # no surfaces, no Qt
+    shell._orb, shell._tray, shell._bubble = orb, tray, None
+    shell._state = ""
+    shell.set_state("SPEAKING")
+    assert orb.states == ["speaking"], "the surfaces are told in one spelling"
+    assert tray.states == ["speaking"], "the tooltip is the only readout in the tray"
 
 
 def test_a_failing_orb_does_not_stop_the_tooltip(lifecycle):
-    """The three surfaces are independent: one that raises must not take the
-    other two down, because the tooltip is the only readout in the tray."""
+    """The surfaces are independent: one that raises must not take the others
+    down, because the tooltip is the only readout in the tray.
+
+    The order matters as much as the guard: the tray is updated FIRST, so a
+    broken orb cannot leave the one readable surface saying the old word.
+    """
+    from ui.shell import AmbientShell
 
     class _BrokenOrb:
         def set_state(self, _state):
@@ -195,15 +212,26 @@ def test_a_failing_orb_does_not_stop_the_tooltip(lifecycle):
         def set_state(self, state):
             seen.append(state)
 
-    shell = _Shell(orb=_BrokenOrb())
-    shell._tray = _Tray()
-    lifecycle.apply_state_everywhere(shell, "LISTENING")
-    assert seen == ["LISTENING"], "the tray update came after the orb and was lost"
+    shell = AmbientShell.__new__(AmbientShell)
+    shell._orb, shell._tray, shell._bubble = _BrokenOrb(), _Tray(), None
+    shell._state = ""
+    shell.set_state("LISTENING")
+    assert seen == ["listening"], "the orb raised and the tray update was lost"
 
 
-def test_leaving_ambient_releases_the_bar_chord(lifecycle):
-    """A chord still bound in HUD mode would open a bar nobody asked for."""
+def test_there_is_no_mode_that_leaves_the_bar_chord_bound(lifecycle):
+    """The bar is no longer one mode's door — it is the ONLY door.
+
+    `set_interface_mode` used to bind Ctrl+Space in ambient and release it in
+    HUD, because a window had a text field of its own. There is no window, so
+    the chord is bound for the life of the process and released only on quit —
+    which is what this asserts, because a chord released at the wrong moment
+    leaves a running assistant with no way to say anything.
+    """
     source = (ROOT / "ui" / "lifecycle.py").read_text(encoding="utf-8")
-    hud = source[source.index("def set_interface_mode"):]
-    hud = hud[:hud.index("def _hide_bubble")]
-    assert "stop_bar_hotkey(shell)" in hud
+    quit_body = source[source.index("def quit_app(shell"):]
+    quit_body = quit_body[:quit_body.index("def needs_attention")]
+    assert "stop_bar_hotkey(shell)" in quit_body, (
+        "the chord outlives the app, so Ctrl+Space is grabbed after exit")
+    assert "def set_interface_mode" not in source, (
+        "interface modes are back: the mockup has one, and it has no window")

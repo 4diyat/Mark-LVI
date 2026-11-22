@@ -8,22 +8,16 @@ WHY THIS EXISTS
     small, on top, and honest about what it is doing, with a double-click to get
     the full interface back.
 
-WHY IT BUILDS A SECOND `HudCanvas` RATHER THAN BORROWING THE WINDOW'S
-    `MainWindow.hud` already exists and already animates, and reusing it would
-    have saved this file. It cannot be done: a widget has one parent, and
-    re-parenting the window's canvas into a floating bubble would leave the
-    window with an empty centre the moment the user summoned it — the two
-    surfaces take turns being visible, so they cannot share one widget.
-
-    A separate HudCanvas costs one more animated avatar at 30 fps, which is the
-    price of the mode and is why `set_state` mirrors the state onto both rather
-    than either one guessing. `HudCanvas` is a plain `QWidget` subclass with no
-    window assumptions, and `ui/desktop_workspace.py` already hosts one in a
-    small stage — so this is an existing use, not a new one.
+WHAT DRAWS THE FACE
+    `ui/face_canvas.py`: a widget that draws `core.avatar` and nothing else.
+    It used to be `HudCanvas`, which was 619 lines of HUD — a grid, a metric
+    ring, a status line, a video frame — of which the bubble used only the
+    avatar. The HUD went with the window it belonged to; the avatar stayed,
+    which is what "the face bubble stays" actually meant.
 
 WHAT IT DOES NOT DO
     It does not talk to `JarvisLive`. Every method here is called by
-    `ui/lifecycle.py` or `ui/window.py` with a value they already have, so the
+    `ui/lifecycle.py` with a value it already has, so the
     bubble never becomes a second place that knows what the assistant is doing.
 """
 from __future__ import annotations
@@ -79,12 +73,24 @@ class FaceBubble:
         self._state = "idle"
         self._drag = None            # (cursor, origin) while being dragged
         self._placed = False         # has an initial position been chosen?
+        self._error = ""             # why the last `start()` refused
 
     # ── what happened ────────────────────────────────────────────────────────
 
     @property
     def available(self) -> bool:
         return self._window is not None
+
+    @property
+    def last_error(self) -> str:
+        """Why `start()` last refused, in the caller's words.
+
+        A bool is enough to decide what to do next and useless for saying why.
+        `lifecycle.start_bubble` puts this in the log, and the smoke tool prints
+        it, because "the face did not appear" with no reason is the report that
+        costs an hour.
+        """
+        return self._error
 
     @property
     def visible(self) -> bool:
@@ -97,7 +103,7 @@ class FaceBubble:
 
     @property
     def canvas(self):
-        """The `HudCanvas`, for the caller that wants to push audio into it."""
+        """The canvas, for the caller that wants to push audio into it."""
         return self._canvas
 
     # ── lifecycle ────────────────────────────────────────────────────────────
@@ -115,7 +121,7 @@ class FaceBubble:
         try:
             from PyQt6.QtCore import Qt
             from PyQt6.QtWidgets import QWidget
-            from ui.hud_canvas import HudCanvas
+            from ui.face_canvas import build_face_canvas
 
             window = QWidget()
             # Not `Qt.WindowType(...)`: the OR already produces the value
@@ -125,7 +131,7 @@ class FaceBubble:
             window.setWindowTitle(self._name)
             window.setFixedSize(self._size, self._size)
 
-            canvas = HudCanvas(self._face_path, self._name, window)
+            canvas = build_face_canvas(window, self._face_path, self._name)
             canvas.setGeometry(0, 0, self._size, self._size)
             canvas.setMinimumSize(1, 1)
 
@@ -165,8 +171,8 @@ class FaceBubble:
     def set_state(self, state: str) -> None:
         """Mirror the assistant's state onto the face.
 
-        The same words the window's canvas uses, so the avatar looks the same in
-        both places — and so a state added later only has to be understood once.
+        The words `main.py` already sends, so a state added there only has to be
+        understood once.
         """
         self._state = str(state or "idle").strip() or "idle"
         canvas = self._canvas

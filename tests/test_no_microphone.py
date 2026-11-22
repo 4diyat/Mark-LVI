@@ -267,13 +267,32 @@ def test_going_deaf_changes_what_the_user_sees():
 
 # ── the window ─────────────────────────────────────────────────────────────
 
-def test_the_microphone_button_admits_there_is_no_microphone():
-    window = (ROOT / "ui" / "window.py").read_text(encoding="utf-8")
-    fn_start = window.index("    def _style_mute_btn(self):")
-    fn_end = window.index("    def ", fn_start + 10)
-    body = window[fn_start:fn_end]
-    assert "ui.mic.absent" in body
-    assert "setEnabled(False)" in body
+def test_a_missing_microphone_reaches_a_surface_not_only_the_log():
+    """There is no mute button to disable any more, so the question changed.
+
+    It used to be "does the button grey itself out". The button was in the
+    window; what survives is the state word and the sentence — and they must
+    reach an actual surface, because an assistant that cannot hear and says so
+    only in a log file is an assistant that looks broken.
+    """
+    main_src = (ROOT / "main.py").read_text(encoding="utf-8")
+    assert "self.ui.set_state(_mic_status.NO_MIC)" in main_src, (
+        "the orb no longer says the microphone is missing")
+
+    shell_src = (ROOT / "ui" / "shell.py").read_text(encoding="utf-8")
+    start = shell_src.index("def set_state(")
+    body = shell_src[start:start + 1200]
+    assert '"_tray"' in body and '"_orb"' in body, (
+        "the state must reach the tooltip and the ring: on a machine with no "
+        "microphone the ring is the only readout there is")
+
+    # And the sentence exists in both languages, which is the half of the old
+    # test that never depended on a widget.
+    import json
+    for lang in ("en", "id"):
+        data = json.loads((ROOT / "assets" / "i18n" / f"{lang}.json")
+                          .read_text(encoding="utf-8"))
+        assert data.get("ui.mic.absent"), f"{lang} has no label for a missing microphone"
 
 
 def test_both_languages_have_the_new_key():

@@ -14,13 +14,10 @@ function, which is the whole reason it lives in its own module.
 from __future__ import annotations
 
 import ast
-import sys
 from pathlib import Path
 
-import pytest
 
 from core import gesture_os as go
-from core.workspace_gesture import os_owns_the_hand
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -357,206 +354,28 @@ def test_the_screen_size_falls_back_rather_than_raising():
     out = gop.OsPointer(NoSize())
     assert out.apply(go.Intent(action=go.POINTER, x=.5, y=.5)) is True
 
+# ── what the deletion took ────────────────────────────────────────────────
 
-# ── the bridge, which is where focus is read ──────────────────────────────
+def test_the_ui_half_of_the_gesture_layer_is_gone():
+    """The bridge, the loop and the cursor overlay were all `ui/` widgets.
 
-@pytest.fixture()
-def bridge_mod(monkeypatch):
-    """The bridge, with `QApplication` answered by a stub for the WHOLE test.
+    `core/gesture_os.py` decides — it is a pure function over a context, which
+    is why its tests are here and why it survives. What drove it was
+    `ui/gesture_os_bridge.py` (read the focus window every frame),
+    `ui/hand_gesture.py` (the camera loop) and `ui/desktop_ring.py` (the
+    cursor). All three went with the window, because the mockup draws no
+    gesture surface at all.
 
-    The stub has to outlive the module load, not just survive it: `_modal_open`
-    imports `QApplication` at CALL time, so a stub removed after loading makes
-    every frame read as "a modal is open" — the real code fails safe, which is
-    right in production and would quietly empty every assertion here.
+    This is asserted rather than described so the deletion cannot be quietly
+    undone by re-adding a widget without a decision.
     """
-    import importlib.util
-    import types
+    for gone in ("gesture_os_bridge.py", "hand_gesture.py", "desktop_ring.py"):
+        assert not (ROOT / "ui" / gone).exists(), f"ui/{gone} came back"
 
-    widgets = types.ModuleType("PyQt6.QtWidgets")
-
-    class _App:
-        @staticmethod
-        def activeModalWidget():
-            return None
-
-    widgets.QApplication = _App
-    monkeypatch.setitem(sys.modules, "PyQt6.QtWidgets", widgets)
-
-    spec = importlib.util.spec_from_file_location(
-        "gesture_os_bridge", ROOT / "ui" / "gesture_os_bridge.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-class _Window:
-    def __init__(self, active=False, banner=None, modal=None):
-        self._active = active
-        self._confirm_overlay = banner
-        self._modal = modal
-
-    def isActiveWindow(self):                    # noqa: N802 — Qt's name
-        return self._active
-
-
-class _Banner:
-    def __init__(self, visible):
-        self._visible = visible
-
-    def isVisible(self):                         # noqa: N802
-        return self._visible
-
-
-def test_the_bridge_reads_focus_every_frame_rather_than_caching_it(bridge_mod):
-    """Focus can change between two frames, and a cached flag would be one
-    frame of a gesture clicking the confirmation banner."""
-    window = _Window(active=False)
-    bridge = bridge_mod.GestureOsBridge(window)
-
-    class _Sink:
-        def __init__(self):
-            self.calls = []
-
-        def apply(self, intent, screen=None):
-            self.calls.append(intent)
-            return True
-
-    bridge._out = _Sink()
-    bridge.set_enabled(True)
-
-    bridge.feed([(.5, .5, False, False)], now=0.0)
-    assert bridge._out.calls, "a free hand should have moved the pointer"
-
-    window._active = True
-    before = len(bridge._out.calls)
-    bridge.feed([(.5, .5, False, False)], now=0.1)
-    assert len(bridge._out.calls) == before, "it kept driving while we had focus"
-
-
-def test_the_bridge_refuses_when_a_confirmation_is_visible(bridge_mod):
-    window = _Window(banner=_Banner(True))
-    bridge = bridge_mod.GestureOsBridge(window)
-
-    class _Sink:
-        def __init__(self):
-            self.calls = []
-
-        def apply(self, intent, screen=None):
-            self.calls.append(intent)
-            return True
-
-    bridge._out = _Sink()
-    bridge.set_enabled(True)
-    bridge.feed([(.5, .5, False, False)], now=0.0)
-
-    assert bridge._out.calls == []
-    assert "confirmation" in bridge.last_reason
-
-
-def test_two_hands_are_ignored_by_the_os_pointer(bridge_mod):
-    """Two hands means resize or rotate, which are workspace gestures. An OS
-    gesture needing both hands is one the camera cannot tell apart from
-    somebody talking with their hands."""
-    bridge = bridge_mod.GestureOsBridge(_Window())
-
-    class _Sink:
-        def __init__(self):
-            self.calls = []
-
-        def apply(self, intent, screen=None):
-            self.calls.append(intent)
-            return True
-
-    bridge._out = _Sink()
-    bridge.set_enabled(True)
-    bridge.feed([(.5, .5, False, False), (.6, .6, False, False)], now=0.0)
-
-    assert bridge._out.calls == []
-
-
-def test_switching_the_mode_off_lets_go_of_the_button(bridge_mod):
-    bridge = bridge_mod.GestureOsBridge(_Window())
-    released = []
-    bridge._pointer._down = True
-
-    class _Out:
-        def apply(self, intent, screen=None):
-            return True
-
-    bridge._out = _Out()
-    import core.gesture_os_pointer as gop
-    original = gop.release
-    gop.release = lambda mouse=None: released.append(True) or True
-    try:
-        bridge.set_enabled(False)
-    finally:
-        gop.release = original
-
-    assert released == [True], "the button was left held"
-    assert bridge.holding_button is False
-
-
-def test_a_window_that_is_closing_reads_as_focused(bridge_mod):
-    """Every failure in the focus read must fail SAFE — towards not driving the
-    desktop, never towards driving it."""
-
-    class Broken:
-        def isActiveWindow(self):
-            raise RuntimeError("the widget is being destroyed")
-
-    bridge = bridge_mod.GestureOsBridge(Broken())
-    assert bridge._own_focus() is True
-
-
-# ── one hand, one place ───────────────────────────────────────────────────
-#
-# OS control and the workspace gestures run from the SAME samples in the same
-# frame. Before `os_owns_the_hand()` the workspace ran unconditionally, so a
-# hand driving the desktop pointer ALSO dragged cards in the workspace
-# underneath it: the user moved the cursor across the screen and their Documents
-# window came with it.
-
-def test_the_workspace_stands_down_while_the_desktop_is_driven():
-    assert os_owns_the_hand(True, True) is True
-
-
-def test_the_workspace_still_works_when_os_mode_is_off():
-    assert os_owns_the_hand(False, True) is False
-    assert os_owns_the_hand(False, False) is False
-
-
-def test_a_frozen_pointer_gives_the_workspace_back():
-    """THE SUBTLE HALF. OS mode on, but JARVIS has focus or a confirmation is
-    up, so `core/gesture_os.py` freezes the pointer. During that freeze the
-    workspace gestures are exactly what should still work — otherwise turning
-    OS mode on would silently disable the workspace every time the user came
-    back to the window."""
-    assert os_owns_the_hand(True, False) is False
-
-
-def test_the_rule_is_two_questions_not_one():
-    """Both arguments are needed and they are not the same question: one is the
-    user's switch, the other is whether the pointer is free this frame."""
-    import inspect
-    params = list(inspect.signature(os_owns_the_hand).parameters)
-    assert params == ["os_mode_enabled", "os_mode_actually_driving"]
-
-
-def test_the_loop_asks_the_rule_instead_of_acting_twice():
-    """The bug was in the refresh loop, so the assertion has to be about the
-    loop: exactly one of the two surfaces is fed each frame."""
-    source = (ROOT / "ui" / "hand_gesture.py").read_text(encoding="utf-8")
-    assert "_workspace_gesture.os_owns_the_hand(" in source
-    assert "bridge.enabled, not bridge.frozen" in source
-    # And the unconditional call that caused the bug is gone.
-    assert "\n        gestures.update(samples)" not in source
-
-
-def test_a_half_finished_drag_is_reset_not_frozen():
-    """A drag left open in the workspace would resume the moment the pointer
-    froze (JARVIS takes focus) and the widget would jump."""
-    source = (ROOT / "ui" / "hand_gesture.py").read_text(encoding="utf-8")
-    start = source.index("if owns:")
-    block = source[start:source.index("else:", start)]
-    assert "gestures.reset()" in block
-    assert "gestures.show_cursors(())" in block
+    # The decision module is still importable and still pure — no Qt, no
+    # pyautogui, no window. If a future edit gives it a dependency on the
+    # desktop, this catches it before the tests that follow do.
+    tree = ast.parse((ROOT / "core" / "gesture_os.py").read_text(encoding="utf-8"))
+    imported = {n.module for n in ast.walk(tree)
+                if isinstance(n, ast.ImportFrom) and n.module}
+    assert not {m for m in imported if m.startswith(("ui", "PyQt6"))}

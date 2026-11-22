@@ -124,21 +124,35 @@ def test_pytest_writes_the_junit_file_the_reporter_reads(workflow):
     assert "junit.xml" in run_suite["run"] and "junit.xml" in reporter["run"]
 
 
-def test_real_qt_security_controls_run_on_linux_and_windows(workflow):
+def test_the_ambient_smoke_tool_runs_with_real_qt(workflow):
+    """The window's smoke tools are gone; the replacement must actually run.
+
+    Five scripts drove `ui.window` with real Qt offscreen and they all went with
+    the window. What replaces them has to be wired the same way — through
+    `run_qt_smoke.py`, on Linux, offscreen — or the surfaces that remain lose
+    their only check against real Qt rather than the test stub.
+    """
     job = workflow["jobs"]["install"]
     step = next(s for s in job["steps"]
-                if s.get("name") == "Exercise security controls with real Qt offscreen")
-    assert "Linux" in step["if"] and "Windows" in step["if"]
+                if s.get("name") == "Exercise the ambient surfaces with real Qt offscreen")
     assert step["env"]["QT_QPA_PLATFORM"] == "offscreen"
-    assert "tools/check_security_qt.py" in step["run"]
-    assert (ROOT / "tools/check_security_qt.py").is_file()
+    assert "tools/run_qt_smoke.py tools/check_ambient_qt.py" in step["run"]
+    assert (ROOT / "tools" / "check_ambient_qt.py").is_file()
 
 
-def test_browser_and_ssh_smoke_scripts_are_wired_to_ci():
-    text = WORKFLOW.read_text(encoding='utf-8')
-    for name in ('check_browser_qt.py', 'check_ssh_qt.py'):
-        assert f'python tools/run_qt_smoke.py tools/{name}' in text
-        assert (ROOT / 'tools' / name).is_file()
+def test_the_window_smoke_tools_are_not_still_wired():
+    """A workflow step pointing at a deleted script fails on the NEXT run.
+
+    Asserted both halves: the file is gone and the workflow no longer names it,
+    because deleting only one of them is a red build nobody notices until the
+    Linux job runs — which is the one job a local `pytest` cannot check.
+    """
+    text = WORKFLOW.read_text(encoding="utf-8")
+    for name in ("check_desktop_qt.py", "capture_desktop_qt.py",
+                 "check_browser_qt.py", "capture_browser_qt.py",
+                 "check_ssh_qt.py", "check_security_qt.py"):
+        assert not (ROOT / "tools" / name).is_file(), f"tools/{name} is back"
+        assert f"tools/{name}" not in text, f"CI still runs tools/{name}"
 
 
 def test_plugin_discovery_ci_step_matches_shipped_permissions(workflow, isolated_config, monkeypatch):

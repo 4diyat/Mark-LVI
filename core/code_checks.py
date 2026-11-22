@@ -625,42 +625,55 @@ class _JarvisProfile:
         r"httpx\.(post|put|delete)|webbrowser|pyautogui|keyboard\.|mouse\.|win32api|"
         r"ctypes\.windll|\.write_text\(|open\([^)]*['\"][wa]")
 
-    @staticmethod
-    def ui_source(folder: Path) -> Path | None:
-        """Where the window's code is in THIS project.
+    # The class that answers `player.<method>` for a plugin. It has been three
+    # names in three shapes: `JarvisUI` in one `ui.py`, `JarvisUI` in
+    # `ui/window.py`, and `AmbientShell` in `ui/shell.py` now that there is no
+    # window. Every shape here is one a project in the wild actually has, and
+    # a profile that knows only one of them silently stops recognising the
+    # project it was written for — which is what happened when the package
+    # split landed (dev_agent stopped being told about the thread-safe `player`
+    # methods, with no message).
+    _UI_SOURCES = (
+        ("ui", "shell.py", "AmbientShell"),
+        ("ui", "window.py", "JarvisUI"),
+        ("", "ui.py", "JarvisUI"),
+    )
 
-        It used to be one file, `ui.py`. It is now a package, `ui/window.py`,
-        and both shapes have to be recognised: a project written by an older
-        version of JARVIS still has the file, and a profile that only knows one
-        of them silently stops recognising the project it was written for —
-        which is exactly what happened when the split landed (dev_agent stopped
-        being told about the thread-safe `player` methods, with no message).
-        """
-        for candidate in (folder / "ui" / "window.py", folder / "ui.py"):
+    @classmethod
+    def ui_sources(cls, folder: Path) -> tuple[Path, str] | None:
+        """The file holding the player API, and the class inside it."""
+        for *parts, class_name in cls._UI_SOURCES:
+            candidate = folder.joinpath(*parts) if parts else folder / parts[0]
             if candidate.is_file():
-                return candidate
+                return candidate, class_name
         return None
+
+    @classmethod
+    def ui_source(cls, folder: Path) -> Path | None:
+        """Just the file — kept because `detect()` asks only whether it exists."""
+        found = cls.ui_sources(folder)
+        return found[0] if found else None
 
     def detect(self, folder: Path) -> bool:
         return ((folder / "core" / "plugin_loader.py").is_file()
                 and self.ui_source(folder) is not None)
 
     def guide(self, folder: Path) -> str:
-        src = self.ui_source(folder)
-        api = self._player_api(src) if src else ""
+        found = self.ui_sources(folder)
+        api = self._player_api(found[0], found[1]) if found else ""
         return ("## Thread-safe `player` methods (generated from %s)\n\n```\n"
-                % (src.name if src else "the window")
+                % (found[0].name if found else "the interface")
                 + api + "\n```") if api else ""
 
     @staticmethod
-    def _player_api(ui_file: Path) -> str:
+    def _player_api(ui_file: Path, class_name: str = "JarvisUI") -> str:
         try:
             tree = ast.parse(ui_file.read_text(encoding="utf-8"))
         except (OSError, SyntaxError):
             return ""
         lines = []
         for node in tree.body:
-            if not (isinstance(node, ast.ClassDef) and node.name == "JarvisUI"):
+            if not (isinstance(node, ast.ClassDef) and node.name == class_name):
                 continue
             for f in node.body:
                 if not isinstance(f, ast.FunctionDef) or f.name.startswith("_"):

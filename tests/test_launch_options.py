@@ -20,6 +20,9 @@ WHY THIS EXISTS
 from __future__ import annotations
 
 import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
 import xml.etree.ElementTree as ET
 
 import pytest
@@ -199,11 +202,13 @@ def test_the_registered_script_is_read_from_position_one_not_the_last(autostart_
 
 
 # ── the flag reaching the interface ────────────────────────────────────────
+#
+# `--hidden` used to choose between "tray" and "full-screen window". There is no
+# window, so the flag now means one thing only: do not SHOW anything at launch.
+# The surfaces are still built — a login entry that builds nothing is a process
+# with no way in.
 
-def test_hidden_forces_the_tray_whatever_the_saved_mode_says():
-    """`--hidden` is a downgrade of visibility, and the only one allowed to
-    outrank the saved mode. The safety rules below it still apply."""
-    from types import SimpleNamespace
+def _launch_lifecycle(monkeypatch, *names):
     import importlib.util
     from pathlib import Path
 
@@ -213,101 +218,106 @@ def test_hidden_forces_the_tray_whatever_the_saved_mode_says():
     lifecycle = importlib.util.module_from_spec(spec)
     sys.modules["lifecycle_launch_under_test"] = lifecycle
     spec.loader.exec_module(lifecycle)
-
-    shown = []
-    tray = []
-    monkeypatch = pytest.MonkeyPatch()
-    monkeypatch.setattr(lifecycle, "start_tray",
-                        lambda shell: tray.append(True) or True)
-    monkeypatch.setattr(lifecycle, "watch_for_another_launch", lambda shell: None)
-    monkeypatch.setattr(lifecycle, "start_summon_hotkey", lambda shell: "ctrl+shift+j")
-    # The orb and the command bar are started by the same function, and both
-    # reach Qt. Stubbed here because this test is about which MODE was chosen,
-    # not about whether a ring can be drawn — that is tests/test_orb_overlay.py.
-    monkeypatch.setattr(lifecycle, "start_orb", lambda shell: True)
-    monkeypatch.setattr(lifecycle, "start_command_bar", lambda shell: True)
-    try:
-        win = SimpleNamespace(_ready=True, showFullScreen=lambda: shown.append(1),
-                              _log_sig=SimpleNamespace(emit=lambda _t: None))
-        shell = SimpleNamespace(_win=win, _ambient=False,
-                                _launch=SimpleNamespace(hidden=True, show=False))
-        # A saved HUD mode, which `--hidden` must override.
-        monkeypatch.setitem(sys.modules, "memory.config_manager",
-                            SimpleNamespace(get_ui_mode=lambda: "hud"))
-        lifecycle.start_interface(shell)
-        assert shown == [], "the window must not be shown at login"
-        assert tray == [True], "it must go to the tray instead"
-        assert shell._ambient is True
-    finally:
-        monkeypatch.undo()
+    for name in names:
+        monkeypatch.setattr(lifecycle, name, lambda shell: None)
+    return lifecycle
 
 
-def test_hidden_still_gives_the_window_on_a_first_run():
-    """The rule that must survive every flag: no API key, no headless start.
+def test_hidden_does_not_show_the_face_at_login(monkeypatch):
+    """THE POINT OF `--hidden`: something starts while the user is working.
 
-    The setup screen is inside the window. A login entry that hides it is an
-    install that can never be finished, and nothing on screen would say why.
+    A face that appears on the first frame of a login is exactly what the flag
+    exists to prevent, and it is the failure a person notices most.
     """
-    from types import SimpleNamespace
-    import importlib.util
-    from pathlib import Path
+    lifecycle = _launch_lifecycle(
+        monkeypatch, "watch_for_another_launch", "start_summon_hotkey",
+        "start_orb", "start_command_bar")
+    shown = {"tray": 0, "face_built": 0}
 
-    root = Path(__file__).resolve().parent.parent
-    spec = importlib.util.spec_from_file_location(
-        "lifecycle_firstrun_under_test", root / "ui" / "lifecycle.py")
-    lifecycle = importlib.util.module_from_spec(spec)
-    sys.modules["lifecycle_firstrun_under_test"] = lifecycle
-    spec.loader.exec_module(lifecycle)
+    class _Window:
+        """Records what the surface was TOLD to do, which is the claim."""
 
-    shown, tray = [], []
-    monkeypatch = pytest.MonkeyPatch()
-    monkeypatch.setattr(lifecycle, "start_tray", lambda shell: tray.append(True) or True)
-    monkeypatch.setattr(lifecycle, "watch_for_another_launch", lambda shell: None)
-    try:
-        win = SimpleNamespace(_ready=False,          # no API key yet
-                              showFullScreen=lambda: shown.append(1),
-                              _log_sig=SimpleNamespace(emit=lambda _t: None))
-        shell = SimpleNamespace(_win=win, _ambient=False,
-                                _launch=SimpleNamespace(hidden=True, show=False))
-        monkeypatch.setitem(sys.modules, "memory.config_manager",
-                            SimpleNamespace(get_ui_mode=lambda: "hud"))
-        lifecycle.start_interface(shell)
-        assert shown == [1], "an unconfigured install always gets the window"
-        assert tray == []
-    finally:
-        monkeypatch.undo()
+        def __init__(self):
+            self.visible = True
+
+        def setVisible(self, visible):       # noqa: N802 — Qt's name
+            self.visible = bool(visible)
+
+    window = _Window()
+
+    class _Bubble:
+        _window = window
+        available = True
+
+    monkeypatch.setattr(lifecycle, "start_tray",
+                        lambda shell: shown.__setitem__("tray", shown["tray"] + 1) or True)
+
+    def _face(shell):
+        shown["face_built"] += 1
+        shell._bubble = _Bubble()
+        return True
+
+    monkeypatch.setattr(lifecycle, "start_bubble", _face)
+    shell = type("S", (), {})()
+    shell._launch = type("L", (), {"hidden": True, "show": False})()
+    shell._ambient = False
+    lifecycle.start_interface(shell)
+    assert shown["tray"] == 1, "a hidden launch must still have a way in"
+    assert shown["face_built"] == 1, (
+        "nothing was built, so the summon chord would bring up nothing")
+    assert window.visible is False, "the face appeared over someone's work at login"
+    assert shell._ambient is True
+
+
+def test_show_puts_the_face_up(monkeypatch):
+    """`--show` is a shortcut somebody clicked: they want to see it."""
+    lifecycle = _launch_lifecycle(
+        monkeypatch, "watch_for_another_launch", "start_summon_hotkey",
+        "start_orb", "start_command_bar")
+    seen = []
+    monkeypatch.setattr(lifecycle, "start_tray", lambda shell: True)
+    monkeypatch.setattr(lifecycle, "start_bubble", lambda shell: seen.append(1) or True)
+    shell = type("S", (), {})()
+    shell._launch = type("L", (), {"hidden": False, "show": True})()
+    shell._ambient = False
+    lifecycle.start_interface(shell)
+    assert seen == [1]
+
+
+def test_a_first_run_is_never_silent_about_the_api_key(monkeypatch):
+    """THE RULE THAT OUTRANKS EVERY FLAG: no key, and the user must be told.
+
+    The setup screen was inside the window, so a hidden launch on a first run
+    used to show the window instead. There is no window; the equivalent promise
+    is that the wait SAYS what is wrong on a surface that exists. This asserts
+    the notice, not the window, because asserting the window would now be
+    asserting the bug back into place.
+    """
+    source = (ROOT / "ui" / "shell.py").read_text(encoding="utf-8")
+    start = source.index("def wait_for_api_key")
+    body = source[start:start + 1800]
+    assert "notify" in body, "an unconfigured install waits with nothing said"
+    assert "config/api_keys.json" in body, (
+        "the message must name the file the user has to edit")
 
 
 # ── the two callers on opposite sides of the same flag ─────────────────────
 
-def test_the_desktop_shortcut_says_show_and_the_login_entry_says_hidden():
-    """One flag, two meanings, and the wrong way round is a real bug.
+def test_the_login_entry_says_hidden_and_never_asks_for_a_window():
+    """A login entry must not cover the screen.
 
-    A shortcut is a person clicking an icon: they want the window. A login entry
-    is the system starting something while the user is doing something else: it
-    must not cover the screen. Read from the source because both paths build
-    strings for three operating systems and neither can run here.
+    Read from `core/autostart.py`, which owns the string now: the desktop
+    shortcut writer lived in `ui/window.py` and went with it, because a
+    shortcut's whole job was to bring a window back.
     """
-    from pathlib import Path
+    from core import autostart
 
-    root = Path(__file__).resolve().parent.parent
-    source = (root / "ui" / "window.py").read_text(encoding="utf-8")
-
-    # Parsed, not searched. Both comments above the writers explain what they
-    # are the opposite of, so the word "--hidden" is IN this function and must
-    # be — the third time in this project that a substring search over source
-    # matched its own documentation. The question is which flag is passed to a
-    # string the code builds.
-    import ast
-
-    fn = next(n for n in ast.walk(ast.parse(source))
-              if isinstance(n, ast.FunctionDef) and n.name == "_create_desktop_shortcut")
-    literals = [n.value for n in ast.walk(fn)
-                if isinstance(n, ast.Constant) and isinstance(n.value, str)]
-    flags = [part for text in literals for part in text.split()
-             if part.startswith("--")]
-    assert "--show" in flags, "the shortcut does not ask for the window"
-    assert "--hidden" not in flags, "a clicked shortcut must not start in the tray"
+    assert autostart.LOGIN_ARGS == ("--hidden",)
+    args = autostart.LOGIN_ARGS
+    for text in (autostart.desktop_text(Path("/x/main.py"), args=args),
+                 autostart.plist_text(Path("/x/main.py"), args=args)):
+        assert "--hidden" in text
+        assert "--show" not in text, "the login entry asks for the window"
 
 
 def test_the_login_entry_never_asks_for_the_window():

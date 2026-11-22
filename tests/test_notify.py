@@ -285,12 +285,72 @@ def test_the_title_is_escaped_too(monkeypatch):
 
 # ── wiring: only in ambient mode, and only when asked for ────────────────
 
-def test_the_hud_mode_never_announces():
-    """The answer is already on the screen being read; a banner on top is noise."""
+def test_every_state_change_is_offered_to_the_policy(monkeypatch):
+    """THE WIRE, DRIVEN. A policy nobody feeds never sends anything, and a
+    feature that is correctly quiet looks identical to a feature that is broken.
+
+    Found by mutation: deleting the `_announce` call from `set_state` left the
+    whole suite green, because every other test here feeds `Notifier.observe`
+    directly. This one goes through the surface.
+    """
+    from ui.shell import AmbientShell
+
+    seen = []
+
+    class _Recorder:
+        def observe(self, status, text=""):
+            seen.append((status, text))
+            return False
+
+    shell = AmbientShell("face.png", "JARVIS")
+    shell._notifier = _Recorder()
+    shell._last_answer = "Delapan baris diringkas."
+    monkeypatch.setattr("memory.config_manager.get_desktop_notifications",
+                        lambda: True, raising=False)
+
+    shell.set_state("speaking")
+    assert seen == [("SPEAKING", "Delapan baris diringkas.")], seen
+
+
+def test_a_finished_answer_becomes_the_notification_body():
+    """The body is the last thing the assistant SAID, not the last log line.
+
+    A log line is usually `SYS:` or `ERR:`; sending one of those as a desktop
+    notification tells the user nothing and looks like a bug.
+    """
+    from ui.shell import AmbientShell
+
+    shell = AmbientShell("face.png", "JARVIS")
+    shell.write_log("Baris 7 dan 11 melewati plafon.")
+    assert shell._last_answer == "Baris 7 dan 11 melewati plafon."
+    shell.write_log("SYS: Awaiting confirmation — Kirim laporan")
+    assert shell._last_answer == "Baris 7 dan 11 melewati plafon.", (
+        "a status line overwrote the answer the notification is supposed to carry")
+
+
+def test_finishing_work_never_pops_a_window():
+    """There is no HUD to leave alone, and no window to raise either.
+
+    The old rule was "announce only in ambient mode", which existed because the
+    HUD was already showing the answer. What is left to prove is that the
+    announcement path does not reach for a window at all — and that it stays
+    quiet in Fokus/Senyap, where a banner is exactly what the mode forbids.
+    """
     source = (ROOT / "ui" / "lifecycle.py").read_text(encoding="utf-8")
-    start = source.index("def announce_if_finished(shell")
-    body = source[start:source.index("def window_needs_attention", start)]
-    assert 'if not getattr(shell, "_ambient", False) or not state:' in body
+    assert "def announce_if_finished" not in source, (
+        "the HUD-aware announcer is back; there is no HUD for it to be aware of")
+    # `_window` is the face bubble's own window and is fine; `_win` was the
+    # main window, and a lifecycle path that still reaches for it is a
+    # `None`-attribute crash waiting for the first tray click.
+    assert "shell._win" not in source and "._win." not in source
+
+    # The rule that replaced it lives in `presence_mode`, which every banner
+    # path already consults.
+    from core import presence_mode
+    presence_mode.reset()
+    presence_mode.set_mode("quiet")
+    assert presence_mode.allows_banner() is False
+    presence_mode.reset()
 
 
 def test_notifications_can_be_switched_off(isolated_config):
@@ -299,58 +359,20 @@ def test_notifications_can_be_switched_off(isolated_config):
     assert isolated_config.get_desktop_notifications() is False
 
 
-# ── the row that makes the setting reachable ──────────────────────────────
+# ── the setting that used to have a row ───────────────────────────────────
 
-def test_the_notification_row_toggles_the_saved_setting(isolated_config):
-    """A setting nobody can reach is the same as no setting.
+def test_the_notification_setting_has_no_surface_and_is_said_not_hidden():
+    """The toggle lived in a settings drawer; the drawer went with the window.
 
-    The button lives in `ui/notify_row.py` rather than on `MainWindow` because
-    adding it there took `ui/window.py` past its ceiling.
+    It is not silently dropped: the setting still exists and still works, so a
+    user who turned notifications off keeps them off. What is missing is a way
+    to change it from the screen, and that is a documented gap rather than a
+    broken checkbox — `docs/mockups/NOT-IN-MOCKUP.md` names the file to edit.
     """
-    import importlib.util
-    spec = importlib.util.spec_from_file_location(
-        "notify_row", ROOT / "ui" / "notify_row.py")
-    module = importlib.util.module_from_spec(spec)
+    settings = ROOT / "docs" / "mockups" / "NOT-IN-MOCKUP.md"
+    assert settings.exists(), (
+        "a setting lost its only control; that has to be written down")
+    assert "notifications" in settings.read_text(encoding="utf-8").lower()
 
-    # The module imports PyQt6 and theme at module scope; the policy under test
-    # is the save/repaint pair, so those two are stubbed rather than installed.
-    import types
-    gui = types.ModuleType("PyQt6.QtGui")
-    gui.QFont = lambda *a, **k: None
-    widgets = types.ModuleType("PyQt6.QtWidgets")
-    widgets.QPushButton = type("QPushButton", (), {"setStyleSheet": lambda s, v: None,
-                                                   "setText": lambda s, v: None,
-                                                   "setToolTip": lambda s, v: None,
-                                                   "setFont": lambda s, v: None})
-    saved = {name: sys.modules.get(name) for name in ("PyQt6", "PyQt6.QtGui",
-                                                      "PyQt6.QtWidgets", "ui.theme")}
-    # A fake `ui.theme` rather than the real one: it imports the whole PyQt6
-    # colour stack, and this test is about the save/repaint pair.
-    theme = types.ModuleType("ui.theme")
-    theme.C = types.SimpleNamespace(GREEN="#0f0", GREEN_D="#080", TEXT="",
-                                    TEXT_DIM="", WHITE="", BORDER="", BORDER_B="")
-    sys.modules.update({"PyQt6": types.ModuleType("PyQt6"),
-                        "PyQt6.QtGui": gui, "PyQt6.QtWidgets": widgets,
-                        "ui.theme": theme})
-    spec.loader.exec_module(module)
-    try:
-        button = module.QPushButton()
-        assert isolated_config.get_desktop_notifications() is True
-        assert module.toggle(button) is False
-        assert isolated_config.get_desktop_notifications() is False
-        seen = []
-        assert module.toggle(button, on_toggled=seen.append) is True
-        assert seen == [True], "the caller was not told what the new value was"
-    finally:
-        for name, value in saved.items():
-            if value is None:
-                sys.modules.pop(name, None)
-            else:
-                sys.modules[name] = value
-
-
-def test_the_row_is_built_from_the_drawers_own_helper():
-    """`row_factory` is passed in, not imported: it carries the drawer's font and
-    padding, and a second copy here would let the two drift apart."""
-    source = (ROOT / "ui" / "notify_row.py").read_text(encoding="utf-8")
-    assert "row_factory(QPushButton())" in source
+    for gone in ("notify_row.py", "drawer_note.py", "settings_drawer.py"):
+        assert not (ROOT / "ui" / gone).exists(), f"ui/{gone} is back"

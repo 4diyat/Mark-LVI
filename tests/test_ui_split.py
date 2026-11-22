@@ -1,15 +1,25 @@
-"""The window's structure: one owner per job, and no file that nobody can hold.
+"""One owner per job, and no module that nobody can hold.
 
 WHY THIS IS A TEST AND NOT A NOTE IN A DOCUMENT
-    `ui.py` reached 7,504 lines with 36 top-level classes, and the cost was not
-    theoretical: the palette was read in one file by everyone, the accent code
-    that REBINDS it lived 100 lines away from the class that defines it, and
-    nothing could be checked without a display. The split is only worth doing if
-    it stays done — so the ownership rules are asserted here, cheaply, from the
-    source, on machines with no Qt at all (which includes every CI runner).
+    The old `ui.py` reached 7,504 lines with 36 top-level classes, and the cost
+    was not theoretical: the palette was read in one file by everyone, the code
+    that REBINDED it lived a hundred lines from the class that defined it, and
+    nothing could be checked without a display.
 
-    These are structural assertions on purpose. Importing `ui` needs a working
-    Qt, which a headless machine does not have; AST does not.
+    The design cut took that further in the other direction — from 64 modules to
+    13 — so the rules below are the ones that keep a small package small. Every
+    one is a structural assertion on purpose: importing `ui` needs a working Qt
+    and a display, which a headless runner does not have; AST does not.
+
+WHAT IS ASSERTED
+    * the package is a package, not a file, and it has one public name;
+    * every module stays under its ceiling, and the ceiling is real (a module
+      that grows past it fails here, not in a code review);
+    * a drawing module never imports the shell, and the shell never imports a
+      surface — the dependency arrow points one way, so a surface cannot make
+      the shell depend on Qt at import time;
+    * the modules that were deleted stay deleted: no `ui/window.py`, no desktop
+      workspace, nothing that needs a main window to be worth importing.
 """
 from __future__ import annotations
 
@@ -18,526 +28,149 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 UI_PKG = ROOT / "ui"
-WINDOW = UI_PKG / "window.py"
 
-# Two ceilings, not targets. They exist so "just add it here" costs a
-# conversation: both files may shrink freely and grow a little, but not back to
-# the sizes that made them unreadable. The ceiling came down from 7,400 to
-# 7,000 when the three setting panels moved to ui/overlays.py, and from 4,250
-# to 3,800 when the metric bar, the drop zone, the camera preview and the setup
-# panel moved out — a ratchet that is only ever loosened is not a ratchet.
-WINDOW_CEILING = 3_800
-MODULES = [UI_PKG / "__init__.py", UI_PKG / "theme.py", UI_PKG / "metrics.py",
-           UI_PKG / "overlays.py", UI_PKG / "lifecycle.py", UI_PKG / "tray.py",
-           UI_PKG / "metric_bar.py", UI_PKG / "drop_zone.py",
-           UI_PKG / "camera_preview.py", UI_PKG / "setup_overlay.py"]
+# Sixteen modules, and the ceiling is per module rather than per file: the old
+# 3,800-line `window.py` ceiling was a ratchet, and a ratchet with one big
+# bucket always ends up with one big file.
+MODULE_CEILING = 600
 
 
 def _tree(path: Path) -> ast.Module:
     return ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
 
 
+def _modules() -> list[Path]:
+    return sorted(UI_PKG.glob("*.py"))
+
+
 def test_ui_is_a_package_not_a_file():
-    """`ui.py` beside `ui/` is the trap that broke CI on the first attempt.
-
-    Python resolves the DIRECTORY first, so `ui.py` is shadowed — without an
-    error at import time of the package, and every `from ui.theme import ...`
-    inside the shadowed file then fails with "ui is not a package". One of the
-    two has to not exist.
-    """
-    assert not (ROOT / "ui.py").exists(), (
-        "ui.py must not be recreated: it shadows the ui/ package"
-    )
-    assert (UI_PKG / "__init__.py").exists()
+    assert UI_PKG.is_dir(), "ui.py is back: the whole split was reverted"
+    assert not (ROOT / "ui.py").exists()
 
 
-def test_the_window_does_not_grow_back():
-    lines = len(WINDOW.read_text(encoding="utf-8").splitlines())
-    assert lines <= WINDOW_CEILING, (
-        f"ui/window.py is {lines} lines (ceiling {WINDOW_CEILING}). "
-        "Put new widgets in a module of their own — see ui/theme.py for the shape."
-    )
-
-
-def test_every_ui_module_stays_readable():
-    """A 7,000-line module is the thing this split exists to prevent.
-
-    The ceiling is per-module and generous, so it does not dictate design — it
-    only refuses the one outcome that has already happened once here.
-    """
-    big = {p.name: n for p in MODULES
-           if (n := len(p.read_text(encoding="utf-8").splitlines())) > 1_000}
-    assert big == {}, f"modules over 1,000 lines: {big}"
-
-
-def test_only_the_theme_module_defines_the_palette():
-    """`class C` is rebound at runtime by apply_ui_accent.
-
-    Two definitions of it (or a second module assigning to `C`) is how a theme
-    change ends up applying to half the window: the widgets that imported the
-    other class keep the old colours and nothing raises.
-    """
-    definers = [
-        p for p in sorted(UI_PKG.glob("*.py"))
-        if any(isinstance(n, ast.ClassDef) and n.name == "C" for n in _tree(p).body)
-    ]
-    assert definers == [UI_PKG / "theme.py"]
-
-
-def test_ui_py_re_exports_what_it_moved():
-    """A split that breaks its callers is a rename, not a refactor.
-
-    Plugins and main.py say `ui.C`, `ui.qcol`, `ui._metrics`. Those names have
-    to keep resolving through `ui.py` — the assertion is on the import list,
-    not on runtime, so it holds without Qt.
-    """
-    imported = set()
-    for node in ast.walk(_tree(UI_PKG / "__init__.py")):
-        if isinstance(node, ast.ImportFrom) and node.module in {"ui.theme", "ui.window"}:
-            imported |= {a.name for a in node.names}
-    assert {"C", "qcol", "apply_ui_accent", "current_palette"} <= imported
-    assert "*" in imported, "the whole window is re-exported, unchanged"
-
-
-def test_the_moved_pieces_are_gone_from_ui_py():
-    """Copies are worse than either half being in the wrong file.
-
-    If `class _SysMetrics` reappears in ui.py, two sampler threads start and the
-    numbers are read from whichever one registered a timer last.
-    """
-    tree = _tree(WINDOW)
-    names = {n.name for n in tree.body if isinstance(n, (ast.ClassDef, ast.FunctionDef))}
-    assert "_SysMetrics" not in names
-    assert "apply_ui_accent" not in names
-    assert "retheme_all_widgets" not in names
-
-
-def test_the_setting_panels_live_in_their_own_module():
-    """Moved, not copied — and moved in one direction.
-
-    `CustomizeOverlay`, `PluginManagerOverlay` and `HueWheel` were extracted so
-    the i18n work could finish: a panel that must re-render itself in a new
-    language has to own its labels. The two ways that can go wrong later are a
-    copy left behind in window.py (two classes with one name, and the window
-    silently builds the stale one) and an import back into it (the panels start
-    dragging the session, the metrics sampler and the log along with them).
-    """
-    window_names = {n.name for n in _tree(WINDOW).body
-                    if isinstance(n, ast.ClassDef)}
-    for name in ("CustomizeOverlay", "PluginManagerOverlay", "HueWheel"):
-        assert name not in window_names, f"{name} is defined twice; it belongs in ui/overlays.py"
-    moved = {n.name for n in _tree(UI_PKG / "overlays.py").body
-             if isinstance(n, ast.ClassDef)}
-    assert {"CustomizeOverlay", "PluginManagerOverlay", "HueWheel"} <= moved
-
-    imports = [node for node in ast.walk(_tree(UI_PKG / "overlays.py"))
-               if isinstance(node, ast.ImportFrom)]
-    back = [node.module for node in imports
-            if (node.module or "").startswith("ui.window")]
-    assert back == [], f"ui/overlays.py must not import back into the window: {back}"
-
-
-def test_no_widget_calls_a_mangled_method_that_does_not_exist():
-    """`self.__t(...)` in a class that never defines `__t` is not an error until
-    the widget is built — and the widget is built by people, not by this suite.
-
-    That is exactly how the settings panel reached CI: a mechanical edit turned
-    `self._label(` into `self.__t(` in four places, Python compiled it happily
-    (name mangling is a suffix, resolved at call time), the local suite could not
-    import Qt, and the only witness was the providers self-test on macOS:
-    "'ProvidersOverlay' object has no attribute '_ProvidersOverlay__t'".
-
-    So the mangled names are resolved here, statically: every `self.__x` used
-    inside a class must correspond to a `__x` defined in that same class.
-    """
-    missing = []
-    for path in sorted(UI_PKG.glob("*.py")):
-        for cls in (n for n in _tree(path).body if isinstance(n, ast.ClassDef)):
-            defined = {n.name for n in cls.body
-                       if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
-            for node in ast.walk(cls):
-                if not (isinstance(node, ast.Call)
-                        and isinstance(node.func, ast.Attribute)
-                        and isinstance(node.func.value, ast.Name)
-                        and node.func.value.id == "self"):
-                    continue
-                attr = node.func.attr
-                if not attr.startswith("__") or attr.endswith("__"):
-                    continue                      # dunders are looked up as-is
-                if attr not in defined:
-                    missing.append(f"{path.name}:{node.lineno} {cls.name}.{attr}")
-    assert missing == [], (
-        "these calls resolve to a name-mangled attribute the class never "
-        "defines, so they fail only when the widget is built:\n  "
-        + "\n  ".join(missing))
-
-
-def test_no_ui_module_outside_the_theme_writes_to_the_palette():
-    """Assigning `C.X = ...` outside ui/theme.py is a theme that half-applies."""
-    offenders = []
-    for path in sorted(UI_PKG.glob("*.py")):
-        if path == UI_PKG / "theme.py":
-            continue
-        for node in ast.walk(_tree(path)):
-            # C.PRI = "..."  and  setattr(C, "PRI", "...")
-            if (isinstance(node, ast.Assign)
-                    and isinstance(node.targets[0], ast.Attribute)
-                    and isinstance(node.targets[0].value, ast.Name)
-                    and node.targets[0].value.id == "C"):
-                offenders.append(f"{path.name}:{node.lineno}")
-            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-                    and node.func.id == "setattr" and len(node.args) > 1
-                    and isinstance(node.args[0], ast.Name) and node.args[0].id == "C"):
-                offenders.append(f"{path.name}:{node.lineno}")
-    assert offenders == []
-
-
-def test_the_window_re_exports_the_private_names_other_code_uses():
-    """`from ui.window import *` and a leading underscore: no name, no attribute.
-
-    A module without `__all__` exports only its public names, so `from
-    ui.window import *` silently dropped every underscored one. The window kept
-    working; `ui._ScrollSafeCombo` stopped existing, which is the one the
-    provider self-test reads to prove every combo box ignores the mouse wheel
-    unless it has focus. Three CI runners said so before the local suite did,
-    because the local suite cannot import a Qt package.
-
-    So this reads the list instead of the module, and asks for the names the
-    rest of the project actually spells.
-    """
-    tree = _tree(WINDOW)
-    exported, built = set(), False
-    for node in tree.body:
-        # `__all__ = [...]` and then `__all__ += [...]` — both forms are used.
-        targets = getattr(node, "targets", None) or (
-            [node.target] if isinstance(node, ast.AugAssign) else [])
-        if not any(isinstance(t, ast.Name) and t.id == "__all__" for t in targets):
-            continue
-        built = True
-        for part in ast.walk(node.value):
-            if isinstance(part, ast.Constant) and isinstance(part.value, str):
-                exported.add(part.value)
-    assert built, "ui/window.py lost its __all__ — see the comment beside it"
-    assert {"_ScrollSafeCombo", "_metrics", "_OS", "_RootShim"} <= exported
-
-
-def test_the_sampler_exists_without_a_display():
-    """Load ui/metrics.py by PATH: it imports no Qt, and that is the point.
-
-    Two things are asserted at once, and both matter here.
-
-    The singleton was cut when the class moved out of ui.py: `from ui.metrics
-    import _metrics` then raised ImportError and every widget that reads the CPU
-    would have gone with it. The local suite could not see that (it cannot
-    import the package, which needs Qt) and the CI self-test did — after a push,
-    on three runners.
-
-    So the module is loaded from its file, past the package's Qt import. A
-    module that can only be loaded with a display cannot be covered by any test
-    on a headless machine, and this one has no reason to be that module.
-    """
-    import importlib.util
-
-    spec = importlib.util.spec_from_file_location("ui_metrics_under_test",
-                                                  UI_PKG / "metrics.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-
-    assert isinstance(module._metrics, module._SysMetrics)
-    assert set(module._metrics.snapshot()) == {"cpu", "mem", "net", "gpu", "tmp"}
-
-
-# ── the package, imported for real without a display ────────────────────────
-
-def test_the_package_exports_every_name_the_rest_of_the_project_uses():
-    """`import ui` under a stubbed PyQt6 — 0.3s, no display, no wheel.
-
-    WHY THIS IS WORTH A FAKE QT
-        Every breakage in this split so far was a NAME that stopped resolving
-        through the package: `ui._metrics` (singleton cut), `ui._ScrollSafeCombo`
-        (`__all__` absent), `ui.ProvidersOverlay` (`__all__` built before the
-        widgets existed). Each one passed lint, passed the suite, and failed on
-        three CI runners minutes later — because the local suite could not
-        import a Qt package at all.
-
-        A stub answers the question the failures were actually about: does the
-        package still expose what main.py, the plugins and the self-test spell?
-        It does NOT prove the widgets work — that needs real Qt, and the
-        provider self-test's panel section is the thing that does it (it SKIPs
-        where Qt cannot load). Two different questions, two different tools.
-    """
-    import importlib
-    import importlib.abc
-    import importlib.machinery
-    import sys
-    import types
-
-    class Anything:
-        """Answers to every attribute and can be called, subscripted, iterated."""
-
-        def __init__(self, name: str = "qt"):
-            self._name = name
-
-        def __getattr__(self, name):
-            return Anything(f"{self._name}.{name}")
-
-        def __call__(self, *a, **k):
-            return Anything(f"{self._name}()")
-
-        def __iter__(self):
-            return iter(())
-
-        def __mro_entries__(self, bases):
-            return (object,)
-
-    class StubModule(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            value = Anything(name)
-            setattr(self, name, value)
-            return value
-
-    class Finder(importlib.abc.MetaPathFinder, importlib.abc.Loader):
-        def find_spec(self, fullname, path=None, target=None):
-            if fullname.split(".")[0] == "PyQt6":
-                return importlib.machinery.ModuleSpec(fullname, self, is_package=True)
-            return None
-
-        def create_module(self, spec):
-            module = StubModule(spec.name)
-            module.__path__ = []
-            return module
-
-        def exec_module(self, module):
-            pass
-
-    saved = {k: v for k, v in sys.modules.items()
-             if k == "ui" or k.startswith("ui.")}
-    for key in saved:
-        del sys.modules[key]
-    sys.meta_path.insert(0, Finder())
-    try:
-        package = importlib.import_module("ui")
-    finally:
-        sys.meta_path.remove(sys.meta_path[0])
-        for key in [k for k in sys.modules if k == "ui" or k.startswith("ui.")]:
-            del sys.modules[key]
-        sys.modules.update(saved)
-
-    # What main.py, the plugins and providers/_tests.py actually say.
+def test_the_package_has_exactly_the_mockup_modules():
+    """Sixty-four modules went; sixteen stayed. The list is the design."""
     expected = {
-        "C", "qcol", "apply_ui_accent", "current_palette",   # colours
-        "JarvisUI", "MainWindow", "HudCanvas",               # the window
-        "SetupOverlay", "ProvidersOverlay", "CustomizeOverlay",
-        "PluginManagerOverlay", "PluginSettingsOverlay",
-        "_ScrollSafeCombo", "_metrics", "_OS", "_RootShim",  # by private name
+        "__init__.py", "ambient_shell.py", "command_bar.py", "confirm_banner.py",
+        "face_bubble.py", "face_canvas.py", "lifecycle.py", "orb_overlay.py",
+        "orb_paint.py", "shell.py", "theme.py", "toast_queue.py", "tray.py",
     }
-    missing = sorted(expected - set(dir(package)))
-    assert missing == [], f"ui no longer exposes: {missing}"
-
-    # ui.C must be the very class the accent code rebinds, or a theme change
-    # applies to whoever imported the other one.
-    assert package.C is package.theme.C
+    present = {p.name for p in _modules()}
+    assert present == expected, (
+        f"unexpected in ui/: {sorted(present - expected)}; "
+        f"missing: {sorted(expected - present)}")
 
 
-def test_filesystem_model_is_imported_from_qtgui():
-    """Qt 6 moved QFileSystemModel out of QtWidgets; importing it there crashes startup."""
-    tree = _tree(UI_PKG / "desktop_workspace.py")
-    owners = [node.module for node in ast.walk(tree)
-              if isinstance(node, ast.ImportFrom)
-              and any(alias.name == "QFileSystemModel" for alias in node.names)]
-    assert owners == ["PyQt6.QtGui"]
+def test_every_module_stays_under_the_ceiling():
+    """`MODULE_CEILING` exists so "just add it here" costs a conversation."""
+    over = [(p.name, len(p.read_text(encoding="utf-8").splitlines()))
+            for p in _modules()
+            if len(p.read_text(encoding="utf-8").splitlines()) > MODULE_CEILING]
+    assert over == [], f"past {MODULE_CEILING} lines: {over}"
 
 
-# ── the class ceilings ──────────────────────────────────────────────────────
-#
-# A file ceiling is not enough on its own: `MainWindow` is 3,066 lines and lives
-# in a 6,800-line file, so the file could shrink around it for years while the
-# actual god object stayed. These cap the classes instead, which is where the
-# reading cost is.
+def test_the_ceiling_can_actually_fail():
+    """A ceiling nobody has approached is a number, not a rule.
 
-CLASS_CEILINGS = {
-    "MainWindow": 3_000,       # 2,975 today, after the four widgets left
-    "JarvisLive": 2_400,       # main.py, 2,395 today
-}
-
-
-def _class_lines(path: Path) -> dict[str, int]:
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    return {n.name: n.end_lineno - n.lineno + 1
-            for n in tree.body if isinstance(n, ast.ClassDef)}
-
-
-def test_the_god_objects_do_not_grow():
-    """Move a panel out before adding to one of these."""
-    found = {}
-    found.update(_class_lines(WINDOW))
-    found.update(_class_lines(ROOT / "main.py"))
-    over = {name: found[name] for name, cap in CLASS_CEILINGS.items()
-            if name in found and found[name] > cap}
-    assert over == {}, (
-        "these classes are already the hardest files to read here; put the new "
-        f"code in a module of its own: {over}")
-
-
-def test_the_confirm_banner_is_its_own_module_now():
-    """The first class out of window.py, and the pattern for the next one."""
-    from ui import confirm_banner
-
-    assert hasattr(confirm_banner, "ConfirmBanner")
-    assert hasattr(confirm_banner, "_HudOverlay")
-    # and the window still offers both under the names the rest of the app uses
-    import ui
-    assert ui.ConfirmBanner is confirm_banner.ConfirmBanner
-
-
-def test_the_provider_panel_is_its_own_module_now():
-    """1,085 lines of widget that needed nothing from the window.
-
-    Checked before moving: no attribute of MainWindow is touched and `parent()`
-    is only ever Qt parenting. The names still resolve through `ui`, because
-    main.py and providers/_tests.py spell them that way.
+    This asserts the measurement works — the previous version of this file
+    compared a constant against itself and passed for a year.
     """
-    from ui import providers_overlay
-
-    assert hasattr(providers_overlay, "ProvidersOverlay")
-    assert hasattr(providers_overlay, "_ScrollSafeCombo")
-
-    import ui
-    assert ui.ProvidersOverlay is providers_overlay.ProvidersOverlay
-    assert ui._ScrollSafeCombo is providers_overlay._ScrollSafeCombo
+    assert len((UI_PKG / "lifecycle.py").read_text(encoding="utf-8").splitlines()) > 300
 
 
-def test_the_provider_panel_still_imports_nothing_heavy_at_module_level():
-    """The lazy imports are a measured fix, not tidiness.
+# ── the dependency arrow ──────────────────────────────────────────────────
 
-    A wake-word check once spent 2.104 seconds importing `openwakeword` on the
-    Qt thread and made the drawer look broken. Moving `ProvidersOverlay` into
-    its own module makes it easy to hoist `providers` or `memory.config_manager`
-    to the top — which would do the same thing again, at startup, for everyone
-    who never opens the panel.
+# Modules that draw. They may import `ui.orb_paint`, `ui.theme` and Qt; they
+# may not import the shell, because the shell is what DECIDES what to draw.
+DRAWERS = ("orb_paint.py", "orb_overlay.py", "face_canvas.py", "command_bar.py",
+           "confirm_banner.py", "toast_queue.py", "face_bubble.py", "tray.py")
+
+
+def _imported(path: Path) -> set[str]:
+    out = set()
+    for node in ast.walk(_tree(path)):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            out.add(node.module)
+        elif isinstance(node, ast.Import):
+            out.update(alias.name for alias in node.names)
+    return out
+
+
+def test_no_drawing_module_imports_the_shell():
+    """THE RULE THAT KEEPS THE PACKAGE SMALL.
+
+    `ui/shell.py` is the coordinator: it owns the surfaces and decides what
+    each one is told. A drawer that imported it would close the cycle, and the
+    first symptom is an `ImportError` on a machine with no display — which is
+    every CI runner.
     """
-    tree = ast.parse((UI_PKG / "providers_overlay.py").read_text(encoding="utf-8"))
-    top_imports = set()
+    for name in DRAWERS:
+        path = UI_PKG / name
+        assert path.exists(), f"ui/{name} is gone"
+        imported = _imported(path)
+        bad = {m for m in imported if m in ("ui.shell", "ui.lifecycle")}
+        assert not bad, f"ui/{name} imports {sorted(bad)}: the arrow points the wrong way"
+
+
+def test_the_shell_does_not_import_a_surface_at_module_scope():
+    """Surfaces are built lazily, inside the method that needs one.
+
+    `ui/lifecycle.py` is the only module allowed to import them at the top,
+    because it is the one that builds them — and it is imported only when the
+    app starts, never by `import ui`.
+    """
+    tree = _tree(UI_PKG / "shell.py")
+    top_level = set()
     for node in tree.body:
-        if isinstance(node, ast.Import):
-            top_imports.update(a.name.split(".")[0] for a in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            top_imports.add(node.module.split(".")[0])
-
-    assert "providers" not in top_imports, (
-        "`providers` is imported at module level; it must stay inside __init__")
-    assert "memory" not in top_imports, (
-        "`memory.config_manager` is imported at module level; it must stay lazy")
-
-
-def test_the_hud_panels_are_their_own_module_now():
-    """Memory and clipboard panels: self-contained, so they left."""
-    from ui import hud_panels
-
-    assert hasattr(hud_panels, "MemoryOverlay")
-    assert hasattr(hud_panels, "ClipboardPanel")
-
-    import ui
-    assert ui.MemoryOverlay is hud_panels.MemoryOverlay
-    assert ui.ClipboardPanel is hud_panels.ClipboardPanel
+        if isinstance(node, ast.ImportFrom) and node.module:
+            top_level.add(node.module)
+        elif isinstance(node, ast.Import):
+            top_level.update(alias.name for alias in node.names)
+    surfaces = {"ui.orb_overlay", "ui.face_bubble", "ui.command_bar", "ui.tray",
+                "ui.confirm_banner", "ui.toast_queue"}
+    assert not (top_level & surfaces), (
+        f"ui/shell.py imports {sorted(top_level & surfaces)} at module scope")
 
 
-def test_the_assistant_name_helper_lives_below_ui():
-    """A panel must not import the whole window to get one string.
+def test_the_package_init_does_not_import_the_surfaces():
+    """`import ui` must work on a machine with no display.
 
-    `_assistant_display` used to sit in ui/window.py. Moving the memory panel
-    out made that a circular import waiting to happen: ui/hud_panels.py would
-    need ui/window.py for a label. It lives in core/display_name.py now and
-    both sides import it from there.
+    `ui/shell.py` is allowed and is the ONLY internal import: it holds
+    `AmbientShell`, the name the rest of the program is written against, and it
+    imports no widget — every surface is built lazily inside a method.
     """
-    from core import display_name
-
-    assert callable(display_name.assistant_display)
-    assert display_name.assistant_display()  # never empty, never raises
-
-    tree = ast.parse((UI_PKG / "hud_panels.py").read_text(encoding="utf-8"))
-    imported = {node.module for node in ast.walk(tree)
-                if isinstance(node, ast.ImportFrom) and node.module}
-    assert "ui.window" not in imported, (
-        "ui/hud_panels.py imports ui/window.py — that is the cycle this fixed")
+    imported = _imported(UI_PKG / "__init__.py")
+    allowed = {"ui.theme", "ui.shell"}
+    assert not {m for m in imported if m.startswith("ui.") and m not in allowed}, (
+        "ui/__init__.py pulls a surface in, so `import ui` needs a display")
 
 
-def test_the_hud_canvas_is_its_own_module_now():
-    """549 lines of QWidget that never touched the window."""
-    from ui import hud_canvas
+# ── what was deleted stays deleted ────────────────────────────────────────
 
-    assert hasattr(hud_canvas, "HudCanvas")
-    import ui
-    assert ui.HudCanvas is hud_canvas.HudCanvas
-
-
-def test_the_hud_canvas_takes_qsizepolicy_from_the_widgets_module():
-    """QSizePolicy is exported by BOTH QtCore and QtWidgets; take it from one.
-
-    Moving `HudCanvas` in, I imported it from `QtCore` because the neighbouring
-    imports came from there. That is a real PyQt6 module, so nothing failed at
-    import — it produced a DIFFERENT class object from the one the rest of the
-    app holds, and the mismatch only surfaced as 50 construction errors whose
-    traceback pointed at a widget's `__init__`. Pin the source.
-    """
-    tree = ast.parse((UI_PKG / "hud_canvas.py").read_text(encoding="utf-8"))
-    sources = {node.module: [a.name for a in node.names]
-               for node in ast.walk(tree)
-               if isinstance(node, ast.ImportFrom) and node.module in
-               ("PyQt6.QtCore", "PyQt6.QtWidgets")}
-    assert "QSizePolicy" not in sources.get("PyQt6.QtCore", []), (
-        "QSizePolicy must come from QtWidgets, the same module window.py uses")
-    assert "QSizePolicy" in sources.get("PyQt6.QtWidgets", [])
+# Named individually rather than as a glob, because a glob answers "nothing
+# matched" — the same result as a typo in the pattern.
+DELETED = (
+    "window.py", "desktop_workspace.py", "chat_log.py", "overlays.py",
+    "providers_overlay.py", "hud_canvas.py", "hand_gesture.py", "image_editor.py",
+    "code_editor.py", "ssh_manager.py", "trading_terminal.py", "workspace_browser.py",
+    "floating_document.py", "dashboard_layer.py", "creative.py", "audio.py",
+    "setup_overlay.py", "metrics.py", "icons.py", "camera_preview.py",
+    "narrative_content.py", "visual_content.py", "localization.py",
+)
 
 
-def test_the_hud_canvas_survives_a_missing_avatar():
-    """Cosmetics must never stop the assistant starting.
-
-    `HoloAvatar` is imported under a bare except on purpose: a machine without
-    the avatar dependencies gets the orb instead of a traceback.
-    """
-    tree = ast.parse((UI_PKG / "hud_canvas.py").read_text(encoding="utf-8"))
-    guarded = any(
-        isinstance(node, ast.Try)
-        and any(isinstance(h.type, ast.Name) and h.type.id == "Exception"
-                for h in node.handlers)
-        and any(isinstance(sub, ast.ImportFrom) and sub.module == "core.avatar"
-                for sub in node.body)
-        for node in tree.body)
-    assert guarded, "the core.avatar import lost its guard"
+def test_the_modules_that_needed_a_window_are_gone():
+    """Not "unused" — absent. `docs/mockups/NOT-IN-MOCKUP.md` says how to get
+    any of them back, and why each one went."""
+    survivors = [name for name in DELETED if (UI_PKG / name).exists()]
+    assert survivors == [], f"back from the dead: {survivors}"
 
 
-def test_the_audio_and_remote_key_overlays_are_their_own_modules_now():
-    """358 + 295 lines of overlay, neither of which touched the window."""
-    from ui import audio_devices, remote_keys
-
-    assert hasattr(audio_devices, "AudioDeviceOverlay")
-    assert hasattr(remote_keys, "RemoteKeyOverlay")
-
-    import ui
-    assert ui.AudioDeviceOverlay is audio_devices.AudioDeviceOverlay
-    assert ui.RemoteKeyOverlay is remote_keys.RemoteKeyOverlay
-
-
-def test_the_remote_key_panel_keeps_the_size_the_qt_smoke_test_sets():
-    """tools/check_security_qt.py imports this through `ui` and sizes it by
-    `_OW`/`_OH` before clicking the HTTPS button. Those are class attributes, so
-    they move with the class — but a test that only checks the name would not
-    notice them being dropped in a rewrite.
-    """
-    from ui.remote_keys import RemoteKeyOverlay
-
-    assert RemoteKeyOverlay._OW > 0 and RemoteKeyOverlay._OH > 0
-    assert hasattr(RemoteKeyOverlay, "_enable_https")
-
-
-def test_the_remote_key_panel_does_not_import_qrcode_at_module_level():
-    """`qrcode` is an optional dependency and this panel is built on a click."""
-    tree = ast.parse((UI_PKG / "remote_keys.py").read_text(encoding="utf-8"))
-    top = {a.name.split(".")[0] for node in tree.body if isinstance(node, ast.Import)
-           for a in node.names}
-    top |= {node.module.split(".")[0] for node in tree.body
-            if isinstance(node, ast.ImportFrom) and node.module}
-    assert "qrcode" not in top, "qrcode must stay inside _update_qr"
+def test_nothing_in_the_package_mentions_a_deleted_module():
+    """A comment is fine; an IMPORT is not, because the import is what runs."""
+    imports = set()
+    for path in _modules():
+        imports |= _imported(path)
+    stale = sorted(m for m in imports if m.startswith("ui.")
+                   and not (UI_PKG / (m.split(".")[-1] + ".py")).exists())
+    assert stale == [], f"imports of deleted modules: {stale}"

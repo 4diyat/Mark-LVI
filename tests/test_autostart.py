@@ -338,7 +338,7 @@ def test_the_program_path_is_never_guessed(tmp_path, monkeypatch):
     lifecycle = _import_lifecycle()
 
     with pytest.raises(RuntimeError):
-        lifecycle.program_path(SimpleNamespace(_program_path=""))
+        lifecycle.program_path(SimpleNamespace(_program_path="", _win=None))
 
     told = tmp_path / "main.py"
     told.write_text("", encoding="utf-8")
@@ -392,8 +392,7 @@ def test_toggling_reports_the_state_it_left_behind(tmp_path, monkeypatch):
     script = tmp_path / "main.py"
     script.write_text("", encoding="utf-8")
     notes = []
-    shell = SimpleNamespace(_program_path=str(script),
-                            _win=SimpleNamespace(write_log=notes.append))
+    shell = SimpleNamespace(_program_path=str(script), write_log=notes.append)
 
     # The real `status()`/`enabled()`/`installed_script()` path, but pointed at
     # this test's folder instead of the machine's own autostart directory — and
@@ -444,7 +443,7 @@ def test_a_failing_toggle_writes_a_log_line_instead_of_raising(tmp_path, monkeyp
     monkeypatch.setattr(autostart, "target_path",
                         lambda os_name=None: tmp_path / "jarvis.desktop")
     notes = []
-    shell = SimpleNamespace(_program_path="", _win=SimpleNamespace(write_log=notes.append))
+    shell = SimpleNamespace(_program_path="", write_log=notes.append)
     result = lifecycle.toggle_autostart(shell)
     assert result is False
     assert any("Auto-start failed" in n for n in notes), notes

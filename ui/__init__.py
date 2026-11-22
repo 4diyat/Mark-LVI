@@ -1,33 +1,32 @@
-"""ui — the window, split by what each part owns.
+"""ui — the ambient shell, split by what each surface owns.
 
-WHY THE PACKAGE REPLACES ui.py
-    `ui.py` was one 7,504-line module, and the size was the symptom: the palette
-    was defined at the top and rebound by accent code a hundred lines below it,
-    the metric sampler ran a thread in the same file as the widgets that read it,
-    and NOTHING could be imported for a test without a display.
+WHAT THIS PACKAGE IS NOW
+    It used to be a full-screen window with a desktop workspace inside it. The
+    design sheet (`docs/mockups/jarvis-design-system.html`) draws twelve
+    artboards and not one of them is a window: an orb, a toast, a command bar,
+    a tray panel, a risk confirmation, a history list, a permissions page and a
+    light theme. So the window is gone and this package is those surfaces.
 
-    There is no way to keep both a `ui.py` and a `ui/` package: Python resolves
-    the directory first, so the file would be shadowed and its imports would
-    fail — which is exactly what CI reported the first time this was attempted
-    (`No module named 'ui.theme'; 'ui' is not a package`). So the file moved,
-    whole, to `ui/window.py`, and this package re-exports it.
+    | module            | what it is                                        |
+    |-------------------|---------------------------------------------------|
+    | `theme.py`        | the palette (`C`) and the accent code — the only writer |
+    | `orb_paint.py`    | the ONE orb painter, at any size                  |
+    | `orb_overlay.py`  | the 96 px desktop ring and its hit test           |
+    | `face_bubble.py`  | the 260 px floating face (kept by owner request)  |
+    | `command_bar.py`  | Ctrl+Space, one line, Esc gives focus back        |
+    | `toast_queue.py`  | three at a time, the rest queued and counted      |
+    | `confirm_banner.py`| the trusted-UI gate in front of risky actions    |
+    | `tray.py`         | the notification-area icon and its menu           |
+    | `shell.py`        | `AmbientShell` — the object main.py talks to      |
+    | `lifecycle.py`    | start, summon, dismiss, quit, autostart           |
+    | `ambient_shell.py`| the orb / bar / presence wiring                   |
 
-WHAT IS WHERE, AND WHAT THAT MEANS FOR YOU
-    ui/theme.py    the palette (`C`) and the accent code — the only writer
-    ui/metrics.py  the sampler thread: CPU, memory, network, GPU, temperature
-    ui/overlays.py the setting panels, and the labels they translate
-    ui/metric_bar.py, ui/drop_zone.py, ui/camera_preview.py, ui/setup_overlay.py
-                   the widgets that only ever needed Qt and their own signal
-    ui/window.py   the window itself, and the widgets that are still entangled
-                   with it (smaller every time; that is the ongoing job)
+    `ui.C`, `ui.qcol`, `ui.AmbientShell` keep working: `main.py` and plugins
+    written against the old module must not have to care that it changed shape.
 
-    `ui.C`, `ui.qcol`, `ui.MainWindow`, `ui.JarvisUI`, `ui._metrics` all keep
-    working: they are re-exported here, because plugins and main.py written
-    against the old module must not care that it became a package.
-
-IMPORTING THIS NEEDS QT. That has not changed. What changed is that anything
-that only needs to know ABOUT the window — its structure, its rules, which file
-owns what — no longer has to import it: tests/test_ui_split.py reads the AST.
+IMPORTING THIS NEEDS QT. Anything that only needs to know ABOUT the surfaces —
+their structure, their rules, which file owns what — reads the AST instead;
+`tests/test_ui_split.py` does exactly that, and CI installs no PyQt6.
 """
 from ui.theme import (          # noqa: F401 — the public face of the package
     C,
@@ -37,14 +36,7 @@ from ui.theme import (          # noqa: F401 — the public face of the package
     qcol,
     retheme_all_widgets,
 )
-# THE FOUNDATIONS FIRST, AND BY NAME. `ui/metrics.py` imports no Qt, so if this
-# module is broken the package says so AT THIS LINE — "cannot import name
-# _metrics from ui.metrics" — instead of failing later inside the window with a
-# message about something else. (It did: the sampler singleton was cut when the
-# class moved, and the only thing that noticed was CI, on three runners.)
-from ui.metrics import (        # noqa: F401 — the sampler the window reads
-    _SysMetrics,
-    _metrics,
-    _nvml_gpu_windows,
-)
-from ui.window import *          # noqa: F401,F403 — the whole window, unchanged
+from ui.shell import AmbientShell   # noqa: F401 — what main.py constructs
+
+__all__ = ["AmbientShell", "C", "DEFAULT_UI_COLOR", "apply_ui_accent",
+           "current_palette", "qcol", "retheme_all_widgets"]

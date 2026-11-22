@@ -141,16 +141,23 @@ def test_the_icon_is_one_path_for_everybody(tmp_path):
 
 # ── the three call sites agree ──────────────────────────────────────────────
 
-def test_the_window_is_named_before_it_is_built():
+def test_the_identity_is_applied_before_the_first_window_exists():
     """Order is the whole point: Qt reads the application name when a window
-    is created, so setting it afterwards renames nothing already on screen."""
-    src = (ROOT / "ui" / "window.py").read_text(encoding="utf-8")
-    qi = src.index("_identity.apply_qt")
-    win = src.index("self._win = MainWindow(")
-    assert qi < win, "the identity must be applied before the first window"
-    os_call = src.index("app_identity.apply_os()")
-    assert os_call < src.index("QApplication.instance() or QApplication("), \
+    is created, so setting it afterwards renames nothing already on screen.
+
+    The window moved out of `ui/window.py` and into `main._make_application`,
+    which is now the only place a QApplication is built — so the assertion
+    follows the identity to where the application is actually created.
+    """
+    src = (ROOT / "main.py").read_text(encoding="utf-8")
+    start = src.index("def _make_application(")
+    body = src[start:start + 2000]
+    assert "app_identity.apply_os()" in body, "the OS identity is never set"
+    assert "apply_qt(app)" in body
+    assert body.index("apply_os()") < body.index("QApplication("), \
         "the OS identity must be set before the QApplication exists"
+    assert body.index("QApplication(") < body.index("apply_qt(app)"), \
+        "Qt reads the name from a live application; it must exist first"
 
 
 def test_main_sets_the_os_identity_before_parsing_arguments():
@@ -167,13 +174,13 @@ def test_main_sets_the_os_identity_before_parsing_arguments():
         if isinstance(attr, ast.Attribute):
             names.append(attr.attr)
     assert "apply_os" in names, "main() must give the process its OS identity"
-    # And before the QApplication is paid for, which is what `JarvisUI(...)`
-    # does: the identity is a fact about the process, not about the window.
+    # And before the QApplication is paid for, which `_make_application` does:
+    # the identity is a fact about the process, not about a surface.
     os_line = min(n.lineno for n in calls
                   if isinstance(n.func, ast.Attribute) and n.func.attr == "apply_os")
-    ui_line = min(n.lineno for n in calls
-                  if isinstance(n.func, ast.Name) and n.func.id == "JarvisUI")
-    assert os_line < ui_line
+    app_line = min(n.lineno for n in calls
+                   if isinstance(n.func, ast.Name) and n.func.id == "_make_application")
+    assert os_line < app_line
 
 
 def test_both_desktop_writers_say_which_window_they_own():
