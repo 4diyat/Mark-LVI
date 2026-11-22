@@ -66,6 +66,36 @@ PAGE_TITLES = {
     "privacy": ("ui.panel.privacy.title", "ui.panel.privacy.subtitle"),
 }
 
+# EVERY OTHER PAGE KEEPS ITS OWN TITLE, and this is where it is declared. The
+# panel has one `title` label shared by all pages, so a page missing from this
+# map falls back to "JARVIS" — which is how seventeen pages came to be labelled
+# with the assistant's name, the exact bug the "each page keeps its own title"
+# ruling exists to prevent. Built from the registry rather than written out:
+# a page added there cannot forget to name itself here.
+def _board_titles() -> dict:
+    """`(title key, subtitle key)` for every board page.
+
+    THE SUBTITLE IS `None` FOR EVERY ONE OF THEM, and that is the artboard's
+    answer, not a shortcut: the board pages draw their own second line INSIDE
+    the page (board 9's count, board 16's "2 dari 5 plugin aktif"), and the
+    panel's shared subtitle sits above that. Two second lines, one above the
+    other, would be two sentences saying the same thing — which is how the
+    history page's subtitle ended up being the only one that carries a count.
+    """
+    try:
+        from ui.page_registry import PAGES
+    except Exception:                                    # noqa: BLE001
+        return {}
+    # `more` is not in the registry's PAGES (it is the list itself), so its keys
+    # are named here.
+    out = {"more": ("ui.page.more.title", None)}
+    for key, _label_key, title_key, _board in PAGES:
+        out[key] = (title_key, None)
+    return out
+
+
+PAGE_TITLES.update(_board_titles())
+
 MODE_SUBTITLES = {
     "active": "ui.panel.subtitle.active",
     "focus": "ui.panel.subtitle.focus",

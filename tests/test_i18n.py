@@ -126,6 +126,12 @@ def test_the_two_locales_are_not_the_same_file():
         "ui.panel.title", "ui.panel.history.meta", "ui.panel.section.audit",
         "ui.panel.mode.active", "ui.panel.mode.focus", "ui.panel.mode.quiet",
         "ui.panel.page.main",
+        # Board 22's three presence modes. "Ambient" is the product's own name
+        # for the mode — the same word on the artboard, in the menu bar and in
+        # `DESIGN-ambient.md` — so translating it would rename a mode the rest
+        # of the program already calls Ambient. "Fokus" and "Senyap" are already
+        # Indonesian and stay as they are.
+        "ui.page.installer.ambient",
     }
     shared = [key for key in shared
               if any(ch.isalpha() for ch in en[key])

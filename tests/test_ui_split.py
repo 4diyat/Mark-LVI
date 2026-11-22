@@ -113,6 +113,29 @@ def test_the_package_has_exactly_the_mockup_modules():
         # policy, split off at the 600-line ceiling. `core/notify` decides;
         # this only supplies "what state is it" and "what was last said".
         "notify_bridge.py",
+        # ── the board pages, thirteen artboards in one round ─────────────
+        #
+        # The panel already had three pages and a 600-line ceiling. Thirteen
+        # more could not go inside it, and the split below is the same one the
+        # tray panel has always used — data, drawing, and the list that joins
+        # them:
+        #
+        #   page_registry  WHICH pages exist and which board each one is
+        #   page_kit       the shapes every page is built from (no Qt)
+        #   panel_target   what the last click chose (no Qt)
+        #   pages_build    the one list of builders, and the page factory
+        #   pages_paint    every board page's painter
+        #   pages_memory   boards 9 and 10 — the memory store and its list
+        #   pages_people   boards 11, 12, 13, 7, 19 — what JARVIS is asked to DO
+        #   pages_admin    boards 14, 15, 16, 18, 21, 22 — how it is configured
+        #   pages_more     the list that reaches all of them
+        #
+        # The `people`/`admin` split is SUBJECT and not importance: one half is
+        # about actions, the other about settings. It is what keeps both
+        # modules under the ceiling without inventing a "misc" file.
+        "page_registry.py", "page_kit.py", "panel_target.py",
+        "pages_build.py", "pages_paint.py", "pages_memory.py",
+        "pages_people.py", "pages_admin.py", "pages_more.py", "pages_actions.py",
     }
     present = {p.name for p in _modules()}
     assert present == expected, (

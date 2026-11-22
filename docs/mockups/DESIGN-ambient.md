@@ -19,28 +19,27 @@ keinginan.
 | # | Artboard | Yang digambar | Ada di `ui/`? |
 |---|---|---|---|
 | 1 | Desktop ambient | Desktop contoh, orb 56 px + glow di pojok, satu toast | ya — `orb_paint`, `orb_overlay` |
-| 2 | Command bar | Kotak 640×184, gradien, tiga baris hasil dengan titik risiko | ya — `command_bar.py` |
-| 3 | Kontrol gestur | Tile kamera 320×236, kerangka tangan, pil gestur aktif | tidak — lihat `NOT-IN-MOCKUP.md` |
-| 4 | Mode suara | Glow tepi layar penuh, orb, pil transkrip, lima bar level | ya — `voice_paint`, `voice_overlay` |
-| 5 | Panel baki sistem | 460×640: segmen, empat aksi cepat, percakapan, tiga izin, kolom perintah | ya — `tray_pages`, `tray_panel` |
-| 6 | Izin & privatisasi | Empat izin akses dengan kartu (72 px pitch), log aktivitas bertimestamp, Ekspor/Hapus | ya — `build_permissions()` |
-| 7 | Onboarding 2/4 | Layar izin mikrofon, tiga kalimat privasi, dua tombol | tidak |
-| 8 | Riwayat tugas | Enam baris hari ini, status per baris, saring/pulihkan, hapus | ya — `build_history()` |
-| 9 | Memori personal | Enam fakta tentang Anda, "12 hal yang JARVIS ingat" | tidak |
-| 10 | Detail memori | Satu memori: isi, sumber, keyakinan, dipakai oleh | tidak |
-| 11 | Rutinitas & saran | Tiga rutinitas aktif dengan jadwalnya, tiga saran proaktif | tidak |
-| 12 | Alat cepat & clipboard | Tiga alat tersering, clipboard cerdas (rekening terdeteksi), cari berkas bahasa alami | tidak |
-| 13 | Dikte · baca layar · isi form | Tiga panel: dikte, pembaca layar kontekstual, isi form dengan tinjau dulu | tidak |
-| 14 | Keamanan | Tiga tingkat risiko, mode tamu, izin layar/kamera, kontrol OS | ya (sebagian) — `confirm_banner`, `risk_policy` |
-| 15 | Bahasa & gestur | Bahasa UI, ukuran teks, kontras, kurangi animasi, gestur kustom | tidak |
-| 16 | Plugin & ponsel | Dua dari lima plugin aktif, sinkron ponsel, kode pasangan | tidak |
-| 17 | Tema terang — panel baki | Panel 5 dalam token terang, dengan sakelarnya | ya — `PALETTES["light"]`, `tray_theme` |
-| 18 | Tema terang — izin & privasi | Panel 6 dalam token terang | sebagian — halaman board 6 ada dan membaca palet terang, belum pernah dilihat dalam keadaan terang |
-| 19 | Peta gestur | Enam gestur dengan bentuk tangannya, 720×640 | tidak (modulnya ada: `core/gesture_os`) |
-| 20 | Status orb | Empat status orb, dibedakan lewat siluet bukan warna | ya — `orb_paint.paint_orb` |
-| 21 | Brand & ikon | Ikon aplikasi, empat ikon baki, swatch, skala huruf, komponen | tidak |
-| 22 | Installer 1/4 | Layar pemasangan: pilih mode kehadiran | tidak |
-
+| 2 | Command bar | Kotak 640×184, gradien, tiga baris hasil dengan titik risiko | ya — `ui/command_bar.py` |
+| 3 | Kontrol gestur | Tile kamera 320×236, kerangka tangan, pil gestur aktif | ya — `ui/hand_feed.py` (di dalam jendela suara, bukan panel sendiri) |
+| 4 | Mode suara | Glow tepi layar penuh, orb, pil transkrip, lima bar level | ya — `ui/voice_paint.py`, `ui/voice_overlay.py` |
+| 5 | Panel baki sistem | 460×640: segmen, empat aksi cepat, percakapan, tiga izin, kolom perintah | ya — `ui/tray_pages.py`, `ui/tray_panel.py` |
+| 6 | Izin & privatisasi | Empat izin akses dengan kartu (72 px pitch), log aktivitas bertimestamp, Ekspor/Hapus | ya — `ui/tray_pages.py` (`build_permissions()`) |
+| 7 | Onboarding 2/4 | Layar izin mikrofon, tiga kalimat privasi, dua tombol | ya — `ui/pages_people.py` (Langkah 1 dari 1) |
+| 8 | Riwayat tugas | Enam baris hari ini, status per baris, saring/pulihkan, hapus | ya — `ui/tray_pages.py` (`build_history()`) |
+| 9 | Memori personal | Enam fakta tentang Anda, "12 hal yang JARVIS ingat" | ya — `ui/pages_memory.py` |
+| 10 | Detail memori | Satu memori: isi, sumber, keyakinan, dipakai oleh | ya — `ui/pages_memory.py` (tiga bidang; sumber/keyakinan tidak disimpan) |
+| 11 | Rutinitas & saran | Tiga rutinitas aktif dengan jadwalnya, tiga saran proaktif | ya — `ui/pages_people.py` (tanpa toko rutinitas) |
+| 12 | Alat cepat & clipboard | Tiga alat tersering, clipboard cerdas (rekening terdeteksi), cari berkas bahasa alami | ya — `ui/pages_people.py` (susun jendela tidak ada) |
+| 13 | Dikte · baca layar · isi form | Tiga panel: dikte, pembaca layar kontekstual, isi form dengan tinjau dulu | ya — `ui/pages_people.py` (isi form tidak ada) |
+| 14 | Keamanan | Tiga tingkat risiko, mode tamu, izin layar/kamera, kontrol OS | ya — `ui/pages_admin.py` + `ui/confirm_banner.py` |
+| 15 | Bahasa & gestur | Bahasa UI, ukuran teks, kontras, kurangi animasi, gestur kustom | ya — `ui/pages_admin.py` (kontras & gestur kustom tidak ada) |
+| 16 | Plugin & ponsel | Dua dari lima plugin aktif, sinkron ponsel, kode pasangan | ya — `ui/pages_admin.py` (sinkron ponsel tidak ada) |
+| 17 | Tema terang — panel baki | Panel 5 dalam token terang, dengan sakelarnya | ya — `ui/tray_pages.py` (`PALETTES["light"]`), `ui/tray_theme.py` |
+| 18 | Tema terang — izin & privasi | Panel 6 dalam token terang | ya — `ui/pages_admin.py` + `PALETTES["light"]` |
+| 19 | Peta gestur | Enam gestur dengan bentuk tangannya, 720×640 | ya — `ui/pages_people.py` (gambar, bukan kontrol) |
+| 20 | Status orb | Empat status orb, dibedakan lewat siluet bukan warna | ya — `ui/orb_paint.py` (`paint_orb`) |
+| 21 | Brand & ikon | Ikon aplikasi, empat ikon baki, swatch, skala huruf, komponen | ya — `ui/pages_admin.py` (lembar spesifikasi) |
+| 22 | Installer 1/4 | Layar pemasangan: pilih mode kehadiran | ya — `ui/pages_admin.py` (pemilihan mode saja) |
 ### Enam keadaan, digambar di bawah artboard-nya
 
 Fokus, Senyap, konfirmasi risiko, riwayat, izin dan tema terang **bukan** artboard
@@ -63,19 +62,39 @@ Angka `n07`–`n12` di tabel itu adalah **nama fungsi**, bukan nomor artboard.
 ## Yang digambar tapi belum dibangun
 
 Kolom terakhir tabel di atas adalah keadaan hari ini, dan sengaja tidak
-dibulatkan ke atas: **delapan artboard punya permukaan penuh di `ui/`
-(1, 2, 4, 5, 6, 8, 17, 20), satu (board 14) baru separuh — gerbang risikonya
-dibangun, panel keamanan penuhnya belum — dan tiga belas belum sama sekali
-(3, 7, 9, 10, 11, 12, 13, 15, 16, 18, 19, 21, 22).** Delapan tambah satu tambah
-tiga belas sama dengan dua puluh dua, dan itu seluruh artboard: hitungannya
-harus habis, bukan mendekati. Artboard bernomor surat (`5a`, `5b`, `8a`, `14a`,
-`17a`) tidak dihitung sendiri di sini — mereka pandangan dari board induknya,
-bukan artboard terpisah, dan karena itu tidak menambah jumlah. Board 14
-sengaja muncul di kedua tabel `NOT-IN-MOCKUP.md`, karena separuh dibangun dan
-separuh tidak; itulah satu-satunya baris yang boleh muncul dua kali. Yang belum
-dibangun tetap **digambar** di lembar, dan setiap barisnya dicatat di
-`NOT-IN-MOCKUP.md` dengan alasan dan keputusan pemilik repo yang menyertainya —
-bukan dihapus dari lembar, dan bukan dipalsukan di kode.
+dibulatkan ke atas: **dua puluh dua artboard punya permukaan di `ui/`** —
+tujuh belas terpenuhi (1, 2, 4, 5, 6, 8, 9, 10, 11, 12, 14, 15, 16, 18, 19, 20,
+21) dan lima yang permukaannya nyata tetapi belum bisa melakukan semua yang
+digambar artboardnya (3, 7, 13, 17, 22).** Tujuh belas tambah lima sama dengan
+dua puluh dua, dan itu seluruh artboard: hitungannya harus habis, bukan
+mendekati. Tidak ada lagi baris "belum dibangun" — dan itu bukan karena
+klaimnya dilonggarkan, melainkan karena kelima artboard itu sekarang punya
+halaman yang mengatakan sendiri apa yang belum bisa dilakukannya.
+
+Itu perbedaan yang penting, dan sengaja ditulis di sini: "terpenuhi" berarti
+halaman itu ada, bisa dibuka pengguna, dan membaca toko yang sebenarnya — bukan
+berarti setiap piksel artboardnya ditiru. Kelima yang tersisa adalah:
+
+* **3** — petak kamera dengan kerangka 21 sendi: ada, digambar dari feed kamera
+  yang nyata (`ui/hand_feed.py`), tetapi jendelanya masih jendela suara, bukan
+  panel tersendiri.
+* **7** — alur empat langkah: yang ada satu langkah (izin mikrofon), dan
+  halamannya menulis "Langkah 1 dari 1" alih-alih "2 dari 4".
+* **13** — dikte dan baca layar nyata dan disebut namanya; **pengisian form
+  tidak ada backend-nya**, jadi kartunya menyatakan itu.
+* **17** — tema terang ada sebagai palet dan board 18 menggambarnya; yang belum
+  adalah pemeriksaan visual, bukan permukaannya.
+* **22** — pemilihan mode nyata lewat `presence_mode.set_mode`; pemasangan
+  dependensi tidak punya UI, dan halamannya tidak berpura-pura punya.
+
+Setiap kalimat itu ada di dalam halamannya sendiri, di tempat artboard
+menggambar hal yang tidak ada, karena pengguna tidak membaca
+`NOT-IN-MOCKUP.md`.
+
+Artboard bernomor surat (`5a`, `5b`, `8a`, `14a`, `17a`) tidak dihitung sendiri
+di sini — mereka pandangan dari board induknya, bukan artboard terpisah, dan
+karena itu tidak menambah jumlah. Dua puluh dua artboard, dua puluh dua
+permukaan, hitungannya habis.
 
 ## Prinsip yang dipegang di setiap artboard
 

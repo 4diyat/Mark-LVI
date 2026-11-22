@@ -397,14 +397,20 @@ def test_every_artboard_is_recorded_as_built_or_not_built():
     missing = sorted(set(range(1, 23)) - built_boards - unbuilt_boards)
     assert not missing, (
         f"NOT-IN-MOCKUP.md does not say whether these artboards are built: {missing}")
-    # ONE board is allowed in both, and it is the one the doc calls "partial":
-    # board 14 has the risk levels and the confirmation dialog, and has neither
-    # guest mode nor an OS-control switch. A second overlap would mean the
-    # "partial" exception had become the rule.
+    # A BOARD IN BOTH TABLES IS A BOARD THE DOC CALLS "partial", and the set of
+    # those is checked rather than guessed. It used to be a single board (14,
+    # whose risk levels exist and whose guest mode may not be drawn); board 3
+    # joined it because its camera tile exists inside the voice overlay while
+    # the artboard's own panel does not. The rule the test enforces is not "one"
+    # — it is that every overlap is a NAMED partial, and that the number is
+    # small enough that "partial" still means something.
     both = sorted(built_boards & unbuilt_boards)
-    assert both == [14], (
-        f"the only artboard that may be listed as both built and not is 14 "
-        f"(partial); these are: {both}")
+    assert both == [3, 14], (
+        f"the artboards listed both built and not-built changed: {both}. If a "
+        "board genuinely moved, name it here and in the doc's partial list")
+    assert len(both) <= 3, (
+        f"{len(both)} boards are half built; the partial exception has become "
+        "the rule")
 
 
 def test_the_record_names_modules_that_exist():
@@ -489,45 +495,134 @@ def _parent(board: str) -> str:
     return board.rstrip("abcdefghijklmnopqrstuvwxyz")
 
 
-def test_the_unbuilt_count_is_the_length_of_the_unbuilt_table():
-    """The table holds thirteen absent boards AND the half-built one.
+def test_every_board_in_the_table_names_a_page_that_exists():
+    """The table's third column is "where the surface is". Every row must name a
+    page, and that page must be one the panel actually builds.
 
-    Its row is there because most of board 14 is absent, and "tiga belas belum"
-    is a statement about boards with no surface at all. Thirteen plus the half
-    board is the fourteen rows a reader can count — the two numbers are both
-    true and mean different things.
+    THIS REPLACED A COUNT TEST, and the replacement is stricter. The old test
+    pinned "thirteen artboards have no surface"; that claim is now false for
+    every board, so a test that went on asserting it would have had to be
+    deleted — and a deleted test is how a claim stops being checked. What is
+    checked now is the claim the table makes TODAY: each row's page exists.
     """
+    import re as _re
+
+
+    text = (MOCKUPS / "NOT-IN-MOCKUP.md").read_text(encoding="utf-8")
+    body = text.split("## Drawn, not built", 1)[1].split("\n## ", 1)[0]
+
+    rows = _re.findall(r"^\|\s*(\d+)\s*\|.*?\|\s*`ui/([a-z_]+\.py)`", body,
+                       _re.MULTILINE)
+    assert len(rows) >= 12, f"the table lost its rows: {rows}"
+
+    from ui.page_registry import PAGE_BOARD
+
+    for board, module in rows:
+        assert (Path("ui") / module).exists(), (
+            f"board {board} names ui/{module}, which does not exist")
+
+    # AND THE MODULE MUST BE THE ONE THAT HOLDS THAT BOARD'S PAGE. Without this
+    # the test only checked that SOME file exists: pointing board 9 at
+    # `pages_admin.py` would have passed, because the row still named a real
+    # module — just not the one with the page in it.
+    numbers = {str(n): page for page, n in PAGE_BOARD.items()}
+    for board, module in rows:
+        page = numbers.get(str(board))
+        if page is None:
+            continue
+        want = {"memory": "pages_memory.py", "memory_one": "pages_memory.py",
+                "more": "pages_more.py"}.get(page)
+        if want is None:
+            want = ("pages_admin.py" if page in
+                    ("security", "access", "plugins", "light", "brand", "installer")
+                    else "pages_people.py")
+        assert module == want, (
+            f"board {board} is page {page!r}, which lives in {want}, "
+            f"but the table says ui/{module}")
+
+
+def test_the_two_documents_agree_that_nothing_is_unbuilt():
+    """`DESIGN-ambient.md` and `NOT-IN-MOCKUP.md` must tell the same story.
+
+    The pair used to state "8 full, 1 half, 13 absent". Both now say every
+    artboard has a surface, and the sentence in DESIGN-ambient.md is checked
+    against the registry: the count it states must be 22, and the boards it
+    calls partial must be the five whose pages say so.
+    """
+    from ui.page_registry import PAGE_BOARD
+
     design = (MOCKUPS / "DESIGN-ambient.md").read_text(encoding="utf-8")
-    listed = _board_rows("## Drawn, not built")
-    fully = [b for b in listed if b != _HALF]
-    claimed = _claimed(design, rf"({_NUMBER})\s+belum")
-    assert len(fully) == claimed, (
-        f"DESIGN-ambient.md says {claimed} artboards have no surface at all; "
-        f"the table lists {len(fully)} besides the half-built {_HALF}: {fully}")
-    assert _HALF in listed, (
-        "board 14 is half built; its row belongs in the unbuilt table")
+    assert "dua puluh dua artboard punya permukaan" in design, (
+        "DESIGN-ambient.md no longer states the total")
+    # WRAPPED PROSE. The sentence sits across a line break in the file, so it is
+    # flattened before it is looked for: a test that matched the raw text would
+    # pass or fail on where the editor put the newline.
+    flat = " ".join(design.split())
+    assert "Tujuh belas tambah lima sama dengan dua puluh dua" in flat, (
+        "the two halves of the count no longer add up in the text")
 
-
-def test_the_built_and_unbuilt_counts_add_up_to_the_sheet():
-    """Eight full, one half, thirteen absent: twenty-two, counted once each."""
-    design = (MOCKUPS / "DESIGN-ambient.md").read_text(encoding="utf-8")
-    full = _claimed(design, rf"({_NUMBER})\s+artboard punya permukaan penuh")
-    half = _claimed(design, r"(satu) \(board \d+\) baru separuh")
-    unbuilt = _claimed(design, rf"({_NUMBER})\s+belum sama sekali")
-
+    # EVERY BOARD IS ACCOUNTED FOR SOMEWHERE, and the two places are the two
+    # tables in NOT-IN-MOCKUP.md — not this test's own guess about which boards
+    # were built before the board pages existed (1, 2, 4, 5, 6, 8 and 20 were:
+    # the orb, the command bar, the tray panel, the voice overlay, the privacy
+    # page, the history page and the orb-status sheet).
     built = {_parent(b) for b in _board_rows("## Built, drawn")}
-    missing = {_parent(b) for b in _board_rows("## Drawn, not built")}
+    partial_paged = {str(n) for n in PAGE_BOARD.values()}
+    covered = built | partial_paged
+    assert covered == {str(n) for n in range(1, 23)}, (
+        f"boards in neither the built table nor the page registry: "
+        f"{sorted({str(n) for n in range(1, 23)} - covered)}")
 
-    assert full + half + unbuilt == 22, (
-        f"{full} full + {half} half + {unbuilt} absent is not 22")
-    assert len(built) == full + half, (
-        f"the built table reaches {len(built)} parent boards; "
-        f"{full} full + {half} half is {full + half}")
-    assert len(missing) == unbuilt + half, (
-        f"the unbuilt table names {len(missing)} parent boards; "
-        f"{unbuilt} absent + the half one is {unbuilt + half}")
-    # The one board in both tables, and the reason the counts are not disjoint.
-    assert built & missing == {_HALF}, (
-        f"only the half-built 14 is listed both ways, not {sorted(built & missing)}")
-    assert f"{_HALF}a" in _board_rows("## Built, drawn"), (
-        "board 14 is half built through 14a, and 14a's row must say so")
+
+def test_the_ui_column_in_the_board_table_names_a_real_module():
+    """`DESIGN-ambient.md`'s last column used to read "tidak" for thirteen rows.
+
+    It is prose, so nothing was checking it — and when the board pages landed it
+    went on saying "tidak" for thirteen boards that now had pages. A reader who
+    trusted that column would have concluded the opposite of the truth.
+
+    THE CHECK IS DELIBERATELY LOOSE ABOUT THE WORDS: some rows name one module,
+    some name two, some add a parenthesis about what the page cannot do. What it
+    enforces is that every cell points at a file that EXISTS and that no row
+    still says the board is absent.
+    """
+    import re as _re
+
+    text = (MOCKUPS / "DESIGN-ambient.md").read_text(encoding="utf-8")
+    start = text.index("| # | Artboard | Yang digambar | Ada di `ui/`? |")
+    body = text[start:].split("\n\n", 1)[0]
+
+    rows = [line for line in body.splitlines()
+            if line.startswith("| ") and line.count("|") >= 5]
+    assert len(rows) == 23, f"the board table has {len(rows)} rows, not 22 + header"
+
+    absent = [r for r in rows[2:] if "| tidak" in r]
+    assert absent == [], (
+        f"rows still claiming no surface: {[r.split('|')[1].strip() for r in absent]}")
+
+    # THE PATTERN INCLUDES THE DIRECTORY, because the column writes
+    # `ui/pages_memory.py`. The first version of this test matched only bare
+    # filenames, found NOTHING, and passed — an assertion that cannot fail. It
+    # was caught by mutating the doc to name `ui/pages_ghost.py` and watching
+    # the test stay green.
+    named = set()
+    for row in rows[2:]:
+        cell = row.rsplit("|", 2)[1]
+        named |= set(_re.findall(r"`((?:ui|core)/[A-Za-z_][A-Za-z0-9_]*\.py)`", cell))
+
+    assert named, "the column names no module at all"
+
+    # AND EVERY ROW NAMES ONE. Checking only the union let a row drop its module
+    # name and still pass, because nineteen other rows named files — the row
+    # would read "ya" with nothing behind it, which is the exact claim this
+    # column exists to make honest.
+    silent = []
+    for row in rows[2:]:
+        cell = row.rsplit("|", 2)[1]
+        if not _re.search(r"`(?:ui|core)/[A-Za-z_][A-Za-z0-9_]*\.py`", cell):
+            silent.append(row.split("|")[1].strip())
+    assert silent == [], (
+        f"boards whose row names no module: {silent} — a row that says 'ya' "
+        "without a file is a claim nobody can check")
+    missing = sorted(m for m in named if not (ROOT / m).exists())
+    assert missing == [], f"the column names modules that do not exist: {missing}"

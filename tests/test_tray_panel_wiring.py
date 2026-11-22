@@ -290,14 +290,29 @@ def test_every_key_the_panel_can_press_has_a_handler(wiring):
         actions = wiring.actions_for(FakeShell())
         assert set(actions) == {
             "presence_set", "quick", "permission", "undo", "history_export",
-            "history_clear", "erase", "export_audit", "command", "theme"}
+            "history_clear", "erase", "export_audit", "command", "theme",
+            # The thirteen board pages (`ui/pages_actions.py`). Each one is a
+            # store write reached by a click, and each has a test of its own
+            # below; this set is what proves the panel's buttons have somewhere
+            # to land at all.
+            "memory_forget", "memory_clear", "routines_pause", "tools_copy",
+            "tools_clear", "tools_safe", "plugin_toggle", "consent",
+            "language", "text_scale", "motion_toggle", "install_mode"}
 
         panel = TrayPanel(actions)
         assert panel.open() is True
         pressed = {key.split(":", 1)[0] for key in panel._buttons}
         assert pressed <= {"mode", "quick", "perm", "p6", "p6_export",
                            "p6_clear", "undo", "export", "clear", "erase",
-                           "send", "theme"}
+                           "send", "theme",
+                           # the board pages' controls, by their real
+                           # prefixes — this set is what makes a NEW control
+                           # fail here until someone says what it does
+                           "mem_add", "mem_clear", "mem_open", "m1_back",
+                           "m1_forget", "rt_pause", "tl_clear", "tl_copy",
+                           "tl_safe", "cn_allow", "cn_deny", "ac_lang",
+                           "ac_motion", "ac_scale", "pl_toggle", "in_pick",
+                           "more", "more_back"}
         # `p6*` replaced `permx` when board 6 replaced 06a on the privacy page:
         # the four rows keep the `p6:` prefix, its two buttons are `p6_clear`
         # and `p6_export`, and the history page keeps its own `clear`/`export`.

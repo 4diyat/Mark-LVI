@@ -35,37 +35,49 @@ copy of the old code is in git.
 
 ## Drawn, not built: the artboards with no surface
 
-Thirteen of the 22 artboards have no `ui/` module behind them, and a fourteenth
-(board 14) has half of one. This is the list, and it is the honest scope of
-"every artboard implemented": the rest of this file covers the opposite
-direction.
+**None.** As of 2026-11-22 every one of the 22 artboards has a surface in `ui/`,
+reached from the tray panel's more-list (`ui/pages_more.py`) or from the orb's
+own controls. Board 13 was the last to be excluded, and it is now a page — see
+the row below, which is the one that records a partial.
 
-`tests/test_design_sheet_complete.py` checks this table's **shape** — that it
-holds thirteen absent boards plus the half one, that the halves add up to the
-twenty-two, and that the same counts appear in `DESIGN-ambient.md` — and cannot
-check its **content**: whether board 9 really has no UI is a claim about code,
-and only a reader can check that by opening the files the row names.
+`tests/test_design_sheet_complete.py` checks this table's **shape** — that the
+counts agree with `DESIGN-ambient.md` and that the halves add up to the
+twenty-two — and cannot check its **content**: whether board 9 really reads the
+memory store is a claim about code, and only a reader can check that by opening
+the file the row names.
 
-| # | Artboard | What it would need | Why it is not built |
-|---|---|---|---|
-| 3 | Kontrol gestur | a camera preview tile with a 21-joint hand skeleton | `core/gesture_os.py` is a pure, tested decision function, but nothing calls it: the tile is still a **proposal** (`DESIGN-ambient.md`), and the bridge and loop are in git at `376909f1` |
-| 7 | Onboarding 2/4 | a multi-step first-run flow with per-step permission consent | no onboarding exists. The setup screen (`ui/setup_window.py`) borrows this panel's language for the API key, but it is one step, not four |
-| 9 | Memori personal | a list of remembered facts, editable | `memory/memory_manager.py` stores them; there is no UI. `NOT-IN-MOCKUP.md`'s deletion table is why — the drawer that showed them went with the window |
-| 10 | Detail memori | one memory: source, confidence, used-by | same as 9 |
-| 11 | Rutinitas & saran | a routine list and proactive-suggestion cards | `actions/proactive.py` schedules suggestions; nothing lists the routines |
-| 12 | Alat cepat & clipboard | clipboard inspection and natural-language file search | `actions/computer_control.py` reads the clipboard; the "smart clipboard" (detect an account number, offer "tandai aman") is not written |
-| 13 | Dikte · baca layar · isi form | dictation into any app, screen reading, form filling with preview | dictation exists as a chord (`Ctrl+Win`), not as this panel. Form filling does not exist at all and is the largest missing feature on the sheet |
-| 14 | Keamanan | three risk levels, guest mode, OS-control switch | **partial**: `core/risk_policy` + `ui/confirm_banner.py` implement the levels and the confirmation. Guest mode was **deleted by ruling** (see below), and the OS-control switch has no backend |
-| 15 | Aksesibilitas | language, text size, contrast, reduced motion | `assets/i18n/` ships en/id and the orb can be stilled, but there is no settings surface |
-| 16 | Plugin & ponsel | a plugin list with on/off, phone pairing | the plugin manager was part of the deleted window. Plugins are toggled by their manifest files |
-| 18 | Tema terang — izin & privasi | the permission page in light tokens | the page exists and reads `PALETTES["light"]` like every other page, but nothing has been LOOKED AT in light: the screenshot check in `verification.md` is still the only test of it |
-| 19 | Peta gestur | the six-gesture reference, drawn | a picture of gestures is not a control; it would be a help page with no way to open it |
-| 21 | Brand & ikon | the app icon, tray icons, swatches, type scale | the tray icon exists (`ui/tray.py`); this artboard is a **specification sheet**, not a surface |
-| 22 | Installer 1/4 | a first-install flow choosing presence mode | `core/installer.py` installs dependencies; there is no installer UI |
+| # | Artboard | What it draws | Where the surface is | What it cannot do |
+|---|---|---|---|---|
+| 3 | Kontrol gestur | a camera preview tile with a 21-joint hand skeleton | `ui/voice_overlay.py`, `ui/hand_feed.py` (the hand feed already draws a live skeleton) | **nothing material.** The tile is drawn from the real camera feed; `core/gesture_os` decides what a gesture means and `ui/hand_feed.py` is what calls it |
+| 7 | Onboarding 2/4 | a four-step first-run flow with per-step consent | `ui/pages_people.py` (`build_consent`) | **one step, not four.** There is no onboarding flow; this page asks the one question the program actually has (the microphone) and stores the answer in `microphone_consent`. The artboard's "Langkah 2 dari 4" is not drawn, because there are not four |
+| 9 | Memori personal | a list of remembered facts | `ui/pages_memory.py` (`build_memory`) | **nothing.** It reads `memory_manager.all_entries_for_ui()`, counts the store rather than the widgets, states the remainder that does not fit, and every row's button opens that memory |
+| 10 | Detail memori | one memory: source, confidence, used-by | `ui/pages_memory.py` (`build_memory_one`) | **three fields.** The store holds category, key, value and `updated`; it has no source, no confidence and no record of what used it. The page draws the three it has and says in place of the others that they are not stored — it draws no percentage |
+| 11 | Rutinitas & saran | a routine list and proactive-suggestion cards | `ui/pages_people.py` (`build_routines`) | **no routine store.** The one routine that exists is the proactive check, with its real persisted pause; the page lists that and states on the page that scheduled routines are not built |
+| 12 | Alat cepat & clipboard | clipboard inspection and plain-language file search | `ui/pages_people.py` (`build_tools`) | **no window layout** (the artboard's third card); the page says so. The clipboard card and the search are real, and "Tandai aman" is a display decision, not a scan |
+| 13 | Dikte · baca layar · isi form | dictation, screen reading, form filling | `ui/pages_people.py` (`build_help`) | **form filling does not exist** and there is no backend for it. Dictation and screenshot are real chords and the page names them; the form card states the absence |
+| 14 | Keamanan | three risk levels, guest mode, OS-control switch | `ui/pages_admin.py` (`build_security`) | **guest mode may not be drawn at all** (owner's ruling: nothing in this tree makes every surface stop reading memory, so a switch — even a disabled one — would be a promise). The OS-control switch has no backend. The three levels and their action counts are real, from `core.risk_policy` |
+| 15 | Aksesibilitas | language, text size, contrast, reduced motion | `ui/pages_admin.py` (`build_access`) | **contrast is not offered** (the two palettes are fixed and both pass), and custom gestures are not built. Language, text size and reduced motion are real switches |
+| 16 | Plugin & ponsel | a plugin list with on/off, phone pairing | `ui/pages_admin.py` (`build_plugins`) | **no phone feature exists**, so the SINKRON PONSEL card is absent and says so. The plugin list is real: it reads the manifests and toggles through `save_plugin_enabled()` |
+| 18 | Tema terang — izin & privasi | the permission page in light tokens | `ui/pages_admin.py` (`build_light`) | **nothing, but it is a palette question.** The page draws board 6's content and says which palette is on screen; the light tokens themselves are checked only by `PALETTES["light"]` and nobody has LOOKED at them |
+| 19 | Peta gestur | the six-gesture reference | `ui/pages_people.py` (`build_gestures`) | **it is a drawing.** A picture of gestures is not a control, and the page says so; `core/gesture_os` is the real decision function and nothing here calls it |
+| 21 | Brand & ikon | the app icon, tray icons, swatches, type scale | `ui/pages_admin.py` (`build_brand`) | **a specification sheet.** The swatches and the four tray states are read from the program's own palette, so the sheet cannot describe a colour the build does not use; nothing on it is clickable, and the page says that too |
+| 22 | Installer 1/4 | a first-install flow choosing presence mode | `ui/pages_admin.py` (`build_installer`) | **the mode choice, not the installer.** Choosing a mode goes through `presence_mode.set_mode`, the same call the panel's segment makes. There is no dependency-install UI and the artboard's later steps are not drawn |
 
-Board 3's command bar **was** on this list until 2026-11-22 and is now
-implemented (`ui/command_bar.py` + `ui/command_paint.py`), which is the pattern
-for removing a row: build it, test it, delete the row.
+## The three things no page claims
+
+Every row above names what its page cannot do, and the pages say it in the place
+the artboard drew the thing that does not exist. Three of those are worth
+separating out because they are RULINGS and not gaps:
+
+* **Guest mode is not drawn anywhere.** `tests/test_privacy_board27.py` fails if
+  any page builds a widget keyed with that word. A disabled switch would still
+  say "this exists and you may not use it yet", and nothing in this tree makes
+  every surface stop reading memory.
+* **No page draws a number it did not read.** Board 9's count is the store's,
+  board 14's counts are `risk_policy.registered()`'s, board 16's count is the
+  manifests'. A page whose header agreed with its own visible rows would be
+  counting widgets.
+* **No page draws a step it does not have.** Board 7 says "Langkah 1 dari 1".
 
 ### Board 06a is retired, and that is the reason board 6 was drawn
 
@@ -102,6 +114,7 @@ Boards without a row here are the "drawn, not built" ones above.
 |---|---|---|---|
 | 1 | Desktop ambient | a ring in a 146 px box on the desktop; only the ring takes clicks | `ui/orb_overlay.py`, `ui/orb_place.py`, `ui/orb_canvas.py` |
 | 2 | Command bar | a 640×184 box: gradient, cyan rule, Esc chip, three result rows with their risk dots, footer | `ui/command_bar.py`, `ui/command_paint.py` |
+| 3 | Kontrol gestur | a camera preview tile with a live 21-joint hand skeleton | `ui/hand_feed.py`, `ui/voice_overlay.py` — the skeleton is drawn from the real camera feed, and `core/gesture_os` is what decides a gesture's meaning |
 | 4 | Mode suara | listening overlay, gesture camera tile | `ui/voice_overlay.py`, `ui/voice_paint.py` |
 | 5 | Panel baki sistem | the 460×660 tray panel: three segments, four quick actions with chords, today's suggestion, permissions, one line to type in | `ui/tray_panel.py`, `ui/tray_pages.py`, `ui/tray_panel_model.py` |
 | 5a | Fokus — toast ditahan | held notifications counted by `core/presence_mode`; a strip that states no deadline; three quick rows of its own (no "Ubah durasi"); a persisted scheduling pause; the second quota sentence, counted | `ui/toast_queue.py`, `ui/toast_stack.py`, `ui/tray_paint.py`, `ui/tray_panel_model.py`, `actions/proactive.py`, `ui/tray_panel_wiring.py` |
