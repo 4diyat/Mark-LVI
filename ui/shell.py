@@ -218,6 +218,14 @@ class AmbientShell:
                 callback(word.lower())
             except Exception as e:                  # noqa: BLE001
                 _note(f"{attr} could not show '{word}' — {type(e).__name__}: {e}")
+
+        # THE FULL-SCREEN SURFACE LAST, and after the small ones. If the overlay
+        # is what fails, the orb, the tray and the bubble have already been
+        # told; if it is what WORKS, the user sees the answer on the surface
+        # they were already looking at rather than only on the edge of a frame.
+        from ui import voice_wiring
+
+        voice_wiring.sync(self)
         self._announce(word)
 
     def _announce(self, word: str) -> None:

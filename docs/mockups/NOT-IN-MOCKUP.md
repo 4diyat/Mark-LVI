@@ -313,11 +313,26 @@ fulfils that promise. `test_the_window_flags_are_the_three_that_matter_and_not_c
 pins the absence. Windows click-through and focus return after Esc stay in the
 "untested on Windows" list below rather than being assumed.
 
+**When it is on screen is a rule, not a side effect.** `ui/voice_wiring.py`
+holds it in one pure function: the overlay covers the desktop for
+`LISTENING` and `SPEAKING` and for nothing else. `THINKING` is deliberately
+absent — the question is in, the answer is not out, and a full-screen frame that
+appeared between the two reads as a hang. `NO MIC` is absent for the opposite
+reason: a 1280×720 frame announcing that it is listening, on a machine with no
+microphone, is the worst possible moment for one. The window is built during
+start-up and shown on the first LISTENING, so its construction cost is not paid
+at the moment the feature is judged.
+
+Esc goes through `voice_wiring._on_close` → `shell.request_sleep()`, the same
+path the tray's Sleep control uses. "Esc keluar" has to mean the microphone
+closed, not only the picture — the close handler is tested for exactly that.
+
 **The split is three files, and the ceiling is why.** The first draft —
 window, state, hand geometry and every Qt call — was 790 lines against a 600
 line ceiling. `ui/voice_hand.py` took the geometry (the only part that comes
 from outside the program), `ui/voice_paint.py` took the Qt calls, and
-`ui/voice_overlay.py` kept the rules. `test_the_painter_never_decides_anything`
+`ui/voice_overlay.py` kept the rules. A fourth, `ui/voice_wiring.py`, is what
+knows about the shell; the surface must not depend on it. `test_the_painter_never_decides_anything`
 holds the seam: the painter may CALL `status_word`, never DEFINE it.
 
 ---
