@@ -334,6 +334,38 @@ def export_history(shell: "AmbientShell") -> bool:
     return True
 
 
+def export_audit(shell: "AmbientShell") -> bool:
+    """Write the ACTIVITY LOG (the audit log) to a file, and say where.
+
+    WHY THIS IS NOT `export_history`. Board 6 draws "Ekspor log" underneath an
+    ACTIVITY LOG card; board 08a draws the same two words underneath the undo
+    stack. `export_history` writes `undo.history()`, so using it here would
+    export a different store than the one on screen. Same name, same place on
+    the panel, different data — which is exactly why the action key is its own.
+    """
+    try:
+        from core import audit_log
+
+        entries = audit_log.shared().entries() or ()
+    except Exception as e:                          # noqa: BLE001
+        _say(shell, f"Ekspor log gagal — {type(e).__name__}: {e}")
+        return False
+    lines = []
+    for item in entries:
+        when = str(item.get("at") or item.get("time") or "")
+        parts = [when] + [str(item.get(k) or "") for k in
+                          ("tool", "level", "outcome", "detail")]
+        lines.append(" · ".join(p for p in parts if p))
+    target = _desktop_path() / "jarvis-activity-log.txt"
+    try:
+        target.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+    except OSError as e:
+        _say(shell, f"Ekspor log gagal menulis {target} — {e}")
+        return False
+    _say(shell, f"Log aktivitas diekspor ke {target}")
+    return True
+
+
 def _desktop_path():
     """Where a file the panel wrote goes: Desktop if it exists, else home."""
     from pathlib import Path
@@ -455,6 +487,7 @@ def actions_for(shell: "AmbientShell") -> dict:
         "history_export": lambda: export_history(shell),
         "history_clear": lambda: clear_history(shell),
         "erase": lambda: erase_local(shell),
+        "export_audit": lambda: export_audit(shell),
         "theme": lambda name: set_theme(shell, name),
         "command": lambda text: send_command(shell, text),
     }

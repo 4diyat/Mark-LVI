@@ -263,7 +263,7 @@ def test_the_audit_tail_is_newest_first_and_never_empty_looking(
     assert text.index("screen_processor") < text.index("send_email")
 
 
-# ── board 06a: permissions, and the ones that cannot be switched ─────────────
+# ── board 6: permissions, and the ones that cannot be switched ──────────────
 
 def test_a_fact_about_the_machine_is_drawn_as_disabled_not_as_a_switch(
         panel_module, clean_state, monkeypatch):
@@ -277,11 +277,27 @@ def test_a_fact_about_the_machine_is_drawn_as_disabled_not_as_a_switch(
 
     mic = panel.snapshot.permissions["microphone"]
     assert mic["on"] is False and mic["fixed"] is True
-    assert panel._buttons["permx:microphone"].isEnabled() is False
-    # "mati" — the indicator says the microphone is not on. It does NOT say
-    # "tidak terpasang": there is no key for that yet, and inventing one would
-    # be this build claiming to know why there is no device.
-    assert panel._labels["indicator_state:microphone"].text() == "mati"
+    # Board 6's page (this replaced 06a's on 2026-11-22). The switch is
+    # DISABLED, not merely refused on click: a live switch over a fact no click
+    # can change teaches the user not to trust the panel.
+    assert panel._buttons["p6:microphone"].isEnabled() is False
+    # And the readout beside it is dark, because the permission is off. It does
+    # NOT say "tidak terpasang": there is no key for that, and inventing one
+    # would be this build claiming to know why there is no device.
+    #
+    # The dot is painted by `_paint_dot` on every refresh, not at build time —
+    # asserting on a styleSheet nobody has written yet is how this test first
+    # failed. Drive the paint, then read what it drew.
+    from ui import tray_paint
+
+    tray_paint.paint(panel, panel.snapshot)
+    # The stub stores a stylesheet in `_style`; `styleSheet()` is not part of
+    # the stub's surface, and asking for it answered None — a test failing on
+    # its own read, not on the code.
+    dot = panel._labels["perm_dot:microphone"]._style
+    assert dot, "the permission readout was never painted"
+    assert "#4FD8F0" not in dot, (
+        "the microphone readout is lit for a permission that is off")
 
     # And pressing it does nothing, because there is nothing behind it.
     refused = Recorder()
@@ -298,23 +314,25 @@ def test_the_two_real_switches_are_enabled_and_reach_the_handler(
     panel = tray_panel.TrayPanel({"permission": permission})
     panel.open()
 
-    assert panel._buttons["permx:files"].isEnabled() is True
+    assert panel._buttons["p6:files"].isEnabled() is True
     assert panel.press_permission("files", True) is True
     assert permission.calls == [("files", True)]
     assert panel.press_permission("apps", False) is True
     assert permission.calls[-1] == ("apps", False)
 
 
-def test_board_27_draws_all_four_explicit_permissions(panel_module, clean_state):
+def test_board_6_draws_all_four_explicit_permissions(panel_module, clean_state):
     tray_panel, _pages, model = panel_module
     panel = tray_panel.TrayPanel({})
     panel.open()
 
     assert [model._t(row[1]) for row in model.PERMISSIONS] == [
         "Layar", "Mikrofon", "Berkas", "Kontrol aplikasi"]
+    # The LABEL is on the button, because the row is the click target; the
+    # subtitle is its own label inside the card. Same split as board 5.
     for key, name, sub in model.PERMISSIONS:
-        assert panel._labels[f"permx:{key}"].text() == model._t(name)
-        assert panel._labels[f"permx_sub:{key}"].text() == model._t(sub)
+        assert panel._buttons[f"p6:{key}"].text() == model._t(name)
+        assert panel._labels[f"p6_sub:{key}"].text() == model._t(sub)
 
 
 # ── board 17a: one widget, two palettes ─────────────────────────────────────

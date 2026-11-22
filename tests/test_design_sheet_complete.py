@@ -219,13 +219,48 @@ def test_every_state_view_names_a_board_that_exists():
         f"these EXTRA views are parented to a board that does not exist: {strangers}")
 
 
-def test_the_six_states_are_still_drawn():
-    """Folding them in must not be a quiet way of dropping them."""
+def test_every_view_the_registry_names_is_drawn():
+    """Twelve views: the six shell boards and the six states.
+
+    THIS TEST USED TO ASSERT `len(views) == 6`, AND THAT WAS THE BUG.
+        Folding the six `n07`-`n12` states into their parents also silently
+        dropped `n01`-`n06` — six artboards that were rendered nowhere
+        afterwards, including `n03`, the command bar the implementation is
+        measured against. The test passed, because it counted the six that were
+        left: a number copied from the code ratified whatever the code did.
+        It now reads the REGISTRY and demands that every function named there
+        appears on the sheet, which is the question that actually matters.
+    """
+    build = _build_module()
     html = SHEET.read_text(encoding="utf-8")
     _numbers, views = _labels(html)
-    assert len(views) == 6, (
-        f"the sheet draws {len(views)} state views; the build has tests for six "
-        f"(Fokus, Senyap, konfirmasi risiko, riwayat, izin, tema terang)")
+    expected = len(build.EXTRA)
+    assert len(views) == expected, (
+        f"the registry names {expected} views and the sheet draws {len(views)}")
+    # And every view's own heading, as the registry spells it, is on the page.
+    # `artboard()` escapes `&`, so the comparison does too.
+    for _parent, title, _w, _h, fn in build.EXTRA:
+        assert title.replace("&", "&amp;") in html, (
+            f"{fn} ({title!r}) is named in EXTRA but its heading is not in the sheet")
+
+
+def test_every_artboard_function_is_rendered_somewhere():
+    """No `bNN` or `nNN` may exist and be drawn nowhere.
+
+    This is the test that would have caught the drop: six `n` functions were
+    defined, passed their own liveness tests, and appeared on no sheet.
+    """
+    build = _build_module()
+    rendered = {row[4].__name__ for row in build.BOARDS_LIST}
+    rendered |= {row[4] for row in build.EXTRA}
+    defined = set()
+    tree = ast.parse(BUILD.read_text(encoding="utf-8"))
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and re.fullmatch(r"[bn]\d{2}", node.name):
+            defined.add(node.name)
+    orphans = sorted(defined - rendered)
+    assert not orphans, (
+        f"these artboard functions are defined and drawn nowhere: {orphans}")
 
 
 def test_the_sheet_is_what_the_generator_produces():
@@ -406,3 +441,93 @@ def test_the_command_bar_is_recorded_as_built():
                if line.startswith("| 2 |"))
     assert "command_bar.py" in row and "command_paint.py" in row, (
         f"board 2's row does not name the modules that implement it: {row}")
+
+
+# ── the built/unbuilt split, derived from the tables and checked ────────────
+#
+# The sentence in `DESIGN-ambient.md` is written in WORDS ("sembilan artboard
+# punya permukaan penuh … tiga belas belum") and the drift test above reads
+# DIGITS, so nothing was checking it. It said "delapan" for a board that had
+# been built, and it said thirteen plus thirteen while the sheet held 22
+# artboards — the lettered views had been counted as if they were boards. A
+# count that adds up to more than the whole is the clearest sign it was written
+# from memory. This derives the sets from `NOT-IN-MOCKUP.md` and compares.
+
+_WORDS = {"nol": 0, "satu": 1, "dua": 2, "tiga": 3, "empat": 4, "lima": 5,
+          "enam": 6, "tujuh": 7, "delapan": 8, "sembilan": 9, "sepuluh": 10,
+          "sebelas": 11, "dua belas": 12, "tiga belas": 13, "empat belas": 14}
+
+
+def _board_rows(section: str) -> list[str]:
+    """The `#` cell of every table row in one `##` section."""
+    text = (MOCKUPS / "NOT-IN-MOCKUP.md").read_text(encoding="utf-8")
+    body = text.split(section, 1)[1].split("\n## ", 1)[0]
+    return [m.group(1) for m in re.finditer(r"^\|\s*(\d+[a-z]?)\s*\|", body,
+                                            re.MULTILINE)]
+
+
+_NUMBER = r"(dua belas|tiga belas|empat belas|nol|satu|dua|tiga|empat|lima|"\
+          r"enam|tujuh|delapan|sembilan|sepuluh|sebelas)"
+
+
+def _claimed(design: str, pattern: str) -> int:
+    """The number word matching `pattern`, as an int. Fails loudly, not None."""
+    match = re.search(pattern, design)
+    assert match, f"DESIGN-ambient.md no longer states {pattern!r}"
+    word = match.group(1).strip()
+    assert word in _WORDS, f"{word!r} is not a number word this test knows"
+    return _WORDS[word]
+
+
+# Board 14 is HALF built: its confirmation view (14a) is in `ui/`, and its
+# security panel is not. Every count below has to say which half it means.
+_HALF = "14"
+
+
+def _parent(board: str) -> str:
+    """`14a` -> `14`: a lettered view belongs to its parent board."""
+    return board.rstrip("abcdefghijklmnopqrstuvwxyz")
+
+
+def test_the_unbuilt_count_is_the_length_of_the_unbuilt_table():
+    """The table holds thirteen absent boards AND the half-built one.
+
+    Its row is there because most of board 14 is absent, and "tiga belas belum"
+    is a statement about boards with no surface at all. Thirteen plus the half
+    board is the fourteen rows a reader can count — the two numbers are both
+    true and mean different things.
+    """
+    design = (MOCKUPS / "DESIGN-ambient.md").read_text(encoding="utf-8")
+    listed = _board_rows("## Drawn, not built")
+    fully = [b for b in listed if b != _HALF]
+    claimed = _claimed(design, rf"({_NUMBER})\s+belum")
+    assert len(fully) == claimed, (
+        f"DESIGN-ambient.md says {claimed} artboards have no surface at all; "
+        f"the table lists {len(fully)} besides the half-built {_HALF}: {fully}")
+    assert _HALF in listed, (
+        "board 14 is half built; its row belongs in the unbuilt table")
+
+
+def test_the_built_and_unbuilt_counts_add_up_to_the_sheet():
+    """Eight full, one half, thirteen absent: twenty-two, counted once each."""
+    design = (MOCKUPS / "DESIGN-ambient.md").read_text(encoding="utf-8")
+    full = _claimed(design, rf"({_NUMBER})\s+artboard punya permukaan penuh")
+    half = _claimed(design, r"(satu) \(board \d+\) baru separuh")
+    unbuilt = _claimed(design, rf"({_NUMBER})\s+belum sama sekali")
+
+    built = {_parent(b) for b in _board_rows("## Built, drawn")}
+    missing = {_parent(b) for b in _board_rows("## Drawn, not built")}
+
+    assert full + half + unbuilt == 22, (
+        f"{full} full + {half} half + {unbuilt} absent is not 22")
+    assert len(built) == full + half, (
+        f"the built table reaches {len(built)} parent boards; "
+        f"{full} full + {half} half is {full + half}")
+    assert len(missing) == unbuilt + half, (
+        f"the unbuilt table names {len(missing)} parent boards; "
+        f"{unbuilt} absent + the half one is {unbuilt + half}")
+    # The one board in both tables, and the reason the counts are not disjoint.
+    assert built & missing == {_HALF}, (
+        f"only the half-built 14 is listed both ways, not {sorted(built & missing)}")
+    assert f"{_HALF}a" in _board_rows("## Built, drawn"), (
+        "board 14 is half built through 14a, and 14a's row must say so")

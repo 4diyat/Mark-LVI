@@ -23,7 +23,7 @@ keinginan.
 | 3 | Kontrol gestur | Tile kamera 320×236, kerangka tangan, pil gestur aktif | tidak — lihat `NOT-IN-MOCKUP.md` |
 | 4 | Mode suara | Glow tepi layar penuh, orb, pil transkrip, lima bar level | ya — `voice_paint`, `voice_overlay` |
 | 5 | Panel baki sistem | 460×640: segmen, empat aksi cepat, percakapan, tiga izin, kolom perintah | ya — `tray_pages`, `tray_panel` |
-| 6 | Izin & privatisasi | Empat izin eksplisit dengan kartu, log aktivitas bertimestamp | ya — `build_privacy()` |
+| 6 | Izin & privatisasi | Empat izin akses dengan kartu (72 px pitch), log aktivitas bertimestamp, Ekspor/Hapus | ya — `build_permissions()` |
 | 7 | Onboarding 2/4 | Layar izin mikrofon, tiga kalimat privasi, dua tombol | tidak |
 | 8 | Riwayat tugas | Enam baris hari ini, status per baris, saring/pulihkan, hapus | ya — `build_history()` |
 | 9 | Memori personal | Enam fakta tentang Anda, "12 hal yang JARVIS ingat" | tidak |
@@ -35,7 +35,7 @@ keinginan.
 | 15 | Bahasa & gestur | Bahasa UI, ukuran teks, kontras, kurangi animasi, gestur kustom | tidak |
 | 16 | Plugin & ponsel | Dua dari lima plugin aktif, sinkron ponsel, kode pasangan | tidak |
 | 17 | Tema terang — panel baki | Panel 5 dalam token terang, dengan sakelarnya | ya — `PALETTES["light"]`, `tray_theme` |
-| 18 | Tema terang — izin & privasi | Panel 6 dalam token terang | tidak — paletnya ada, halamannya tidak digambar terang |
+| 18 | Tema terang — izin & privasi | Panel 6 dalam token terang | sebagian — halaman board 6 ada dan membaca palet terang, belum pernah dilihat dalam keadaan terang |
 | 19 | Peta gestur | Enam gestur dengan bentuk tangannya, 720×640 | tidak (modulnya ada: `core/gesture_os`) |
 | 20 | Status orb | Empat status orb, dibedakan lewat siluet bukan warna | ya — `orb_paint.paint_orb` |
 | 21 | Brand & ikon | Ikon aplikasi, empat ikon baki, swatch, skala huruf, komponen | tidak |
@@ -53,7 +53,7 @@ artboard yang bersangkutan, berlabel `05a`, `05b`, `06a`, `08a`, `14a`, `17a`:
 |---|---|---|
 | 05a | Fokus — toast ditahan dan dihitung | `n07()` |
 | 05b | Senyap — orb memudar dan menyusut | `n08()` |
-| 06a | Izin & Privasi — halaman penuh panel | `n11()` |
+| 06a | Izin & Privasi — halaman penuh panel, **pensiun**: artboard-nya menuntut MODE TAMU yang sudah dihapus, jadi halaman itu sekarang digambar board 6 | `n11()` |
 | 08a | Riwayat tugas + Urungkan | `n10()` |
 | 14a | Konfirmasi risiko | `n09()` |
 | 17a | Panel baki versi terang | `n12()` |
@@ -63,10 +63,19 @@ Angka `n07`–`n12` di tabel itu adalah **nama fungsi**, bukan nomor artboard.
 ## Yang digambar tapi belum dibangun
 
 Kolom terakhir tabel di atas adalah keadaan hari ini, dan sengaja tidak
-dibulatkan ke atas: **delapan artboard punya permukaan di `ui/`, tiga belas belum,
-dan satu (board 14) baru separuh.** Yang belum dibangun tetap **digambar** di lembar, dan setiap
-barisnya dicatat di `NOT-IN-MOCKUP.md` dengan alasan dan keputusan pemilik repo
-yang menyertainya — bukan dihapus dari lembar, dan bukan dipalsukan di kode.
+dibulatkan ke atas: **delapan artboard punya permukaan penuh di `ui/`
+(1, 2, 4, 5, 6, 8, 17, 20), satu (board 14) baru separuh — gerbang risikonya
+dibangun, panel keamanan penuhnya belum — dan tiga belas belum sama sekali
+(3, 7, 9, 10, 11, 12, 13, 15, 16, 18, 19, 21, 22).** Delapan tambah satu tambah
+tiga belas sama dengan dua puluh dua, dan itu seluruh artboard: hitungannya
+harus habis, bukan mendekati. Artboard bernomor surat (`5a`, `5b`, `8a`, `14a`,
+`17a`) tidak dihitung sendiri di sini — mereka pandangan dari board induknya,
+bukan artboard terpisah, dan karena itu tidak menambah jumlah. Board 14
+sengaja muncul di kedua tabel `NOT-IN-MOCKUP.md`, karena separuh dibangun dan
+separuh tidak; itulah satu-satunya baris yang boleh muncul dua kali. Yang belum
+dibangun tetap **digambar** di lembar, dan setiap barisnya dicatat di
+`NOT-IN-MOCKUP.md` dengan alasan dan keputusan pemilik repo yang menyertainya —
+bukan dihapus dari lembar, dan bukan dipalsukan di kode.
 
 ## Prinsip yang dipegang di setiap artboard
 
@@ -192,7 +201,7 @@ stack-neutral dan berlaku apa adanya untuk implementasi Python.
 | Board 4: klik kiri → panel, klik kanan → menu cepat, drag menempel ke tepi | `ui/ambient_shell.py`, `ui/orb_snap.py` | `tests/test_orb_board4.py` |
 | Board 05a: strip Fokus tanpa tenggat, tiga baris aksi sendiri, jeda penjadwalan yang tersimpan | `ui/tray_paint.py`, `ui/tray_panel_model.py`, `actions/proactive.py`, `ui/tray_panel_wiring.py` | `tests/test_focus_board23.py` |
 | Startup: setiap permukaan benar-benar dibangun saat aplikasi dijalankan | `main.py`, `ui/lifecycle.py` | `tests/test_startup_board7.py` |
-| Board 06a: MODE TAMU dihapus, tombol hapus jujur, judul per halaman, kartu artboard | `ui/tray_pages.py`, `ui/tray_panel_model.py`, `ui/tray_panel_wiring.py` | `tests/test_privacy_board27.py` |
+| Board 6: IZIN AKSES 72 px, LOG AKTIVITAS dari `core.audit_log`, Ekspor/Hapus yang menyentuh log yang sama dengan kartunya | `ui/tray_pages.py` (`build_permissions()`), `ui/tray_paint.py`, `ui/tray_panel_wiring.py` | `tests/test_tray_panel.py`, `tests/test_privacy_board27.py` |
 | Board 05b: orb Senyap 18 px, bertitik, dan menulis namanya di bawah cincin | `ui/orb_paint.py`, `ui/orb_canvas.py` | `tests/test_quiet_board24.py` |
 | Command bar Ctrl+Space, Esc mengembalikan fokus | `ui/command_bar.py` | `tests/test_command_bar.py` |
 | Sambungan mode → orb, chord, dan baki | `ui/lifecycle.py`, `memory/config_manager.py` | `tests/test_presence_wiring.py` |
@@ -333,7 +342,7 @@ salinan yang berbeda perilaku.
   Setiap permukaan sekarang punya pengamannya sendiri, dan kegagalannya dicatat
   dengan nama permukaannya.
 
-### Board 06a — Izin & Privasi
+### Board 6 — Izin & Privasi (dan mengapa 06a dipensiunkan)
 
 - **MODE TAMU tidak digambar, dan itu keputusan, bukan kelalaian.** Artboard
   menggambar switch "Sembunyikan memori & riwayat" yang bisa diklik; `set_guest`

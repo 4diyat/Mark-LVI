@@ -51,12 +51,12 @@ from typing import Callable, Mapping
 
 from ui.tray_theme import THEMES, _rgba, resolve_theme  # noqa: F401
 from ui.tray_paint import (  # noqa: F401 — re-exported for the smoke tool
-    apply_style, mark_segments, paint, paint_history, paint_privacy,
+    apply_style, mark_segments, paint, paint_history, paint_permissions,
     paint_theme, show_page,
 )
 from ui.tray_pages import (
     PAGE_HISTORY, PAGE_MAIN, PAGE_PRIVACY, PAGES, PALETTES, PANEL_H, PANEL_W,
-    build_history, build_main, build_privacy, panel_position,
+    build_history, build_main, build_permissions, panel_position,
 )
 from ui.tray_panel_model import (
     ALL_QUICK_KEYS, MODE_LABELS, MODE_ORDER, PERMISSIONS, Snapshot, _t,
@@ -465,7 +465,7 @@ class TrayPanel:
         self._pages[PAGE_HISTORY] = _page(window, QWidget, PAGE_HISTORY)
         build_history(self, self._pages[PAGE_HISTORY])
         self._pages[PAGE_PRIVACY] = _page(window, QWidget, PAGE_PRIVACY)
-        build_privacy(self, self._pages[PAGE_PRIVACY])
+        build_permissions(self, self._pages[PAGE_PRIVACY])
 
     def _load_saved_theme(self) -> None:
         """Start from the saved setting, once, when the window is first built.

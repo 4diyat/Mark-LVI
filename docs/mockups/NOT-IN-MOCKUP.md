@@ -38,9 +38,13 @@ copy of the old code is in git.
 Thirteen of the 22 artboards have no `ui/` module behind them, and a fourteenth
 (board 14) has half of one. This is the list, and it is the honest scope of
 "every artboard implemented": the rest of this file covers the opposite
-direction. `tests/test_design_sheet_complete.py` does not check this table —
-it is a claim about code, and only a reader can check a claim about code by
-opening the files it names.
+direction.
+
+`tests/test_design_sheet_complete.py` checks this table's **shape** — that it
+holds thirteen absent boards plus the half one, that the halves add up to the
+twenty-two, and that the same counts appear in `DESIGN-ambient.md` — and cannot
+check its **content**: whether board 9 really has no UI is a claim about code,
+and only a reader can check that by opening the files the row names.
 
 | # | Artboard | What it would need | Why it is not built |
 |---|---|---|---|
@@ -54,7 +58,7 @@ opening the files it names.
 | 14 | Keamanan | three risk levels, guest mode, OS-control switch | **partial**: `core/risk_policy` + `ui/confirm_banner.py` implement the levels and the confirmation. Guest mode was **deleted by ruling** (see below), and the OS-control switch has no backend |
 | 15 | Aksesibilitas | language, text size, contrast, reduced motion | `assets/i18n/` ships en/id and the orb can be stilled, but there is no settings surface |
 | 16 | Plugin & ponsel | a plugin list with on/off, phone pairing | the plugin manager was part of the deleted window. Plugins are toggled by their manifest files |
-| 18 | Tema terang — izin & privasi | the permission page in light tokens | the light PAGE exists (`build_privacy()` reads `PALETTES["light"]`), but nothing draws it in light: the panel's theme switch recolours board 5's page, not this one's |
+| 18 | Tema terang — izin & privasi | the permission page in light tokens | the page exists and reads `PALETTES["light"]` like every other page, but nothing has been LOOKED AT in light: the screenshot check in `verification.md` is still the only test of it |
 | 19 | Peta gestur | the six-gesture reference, drawn | a picture of gestures is not a control; it would be a help page with no way to open it |
 | 21 | Brand & ikon | the app icon, tray icons, swatches, type scale | the tray icon exists (`ui/tray.py`); this artboard is a **specification sheet**, not a surface |
 | 22 | Installer 1/4 | a first-install flow choosing presence mode | `core/installer.py` installs dependencies; there is no installer UI |
@@ -62,6 +66,33 @@ opening the files it names.
 Board 3's command bar **was** on this list until 2026-11-22 and is now
 implemented (`ui/command_bar.py` + `ui/command_paint.py`), which is the pattern
 for removing a row: build it, test it, delete the row.
+
+### Board 06a is retired, and that is the reason board 6 was drawn
+
+`n11` — the artboard this file used to call `06a` — draws `INDIKATOR PRIVASI`,
+`IZIN EKSPLISIT`, a `MODE TAMU` card and `Hapus semua data lokal`. Its
+`MODE TAMU` card was **deleted by an earlier ruling** (guest mode needs every
+surface to stop reading memory and history, and nothing does that), so the
+artboard can never be drawn faithfully: it requires a control this build may not
+draw.
+
+`b06` asks for nothing that contradicts a ruling, so on 2026-11-22 the owner
+chose it as the page and `build_privacy()` was deleted. The consequences, each
+deliberate:
+
+| 06a had | Now |
+|---|---|
+| three `INDIKATOR PRIVASI` cards | gone — `b06` draws no indicators |
+| `IZIN EKSPLISIT` at a 66 px pitch | `IZIN AKSES` at `b06`'s 72 px pitch |
+| `MODE TAMU` (already deleted) | gone with the artboard that drew it |
+| `Hapus semua data lokal` (the audit log) | `b06`'s `Hapus riwayat` — SAME store, worded as the artboard words it |
+| — | `b06`'s `LOG AKTIVITAS` card, three lines from `core.audit_log` |
+| — | `b06`'s `Ekspor log` — the audit log, not the undo stack |
+
+The last two matter: the same two labels on the **history** page mean the undo
+stack (`clear_history`'s docstring says it does not touch the audit log). Board
+6's buttons therefore press `erase` and `export_audit`, so a button under an
+activity log acts on the activity log.
 
 ## Built, drawn — the 22 boards and the surfaces they justify
 
@@ -75,7 +106,7 @@ Boards without a row here are the "drawn, not built" ones above.
 | 5 | Panel baki sistem | the 460×660 tray panel: three segments, four quick actions with chords, today's suggestion, permissions, one line to type in | `ui/tray_panel.py`, `ui/tray_pages.py`, `ui/tray_panel_model.py` |
 | 5a | Fokus — toast ditahan | held notifications counted by `core/presence_mode`; a strip that states no deadline; three quick rows of its own (no "Ubah durasi"); a persisted scheduling pause; the second quota sentence, counted | `ui/toast_queue.py`, `ui/toast_stack.py`, `ui/tray_paint.py`, `ui/tray_panel_model.py`, `actions/proactive.py`, `ui/tray_panel_wiring.py` |
 | 5b | Senyap — orb memudar | the orb shrinks to 18 px, loses its glow, goes dotted, and writes its mode under the ring; the 146 px frame does not resize | `ui/orb_paint.py`, `ui/orb_canvas.py`, `ui/orb_place.py` |
-| 6 | Izin & privatisasi | three indicators, four explicit permissions, erase — and **no guest mode** (see below) | `ui/tray_pages.py`, `ui/tray_panel_model.py` |
+| 6 | Izin & privatisasi | `IZIN AKSES` over four 62 px cards at a 72 px pitch, a `LOG AKTIVITAS` card of three timestamped lines, and `Ekspor log` / `Hapus riwayat` wired to the audit log they sit under | `ui/tray_pages.py` (`build_permissions()`), `ui/tray_paint.py`, `ui/tray_panel_wiring.py` (`export_audit`) |
 | 8 | Riwayat tugas | task history with undo, audit tail, export and clear | `ui/tray_panel.py` (history page) |
 | 8a | Riwayat tugas + Urungkan | the same page with the undo column live | `ui/tray_panel.py` |
 | 14a | Risiko: konfirmasi | BERISIKO heading, "Tindakan ini tidak bisa diurungkan.", ASAL PERMINTAAN fed by the real entry point (voice/typed/unknown), Konfirmasi/Batal, Enter confirms and Esc cancels with the initial focus still on Batal; the store lives in `core/input_source` so the audio callback never imports Qt | `ui/confirm_banner.py`, `core/input_source.py`, `ui/shell.py` |

@@ -290,15 +290,22 @@ def test_every_key_the_panel_can_press_has_a_handler(wiring):
         actions = wiring.actions_for(FakeShell())
         assert set(actions) == {
             "presence_set", "quick", "permission", "undo", "history_export",
-            "history_clear", "erase", "command", "theme"}
+            "history_clear", "erase", "export_audit", "command", "theme"}
 
         panel = TrayPanel(actions)
         assert panel.open() is True
         pressed = {key.split(":", 1)[0] for key in panel._buttons}
-        assert pressed <= {"mode", "quick", "perm", "permx", "undo", "export",
-                           "clear", "erase", "send", "theme"}
-        assert {"mode", "quick", "perm", "permx", "undo", "export", "clear",
-                "erase", "send"} <= pressed
+        assert pressed <= {"mode", "quick", "perm", "p6", "p6_export",
+                           "p6_clear", "undo", "export", "clear", "erase",
+                           "send", "theme"}
+        # `p6*` replaced `permx` when board 6 replaced 06a on the privacy page:
+        # the four rows keep the `p6:` prefix, its two buttons are `p6_clear`
+        # and `p6_export`, and the history page keeps its own `clear`/`export`.
+        # `erase` is NOT required any more: the button that pressed it
+        # ("Hapus semua data lokal") went with board 06a. The handler stays,
+        # because `p6_clear` presses the same store from board 6's page.
+        assert {"mode", "quick", "perm", "p6", "p6_clear", "p6_export",
+                "undo", "export", "clear", "send"} <= pressed
     finally:
         restore_ui(saved)
 

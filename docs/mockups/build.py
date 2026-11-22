@@ -1362,6 +1362,25 @@ for _num, _title in BOARD_TITLES.items():
 # The first column is the BOARD this is a state of, as a string, because it is
 # printed as "05b" beside the number and is not an integer of its own.
 EXTRA = [
+    # THE SIX `n01`-`n06` BOARDS. They were the first sheet's shell artboards and
+    # they are NOT duplicates of `b01`-`b06`: `n03` draws the command bar the
+    # implementer built (`command_paint.py` is measured against it), `n05` draws
+    # the tray panel's suggestion card, and `n01`/`n02`/`n04`/`n06` draw the orb,
+    # toast and overlay states. Folding them in as views is what keeps the
+    # implemented surface and the picture of it on the same sheet; dropping them
+    # was the mistake this table now cannot make, because
+    # `tests/test_design_sheet_complete.py` asserts every `nNN` is rendered.
+    #
+    # The letters are pinned in this order so a label already cited in `ui/` or
+    # in a test (`02a` is the command bar) cannot move when a row is added.
+    ("2", "Command bar — satu baris, Esc mengembalikan fokus", 1280, 720, "n03"),
+    ("1", "Orb overlay — Siaga & area klik", 1280, 720, "n01"),
+    ("5", "Panel baki — saran hari ini", 460, 660, "n05"),
+    ("1", "Toast — antrean & batas harian", 1280, 720, "n02"),
+    ("1", "Orb overlay — interaksi & status", 1280, 720, "n04"),
+    ("4", "Overlay suara + kamera gestur", 1280, 720, "n06"),
+    # The six states, unchanged: Fokus, Senyap, konfirmasi risiko, riwayat,
+    # izin, tema terang. Same boards, same order, same letters as before.
     ("5", "Fokus — toast ditahan", 460, 660, "n07"),
     ("5", "Senyap — orb memudar", 1280, 720, "n08"),
     ("14", "Konfirmasi (berisiko)", 1280, 720, "n09"),

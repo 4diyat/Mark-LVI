@@ -76,6 +76,21 @@ class _Object:
         # of them together. A stub that answered None made that OR a TypeError
         # which had nothing to do with the code under test.
         self._flags = 0
+        # PER-INSTANCE SIGNALS. These used to be class attributes, which is the
+        # one thing this stub cannot be: `clicked` lives on the class, so every
+        # button in the process shared one signal object. A test that pressed
+        # board 6's `Hapus riwayat` also pressed the history page's `Hapus
+        # riwayat`, and "the buttons reach the audit log" passed while half the
+        # calls went to the undo stack. Instances get their own, and `_Signal`
+        # is now only a class attribute as a last-resort default for the widget
+        # types whose signal names differ.
+        # Walk the MRO: the signals are declared on `_Object`, and the
+        # concrete widgets are built by `_Meta`, so their own `__dict__` does
+        # not list them.
+        for _klass in type(self).__mro__:
+            for _name, _value in list(vars(_klass).items()):
+                if isinstance(_value, _Signal) and _name not in self.__dict__:
+                    setattr(self, _name, _Signal())
         # `QVBoxLayout(parent)` INSTALLS ITSELF, as Qt's does. The window relies
         # on that (`QVBoxLayout(self._content_panel)` with no setLayout), and a
         # stub that ignored it would make `panel.layout()` None — which is the
