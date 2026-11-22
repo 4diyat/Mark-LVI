@@ -42,13 +42,16 @@ def _get_api_key() -> str:
     """The Gemini key, through the module that knows where it lives.
 
     A LOCAL COPY OF "open config/api_keys.json and read a field" IS A BUG
-        Ten modules had one. `core/keychain.py` can hold this key in the OS
-        keychain, and `memory/config_manager.py` marks the file with
-        `gemini_api_key_source` when the file is the authoritative copy. Those
-        copies read the file directly and understood neither rule — so a key
-        rotated in the panel could still be the old one here. This asks
+        Ten modules had one. They read the file directly, which skipped the
+        `gemini_api_key_source` marker that `memory/config_manager.py` writes —
+        so a key rotated in the panel could still be the old one here. This asks
         `core.gemini.api_key()`, which asks the config manager, and returns ""
         instead of raising when nothing is configured.
+
+        The key now lives in that one file and nowhere else (2026-11-22). This
+        rule did not change when the keychain stopped being used: the reason it
+        exists is that a second reader makes a second opinion about which copy
+        is current, and that was the bug.
     """
     try:
         from core.gemini import api_key

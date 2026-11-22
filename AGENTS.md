@@ -192,14 +192,26 @@ rule that follows from it:
   `set_config_values()` / `update_config()` — they hold a lock and write
   atomically, because four threads write this file at the same time.
   `tests/test_config.py` fails if a module bypasses them.
-- **The Gemini key is stored in the OS keychain**, with a copy in that file for
-  machines without one (`core/keychain.py`). Read it with
-  `config_manager.get_gemini_key()` and write it with `save_api_keys()`; both
-  do the keychain-then-file dance. `core.gemini.api_key()` is the only other
-  reader and it asks the config manager rather than reading the file.
+- **The Gemini key is stored in that file and nowhere else.** It was in the OS
+  keychain until 2026-11-22; that was removed so the user can see and edit what
+  the app reads. Read it with `config_manager.get_gemini_key()` and write it
+  with `save_api_keys()`. `core.gemini.api_key()` is the only other reader and
+  it asks the config manager rather than reading the file, because a second
+  reader is a second opinion about which copy is current.
   If you add a credential that is a *key* rather than a token for a service
   the user can revoke in a browser, give it the same treatment; plugin tokens
   stay in the file deliberately (see the docstring).
+- **A missing key is a screen, not a log line.** `config_manager.is_configured()`
+  is false → `ui/setup_window.py` asks, verifies with `core/key_check.py`
+  (one real `models.get`), and saves only a key the service did not reject.
+  `AmbientShell.mark_ready()` is what ends `wait_for_api_key()`, and
+  `prompt_reconfig()` is the only thing that clears it again. A change that
+  makes either loop wait on something nothing sets is the bug both loops were
+  written about — `tests/test_shell_setup.py` drives both to a return with a
+  timeout, so a hang is a failure instead of a hung runner.
+- **No skip on setup.** The owner's decision (2026-11-22): no key, no start.
+  Not a disabled button either — `tests/test_setup_window.py` refuses the word
+  in the module's literals and refuses a close before a save.
 - **Text a user reads goes through `core/i18n.py`**, never a literal in a Qt
   call. `label("key")` with `assets/i18n/{en,id}.json`; `tests/test_i18n.py`
   fails on a hardcoded `setText("...")` and on a key the catalogue lacks.

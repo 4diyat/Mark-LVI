@@ -480,15 +480,31 @@ def request_sleep(shell: "AmbientShell") -> None:
 
 
 def summon_settings(shell: "AmbientShell") -> None:
-    """There is no settings window. Say what the setting IS instead.
+    """The tray's Settings item: one screen, and it is about the key.
 
-    The tray keeps a Settings item because a menu with a hole in it reads as
-    broken, and an item that does nothing is worse than one that tells you
-    where the setting lives. The values it used to edit (voice, accent, audio
-    device) are all in `config/api_keys.json` and are read at startup.
+    THIS KNOWNLY UNDER-DELIVERS, AND SAYS SO RATHER THAN PRETENDING.
+        There is one screen in this build, and it asks for the Gemini API key —
+        the setting without which nothing starts. Voice, accent and audio device
+        still live in `config/api_keys.json` and are read at startup, and the
+        menu item still points at them because a menu with a hole in it reads as
+        broken. What changed on 2026-11-22 is that the ONE setting that used to
+        be unrecoverable from inside the app — a rejected key — now has a
+        surface: this opens `ui/setup_screen.py`, which is also what
+        `prompt_reconfig()` opens.
     """
+    open_setup = getattr(shell, "open_setup", None)
+    opened = False
+    if callable(open_setup):
+        try:
+            opened = bool(open_setup())
+        except Exception as e:                      # noqa: BLE001
+            note(shell, f"the setup screen could not open — {type(e).__name__}: {e}")
+    if opened:
+        note(shell, "Settings: the API key screen is open. Voice, accent and "
+                    "audio device are in config/api_keys.json.")
+        return
     note(shell, "Settings are in config/api_keys.json — there is no settings "
-                "screen in this build. Edit the file and restart JARVIS.")
+                "screen for those in this build. Edit the file and restart JARVIS.")
 
 
 def quit_app(shell: "AmbientShell", code: int = 0) -> None:

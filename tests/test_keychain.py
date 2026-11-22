@@ -11,6 +11,15 @@ WHY THIS FILE IS MOSTLY ABOUT FAILURE
     So every test below is a machine where something is missing, and the
     assertion is always the same shape: the app keeps working, and it tells the
     truth about where the key is.
+
+    AND ONE DECISION THAT CHANGED UNDER THIS FILE
+        Until 2026-11-22 the Gemini key was written to both stores. It now goes
+        to `config/api_keys.json` only, so the tests here split in two: the ones
+        about `core/keychain.py` itself, which still holds the Gmail plugin's
+        credentials, and the ones about a *save* of the Gemini key, which now
+        assert the keychain is left alone. Reading a legacy config that says
+        "keychain" is still supported and still tested — removing the write path
+        is not the same as breaking the people who already used it.
 """
 from __future__ import annotations
 
@@ -142,12 +151,26 @@ def test_describe_explains_the_fallback_rather_than_hiding_it(no_keyring):
 
 # ── and what config_manager does with it ───────────────────────────────────
 
-def test_saving_a_key_writes_both_places(isolated_config, keyring):
+def test_saving_a_key_does_not_write_to_the_keychain_at_all(isolated_config, keyring):
+    """The 2026-11-22 decision, enforced rather than described.
+
+    The keychain still works and is still imported for other secrets, so this
+    cannot rely on `keyring` being absent — it has to prove the write path does
+    not reach for it even when it is right there and healthy.
+    """
     isolated_config.save_api_keys("key-aaaaaaaaaaaaaaaa")
-    assert keyring.store[(app_keychain.SERVICE, app_keychain.ACCOUNT)] == "key-aaaaaaaaaaaaaaaa"
+    assert keyring.store == {}, "save_api_keys() wrote to the keychain"
     data = isolated_config.load_api_keys()
     assert data["gemini_api_key"] == "key-aaaaaaaaaaaaaaaa"
-    assert data["gemini_api_key_source"] == "keychain"
+    assert data["gemini_api_key_source"] == "file"
+
+
+def test_a_save_rewrites_a_legacy_source_marker(isolated_config, keyring):
+    """A machine that once said "keychain" must end up saying "file" after one
+    save, or the old branch stays live forever."""
+    isolated_config.set_config_values(gemini_api_key="old", gemini_api_key_source="keychain")
+    isolated_config.save_api_keys("key-new-new-new")
+    assert isolated_config.load_api_keys()["gemini_api_key_source"] == "file"
 
 
 def test_saving_a_key_without_a_keyring_still_writes_the_file(isolated_config, no_keyring):
@@ -158,12 +181,20 @@ def test_saving_a_key_without_a_keyring_still_writes_the_file(isolated_config, n
     assert isolated_config.load_api_keys()["gemini_api_key_source"] == "file"
 
 
-def test_the_keychain_wins_over_the_file_when_they_disagree(isolated_config, keyring):
-    """A rotated key is written to both, so a disagreement means the file was
-    edited by hand — and the store that the app itself writes to is the one to
-    trust."""
-    isolated_config.save_api_keys("key-old-old-old-old-old")
-    keyring.store[(app_keychain.SERVICE, app_keychain.ACCOUNT)] = "key-new-new-new-new-new"
+def test_a_legacy_keychain_config_is_still_honoured(isolated_config, keyring):
+    """NOT nostalgia: somebody upgrading from a build that wrote "keychain" has
+    a config with an empty key field and a real key in the OS store. Refusing to
+    read it would ask them to paste a key they already gave us."""
+    isolated_config.set_config_values(gemini_api_key="", gemini_api_key_source="keychain")
+    keyring.store[(app_keychain.SERVICE, app_keychain.ACCOUNT)] = "key-legacy-legacy"
+    assert isolated_config.get_gemini_key() == "key-legacy-legacy"
+
+
+def test_a_file_key_wins_once_the_file_is_authoritative(isolated_config, keyring):
+    """The other half of the same rule: a stale keychain entry left over from
+    before the upgrade must not keep feeding a key the user has since rotated."""
+    isolated_config.save_api_keys("key-new-new-new-new-new")
+    keyring.store[(app_keychain.SERVICE, app_keychain.ACCOUNT)] = "key-old-old-old-old-old"
     assert isolated_config.get_gemini_key() == "key-new-new-new-new-new"
 
 
@@ -181,15 +212,21 @@ def test_a_broken_keyring_does_not_stop_a_save(isolated_config, keyring):
     assert isolated_config.get_gemini_key() == "key-dddddddddddddddddd"
 
 
-def test_setup_replaces_old_keychain_key(isolated_config, keyring):
+def test_setup_replaces_the_key_in_the_file_and_nowhere_else(isolated_config, keyring):
+    """The setup screen's write path, checked against the keychain it must not
+    use — because setup is exactly where a leftover write would be hardest to
+    notice: it succeeds, and the file it reports is not the key on the wire."""
     isolated_config.save_api_keys("old-key-abcdefghijkl")
     assert isolated_config.save_setup("new-key-abcdefghijkl", "linux")
     assert isolated_config.get_gemini_key() == "new-key-abcdefghijkl"
-    assert keyring.store[(app_keychain.SERVICE, app_keychain.ACCOUNT)] == "new-key-abcdefghijkl"
+    assert keyring.store == {}
 
 
-def test_failed_keychain_rotation_uses_new_file_key(isolated_config, keyring):
-    isolated_config.save_api_keys("old-key-abcdefghijkl")
-    keyring.fail_on.add("set")
+def test_a_new_file_key_still_wins_when_the_keychain_is_broken(isolated_config, keyring):
+    """The old failure mode, kept because it can still happen to a config that
+    came from an older build: the read path must not hang on a keyring that
+    raises."""
+    isolated_config.set_config_values(gemini_api_key="", gemini_api_key_source="keychain")
+    keyring.fail_on.update({"get", "set"})
     assert isolated_config.save_setup("new-key-abcdefghijkl", "linux")
     assert isolated_config.get_gemini_key() == "new-key-abcdefghijkl"

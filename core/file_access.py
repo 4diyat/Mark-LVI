@@ -31,8 +31,9 @@ THE SHAPE OF THE ANSWER
        home directory" is not a decision to let it read an SSH private key.
 
     3. Never this application's own secrets: `config/api_keys.json`, the
-       keychain store, `memory/long_term.json`. A model that can read the API
-       key can spend somebody's quota from a prompt injection.
+       keychain store used by the Gmail plugin, `memory/long_term.json`. A model
+       that can read the API key can spend somebody's quota from a prompt
+       injection.
 
     4. Never through a symlink. A link is a path that lies about where it goes:
        `~/notes/link.md` pointing at `/etc/shadow` passes any textual check.

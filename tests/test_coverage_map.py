@@ -100,6 +100,8 @@ TESTED = {
     "core/playback_timing.py": "tests/test_playback_timing.py",
     "core/briefing.py":       "tests/test_briefing.py",
     "core/mic_status.py":     "tests/test_mic_status.py",
+    "core/key_check.py":      "tests/test_key_check.py",
+    "ui/setup_window.py":     "tests/test_setup_window.py",
     "memory/config_manager.py": "tests/test_config.py",
     "memory/memory_manager.py": "tests/test_memory.py",
 }

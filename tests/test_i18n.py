@@ -109,6 +109,7 @@ def test_the_two_locales_are_not_the_same_file():
         "app.tagline",              # a backronym for JARVIS, in any language
         "ui.phone.no_qr_module",    # `pip install qrcode[pil]`
         "ui.placeholder.key",       # "AIza…" — the shape of a Google key
+        "ui.setup.placeholder",     # the same prefix, on the setup screen
         "dialog.title",             # "{name} — {page}"
         "ui.video.title",           # "▶  {title}"
         "ui.video.heading",         # "▶  VIDEO"

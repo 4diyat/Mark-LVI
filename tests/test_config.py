@@ -296,9 +296,8 @@ def test_no_module_reads_a_secret_field_without_the_config_manager():
 
     The write rule above was enforced and the read rule was not: ten modules
     opened `config/api_keys.json` and pulled `gemini_api_key` out of the dict
-    themselves. That bypasses `core/keychain.py` and the
-    `gemini_api_key_source` marker, so a key rotated in the panel could still be
-    the old one on the wire, and a keychain-backed key was never consulted.
+    themselves. That bypassed the `gemini_api_key_source` marker, so a key
+    rotated in the panel could still be the old one on the wire.
 
     A reader is identified the same way a writer is: the file name, then the
     secret field name close enough to it to be the same expression.
@@ -307,7 +306,7 @@ def test_no_module_reads_a_secret_field_without_the_config_manager():
     readers = re.compile(r"""\[[\"']gemini_api_key[\"']\]|\.get\([\"']gemini_api_key[\"']""")
     allowed = {
         "memory/config_manager.py",   # the one module that may
-        "core/keychain.py",           # owns the keychain copy itself
+        "core/keychain.py",           # owns the Gmail plugin's secret
         "core/gemini.py",             # the accessor, with a documented fallback
         "config/__init__.py",         # names the path, reads no field
         "providers/_tests.py",        # temp dir, never the user's file

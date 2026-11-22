@@ -50,8 +50,11 @@ docstring of the module named:
 * a plugin being able to read anything the app can: plugins run in-process by
   design, and `core/plugin_manifest.py` argues that the goal is informed consent,
   not a sandbox.
-* `api_keys.json` being readable by the user's own account: it is written `0600`,
-  and the Gemini key is also stored in the OS keychain where one exists.
+* `api_keys.json` being readable by the user's own account: it is written `0600`
+  and is the only store for the Gemini key. It was also written to the OS
+  keychain until 2026-11-22; storing it in one file the user can edit was chosen
+  deliberately, and `.gitignore` plus `tests/test_gitignore.py` are what keep it
+  from leaving the machine.
 
 ## What the project already does
 
@@ -59,7 +62,7 @@ docstring of the module named:
 |---|---|
 | No `shell=True` anywhere — enforced by an AST test | `tests/test_shell_true.py` |
 | Dashboard: PBKDF2 pairing key, expiring scoped tokens, login throttling | `dashboard/server.py` |
-| Config: atomic write, `0600`, keychain-first | `memory/config_manager.py`, `core/keychain.py` |
+| Config: atomic write, `0600`, one file for the key | `memory/config_manager.py`, `tests/test_gitignore.py` |
 | Irreversible actions behind an on-screen token the model cannot issue | `core/confirm.py` |
 | Model-supplied paths confined to a folder | `tests/test_paths.py`, `actions/file_controller.py` |
 | Trades gated by account mode, review expiry and an emergency stop | `core/trade_gate.py`, `core/trade_guard.py` |

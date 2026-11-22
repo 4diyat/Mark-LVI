@@ -312,11 +312,12 @@ def _render_prompt(template: str, values: dict) -> str:
 
 
 def _get_api_key() -> str:
-    """The one accessor, through the config manager and the keychain.
+    """The one accessor, through the config manager.
 
     This used to read the file directly — and it is the copy the live session
     calls on every connect, so a key rotated in the panel could still be the old
-    one on the wire, and a keychain-stored key was never consulted here.
+    one on the wire. `core.gemini.api_key()` caches and invalidates; going
+    around it is how the cache was bypassed with a stale value.
     """
     try:
         from core.gemini import api_key
@@ -1250,7 +1251,7 @@ class JarvisLive:
         from datetime import datetime
 
         # Load customization from config — through the config manager, so a
-        # keychain-backed or mid-write file is read the same way everywhere
+        # mid-write file is read the same way everywhere
         # else. The inline `open(...).read()` also left the handle to the
         # garbage collector on every reconnect.
         try:

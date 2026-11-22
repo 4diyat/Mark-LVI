@@ -63,8 +63,9 @@ def _get_api_key() -> str:
     """The Gemini key through `core.gemini`, never out of the raw file.
 
     `_load_config()` here reads `api_keys.json` for the OS name and other
-    non-secret settings; the KEY is different — it may live in the OS keychain
-    and the file carries a marker saying which copy wins.
+    non-secret settings; the KEY is different — the file is the only store, and
+    `gemini_api_key_source` records that so a config written by an older build
+    is still read correctly.
     """
     try:
         from core.gemini import api_key
