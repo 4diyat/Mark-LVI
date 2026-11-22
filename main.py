@@ -735,6 +735,31 @@ class JarvisLive:
             reserved_names=_inline_names,
             logger=lambda msg: print(f"[Actions] {msg}"),
         )
+        # DECLARE WHAT WAS JUST FOUND, in the one place discovery happens.
+        #
+        # `core.tool_risk` classifies most of these from tables of its own, so
+        # the gate never needed `risk_policy` and nothing noticed that seven
+        # live tools were absent from it: `open_app` and `reminder` looked, to
+        # any reader of the registry, exactly like tools nobody had thought
+        # about. Registering them at `risky` changes no decision the gate makes
+        # — that is already its answer for an unlisted tool — and it makes the
+        # registry say what is true.
+        #
+        # Here rather than in a startup script because a registration step that
+        # can be skipped is a registration step that will be.
+        try:
+            from core import tool_risk as _tool_risk
+
+            _declared = _tool_risk.register_discovered(self._action_registry.names())
+            if _declared:
+                print(f"[Actions] declared with the risk registry: "
+                      f"{', '.join(sorted(_declared))}")
+        except Exception as e:                      # noqa: BLE001
+            # A registry that could not be updated leaves every tool at the
+            # safe default (`risky`), which is the strict answer. Said out loud
+            # rather than swallowed: the next thing to break would be silent.
+            print(f"[Actions] could not declare the risk levels — "
+                  f"{type(e).__name__}: {e}")
 
         # Plugins must not collide with either an inline tool or a discovered action.
         _core_names = _inline_names | self._action_registry.names()

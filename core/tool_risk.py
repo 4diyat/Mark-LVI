@@ -33,7 +33,7 @@ WHAT THIS MODULE IS NOT
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Mapping
+from typing import Iterable, Mapping
 
 from core import risk_policy
 from core.risk_policy import MEDIUM, RISKY, SAFE
@@ -43,6 +43,20 @@ _SUB_ACTION_KEY = {
     "computer_settings": "action",
     "file_controller": "action",
     "code_helper": "action",
+    # Added because without them the escalation below fired on EVERY call: an
+    # entry here means "look at the arguments", and a tool missing from this
+    # dict never gets that look, so `open_app` asked for a confirmation to open
+    # Spotify. The registry named all seven of these tools; nothing read their
+    # sub-action.
+    # `desktop` is the name the tool REGISTERS; `desktop_control` is the name
+    # the registry and the audit log use. Both are accepted, because a caller
+    # reading `TOOL["name"]` and a caller reading `risk_policy` should not get
+    # two different answers to the same question.
+    "desktop": "action",
+    "desktop_control": "action",
+    "youtube_video": "action",
+    "browser_control": "action",
+    "file_processor": "action",
 }
 
 # (tool, sub-action) pairs that push a real undo closure onto core.undo, so a
@@ -67,10 +81,20 @@ _REVERSIBLE_ACTIONS = {
 # Sub-actions that are read-only, so they never need to be asked about even
 # though their parent tool is not obviously harmless.
 _SAFE_ACTIONS = {
+    # `desktop` and `desktop_control` are the same tool under two names; both
+    # keys are spelled out so neither lookup can miss. A shared constant would
+    # read better and would be the next thing somebody "tidied" into one key.
+    "desktop": frozenset({"list", "stats", "current_wallpaper"}),
     "computer_settings": frozenset({"screenshot", "open_settings", "file_explorer"}),
     "file_controller": frozenset({"list", "read", "find", "info", "largest",
                                   "disk_usage"}),
     "code_helper": frozenset({"syntax", "check", "review"}),
+    # Reading a display setting, or a file's metadata, changes nothing.
+    "desktop_control": frozenset({"list", "stats", "current_wallpaper"}),
+    "file_processor": frozenset({"info", "word_count"}),
+    # `search` opens a result page; nothing on the machine changes and the tool
+    # takes no arguments that could make it destructive.
+    "browser_control": frozenset({"search"}),
 }
 
 # Sub-actions that are irreversible or reach outside the machine. Kept short and
@@ -80,6 +104,14 @@ _RISKY_ACTIONS = {
                                     "open_run", "task_manager"}),
     "file_controller": frozenset({"organize_desktop"}),
     "code_helper": frozenset({"run"}),
+    # `clean` deletes downloads and temp files in bulk; `organize` moves every
+    # desktop icon. Both are refused an undo, so neither may be `medium`.
+    "desktop": frozenset({"clean", "organize"}),
+    "desktop_control": frozenset({"clean", "organize"}),
+    # A file-processing action that writes a NEW file over a chosen path is
+    # still an overwrite, and the tool registers no undo for it.
+    "file_processor": frozenset({"convert", "resize", "compress", "trim",
+                                 "extract", "to_word", "to_csv", "to_bullet"}),
 }
 # `organize_desktop` is in both tables on purpose: it pushes an undo (hence
 # reversible) but moves every file on the desktop at once. Reversible and
@@ -91,6 +123,10 @@ _RISKY_ACTIONS = {
 # `writes` says whether the tool can leave a change behind. It is NOT the same
 # as reversible: `undo` changes state and cannot be undone, so it is `medium`
 # and not reversible. Collapsing the two is how a table stops being readable.
+#
+# A tool listed here is classified by the GATE from its name alone, so it does
+# not need a `risk_policy` entry. A tool that is in neither place shows up in
+# `risk_policy.unregistered()`, which is what `register_discovered()` is for.
 _STATELESS = {
     "recall_memory":  (SAFE,   False),
     "recall_history": (SAFE,   False),
@@ -105,6 +141,11 @@ _STATELESS = {
 # known these tools by other names since before the registry existed, and a
 # rename is exactly the kind of thing that turns a `safe` into an accidental
 # `risky` without anybody noticing.
+#
+# The alias is used for the TOOL-LEVEL fallback only. The sub-action tables are
+# keyed by the tool's real name because those are the words its `action`
+# argument actually takes — keying them by `desktop` made every entry miss, and
+# a miss is `risky`, so the harmless actions were asked about anyway.
 _ALIASES = {
     "desktop_control": "desktop",
 }
@@ -183,7 +224,10 @@ def classify(tool: str, args: Mapping | None = None) -> CallRisk:
     """
     name = str(tool or "").strip()
     mapped = _ALIASES.get(name, name)   # the registry knows some tools by file name
-    action = sub_action(mapped, args)
+    # The SUB-ACTION tables are keyed by the tool's real name: `desktop_control`'s
+    # `action` argument says "list", and looking it up under the registry's
+    # `desktop` name missed every entry.
+    action = sub_action(name, args)
 
     if action:
         if action in _RISKY_ACTIONS.get(mapped, ()):
@@ -223,3 +267,45 @@ def classify(tool: str, args: Mapping | None = None) -> CallRisk:
 def is_reversible(tool: str, args: Mapping | None = None) -> bool:
     """Whether the undo stack can walk this specific call back."""
     return classify(tool, args).reversible
+
+
+def register_discovered(names: Iterable[str]) -> dict[str, str]:
+    """Declare every discovered tool in `risk_policy`, so none falls through.
+
+    WHY THIS EXISTS, AND WHY THE ANSWER IS `risky` RATHER THAN SOMETHING KINDER
+        The gate classifies `open_app`, `reminder`, `youtube_video` and the rest
+        from tables in THIS file, and never asks `risk_policy` about them. So
+        their absence from the registry was invisible — until the registry was
+        read by anything else, and then seven live tools looked like tools
+        nobody had ever considered.
+
+        The right fix is not to invent a level for them here: this module
+        already holds the per-call answer, and a second, coarser opinion in
+        `risk_policy` would be a duplicate that drifts. What is missing is
+        DECLARATION — the registry has to know the tool exists. `risky` is the
+        level it already defaults to, so registering that changes no behaviour
+        whatsoever; it makes the default explicit and leaves exactly one honest
+        gap: a tool registered `risky` because a human wrote a table saying so.
+
+    Returns the names that were registered, for the startup log.
+    """
+    from core.risk_policy import RISKY
+
+    registered: dict[str, str] = {}
+    for raw in names:
+        name = str(raw or "").strip()
+        if not name:
+            continue
+        if risk_policy.level_of(name) == RISKY and name not in risk_policy.registered():
+            if risk_policy.register(name, RISKY):
+                registered[name] = RISKY
+    return registered
+
+
+def call_level(tool: str, args: Mapping | None = None) -> str:
+    """The level the GATE will use for this call.
+
+    One name, so a caller that wants to show a level (the tray panel, a log
+    line) does not have to know that `classify` returns a dataclass.
+    """
+    return classify(tool, args).level

@@ -69,6 +69,32 @@ labels, not registered hotkeys. A chord on a row is not a promise the OS owns it
 The suggestion row is empty in this build and says "Belum ada saran hari ini."
 `core.suggestion_quota` counts suggestions; nothing generates them yet.
 
+### The risk gate: what a confirmation still costs
+
+Board 25 draws the confirmation. What it does not draw is HOW OFTEN it appears,
+and that number was wrong in a way no screenshot could show: `core/tool_risk`
+classifies sixteen tools in `actions/`, four of them had per-action tables and
+seven were in no table at all. An unlisted tool used to be refused as `risky`
+for a reason that had nothing to do with danger — `open_app` asked the user to
+confirm opening Spotify, and `desktop_control(action="list")` asked before
+reading a wallpaper filename. A banner nobody needs is a banner nobody reads,
+and the one in front of a bank transfer is the one that gets dismissed with it.
+
+Fixed: those four tools now have sub-action tables, so reading is `safe` and
+bulk file operations are `risky` for a stated reason. `core.risk_policy` is
+also told what was discovered at startup (`tool_risk.register_discovered`),
+which is the caller `register()` never had.
+
+**The cost that remains, stated rather than smoothed over:** `open_app`,
+`reminder`, `youtube_video(action="play")` and `browser_control(action="go_to")`
+still ask for confirmation. They are not `safe` — the model can claim it opened
+something it did not — and they may not be `medium`, because `medium` promises
+an undo, and none of those four actions pushes one onto `core.undo`. The gate
+escalates a `medium` with no undo to `risky` precisely so that promise cannot be
+made empty. Making them `medium` is a two-line change and would be a lie until
+somebody writes the undo closures; `tests/test_tool_risk.py` has the row-per-tool
+register, so adding one there is the reminder.
+
 **Hapus semua data lokal** erases the audit log — the record of what the
 assistant did. It does not touch `config/api_keys.json`, the conversation
 history files, or anything already sent to the model. **Hapus riwayat** clears
