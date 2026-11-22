@@ -458,3 +458,86 @@ holds the seam: the painter may CALL `status_word`, never DEFINE it.
 - **Untested on Windows.** Frameless transparency, click-through
   (`WindowTransparentForInput`), focus return after Esc and DPAPI can only be
   proven on a real Windows desktop. CI runs Linux.
+
+## The camera watcher, and why it has no switch on screen
+
+`core/security_camera.py` and `plugins/security_camera.py` shipped from a branch
+cut before the controls drawer was removed. That branch drew a **SECURITY
+CAMERA** row in the drawer, next to **FULL FILE ACCESS**; the drawer is not in
+any mockup, so it is gone, and the row went with it.
+
+The watcher itself is unchanged and still obeys its three rules — off by
+default, the camera is never opened while off, it never speaks first, nothing is
+recorded or uploaded. What changed is only how a person reaches it: the
+`security_camera.enabled` key in `config/api_keys.json`, and nothing else.
+
+- **A fifth row was not added to board 27.** It would be a control the artboard
+  does not draw — the same reason the drawer was deleted — and two rows is how
+  the permissions page stops being the four things the mockup shows. Between a
+  setting that lives in a config file and a surface that contradicts the
+  mockup, the config file wins.
+- **`tests/test_security_camera.py` was rewritten where it touched the row.**
+  Forcing the switch on and off now goes through the same config file a person
+  would edit, so the test still fails if the watcher becomes unreachable — it
+  just no longer fails because a drawer is missing.
+- **The plugin declares `level: safe`.** It reads an in-memory record, takes no
+  picture, and cannot enable the watcher; the manifest says so.
+
+### `core/file_access.py` was exempt from the coverage map for the wrong reason
+
+It was listed as "its prompt was a widget; there is no window to ask with".
+The PROMPT was a widget. The module is a policy plus a path check, it is still
+consulted by `actions/file_controller.py` on every file operation, and it never
+needed a window — so the exemption described a caller that had died, not a
+module that could not run. It now has `tests/test_file_access.py`, and writing
+that test found a real bug:
+
+- **Turning the feature ON took the home folder away.** `effective_roots()`
+  returned only the granted roots on the ON branch, so granting one extra folder
+  silently revoked access to everything the assistant could already reach.
+  `describe()` had been telling the user the opposite all along ("nothing
+  *outside* your home folder is reachable"), which is how the disagreement was
+  caught: the sentence and the check could not both be true. Home is now always
+  one of the effective roots.
+
+## The hang: an icon that answered nothing
+
+On Windows the tray icon appeared and then responded to no click at all. That
+combination is the signature of a blocked Qt thread rather than a failed start:
+`QSystemTrayIcon.show()` paints the icon synchronously, so an icon exists even
+when `app.exec()` is never reached — or when the loop behind it never runs.
+
+Four defects produced it, and each one is the same shape: work that looks
+harmless in a file and is a machine-gun on the one thread that can draw.
+
+- **The face bubble repainted 893 polygons 30 times a second.**
+  `ui/face_canvas.py` ran one 33 ms timer, and every tick called `update()`.
+  Every repaint walked the visible half of a 1,554-facet head: 893
+  `drawPolygon` calls plus their `QPolygonF`, three `QPointF` each, and a
+  `QLinearGradient` with two or three `setColorAt` calls. Measured on this
+  mesh that is **26,790 polygons and over 100,000 Qt calls per second**, all on
+  the Qt thread. The event loop then serviced the tray only in the gaps.
+  Two changes: the repaint is now a separate decision from the step
+  (`should_repaint`, `IDLE_REPAINT_MS` = 200 ms for a still face, every step
+  while speaking), and the idle FILL draws every third visible facet
+  (`IDLE_FACET_STRIDE`). The wireframe and the facial features are untouched,
+  so the silhouette, the eyes and the mouth stay exact.
+- **`start_voice_overlay` ran outside any `try`.** It builds a 1280×720
+  window, starts a camera worker and binds a chord — and it is called from
+  `start_interface`, which runs on the Qt thread before `exec()`. One exception
+  there left the tray icon on the taskbar with no event loop behind it.
+- **`start_summon_hotkey` ran outside any `try`** for the same reason, and it
+  probes the OS (`GetAsyncKeyState` on Windows, `XOpenDisplay` on X11).
+- **The guard is now asserted by name.** `tests/test_face_frame_budget.py`
+  walks `start_interface` and fails on any `start_*` call that is not inside a
+  `try`, so the next surface added to that function cannot reopen the hole.
+
+`HoloAvatar.paint` gained `facet_stride`, and `ui/face_canvas.py` gained
+`should_repaint` — a pure function rather than an inline `if`, because the
+first version of the test read the source text and a mutation that replaced the
+condition with `if True:` passed it.
+
+**Not proven here.** This was diagnosed by reading, measuring the mesh and
+driving the callbacks with a stub; Qt cannot run in this sandbox (the wheel
+installs, the system libraries do not). Whether the Windows tray now answers
+clicks is a check on the real desktop, and it is in `docs/verification.md`.

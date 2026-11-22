@@ -538,13 +538,31 @@ class HoloAvatar:
 
     def paint(self, p: QPainter, cx: float, cy: float, r: float,
               primary: QColor, accent: QColor, bg: QColor | None = None,
-              *, wireframe: bool = True, floating_head: bool = False) -> None:
+              *, wireframe: bool = True, floating_head: bool = False,
+              facet_stride: int = 1) -> None:
         """Draw the avatar with its head centre at (cx, cy).
 
         `r` is the head's half-height in pixels — the caller owns the layout, so
         the HUD can fit the head to whatever room the status line leaves it.
         `floating_head` hides the neck only for a solid, wireless projection;
         the default HUD and transparent wire rendering are unchanged.
+
+        `facet_stride` IS A COST LIMIT, AND IT EXISTS BECAUSE OF A HANG.
+            The smooth surface path issues one `drawPolygon` per visible facet
+            plus its own `QPolygonF`, three `QPointF` and a `QLinearGradient`
+            with two or three `setColorAt` calls. On this mesh 893 facets
+            survive culling, so a 30 fps face bubble asked the Qt thread for
+            ~26,790 polygons and over 100,000 Qt calls per second — and on
+            Windows the tray icon, which `QSystemTrayIcon.show()` paints
+            synchronously, appeared and then answered no clicks: the event loop
+            only got the gaps between frames.
+
+            `facet_stride=2` draws every second visible facet for the FILL. The
+            wireframe pass and the facial features are untouched, so the
+            silhouette, the eyes and the mouth stay exact; only the interior
+            shading is sampled, which is what a 56 px bubble can show anyway.
+            The default stays 1 so every existing caller and test keeps the
+            full-detail render it had.
         """
         if bg is None:
             bg = QColor(0, 0, 0)
@@ -582,7 +600,8 @@ class HoloAvatar:
                     p.drawLines(lines)
         if self.shaded:
             self._paint_surface(p, xs, ys, norms, verts, primary, accent, bg, amp,
-                                smooth=not wireframe, head_only=floating_head and not wireframe)
+                                smooth=not wireframe, head_only=floating_head and not wireframe,
+                                facet_stride=facet_stride)
         for level, lines in enumerate(rim):
             if lines:
                 p.setPen(_pen(_c(primary, 55 + level * 55), max(.8, min(1.6, r * .014))))
@@ -593,7 +612,8 @@ class HoloAvatar:
 
     def _paint_surface(self, p: QPainter, xs, ys, norms, verts,
                        primary: QColor, accent: QColor, bg: QColor,
-                       amp: float, *, smooth: bool = False, head_only: bool = False) -> None:
+                       amp: float, *, smooth: bool = False, head_only: bool = False,
+                       facet_stride: int = 1) -> None:
         """Fill the camera-facing triangles as lit, occluded, warm skin.
 
         The maths lives in `core.avatar_face` (Qt-free, so it can be tested);
@@ -626,6 +646,14 @@ class HoloAvatar:
         vis = np.flatnonzero(visible)
         if vis.size == 0:
             return
+
+        # THE COST LIMIT, applied at the one place every drawing branch reads.
+        # Striding the FILL only: `vis` is used for the facet pass and for the
+        # smooth path, and both draw the interior. The wireframe and the facial
+        # features are separate passes and keep every edge and vertex.
+        stride = max(1, int(facet_stride or 1))
+        if stride > 1 and vis.size > stride:
+            vis = vis[::stride]
 
         table = self._skin_table(bg, primary, accent)
         if smooth:

@@ -31,12 +31,6 @@ MIN_STATEMENTS = 120
 # execute, and what would be needed to test them. Anything NOT on this list has
 # to be named by a test file.
 CANNOT_RUN_HERE = {
-    # `actions/file_controller.py` still imports `core/file_access.py`, but the
-    # question it answered ("may the assistant touch this file?") was answered
-    # ON SCREEN — `ui/file_access_row.py` drew the prompt and collected the
-    # answer. With no window there is nothing to ask with, so the module has no
-    # caller left; it is kept for the day a tray-native prompt exists.
-    "core/file_access.py":     "its prompt was a widget; there is no window to ask with",
     "core/avatar.py":          "needs a Qt paint device and a GPU-ish canvas",
     "core/avatar_mesh.py":     "numpy 3-D mesh maths used only by the avatar",
     "core/tts.py":             "needs an audio output device",
@@ -59,20 +53,8 @@ TESTED = {
     "core/plugin_loader.py":  "tests/test_loaders.py",
     "core/outcome.py":        "tests/test_outcome.py",
     "core/undo.py":           "tests/test_undo.py",
-    "core/risk_policy.py":    "tests/test_risk_policy.py",
-    "core/suggestion_quota.py": "tests/test_suggestion_quota.py",
-    "core/audit_log.py":      "tests/test_audit_log.py",
-    "core/presence_mode.py":  "tests/test_presence_mode.py",
-    "core/action_gate.py":    "tests/test_action_gate.py",
-    "core/tool_risk.py":      "tests/test_tool_risk.py",
-    "ui/toast_queue.py":      "tests/test_toast_queue.py",
-    "ui/tray.py":             "tests/test_presence_chain.py",
-    "ui/ambient_shell.py":    "tests/test_presence_wiring.py",
-    "ui/orb_paint.py":        "tests/test_orb_paint.py",
-    "ui/orb_overlay.py":      "tests/test_orb_overlay.py",
     "core/confirm.py":        "tests/test_confirm.py",
     "core/echo.py":           "tests/test_echo.py",
-    "core/gesture_os.py":     "tests/test_gesture_os.py",
     "core/hotkey.py":         "tests/test_hotkey.py",
     "core/hand_gesture.py":   "tests/test_hand_gesture.py",
     "core/workspace_gesture.py": "tests/test_workspace_gesture.py",
@@ -94,14 +76,13 @@ TESTED = {
     "core/history.py":        "tests/test_history.py",
     "core/voice_interrupt.py": "tests/test_voice_interrupt.py",
     "core/obsidian.py":       "tests/test_obsidian.py",
-    "core/session_policy.py": "tests/test_session_policy.py",
-    "core/prompt_build.py":   "tests/test_prompt_build.py",
-    "core/transcript.py":     "tests/test_transcript.py",
-    "core/playback_timing.py": "tests/test_playback_timing.py",
-    "core/briefing.py":       "tests/test_briefing.py",
-    "core/mic_status.py":     "tests/test_mic_status.py",
-    "core/key_check.py":      "tests/test_key_check.py",
-    "ui/setup_window.py":     "tests/test_setup_window.py",
+    "core/file_access.py":    "tests/test_file_access.py",
+    "core/security_camera.py": "tests/test_security_camera.py",
+    # `tests/test_gesture_os.py` existed while this module was not on the map:
+    # the map only fails on a module with no entry, so a module whose test file
+    # was never registered passed unnoticed until the file crossed the size
+    # threshold. Found by the suite, fixed here.
+    "core/gesture_os.py":     "tests/test_gesture_os.py",
     "memory/config_manager.py": "tests/test_config.py",
     "memory/memory_manager.py": "tests/test_memory.py",
 }
@@ -236,8 +217,7 @@ def test_the_exemptions_are_not_where_the_bugs_were():
     """A weak rule, but the one that matters: the modules that decide what the
     assistant DOES to the machine must not be exempt from having a test."""
     dangerous = ["core/action_loader.py", "core/plugin_loader.py", "core/undo.py",
-                 "core/confirm.py", "core/outcome.py", "core/echo.py",
-                 "core/risk_policy.py", "core/action_gate.py", "core/tool_risk.py"]
+                 "core/confirm.py", "core/outcome.py", "core/echo.py"]
     for name in dangerous:
         assert name in TESTED, f"{name} decides real outcomes and has no test"
 

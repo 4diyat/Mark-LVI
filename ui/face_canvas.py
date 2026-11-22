@@ -42,7 +42,43 @@ HEAD_SPAN = 0.34
 
 # 30 fps. The avatar's eyes blink and its mouth moves; both are slower than
 # this, and a face is the one surface where smoothness is worth the wake-ups.
+#
+# THIS IS THE STEP RATE, NOT THE REPAINT RATE. They were the same number, and
+# that is what hung the app: every 33 ms tick called `update()`, so every tick
+# repainted a 1,554-facet head on the Qt thread — 893 `drawPolygon` calls plus
+# their `QPolygonF`/`QPointF`/gradient objects, ~26,790 polygons per second.
+# The tray icon appeared (Qt paints it synchronously in `show()`) and then
+# answered no clicks at all, because the event loop only ran in the gaps.
 FRAME_MS = 33
+
+# An IDLE face is a still picture with a slow blink in it. It is repainted at
+# this rate instead — chosen to stay well under the step rate so the ratio is a
+# real limit rather than a coincidence — and `IDLE_FACET_STRIDE` keeps the idle
+# interior cheap. A SPEAKING face is the one case that needs every frame and
+# the full fill, and it is the case where the user is watching the mouth.
+IDLE_REPAINT_MS = 200
+
+# Every Nth visible facet for the idle fill. The wireframe and the features are
+# drawn in full, so the silhouette, the eyes and the mouth are exact.
+IDLE_FACET_STRIDE = 3
+
+
+def should_repaint(now_ms: float, last_ms: float, speaking: bool) -> bool:
+    """Whether this tick is worth a repaint. A pure function, so it is testable.
+
+    WHY A FUNCTION AND NOT AN `if` IN `_step`
+        The first version of this decision was written inline, and a mutation
+        that replaced it with `if True:` passed every test in the file — the
+        test was reading source text, not asking the code what it does. Here
+        the rule is one expression with a name, and a test can call it.
+
+    A SPEAKING face repaints every step: the mouth is the thing the user is
+    looking at. Everything else is a slow blink over a still head, and redrawing
+    a 1,554-facet mesh at 30 fps for it is what starved the Qt thread.
+    """
+    if speaking:
+        return True
+    return (float(now_ms) - float(last_ms)) >= IDLE_REPAINT_MS
 
 # The level decays by this much per frame when nothing is arriving. 0.06 at
 # 30 fps closes a full-scale peak in about half a second, which is roughly how
@@ -95,6 +131,7 @@ def build_face_canvas(parent, face_path: str = "", name: str = "J.A.R.V.I.S"):
             self._visemes = None
             self._vis_i = None
             self._last_t = time.time()
+            self._last_paint_ms = 0.0
 
             self._tmr = QTimer(self)
             self._tmr.timeout.connect(self._step)
@@ -203,7 +240,15 @@ def build_face_canvas(parent, face_path: str = "", name: str = "J.A.R.V.I.S"):
                     # timer, or the face freezes for the rest of the session.
                     print(f"[JARVIS] Face: animation step failed — "
                           f"{type(e).__name__}: {e}")
-            self.update()
+            # REPAINT ONLY WHEN THE PICTURE CHANGED — see IDLE_REPAINT_MS.
+            # A speaking face repaints every step, because the mouth is the
+            # thing the user is looking at. Everything else (idle, listening,
+            # thinking) is a slow blink over a still head, and repainting the
+            # whole mesh 30 times a second for it is what starved the tray.
+            now_ms = now * 1000.0
+            if should_repaint(now_ms, self._last_paint_ms, self.speaking):
+                self._last_paint_ms = now_ms
+                self.update()
 
         # ── painting ─────────────────────────────────────────────────────────
 
@@ -232,7 +277,9 @@ def build_face_canvas(parent, face_path: str = "", name: str = "J.A.R.V.I.S"):
                 primary = qcol(C.MUTED_C) if self.muted else qcol(C.PRI)
                 self._avatar.paint(painter, cx, cy, radius, primary,
                                    qcol(C.WHITE), None, wireframe=False,
-                                   floating_head=True)
+                                   floating_head=True,
+                                   facet_stride=(1 if self.speaking
+                                                 else IDLE_FACET_STRIDE))
                 return
 
             # NO AVATAR: a calm ring from the same painter the orb uses. A

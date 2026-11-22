@@ -1,0 +1,12 @@
+{
+  "_comment": "Hanya membaca catatan pemantau di memori; pemantau dinyalakan pengguna lewat kunci config security_camera.enabled, tidak pernah oleh tool, dan tidak ada saklar di layar (drawer CONTROLS tidak digambar mockup).",
+  "name": "security_camera",
+  "version": "1.0.0",
+  "author": "MARK-LVI",
+  "description": "Melaporkan perubahan yang sudah dicatat pemantau kamera keamanan; tidak mengambil gambar dan tidak bisa menyalakan kamera.",
+  "permissions": [
+    "files"
+  ],
+  "sha256": "0108a0dd0a24dcb5245e66844270530926f8f14f8de295ce4962691fe8474d4f",
+  "level": "safe"
+}
