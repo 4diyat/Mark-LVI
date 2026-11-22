@@ -606,3 +606,70 @@ bypassed in favour of an inline comparison.
 run in this sandbox. What is proven is that a heartbeat that stops produces
 stacks — which is the only part of the mechanism that can be checked without
 the desktop, and the part that has failed twice already.
+
+## The hang, third report: the call that crossed the thread boundary
+
+Two diagnoses by reading source missed, and #68 shipped a black box instead of a
+guess. Reading the code with that box in mind found the defect, and it is not a
+paint cost.
+
+**Qt was being touched from the wrong thread.** `main.py` calls
+`shell.set_state` from the asyncio runner thread — seventeen call sites,
+including the microphone recovery loop every two seconds — and
+`set_audio_level` from the audio threads twenty times a second. Those methods
+called `QSystemTrayIcon.setToolTip`, `QWidget.update()` and the orb's
+`_repaint()` directly.
+
+Qt has one event dispatcher per thread and it is not re-entrant. Touching a
+widget from a foreign thread is undefined behaviour, and on Windows it presents
+as a window that is painted and will not answer, because the dispatcher's queue
+is being drained by a thread the platform is not delivering events to. That is
+"the surfaces are visible and nothing responds", exactly, and it explains why
+every previous fix — the repaint budget, the guarded starts — changed the
+timing without changing the outcome.
+
+`ui/shell.py`'s own docstring asserted the opposite: *"Every other method is
+callable from any thread; the ones that touch a widget hand off to Qt
+themselves."* `set_state`, `set_audio_level`, `push_visemes` and `write_log` did
+not. The claim was in the file that broke it.
+
+**The second half.** `start_voice_overlay` builds the overlay with
+`active=False` on every launch — "built now and shown later". `VoiceOverlay.start`
+called `window.show()` anyway and then set `_active = False`, so a 1280×720
+frameless, always-on-top window sat at (0, 0) over the desktop from the first
+second, with a 12 fps timer painting into it. A visible window that is not
+`WindowTransparentForInput` takes the clicks, and `window_flags` omits that flag
+on purpose so Esc can reach the overlay while it *is* up. So the overlay was up,
+not listening, and swallowing every click in a 1280×720 rectangle.
+
+Worse, the state sequence on a machine with no microphone is
+`set_state("LISTENING")` followed immediately by `set_state("NO MIC")` — build
+and show a full-screen window, then hide it — every two seconds, from the wrong
+thread.
+
+**The fix.** `ui/qt_thread.py` holds one rule: on the Qt thread, run inline
+(queuing and waiting deadlocks with one participant; queuing without waiting
+reorders `NO MIC` → `LISTENING` and leaves the wrong word on screen); from
+anywhere else, `QTimer.singleShot(0, ...)`, the mechanism the confirmation
+banner and the setup screen already used; with no Qt at all, run inline,
+because "no Qt" is normal here. The audio level coalesces, so 20 Hz cannot grow
+the queue. `VoiceOverlay.start` now shows the window only when `active`.
+
+**Proof, not assertion.** Driving the real `AmbientShell.set_state` from a
+worker thread with a recording stub behind it:
+
+    before:  tray/bubble/orb all painted on thread 'asyncio-runner'
+    after:   nothing painted until the Qt loop runs; then all three on 'MainThread'
+
+**Tests.** `tests/test_qt_thread_boundary.py` (8) and
+`tests/test_overlay_starts_hidden.py` (4). Eight mutations on the boundary and
+four on the overlay, all caught — including "always run inline", which restores
+the bug, and "queue a flush per level", which restores the backlog. One
+mutation survived the first draft of the boundary test because the inline rule
+was only exercised with no Qt present, where the code takes a different path;
+that test now installs a Qt.
+
+**Not proven here.** That a real Windows Qt thread was the thing hanging. Qt
+cannot run in this sandbox. What is proven is that no widget is touched from a
+non-owning thread any more, which is the condition that produced it — and
+`hang.txt` from #68 will confirm it on the desktop if anything is left.

@@ -549,6 +549,23 @@ Ini bagian yang menjawab "masih hang" tanpa perlu menebak lagi.
       berarti thread Qt masih melayani timer dan yang macet adalah jalur lain
       (mis. input jendela). Catat itu: gejalanya berbeda dan penyebabnya beda.
 
+### Klik yang dijawab
+
+Dua cacat yang ditemukan setelah laporan kedua, keduanya bisa diperiksa tanpa
+membaca kode.
+
+- [ ] Saat baru dijalankan, **tidak boleh ada jendela 1280×720** di mana pun.
+      Kalau ada bingkai besar yang tidak bisa diklik, `VoiceOverlay.start` masih
+      menampilkan dirinya saat diminta tersembunyi — cek `overlay.active` di log.
+- [ ] Klik kiri ikon baki harus membuka panel **saat asisten diam**. Ini yang
+      dulu tidak terjadi: overlay menutupi layar dan menelan kliknya.
+- [ ] Bicara ke asisten, lalu lihat apakah tulisan di overlay ikut berubah.
+      Kalau overlay tidak pernah muncul meski sedang mendengarkan, marshalling
+      ke thread Qt memutus jalurnya — cek `voice_wiring.sync` di log.
+- [ ] Dengarkan satu jawaban penuh. Mulut harus bergerak mulus dan tidak
+      tersendat: `push_visemes` sekarang melewati antrean Qt, dan antrean yang
+      menumpuk akan terlihat sebagai mulut yang tertinggal.
+
 ### Kamera keamanan
 
 > **Tidak ada saklar di layar.** Drawer CONTROLS tidak digambar oleh mockup
