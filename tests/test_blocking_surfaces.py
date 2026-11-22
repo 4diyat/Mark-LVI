@@ -94,11 +94,26 @@ def test_the_banner_is_frameless_and_on_top(qt):
 
 
 def test_cancel_has_the_focus_so_a_stray_enter_is_safe(qt):
-    """`core/confirm` refuses on timeout; a stray Enter must not pre-empt it."""
-    source = (ROOT / "ui" / "confirm_banner.py").read_text(encoding="utf-8")
-    start = source.index("no.setDefault(True)")
-    assert "no.setFocus()" in source[start:start + 200], (
+    """The safe-by-default rule, which SURVIVED board 25's change.
+
+    This test used to say something stronger and no longer true: it asserted
+    that the banner had no Enter handler at all, so a stray Enter could never
+    confirm. Board 25 writes "Enter · Esc" in the dialog's corner and the owner
+    ruled the artboard wins, so Enter DOES confirm now.
+
+    What keeps the old property is the INITIAL FOCUS: it starts on CANCEL, so an
+    Enter pressed without touching anything is swallowed by the focused button
+    and confirms nothing. Enter only confirms after the user has moved to
+    Konfirmasi — which is a decision, not a stray keypress.
+    """
+    from ui.confirm_banner import build_confirm_window
+
+    banner = build_confirm_window()
+    assert banner._cancel_button.isDefault() is True, (
         "the CANCEL button must own the default answer")
+    assert banner._confirm_button.isDefault() is False, (
+        "a confirm button that is default by default is one Enter away from an "
+        "irreversible action")
 
 
 def test_a_second_question_reuses_the_banner_rather_than_stacking(qt):

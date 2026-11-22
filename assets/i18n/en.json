@@ -98,12 +98,12 @@
   "ui.visual_input": "◈  VISUAL INPUT",
   "ui.default_btn": "DEFAULT",
   "ui.apply_changes": "▸  APPLY CHANGES",
-  "ui.cancel": "CANCEL",
+  "ui.cancel": "Cancel",
   "ui.close": "CLOSE",
   "ui.plugins.heading": "🧩  PLUGIN MANAGER",
   "ui.plugins.none": "No plugins found in /plugins.",
-  "ui.confirm.heading": "⚠  CONFIRM",
-  "ui.confirm.button": "▸  CONFIRM",
+  "ui.confirm.heading": "AT RISK",
+  "ui.confirm.button": "Confirm",
   "ui.audio.heading": "♪  AUDIO",
   "ui.test": "TEST",
   "ui.volume": "OUTPUT VOLUME",
@@ -748,5 +748,10 @@
   "ui.panel.focus.quick.held": "See what was held",
   "ui.panel.focus.quick.end": "End focus now",
   "ui.panel.focus.quick.pause": "Pause all scheduling",
-  "ui.panel.quota.held": "{remaining} more are held until focus ends"
+  "ui.panel.quota.held": "{remaining} more are held until focus ends",
+  "ui.confirm.origin": "Request origin",
+  "ui.confirm.origin.voice": "Spoken command",
+  "ui.confirm.origin.typed": "Typed command",
+  "ui.confirm.origin.unknown": "Unknown",
+  "ui.confirm.logged": "recorded in the audit log"
 }

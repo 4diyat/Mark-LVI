@@ -321,6 +321,24 @@ class _Object:
     def setFocus(self):
         self._focused = True
 
+    def hasFocus(self):
+        return bool(getattr(self, "_focused", False))
+
+    def setDefault(self, on=True):
+        """Remember the default-button state, as QPushButton does.
+
+        WHY THIS IS STATE. The confirmation banner's safety rule is "the CANCEL
+        button owns the default answer", and that rule lives entirely in
+        `setDefault(True)` on one widget and nothing on the other. A stub that
+        answered None made the test read as a failure of the rule; a stub that
+        answered a lambda would have made it pass for the wrong reason. Same
+        lesson as `setGeometry` two boards ago.
+        """
+        self._is_default = bool(on)
+
+    def isDefault(self):
+        return bool(getattr(self, "_is_default", False))
+
     def __getattr__(self, name):
         # A PRIVATE name is always real state, never a Qt convenience. Returning
         # a lambda for one turns a missing attribute into a silent wrong answer
@@ -371,6 +389,7 @@ class _Layout(_Object):
         # parent immediately and that calls `_set_owner`.
         self._owner = None
         self._pending = []
+        self._items = []
         super().__init__(*a, **k)
         owner = a[0] if a and isinstance(a[0], _Object) else k.get("parent")
         if owner is not None:
@@ -394,10 +413,24 @@ class _Layout(_Object):
         self._pending = []
 
     def addWidget(self, w, *a, **k):
+        # EVERYTHING IS KEPT, not only the pending ones. `count()`/`itemAt()`
+        # exist so a test can ask "is this widget actually ON the dialog?" —
+        # the difference a mutation walked straight through: a label built with
+        # the right text and never added has text, no parent, and is invisible.
+        self._items.append(w)
         if self._owner is None:
             self._pending.append(w)
         else:
             _reparent(w, self._owner)
+
+    def count(self):
+        return len(self._items)
+
+    def itemAt(self, index):
+        if 0 <= index < len(self._items):
+            item = self._items[index]
+            return type("Item", (), {"widget": staticmethod(lambda w=item: w)})()
+        return None
 
     def addLayout(self, lay, *a, **k):
         if self._owner is None:

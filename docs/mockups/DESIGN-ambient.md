@@ -355,3 +355,47 @@ salinan yang berbeda perilaku.
   berhenti pada painter yang tidak punya `setFont`/`drawText`. Orb yang hilang
   karena captionnya tidak bisa digayakan adalah kegagalan yang lebih buruk
   daripada caption tanpa tracking.
+
+### Board 25 — Risiko: konfirmasi
+
+- **Judulnya BERISIKO, bukan "⚠  KONFIRMASI".** Dua kesalahannya berbeda kelas.
+  Yang lama menuliskan keadaan dialognya ("ini konfirmasi" — sudah jelas dari dua
+  tombol di bawahnya) alih-alih tingkat risikonya, dan menyisipkan glif yang
+  tidak ada di artboard. Artboard menaruh kata itu di kiri atas dengan tracking
+  2, warna amber, 10 pt: satu kata yang menjawab "seberapa berbahaya ini?"
+  sebelum mata membaca judulnya.
+- **"Tindakan ini tidak bisa diurungkan." adalah kalimat keselamatan, bukan
+  hiasan.** Ia satu-satunya teks di dialog yang menyatakan AKIBAT, bukan isi
+  permintaan. Ia tidak diterjemahkan lewat katalog karena ia harus ada bahkan
+  ketika katalognya rusak — persis alasan `KEYS_HINT` juga konstanta. Artboard
+  menulis "diurangkan" (salah ketik); yang dirilis "diurungkan".
+- **Enter mengonfirmasi, Esc membatalkan — dan fokus awal tetap di Batal.**
+  Artboard mencetak "Enter · Esc" di sudut, jadi diam-diam membuat Enter tidak
+  melakukan apa-apa berarti tombolnya berbohong. Yang menjaga properti lama
+  ("Enter nyasar tidak boleh mengeksekusi") bukan lagi tidak adanya handler,
+  melainkan FOKUS AWAL: Enter tanpa menyentuh apa pun diserap tombol Batal.
+- **ASAL PERMINTAAN harus benar, bukan tebakan.** Satu-satunya kalimat di dialog
+  ini yang bisa menjadi dusta adalah yang menyebut siapa yang meminta. Karena
+  itu sumbernya dicatat di pintunya masing-masing (`core/input_source`, dipanggil
+  dari `_on_text_command` dan dari transkripsi input), bukan disimpulkan di
+  dalam banner. Nota penting: penandaan suara menempel pada TRANSKRIPSI, bukan
+  pada chunk audio — setiap chunk audio juga berbunyi saat ada suara ruangan,
+  dan itu akan menulis "Perintah suara" untuk permintaan yang datang dari plugin.
+  Ketika tidak ada yang tercatat, dialog berkata "Tidak diketahui" dan itu
+  jawaban yang benar.
+- **Store-nya tidak boleh mengimpor apa pun.** `core/input_source` dipanggil dari
+  callback audio; `ui/confirm_banner` mengimpor PyQt6 di level modul. Menaruh
+  store di sana berarti mesin tanpa Qt melempar pengecualian di dalam mikrofon.
+- **Jamnya diambil saat pertanyaan ditampilkan, dan diperbarui saat banner
+  dipakai ulang.** Dua bug ditemukan tes, bukan ditulis: `set_title` dulu keluar
+  lebih awal ketika tidak ada detail (jalur yang paling umum), sehingga banner
+  yang dipakai ulang mempertahankan asal DAN jam pertanyaan sebelumnya — satu-
+  satunya baris di dialog ini yang menjadi dusta bila basi.
+- **Baris detail selalu dibangun, hanya disembunyikan.** Versi yang membangunnya
+  hanya bila konstruktor menerima detail membuat baris artboard
+  ("Lampiran: anggaran.xlsx · 3 penerima") mustahil tampil di jalur nyata:
+  `build_confirm_window()` memanggil konstruktor dengan `""` dan detailnya baru
+  datang lewat `set_title`.
+- **Yang belum terbukti:** dialog ini belum pernah dirender Qt sungguhan di sini.
+  Geometri, ukuran font, dan perilaku fokus yang sesungguhnya tetap belum diuji;
+  yang diuji adalah widget yang dibangun, teksnya, dan handler tombolnya.

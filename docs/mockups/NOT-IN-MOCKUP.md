@@ -34,7 +34,7 @@ copy of the old code is in git.
 | 6 | Overlay suara + kamera gestur | listening overlay, gesture camera tile | **proposal — see below** |
 | 23 | Fokus — toast ditahan | held notifications counted by `core/presence_mode`; a strip that states no deadline; three quick rows of its own (no "Ubah durasi"); a persisted scheduling pause; the second quota sentence, counted | `ui/toast_queue.py`, `ui/toast_stack.py`, `ui/tray_paint.py`, `ui/tray_panel_model.py`, `actions/proactive.py`, `ui/tray_panel_wiring.py` |
 | 24 | Senyap — orb memudar | the orb shrinks to 18 px, loses its glow, goes dotted, and writes its mode under the ring; the 146 px frame does not resize | `ui/orb_paint.py`, `ui/orb_canvas.py`, `ui/orb_place.py` |
-| 25 | Risiko: konfirmasi | amber risk dialog, trusted UI | `ui/confirm_banner.py` |
+| 25 | Risiko: konfirmasi | BERISIKO heading, "Tindakan ini tidak bisa diurungkan.", ASAL PERMINTAAN fed by the real entry point (voice/typed/unknown), Konfirmasi/Batal, Enter confirms and Esc cancels with the initial focus still on Batal; the store lives in `core/input_source` so the audio callback never imports Qt | `ui/confirm_banner.py`, `core/input_source.py`, `ui/shell.py` |
 | 26 | Riwayat tugas + Urungkan | task history with undo, audit tail, export and clear | `ui/tray_panel.py` (history page) |
 | 27 | Izin & Privasi | three indicators with cards, four explicit permissions with cards, a per-page title, erase — and **no guest mode** (see below) | `ui/tray_pages.py`, `ui/tray_panel_model.py` |
 | 28 | Tema terang — panel baki | the same panel in light colours, plus the switch that reaches it | `ui/tray_pages.py` (`PALETTES["light"]`), `ui/tray_theme.py` |

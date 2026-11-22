@@ -433,6 +433,12 @@ class AmbientShell:
                 self._confirm_token = ""
             self._confirm_token = token
             banner.set_title(title, detail)
+            # Board 25's "ASAL PERMINTAAN": who asked, when, and that it is on
+            # the record. The time is taken HERE rather than inside the banner
+            # so the line describes the request, not the repaint.
+            from datetime import datetime
+
+            banner.set_origin(when=datetime.now().strftime("%H:%M"))
             banner.adjustSize()
             banner.show()
             banner.raise_()
