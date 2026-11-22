@@ -3171,12 +3171,100 @@ def _make_application(argv=None):
     return QApplication.instance()
 
 
+def _install_hang_watchdog(silence: float = 15.0) -> None:
+    """Arm the watchdog, and never let arming it be the reason a launch dies.
+
+    THIS WRAPPER EXISTS BECAUSE OF A TEST. `test_startup_board7` runs the real
+    `_run_event_loop` against a stub application and no PyQt6 installed, and
+    the first version of this function took the whole launch down with
+    `ModuleNotFoundError`. A diagnostic that can prevent the program from
+    starting has the failure mode backwards.
+
+    So the startup path can only ever lose the report, never the app: the
+    arms, the imports and the file all live in `_arm_hang_watchdog`, and this
+    call says so in the log when they do not work.
+    """
+    try:
+        _arm_hang_watchdog(silence)
+    except Exception as e:                          # noqa: BLE001
+        print(f"[JARVIS] Hang watchdog unavailable — {type(e).__name__}: {e}",
+              flush=True)
+
+
+def _arm_hang_watchdog(silence: float = 15.0) -> None:
+    """Log the whole stack if the Qt thread stops servicing events.
+
+    WHY IN THE APPLICATION AND NOT IN A DIAGNOSTIC SCRIPT
+        "It hangs" has been reported twice and fixed once, and the second report
+        arrived with nothing attached to it. From inside a hung process there is
+        exactly one useful artefact: the stack of every thread at the moment it
+        stopped. A separate script can produce that only if the user knows to
+        run it, remembers the flag, and captures the output — three chances to
+        lose the evidence.
+
+        So the app carries it. `faulthandler` writes the traceback of every
+        thread to a file with no Qt cooperation at all, which is the one thing
+        that still works when the event loop is blocked. The log then answers
+        the question the last two reports could not.
+
+    HOW IT IS DRIVEN
+        A `QTimer` on the Qt thread stamps the time; a plain thread watches the
+        stamp. A timer that stops firing IS the hang, so the watcher needs no
+        theory about the cause — it reports the stacks and keeps the process
+        running so the user can still quit it from the tray's existing handles.
+    """
+    import faulthandler
+
+    path = (_LOG_PATH.parent if _LOG_PATH else Path.cwd()) / "hang.txt"
+    try:
+        handle = open(path, "a", encoding="utf-8", buffering=1)
+        handle.write(f"\n=== hang watchdog armed {time.strftime('%Y-%m-%d %H:%M:%S')} "
+                     f"=== thread={threading.get_ident()}\n")
+    except OSError:
+        return                       # a read-only directory costs the report, not the app
+    beat = {"at": time.monotonic()}
+
+    def _pulse() -> None:
+        beat["at"] = time.monotonic()
+
+    from PyQt6.QtCore import QTimer
+
+    timer = QTimer()
+    timer.setInterval(1000)
+    timer.timeout.connect(_pulse)
+    timer.start()
+    # A reference: a QTimer with no live reference is collected and stops.
+    globals()["_hang_pulse_timer"] = timer
+
+    def _watch() -> None:
+        while True:
+            time.sleep(1.0)
+            quiet = time.monotonic() - beat["at"]
+            if quiet < silence:
+                continue
+            handle.write(f"\n!!! the Qt thread has not run a timer for {quiet:.0f}s "
+                         f"at {time.strftime('%Y-%m-%d %H:%M:%S')} "
+                         f"— dumping every thread\n")
+            try:
+                faulthandler.dump_traceback(file=handle, all_threads=True)
+            except Exception:                       # noqa: BLE001
+                pass
+            handle.write("!!! end of stacks\n")
+            print(f"[JARVIS] HANG: the Qt thread stopped for {quiet:.0f}s — "
+                  f"stacks written to {path}", flush=True)
+            beat["at"] = time.monotonic()           # one report per stall, not a flood
+
+    threading.Thread(target=_watch, name="hang-watchdog", daemon=True).start()
+    print(f"[JARVIS] Hang watchdog armed — stacks go to {path}", flush=True)
+
+
 def _run_event_loop(app) -> None:
     """Hand the main thread to Qt until the user quits.
 
     `exec()` and not `exec_()`: PyQt6 renamed it, and the old spelling is what
     a port from PyQt5 gets wrong in a way that only fails at runtime.
     """
+    _install_hang_watchdog()
     app.exec()
 
 

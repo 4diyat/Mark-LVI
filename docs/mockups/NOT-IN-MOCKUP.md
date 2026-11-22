@@ -541,3 +541,52 @@ condition with `if True:` passed it.
 driving the callbacks with a stub; Qt cannot run in this sandbox (the wheel
 installs, the system libraries do not). Whether the Windows tray now answers
 clicks is a check on the real desktop, and it is in `docs/verification.md`.
+
+## The hang, second report: the app now carries its own black box
+
+**The first fix did not cure it.** The owner ran the merged build and reported
+the same symptom — surfaces present, clicks unanswered. That is the useful part
+of the report: the 26,790-polygons-per-second repaint was real, measured and
+worth fixing, and it was **not** the whole story.
+
+A hang was diagnosed twice by reading source here, and twice the diagnosis
+missed. So the third attempt does not guess. It makes the program produce the
+one artefact that settles the question.
+
+**What was added.** `main._run_event_loop` now arms a watchdog before
+`app.exec()`:
+
+- a `QTimer` on the Qt thread ticks once a second;
+- a plain Python thread watches the tick;
+- if 15 seconds pass with no tick, it calls
+  `faulthandler.dump_traceback(all_threads=True)` into `hang.txt`, next to
+  `jarvis.log` — the path the app already prints on every start.
+
+`faulthandler` is the important choice: it writes from a signal-free C path and
+needs no Qt, no event loop and no cooperation from the blocked thread. A Python
+thread that is waiting on a mutex, stuck in `msvcrt`, or parked inside a Qt
+`exec()` still appears in that dump, by file and line.
+
+**Why inside the application rather than a script.** A separate script needs
+the user to know it exists, remember the flag, and capture the output — three
+chances to lose the evidence, and the last report lost all three. The app is
+already running when the hang happens.
+
+**The watchdog cannot prevent startup.** `_install_hang_watchdog` wraps
+`_arm_hang_watchdog` in `try`/`except Exception` and prints a one-line reason.
+The first version did not, and `tests/test_startup_board7.py` — a test written
+before this change — took the launch down with `ModuleNotFoundError: No module
+named 'PyQt6'`. A diagnostic that stops the program from starting is the
+failure it was built to catch.
+
+**Tests.** `tests/test_hang_watchdog.py` drives the real function with a frozen
+heartbeat and a 0.3 s threshold, and asserts that `hang.txt` ends up containing
+traceback frames, not just a header. Six mutations were checked by hand and all
+six are caught: the loop skipping the arming, the watcher skipping the dump, the
+comparison removed, the report path moved out of the log directory, the timer
+never started, and the `except` narrowed so a real failure escapes.
+
+**Not proven here.** The file this produces on a real Windows hang. Qt cannot
+run in this sandbox. What is proven is that a heartbeat that stops produces
+stacks — which is the only part of the mechanism that can be checked without
+the desktop, and the part that has failed twice already.

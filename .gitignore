@@ -81,3 +81,6 @@ memory/browser_vault.db*
 .coverage.*
 htmlcov/
 coverage.xml
+
+# A hang report written next to the log; it is evidence, not source.
+hang.txt

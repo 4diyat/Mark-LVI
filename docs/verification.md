@@ -527,6 +527,28 @@ perilaku shell yang sebenarnya, dan itu tidak dapat disimulasikan.
 - [ ] Bicara ke asisten. Mulut harus bergerak mulus. Kalau mulut tersendat,
       `IDLE_FACET_STRIDE` ikut terpakai saat bicara — seharusnya tidak.
 
+### Kalau masih hang
+
+Ini bagian yang menjawab "masih hang" tanpa perlu menebak lagi.
+
+- [ ] Jalankan `python main.py` seperti biasa. Di awal, konsol harus mencetak
+      `[JARVIS] Hang watchdog armed — stacks go to <path>`. Kalau baris itu
+      **tidak** muncul, masalahnya bukan hang: aplikasi berhenti sebelum event
+      loop, dan pesan `Hang watchdog unavailable — <sebab>` menunjukkan di mana.
+- [ ] Tunggu sampai hang terjadi. Diamkan 15 detik. Aplikasi akan menulis
+      `hang.txt` di folder yang sama dengan `jarvis.log` dan mencetak
+      `[JARVIS] HANG: the Qt thread stopped for Ns`.
+- [ ] Tutup paksa aplikasi (`Ctrl+C` di konsol, atau Task Manager), lalu buka
+      `hang.txt`. Isinya traceback **semua** thread. Frame paling atas pada
+      thread yang bernama `MainThread` adalah tempat ia berhenti — itu baris
+      yang dicari, dan itu satu-satunya hal yang tidak bisa ditebak dari sini.
+- [ ] Kirimkan isi `hang.txt`. Tanpa itu, perbaikan berikutnya hanya dugaan
+      lagi.
+
+- [ ] Kalau `hang.txt` **tidak** dibuat padahal jendela sudah tidak merespons,
+      berarti thread Qt masih melayani timer dan yang macet adalah jalur lain
+      (mis. input jendela). Catat itu: gejalanya berbeda dan penyebabnya beda.
+
 ### Kamera keamanan
 
 > **Tidak ada saklar di layar.** Drawer CONTROLS tidak digambar oleh mockup
