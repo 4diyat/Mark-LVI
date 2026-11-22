@@ -868,7 +868,7 @@ perangkat audio, atau MT5/broker yang sebenarnya.
 ```bash
 pip install -r requirements-dev.txt
 ruff check .                 # F + E9 only — the rules whose violations are bugs
-python -m pytest -q          # 1,946 tests, offline, no API key, no display
+python -m pytest -q          # 1,997 tests, offline, no API key, no display
 python -m providers._tests   # the provider engine's own suite (mocks its own services)
 ```
 

@@ -130,11 +130,15 @@ def test_the_desktop_name_matches_the_registry():
 # cost — a banner in front of "open Spotify" is the price of that honesty until
 # the undo is real.
 
-UNGRADED = {                       # tool: the harmless actions that exist today
-    "open_app": (),
-    "reminder": (),
-    "youtube_video": ("play",),
-    "browser_control": ("go_to", "new_tab", "get_text"),
+# TOOLS WHOSE UNDO IS STILL MISSING. One entry per tool, and the day somebody
+# writes the closure the entry moves out of here and the test below starts
+# failing — which is the reminder it exists to be.
+#
+# This list used to hold seven. Four of them earned `medium` by getting a real
+# undo (see `tests/test_action_undo.py`); `flight_finder` stayed because it
+# reads a public page and nothing else, and calling that "undoable" would be
+# inventing a meaning.
+UNGRADED = {
     "flight_finder": (),
 }
 
@@ -168,6 +172,34 @@ def test_the_dangerous_actions_under_those_tools_are_still_refused():
         for action in actions:
             risk = tool_risk.classify(tool, {"action": action})
             assert risk.level == RISKY, f"{tool}:{action}"
+
+
+def test_the_four_that_earned_medium_are_medium():
+    """The level is a claim the code now keeps, not a table somebody relaxed.
+
+    Each one names the action that pushes the closure; `tests/test_action_undo`
+    is what proves the closure works.
+    """
+    assert tool_risk.classify("open_app", {"app_name": "Spotify"}).level == MEDIUM
+    assert tool_risk.classify("reminder", {"text": "x"}).level == MEDIUM
+    assert tool_risk.classify("youtube_video", {"action": "play"}).level == MEDIUM
+    assert tool_risk.classify("browser_control", {"action": "go_to"}).level == MEDIUM
+    for tool, args in (("open_app", {"app_name": "Spotify"}),
+                       ("reminder", {"text": "x"}),
+                       ("youtube_video", {"action": "play"}),
+                       ("browser_control", {"action": "go_to"})):
+        assert tool_risk.classify(tool, args).reversible is True, tool
+
+
+def test_the_actions_that_did_not_earn_it_did_not_get_it():
+    """`play` is reversible; `summarize` is not. One tool, two answers."""
+    for tool, action in (("youtube_video", "summarize"),
+                         ("youtube_video", "get_info"),
+                         ("youtube_video", "trending"),
+                         ("browser_control", "get_text")):
+        risk = tool_risk.classify(tool, {"action": action})
+        assert risk.level == RISKY, f"{tool}:{action}"
+        assert risk.reversible is False
 
 
 def test_an_ungraded_call_says_the_undo_is_missing_not_that_it_is_dangerous():

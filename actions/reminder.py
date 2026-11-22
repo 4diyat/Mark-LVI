@@ -292,7 +292,15 @@ def _schedule_linux(target_dt: datetime, task_name: str,
             input=cmd_str, capture_output=True, text=True, encoding="utf-8", errors="replace",
         )
         if result.returncode == 0:
-            return task_name
+            # `at` prints its job number ("job 12 at ..."), and that number is
+            # the ONLY handle on the entry: `atrm` needs it, and no other
+            # identifier exists. Returned as `<task>|at:<n>` so the undo can
+            # tell the three schedulers' handles apart — without it, a
+            # reminder scheduled through `at` was quietly impossible to cancel,
+            # which is the same as no undo at all.
+            digits = "".join(ch for ch in str(result.stdout or "") if ch.isdigit())
+            job = digits.strip()
+            return f"{task_name}|at:{job}" if job else task_name
         print(f"[Reminder] ❌ at: {result.stderr.strip()}")
         return ""
 
@@ -345,11 +353,105 @@ def reminder(
     if not job_id:
         return "I couldn't register the reminder with the system scheduler."
 
+    _register_undo(player, job_id, task_name, script_path, safe_msg, target_dt)
+
     if player:
         player.write_log(f"[Reminder] ✅ {date_str} {time_str} — {safe_msg[:40]}")
 
     friendly_time = target_dt.strftime("%B %d at %I:%M %p")
     return f"Reminder set for {friendly_time}."
+
+
+def _register_undo(player, handle: str, task_name: str, script_path: Path,
+                   message: str, target_dt: datetime) -> None:
+    """Offer to cancel the reminder this call just scheduled.
+
+    WHY REGISTERING HERE IS THE ONLY WAY IT CAN WORK
+        The scheduler entries live OUTSIDE this process — Task Scheduler, a
+        LaunchAgent, systemd, atd — so there is nothing in memory to reverse.
+        The undo has to name the entry the same way the scheduler does, which
+        is why the handle is threaded through from `_schedule_*` rather than
+        recomputed here: `at` is the one scheduler whose identifier cannot be
+        derived, and guessing it would delete the wrong job.
+
+    THE FOUR PATHS, EACH THE REAL CANCELLATION COMMAND
+        windows  schtasks /Delete /TN <name> /F, then the script
+        mac      launchctl unload <plist>, then remove it and the script
+        linux    systemctl --user stop <unit> and reset-failed, then the script
+        at       atrm <n>, then the script
+
+    EVERY FAILURE IS REPORTED, NEVER SWALLOWED, and the one case that is not a
+    failure is named as such: a reminder whose time has already passed has
+    fired and cannot be un-fired. Saying "nothing to undo" is the truth; saying
+    "cancelled" over a notification the user already saw is not.
+    """
+    try:
+        from core.undo import push_undo
+
+        def _undo() -> str:
+            if datetime.now() >= target_dt:
+                return (f"the reminder for {target_dt:%H:%M} has already fired "
+                        f"— nothing to cancel.")
+            problems = []
+            # `handle` is `<task>` or `<task>|at:<n>`. Only the `at` path needs
+            # the suffix, and only the `at` path HAS one — the task name is the
+            # identifier for the other three schedulers.
+            extra = handle.partition("|")[2]
+            try:
+                if _get_os() == "windows":
+                    result = subprocess.run(
+                        ["schtasks", "/Delete", "/TN", task_name, "/F"],
+                        capture_output=True, text=True, encoding="utf-8",
+                        errors="replace", **_CNW,
+                    )
+                    if result.returncode != 0:
+                        problems.append((result.stderr or result.stdout).strip())
+                elif _get_os() == "mac":
+                    plist = (Path.home() / "Library" / "LaunchAgents"
+                             / f"com.jarvis.reminder.{task_name}.plist")
+                    if plist.exists():
+                        result = subprocess.run(
+                            ["launchctl", "unload", str(plist)],
+                            capture_output=True, text=True, encoding="utf-8",
+                            errors="replace",
+                        )
+                        if result.returncode != 0:
+                            problems.append(result.stderr.strip())
+                        plist.unlink(missing_ok=True)
+                elif extra.startswith("at:"):
+                    result = subprocess.run(
+                        ["atrm", extra[3:]],
+                        capture_output=True, text=True, encoding="utf-8",
+                        errors="replace",
+                    )
+                    if result.returncode != 0:
+                        problems.append(result.stderr.strip())
+                else:
+                    if shutil.which("systemctl"):
+                        for argv in (["systemctl", "--user", "stop", task_name],
+                                     ["systemctl", "--user", "reset-failed", task_name]):
+                            subprocess.run(argv, capture_output=True, text=True,
+                                           encoding="utf-8", errors="replace")
+            except Exception as exc:                # noqa: BLE001
+                problems.append(f"{type(exc).__name__}: {exc}")
+
+            # The script is removed either way: it is this program's own file,
+            # and leaving it behind would be a reminder that can still be run
+            # by hand after the user was told it was cancelled.
+            try:
+                script_path.unlink(missing_ok=True)
+            except Exception as exc:                # noqa: BLE001
+                problems.append(f"script: {exc}")
+
+            if problems:
+                return ("the reminder entry could not be removed — "
+                        + "; ".join(p for p in problems if p))
+            return f"Reminder for {target_dt:%H:%M} cancelled."
+
+        push_undo(f"reminder at {target_dt:%H:%M} — {message[:40]}", _undo)
+    except Exception as exc:                        # noqa: BLE001
+        # The reminder IS set; a failed registration only costs a banner.
+        print(f"[Reminder] undo not registered: {type(exc).__name__}: {exc}")
 
 
 # ── Tool declaration (auto-discovered by core/action_loader.py) ──────────────

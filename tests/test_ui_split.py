@@ -64,6 +64,10 @@ def test_the_package_has_exactly_the_mockup_modules():
         "orb_paint.py", "shell.py", "theme.py", "toast_queue.py", "tray.py",
         "tray_pages.py", "tray_paint.py", "tray_panel.py",
         "tray_panel_model.py", "tray_panel_wiring.py", "tray_theme.py",
+        # Board 6: the voice overlay, split three ways for the same reason the
+        # tray panel is — model (what is true), hand (what the camera said),
+        # paint (every Qt call). The first draft was one 790-line file.
+        "voice_hand.py", "voice_overlay.py", "voice_paint.py",
     }
     present = {p.name for p in _modules()}
     assert present == expected, (

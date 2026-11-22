@@ -73,6 +73,18 @@ _REVERSIBLE_ACTIONS = {
         "organize_desktop", "delete",
     }),
     "code_helper": frozenset({"edit", "optimize"}),
+    # The four whose undo closures were written after the gate was already
+    # refusing them. Each one names a function in `actions/` that really pushes
+    # onto `core.undo`:
+    #   open_app     `_register_undo` closes the process `wait_for_launch` SAW
+    #   reminder     `_register_undo` deletes the scheduler entry it created
+    #   youtube_video `_register_undo` walks the user's browser back
+    #   browser_control `_register_undo` walks the internal browser back
+    #
+    # `open_app` and `reminder` have no sub-action, so they are listed in the
+    # tool-level table below; these two are per-action.
+    "youtube_video": frozenset({"play"}),
+    "browser_control": frozenset({"go_to", "new_tab"}),
     # `organize_desktop` is listed in `_RISKY_ACTIONS` as well; the risky check
     # runs first there, so the stricter answer wins. Keeping it in both tables
     # is what makes the disagreement visible instead of implicit.
@@ -116,6 +128,12 @@ _RISKY_ACTIONS = {
 # `organize_desktop` is in both tables on purpose: it pushes an undo (hence
 # reversible) but moves every file on the desktop at once. Reversible and
 # frightening are different axes, and the stricter answer wins below.
+
+# Tools with no sub-action whose undo is real, so `medium` is a promise the code
+# keeps rather than an escalation. `open_app` closes what it launched;
+# `reminder` cancels the scheduler entry it created. Both report "nothing to
+# undo" when the world moved on, which is the honest answer and not a failure.
+_REVERSIBLE_TOOLS = frozenset({"open_app", "reminder"})
 
 # Tools `main.py` dispatches directly, which therefore never reach the action
 # registry and would otherwise fall through to `risky`.
@@ -252,6 +270,11 @@ def classify(tool: str, args: Mapping | None = None) -> CallRisk:
         return CallRisk(mapped, action, RISKY,
                         f"no per-action entry for '{action}' — treated as risky",
                         reversible=False)
+
+    if not action and mapped in _REVERSIBLE_TOOLS:
+        return CallRisk(mapped, "", MEDIUM,
+                        "changes state, and the action registers an undo",
+                        reversible=True)
 
     if mapped in _STATELESS:
         level, reversible = _STATELESS[mapped]

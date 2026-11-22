@@ -267,6 +267,7 @@ def _launch_and_verify(player, spoken: str, launcher_name: str,
         )
         if appeared is not None:
             _log(player, f"JARVIS: {appeared.label} is open.")
+            _register_undo(appeared)
             return
 
         if not requested:
@@ -285,6 +286,52 @@ def _launch_and_verify(player, spoken: str, launcher_name: str,
         print(f"[open_app] {type(exc).__name__}: {exc}")
         _say(player, "Tell the user, in one short sentence in their own "
                      f"language: opening {spoken} failed - {exc}")
+
+
+def _register_undo(appeared) -> None:
+    """Offer to close the application this call actually launched.
+
+    WHY THIS EXISTS, AND WHY IT IS NOT `request_close` BY ITSELF
+        `medium` in `core.risk_policy` promises the user a way back. Until this
+        function there was none for `open_app`, so the gate escalated every
+        launch to `risky` and asked permission to open Spotify — which is the
+        banner that teaches people to dismiss the one in front of a transfer.
+
+        The undo closes the process `wait_for_launch` actually SAW appear, not
+        the one that was asked for. That distinction is the whole feature: the
+        launcher resolves "vs code" to a real executable, and closing the name
+        the user typed would close nothing or, worse, the wrong thing.
+
+    THE TWO ANSWERS IT CAN GIVE, AND WHY BOTH ARE HONEST
+        * the window is still there → close it, and say so;
+        * the window is already gone (the user closed it, it crashed, it was a
+          launcher that exited immediately) → say there is nothing to undo.
+          An undo that reports success over a process that is not running is
+          the same class of lie as an action that reports `done` over nothing.
+
+    `request_close` is the same path `computer_control(action='close_app')`
+    uses, so the assistant's own processes are protected by the guard that
+    already exists there rather than by a second copy of it.
+    """
+    try:
+        from core.undo import push_undo
+
+        def _undo() -> str:
+            try:
+                if not appidentity.is_running(appeared.pid):
+                    return f"{appeared.label} was already closed — nothing to undo."
+                ok, why = appidentity.request_close(appeared)
+            except Exception as exc:                # noqa: BLE001
+                return f"Could not close {appeared.label}: {type(exc).__name__}: {exc}"
+            if ok:
+                return f"Closed {appeared.label}."
+            return f"{appeared.label} did not close — {why}"
+
+        push_undo(f"opened {appeared.label}", _undo)
+    except Exception as exc:                        # noqa: BLE001
+        # A failed registration must never fail the launch that succeeded, and
+        # it must be visible: the cost is a banner the user did not need.
+        print(f"[open_app] undo not registered: {type(exc).__name__}: {exc}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -346,6 +393,11 @@ def open_app(parameters=None, response=None, player=None,
         for candidate in existing[:8]:
             if appidentity.focus(candidate):
                 _log(player, f"JARVIS: {candidate.label} brought to the front.")
+                # NOTHING IS REGISTERED HERE, on purpose. Raising a window the
+                # user already had open changed the z-order and no more;
+                # "undo" for that would be "put it back behind three windows",
+                # which nobody wants and which the assistant cannot even
+                # observe. See `_register_undo` for the rule.
                 return outcome.done(
                     "open_app", app=spoken, matched=candidate.label,
                     already_running=True, focused=True, verified=True,

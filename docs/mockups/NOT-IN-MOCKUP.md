@@ -99,15 +99,36 @@ bulk file operations are `risky` for a stated reason. `core.risk_policy` is
 also told what was discovered at startup (`tool_risk.register_discovered`),
 which is the caller `register()` never had.
 
-**The cost that remains, stated rather than smoothed over:** `open_app`,
-`reminder`, `youtube_video(action="play")` and `browser_control(action="go_to")`
-still ask for confirmation. They are not `safe` — the model can claim it opened
-something it did not — and they may not be `medium`, because `medium` promises
-an undo, and none of those four actions pushes one onto `core.undo`. The gate
-escalates a `medium` with no undo to `risky` precisely so that promise cannot be
-made empty. Making them `medium` is a two-line change and would be a lie until
-somebody writes the undo closures; `tests/test_tool_risk.py` has the row-per-tool
-register, so adding one there is the reminder.
+**The four that were escalated now have an undo, and it is a real one.**
+`open_app`, `reminder`, `youtube_video(action="play")`,
+`browser_control(action="go_to"|"new_tab")` each push a closure onto
+`core/undo` at the moment the change is made, so the gate can call them
+`medium` without the promise being empty. The gate still escalates any `medium`
+whose closure is missing — that rule did not move.
+
+What each undo actually does, and what it refuses to claim:
+
+| action | closure | the honest answer when there is nothing to reverse |
+|---|---|---|
+| `open_app` | closes the process `wait_for_launch` **saw appear**, through the same `appidentity.request_close` the close guard uses | "already closed — nothing to undo" |
+| `reminder` | `schtasks /Delete`, `launchctl unload`, `systemctl --user stop`, or `atrm <n>` — whichever scheduler created it — then deletes the notify script | "the reminder for HH:MM has already fired" |
+| `youtube_video:play` | a browser back (`alt+←`, `cmd+←` on macOS) in the user's own browser | names the missing `pyautogui` instead of pretending |
+| `browser_control` | asks the internal browser to go back and repeats its answer | "no page to go back to" |
+
+Three of these are deliberately **not** "close the tab". A tab this process did
+not create is somebody else's window, and closing it is a larger change than the
+one being reversed. Going back is the reversal the user would perform, which is
+the only definition of undo this project accepts.
+
+Two things it still cannot do, said here rather than discovered: raising an
+already-running app registers **no** undo (it only changed the z-order, which
+the assistant cannot observe to restore), and `browser_control` can only walk
+back as far as the browser's own history — it cannot un-read a page.
+
+`flight_finder` stays in the register for the opposite reason: it reads a public
+page and changes nothing, so calling it "undoable" would be inventing a meaning
+for the word. `tests/test_tool_risk.py` keeps the one-row register;
+`tests/test_action_undo.py` proves each closure above.
 
 **Hapus semua data lokal** erases the audit log — the record of what the
 assistant did. It does not touch `config/api_keys.json`, the conversation
@@ -264,6 +285,43 @@ PyQt6 installed.
 
 ---
 
+## Board 6: the voice overlay, and the three promises a screenshot cannot keep
+
+The artboard draws a 1280×720 frame: a 2 px cyan edge, a radial glow, a 300×200
+camera tile holding a pinching hand, the orb at 44 px, the transcript and its
+answer, and a footnote. The drawing is the easy half. The footnote is the spec,
+and it makes three claims — so each one is a function that returns a number:
+
+| footnote clause | where it lives | what the test asserts |
+|---|---|---|
+| "Glow tepi hanya saat overlay aktif" | `voice_overlay.edge_alpha(active, state)` | returns **exactly 0.0** when inactive, for every state; speaking is brighter than listening |
+| "Esc keluar" | `VoiceOverlay.handle_escape()` | closes an active overlay and calls `on_close`; returns False on a hidden one, so Esc still belongs to whatever the user is looking at |
+| "Ctrl+Alt+G menjeda gestur" | `VoiceOverlay.handle_toggle_gestures()` | pauses gestures, **keeps** the overlay and the transcript, and clears the frozen hand |
+
+Two decisions in that table are the design, not the implementation:
+
+* **Pausing gestures is not closing the overlay.** The user stopped waving, not
+  talking. Taking the transcript away because the hand is idle would answer a
+  question nobody asked, and the transcript is the reason the overlay is up.
+* **Esc on a hidden overlay is not consumed.** A window that swallowed Esc while
+  invisible would break whatever the user was actually doing.
+
+**What is deliberately NOT implemented, because it cannot be shown here:**
+click-through. The footnote promises Esc closes the overlay, and
+`WindowTransparentForInput` would make the window unable to receive the key that
+fulfils that promise. `test_the_window_flags_are_the_three_that_matter_and_not_click_through`
+pins the absence. Windows click-through and focus return after Esc stay in the
+"untested on Windows" list below rather than being assumed.
+
+**The split is three files, and the ceiling is why.** The first draft —
+window, state, hand geometry and every Qt call — was 790 lines against a 600
+line ceiling. `ui/voice_hand.py` took the geometry (the only part that comes
+from outside the program), `ui/voice_paint.py` took the Qt calls, and
+`ui/voice_overlay.py` kept the rules. `test_the_painter_never_decides_anything`
+holds the seam: the painter may CALL `status_word`, never DEFINE it.
+
+---
+
 ## How to bring something back
 
 1. **Look at the board first.** If a surface is not on one of the twelve, it is
@@ -280,7 +338,11 @@ PyQt6 installed.
 
 - **No Settings, no Plugin Manager.** Accepted, listed above with the file to edit.
 - **No first-run key entry.** A notice, and `config/api_keys.json`.
-- **No camera/gesture overlay.** Artboard 6 is a proposal; the decision module waits.
+- **The camera/gesture overlay exists but cannot open a camera here.** Board 6
+  is built (`ui/voice_overlay.py`, `ui/voice_hand.py`, `ui/voice_paint.py`); the
+  tile it draws is fed by `core.workspace_gesture`, whose camera needs
+  mediapipe, which this repo's `requirements.txt` installs on Windows only. On
+  Linux the tile reads "KAMERA NONAKTIF" — the honest state, not a placeholder.
 - **No media playback.** `actions/video_player.py` went with the widget.
 - **Untested on Windows.** Frameless transparency, click-through
   (`WindowTransparentForInput`), focus return after Esc and DPAPI can only be
