@@ -143,6 +143,19 @@ def run_deeplink(shell: "JarvisUI") -> bool:
     return delivered
 
 
+# ── the ambient shell, moved out of this file ────────────────────────────────
+# Re-exported, not reimplemented: `main.py`, `ui/window.py` and the tests all
+# call these through `lifecycle`, and the module moved only because this file
+# hit the 1,000-line ceiling `tests/test_ui_split.py` enforces. One import line
+# is the whole cost of the move on every caller's side.
+from ui.ambient_shell import (                      # noqa: F401
+    BAR_CHORD, apply_presence_mode, current_presence, cycle_presence_mode,
+    open_command_bar,
+    presence_label, start_bar_hotkey, start_command_bar, start_orb,
+    stop_bar_hotkey, submit_from_bar, toggle_command_bar,
+)
+
+
 def start_interface(shell: "JarvisUI") -> None:
     """Pick a mode, then either fill the screen or go to the tray.
 
@@ -296,7 +309,7 @@ def start_tray(shell: "JarvisUI") -> bool:
         "autostart": lambda: toggle_autostart(shell),
         "quit": lambda: quit_app(shell),
     }, app=shell._app, checked=lambda key: autostart_state()["enabled"],
-       label=lambda key: presence_label(_current_presence()))
+       label=lambda key: presence_label(current_presence()))
     if not tray.start():
         # Reported, not swallowed: "the mode you asked for could not be given"
         # is exactly the kind of thing a log is for.
@@ -327,180 +340,6 @@ def start_bubble(shell: "JarvisUI") -> bool:
     shell._bubble = bubble
     return True
 
-
-def start_orb(shell: "JarvisUI") -> bool:
-    """Show the ring in the corner. False if this desktop will not have it.
-
-    Started AFTER the tray, always: the orb is the least capable surface here,
-    and a machine that cannot draw a 96 px window can still hold an icon. It is
-    also started with the saved presence mode already applied, so a user who
-    left the assistant in Senyap does not see it light up for a frame first.
-    """
-    from ui.orb_overlay import OrbOverlay
-
-    try:
-        from core import presence_mode
-        mode = presence_mode.current()
-    except Exception:                               # noqa: BLE001
-        mode = "active"
-
-    orb = OrbOverlay(mode=mode, on_click=lambda: open_command_bar(shell))
-    if not orb.start():
-        note(shell, f"Orb unavailable ({orb.error}); the tray is still there.")
-        return False
-    shell._orb = orb
-    return True
-
-
-# Ctrl+Space: the chord the artboard promises, and the one thing about this
-# feature a user is told. Kept next to the bar's own code rather than in
-# `core.hotkey`, because that module's DEFAULT_CHORD is push-to-talk's.
-BAR_CHORD = ("ctrl", "space")
-
-
-def start_bar_hotkey(shell: "JarvisUI") -> str:
-    """Bind Ctrl+Space to the bar. Returns the scope actually achieved.
-
-    Separate from the summon chord: that one brings the WINDOW back, this one
-    opens a line without it. Two chords because they answer two different
-    wishes, and collapsing them would make the bar unreachable in `hud` mode.
-    """
-    from core.hotkey import HotkeyTap
-
-    tap = HotkeyTap(lambda: toggle_command_bar(shell), chord=BAR_CHORD)
-    try:
-        scope = tap.start()
-    except Exception as e:                          # noqa: BLE001
-        note(shell, f"command bar shortcut unavailable — {type(e).__name__}: {e}")
-        return "window"
-    shell._bar_hotkey = tap
-    return scope
-
-
-def stop_bar_hotkey(shell: "JarvisUI") -> None:
-    tap = getattr(shell, "_bar_hotkey", None)
-    if tap is None:
-        return
-    tap.stop()
-    shell._bar_hotkey = None
-
-
-def toggle_command_bar(shell: "JarvisUI") -> None:
-    """Ctrl+Space: open the bar, or close it if it is already up."""
-    bar = getattr(shell, "_command_bar", None)
-    if bar is not None and bar.is_open:
-        bar.close()
-        return
-    open_command_bar(shell)
-
-
-def start_command_bar(shell: "JarvisUI") -> bool:
-    """Create the bar, unshown, and its chord. False if the chord cannot bind.
-
-    The bar is built now and opened later: building a window on the first
-    keystroke would put Qt's construction cost on the user's first Ctrl+Space,
-    which is the one moment the feature is being judged.
-    """
-    from ui.command_bar import CommandBar
-
-    bar = CommandBar(on_submit=lambda text: submit_from_bar(shell, text))
-    shell._command_bar = bar
-    scope = start_bar_hotkey(shell)
-    if scope != "global":
-        note(shell, "the command bar shortcut only works while the orb or the "
-                    "interface has focus — this desktop offers no global hook.")
-    return bar is not None
-
-
-def open_command_bar(shell: "JarvisUI") -> bool:
-    """Open the bar over whatever the user is doing. The orb's click lands here.
-
-    `previous` is the window the assistant can see, not the one the user is
-    typing in — Qt cannot see another application's window, and pretending
-    otherwise would make Esc restore focus to the wrong program. On a desktop
-    where the assistant has no window of its own, the ledger honestly records
-    "nothing to restore".
-    """
-    bar = getattr(shell, "_command_bar", None)
-    if bar is None:
-        from ui.command_bar import CommandBar
-        bar = CommandBar(on_submit=lambda text: submit_from_bar(shell, text))
-        shell._command_bar = bar
-    previous = getattr(shell, "_win", None)
-    if previous is not None and not previous.isVisible():
-        previous = None
-    if not bar.open(previous):
-        note(shell, f"Command bar unavailable ({bar.error}).")
-        return False
-    return True
-
-
-def submit_from_bar(shell: "JarvisUI", text: str) -> None:
-    """Hand one line to the assistant, the same way typing into the HUD does."""
-    try:
-        shell._win._submit_text(text)
-    except Exception as e:                          # noqa: BLE001
-        note(shell, f"the command bar could not send: {type(e).__name__}: {e}")
-
-
-def cycle_presence_mode(shell: "JarvisUI") -> str:
-    """Aktif → Fokus → Senyap → Aktif. Returns the mode now in force.
-
-    A single cycling command rather than three menu items: the tray menu is
-    already six entries and the three modes are one decision ("how loud is it"),
-    so one item that walks them is shorter to read and impossible to choose
-    wrongly. The label carries the current mode; see `presence_label()`.
-    """
-    from core import presence_mode
-
-    order = presence_mode.MODES
-    current = presence_mode.current()
-    index = order.index(current) if current in order else 0
-    mode = order[(index + 1) % len(order)]
-    apply_presence_mode(shell, mode)
-    return mode
-
-
-def _current_presence() -> str:
-    """The mode in force, from the one place that holds it."""
-    from core import presence_mode
-
-    return presence_mode.current()
-
-
-def presence_label(mode: str) -> str:
-    """The tray item's text for a mode. Indonesian, like the rest of the UI."""
-    return {
-        "active": "Aktif — boleh menyela",
-        "focus": "Fokus — saran ditahan",
-        "quiet": "Senyap — orb meredup",
-    }.get(str(mode or "").lower(), "Aktif — boleh menyela")
-
-
-def apply_presence_mode(shell: "JarvisUI", mode: str) -> bool:
-    """Switch Aktif / Fokus / Senyap and dim the orb to match.
-
-    This is the wiring behind the answered product question: Fokus and Senyap
-    dim the ORB, not only the notifications. The mode itself is held in
-    `core.presence_mode` so the scheduler thread, which has no widget, reads the
-    same value the panel writes.
-    """
-    from core import presence_mode
-    from memory.config_manager import save_presence_mode
-
-    if not presence_mode.set_mode(mode):
-        return False
-    try:
-        save_presence_mode(presence_mode.current())
-    except Exception as e:                          # noqa: BLE001
-        note(shell, f"presence mode not saved: {type(e).__name__}: {e}")
-    orb = getattr(shell, "_orb", None)
-    if orb is not None:
-        orb.set_mode(presence_mode.current())
-    return True
-
-
-# ── summon / dismiss ──────────────────────────────────────────────────────
 
 def summon(shell: "JarvisUI") -> None:
     """Bring the interface up — from the tray, a shortcut, or the caller.
@@ -901,12 +740,23 @@ def apply_state_everywhere(shell: "JarvisUI", state: str) -> None:
     because an attribute was not there. These are extra surfaces, not
     preconditions.
     """
-    tray = getattr(shell, "_tray", None)
-    if tray is not None:
-        tray.set_state(state)
-    bubble = getattr(shell, "_bubble", None)
-    if bubble is not None:
-        bubble.set_state(state)
+    # EACH SURFACE IS UPDATED INDEPENDENTLY, and a failure in one must not
+    # skip the others. They are separate windows on separate desktops; the orb
+    # raising because it has no paint device is exactly the case where the
+    # TOOLTIP is the only readout left, so "update the tray, then the bubble,
+    # then the orb, unguarded" gets the order wrong in the worst way.
+    for attr, method in (("_tray", "set_state"),
+                         ("_bubble", "set_state"),
+                         ("_orb", "set_state")):
+        target = getattr(shell, attr, None)
+        callback = getattr(target, method, None)
+        if callback is None:
+            continue
+        try:
+            callback(state)
+        except Exception as e:                      # noqa: BLE001
+            print(f"[JARVIS] {attr} could not show '{state}' — "
+                  f"{type(e).__name__}: {e}")
     # Desktop-notification policy for an answer that arrived while nobody was
     # watching. Same reason it is not in window.py: it is a decision, and
     # decisions belong with the rest of them.

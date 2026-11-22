@@ -161,6 +161,24 @@ sekarang menguji rantainya, bukan potongannya — termasuk membaca `main.py`
 secara struktural untuk memastikan bind terjadi **sebelum** keputusan
 notifikasi pertama.
 
+### Desain yang terlihat, bukan hanya benar
+
+`paint_orb` sempat **tidak pernah dipanggil**: painter-nya objek biasa tanpa
+`paintEvent`, jadi jendela orb dibuat, ditampilkan, transparan — dan kosong.
+Geometri, tiga mode, dan hit region semuanya lulus tes, dan tak satu pun dari
+itu yang menaruh piksel di layar. Itu beda antara desain yang **diimplementasi**
+dan desain yang **terlihat**.
+
+Sekarang `_build_canvas()` membuat `QWidget` sungguhan dengan `paintEvent`, dan
+tesnya memeriksa hal struktural — "ada yang tersambung ke siklus paint" —
+bukan hanya aritmetika. Tingkat audio juga mengalir ke glow lewat
+`set_audio_level`, dengan nilai di-clamp: Qt menolak gradien dengan stop di
+luar 0..1, dan kegagalannya muncul sebagai cincin biasa tanpa penjelasan.
+
+Tiga permukaan (tooltip, bubble, orb) diperbarui **independen**. Sebelumnya satu
+orb yang gagal mengecat bisa menjatuhkan pembaruan tray — dan justru di situ
+tooltip adalah satu-satunya bacaan yang tersisa.
+
 Label item baki menyebut **mode**, bukan aksinya ("Fokus — saran ditahan"),
 dan dibaca ulang setelah setiap klik: menu yang masih menampilkan mode lama
 adalah bug yang sama dengan centang yang basi, satu baris lebih bawah.
@@ -203,7 +221,7 @@ pribadi, dan hitungan saran hari ini tidak berarti apa pun setelah di-commit.
 | Modul | Status | Catatan |
 |---|---|---|
 | `ui/toast_queue.py` | **selesai** | antrean, kapasitas 3, hitungan yang dibuang; bebas Qt |
-| `ui/orb_overlay.py` | **selesai** | 96 px, meredup di Fokus/Senyap; klik di luar cincin diteruskan ke desktop |
+| `ui/orb_overlay.py` | **selesai** | 96 px, meredup di Fokus/Senyap; `paintEvent` sungguhan |
 | `ui/command_bar.py` | **selesai** | Ctrl+Space, riwayat 10 baris; fokus kembali dicatat, bukan diklaim |
 | `core/undo_journal.py` | **tidak perlu** | `core/undo.py` sudah melakukan ini |
 | `core/tool_registry.py` | belum | `risk_policy.register()` sudah jadi tempatnya |

@@ -3503,6 +3503,13 @@ class JarvisUI:
         bubble = getattr(self, "_bubble", None)
         if bubble is not None:
             bubble.set_audio_level(level)
+        # The orb's glow follows the voice too, and in ambient mode the orb is
+        # the only thing on screen that can show it. `getattr` for the same
+        # reason as the two above: this facade is built piecemeal by tests and
+        # plugins, and a level update must never be what raises.
+        orb = getattr(self, "_orb", None)
+        if orb is not None:
+            orb.set_audio_level(level)
 
     def glance(self, dx: float, dy: float, hold: float = 1.1) -> None:
         """Ask the avatar to look somewhere for a moment (see HoloAvatar.glance)."""

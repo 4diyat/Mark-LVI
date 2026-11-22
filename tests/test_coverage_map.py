@@ -61,6 +61,7 @@ TESTED = {
     "core/tool_risk.py":      "tests/test_tool_risk.py",
     "ui/toast_queue.py":      "tests/test_toast_queue.py",
     "ui/tray.py":             "tests/test_presence_chain.py",
+    "ui/ambient_shell.py":    "tests/test_presence_wiring.py",
     "core/confirm.py":        "tests/test_confirm.py",
     "core/echo.py":           "tests/test_echo.py",
     "core/hotkey.py":         "tests/test_hotkey.py",

@@ -172,6 +172,7 @@ class OrbOverlay:
         self._window = None
         self._canvas = None
         self._state = "idle"
+        self._level = 0.0           # 0..1, only the glow uses it
         self._placed = False
         self._timer = None
         self._error = ""
@@ -193,6 +194,16 @@ class OrbOverlay:
     @property
     def state(self) -> str:
         return self._state
+
+    @property
+    def audio_level(self) -> float:
+        """How loud the assistant is, 0..1. Clamped here so the painter can
+        trust it: a NaN or a 40 would otherwise become a gradient Qt refuses
+        to build, and the failure would show up as a plain ring."""
+        try:
+            return max(0.0, min(1.0, float(self._level)))
+        except (TypeError, ValueError):
+            return 0.0
 
     @property
     def visible(self) -> bool:
@@ -225,15 +236,8 @@ class OrbOverlay:
             window.setWindowTitle(_assistant_name())
             window.setFixedSize(*window_size(self._mode))
 
-            canvas = _OrbCanvas(window, self)
+            canvas = _build_canvas(window, self)
             canvas.setGeometry(0, 0, *window_size(self._mode))
-
-            # Clicks arrive at the window; the canvas decides whether the point
-            # was on the ring. `mousePressEvent` is replaced on the window
-            # rather than subclassed because the same trick is already how
-            # `FaceBubble` gets its drag, and a second window class for one
-            # handler is more Qt than this needs.
-            window.mousePressEvent = canvas.on_press
 
             self._window, self._canvas = window, canvas
             self._place()
@@ -288,6 +292,13 @@ class OrbOverlay:
         """Idle / listening / speaking / thinking — the same words the HUD uses."""
         self._state = str(state or "idle").strip().lower() or "idle"
         self._repaint()
+
+    def set_audio_level(self, level: float) -> None:
+        """The glow follows the voice while speaking. Cheap and idempotent:
+        this is called from the audio thread, and the orb is decoration."""
+        self._level = level
+        if self._state == "speaking":
+            self._repaint()
 
     def set_mode(self, mode: str) -> None:
         """Active / focus / quiet. Redraws, never resizes the window."""
@@ -368,41 +379,60 @@ class OrbOverlay:
             return False
 
 
-class _OrbCanvas:
-    """The painter, kept out of the window so the window stays a QWidget.
+def _build_canvas(parent, owner: "OrbOverlay"):
+    """Build the widget that actually paints the ring.
 
-    Built lazily inside `start()`: this class is a plain object rather than a
-    `QWidget` subclass so that importing this module does not need Qt, which is
-    what lets the arithmetic above be tested on a machine with no display.
+    WHY THIS IS A FUNCTION AND NOT A CLASS AT MODULE SCOPE
+        A `QWidget` subclass has to import Qt when the class is created, and this
+        module is imported by tests on machines with no display and by CI that
+        installs only the test tooling. So the class is created inside `start()`,
+        where Qt is already being imported anyway.
+
+    WHY IT EXISTS AT ALL, AND THE BUG IT FIXES
+        The first version kept the painter in a plain object with an `update()`
+        that forwarded to the window, and there was no `paintEvent` anywhere.
+        Nothing ever called `paint_orb`, so the orb window was created, shown,
+        translucent — and empty. Every test passed, because the geometry, the
+        modes and the hit region were all correct and none of them is what puts
+        a pixel on screen. That is the difference between the design being
+        implemented and being VISIBLE.
     """
+    from PyQt6.QtWidgets import QWidget
 
-    def __init__(self, parent, owner: OrbOverlay):
-        self._parent = parent
-        self._owner = owner
+    class _OrbCanvas(QWidget):
+        """The ring. Owns no state: it asks the overlay what to draw."""
 
-    def setGeometry(self, x, y, w, h):               # noqa: N802 — Qt's name
-        self._geometry = (x, y, w, h)
+        def paintEvent(self, _event):               # noqa: N802 — Qt's name
+            try:
+                from PyQt6.QtGui import QPainter
 
-    def update(self):
-        window = self._owner._window
-        if window is None:
-            return
-        try:
-            window.update()
-        except Exception:                           # noqa: BLE001
-            # Qt repaints on the next event-loop turn regardless; a failed
-            # `update()` costs a frame, not the orb.
-            return
+                painter = QPainter(self)
+                try:
+                    # `SIZE` rather than `self.width()`: the test stub has no
+                    # geometry, and the window is a fixed size anyway. A painter
+                    # that trusted the widget's reported size would draw nothing
+                    # under the stub and so could not be tested at all.
+                    paint_orb(painter, SIZE, owner.mode, owner.state,
+                              owner.audio_level)
+                finally:
+                    painter.end()
+            except Exception as e:                  # noqa: BLE001
+                # A failed repaint costs a frame. Letting it escape would take
+                # down the event loop of a window with no other purpose.
+                print(f"[JARVIS] Orb overlay: could not paint — "
+                      f"{type(e).__name__}: {e}")
 
-    def on_press(self, event):
-        """Window-level press: convert to window coordinates and route it."""
-        try:
-            pos = event.position()
-            handled = self._owner.handle_click(int(pos.x()), int(pos.y()))
-            if handled:
-                event.accept()
-        except Exception as e:                      # noqa: BLE001
-            print(f"[JARVIS] Orb overlay: press not handled — {type(e).__name__}: {e}")
+        def mousePressEvent(self, event):           # noqa: N802 — Qt's name
+            """Route the press: the child covers the window, so it comes first."""
+            try:
+                pos = event.position()
+                if owner.handle_click(int(pos.x()), int(pos.y())):
+                    event.accept()
+            except Exception as e:                  # noqa: BLE001
+                print(f"[JARVIS] Orb overlay: press not handled — "
+                      f"{type(e).__name__}: {e}")
+
+    return _OrbCanvas(parent)
 
 
 def paint_orb(painter, size: int, mode: str, state: str, level: float = 0.0) -> None:

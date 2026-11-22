@@ -34,9 +34,13 @@ def lifecycle():
 class _Orb:
     def __init__(self):
         self.modes = []
+        self.states = []
 
     def set_mode(self, mode):
         self.modes.append(mode)
+
+    def set_state(self, state):
+        self.states.append(state)
 
 
 class _Shell:
@@ -157,12 +161,44 @@ def test_ambient_start_binds_the_bar_and_the_orb(lifecycle):
 
 
 def test_the_orb_click_opens_the_bar(lifecycle):
-    source = (ROOT / "ui" / "lifecycle.py").read_text(encoding="utf-8")
-    orb_block = source[source.index("def start_orb(shell"):
-                       source.index("def start_command_bar(shell")]
+    """Read from the module that now owns the orb: the shell moved out of
+    `lifecycle.py` when that file hit its ceiling, and a test pinned to the old
+    location fails for the move rather than for the behaviour."""
+    shell = (ROOT / "ui" / "ambient_shell.py").read_text(encoding="utf-8")
+    orb_block = shell[shell.index("def start_orb(shell"):
+                      shell.index("def start_command_bar(shell")]
     assert "open_command_bar" in orb_block, (
         "the orb is the only clickable surface in ambient mode; without this "
         "the ring is decoration")
+
+
+def test_the_orb_follows_the_assistant_state(lifecycle):
+    """A ring that keeps drawing "idle" while the assistant speaks is a still
+    picture pretending to be a status light — and in ambient mode it is the
+    only status light there is."""
+    orb = _Orb()
+    lifecycle.apply_state_everywhere(_Shell(orb=orb), "SPEAKING")
+    assert orb.states == ["SPEAKING"]
+
+
+def test_a_failing_orb_does_not_stop_the_tooltip(lifecycle):
+    """The three surfaces are independent: one that raises must not take the
+    other two down, because the tooltip is the only readout in the tray."""
+
+    class _BrokenOrb:
+        def set_state(self, _state):
+            raise RuntimeError("no paint device")
+
+    seen = []
+
+    class _Tray:
+        def set_state(self, state):
+            seen.append(state)
+
+    shell = _Shell(orb=_BrokenOrb())
+    shell._tray = _Tray()
+    lifecycle.apply_state_everywhere(shell, "LISTENING")
+    assert seen == ["LISTENING"], "the tray update came after the orb and was lost"
 
 
 def test_leaving_ambient_releases_the_bar_chord(lifecycle):

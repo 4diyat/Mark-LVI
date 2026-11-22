@@ -294,6 +294,48 @@ def test_the_painter_runs_in_every_mode_without_a_real_qt(orb):
     assert calls.count("ellipse") > 0
 
 
+def test_the_canvas_is_a_widget_with_a_paint_event(orb):
+    """THE BUG THIS FILE MISSED THE FIRST TIME.
+
+    Every geometry and mode test passed while the orb drew nothing at all: the
+    painter was a plain object whose `update()` forwarded to the window, and
+    nothing in the module had a `paintEvent`. The window was created, shown,
+    translucent and empty.
+
+    So the assertion is not "the maths is right" — it is "something is wired to
+    the paint cycle", which is a structural fact and answerable without a
+    display.
+    """
+    import inspect
+
+    canvas = orb._build_canvas(None, orb.OrbOverlay())
+    assert hasattr(canvas, "paintEvent"), "the orb widget has no paintEvent"
+    # And that handler must call the painter. A `pass`-body paintEvent would
+    # pass the line above and still draw nothing.
+    source = inspect.getsource(type(canvas).paintEvent)
+    assert "paint_orb(" in source
+
+
+def test_a_started_orb_builds_a_canvas_that_can_paint(orb):
+    shell = orb.OrbOverlay()
+    assert shell.start() is True
+    assert shell._canvas is not None
+    assert hasattr(shell._canvas, "paintEvent")
+    shell.stop()
+
+
+def test_the_audio_level_is_clamped_before_the_painter_sees_it(orb):
+    """Qt refuses a gradient with an out-of-range stop value; the failure shows
+    up as a plain ring with no explanation."""
+    shell = orb.OrbOverlay()
+    shell.set_audio_level(40)
+    assert shell.audio_level == 1.0
+    shell.set_audio_level(-3)
+    assert shell.audio_level == 0.0
+    shell.set_audio_level(float("nan"))
+    assert 0.0 <= shell.audio_level <= 1.0 or shell.audio_level == 0.0
+
+
 def test_the_painter_never_fills_the_whole_window(orb):
     """A filled rect would be a 96 px dark square on the user's desktop — the
     single most visible way this widget can be wrong."""
