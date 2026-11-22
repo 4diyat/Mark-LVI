@@ -674,8 +674,45 @@ def _install_qt() -> dict[str, types.ModuleType]:
                                              "timeout": _Signal(),
                                              "singleShot": staticmethod(lambda *a: None)})
     core.pyqtSignal = _Signal
-    for geom in ("QLineF", "QPointF", "QPoint", "QRectF", "QSizeF", "QRect", "QSize"):
+    class _RectF(_Object):
+        """A rect that REMEMBERS its four numbers, as Qt's does.
+
+        WHY THIS IS STATE. Every drawing test in this suite asserts against the
+        coordinates a painter was given, and `QRectF` used to be a bare `_Object`
+        whose `x()` answered through `__getattr__` — a lambda, not a number. The
+        result was that a test could not tell a card drawn at (100, 200) from one
+        drawn at (0, 0), and the first version of `tests/test_toast_card.py`
+        failed with "type NoneType doesn't define round" rather than with a bug.
+
+        Accepts both Qt shapes: `QRectF(x, y, w, h)` and `QRectF()`.
+        """
+
+        def __init__(self, *a, **k):
+            super().__init__()
+            x, y, w, h = (tuple(a) + (0, 0, 0, 0))[:4]
+            self._rect = (float(x), float(y), float(w), float(h))
+
+        def x(self):
+            return self._rect[0]
+
+        def y(self):
+            return self._rect[1]
+
+        def width(self):
+            return self._rect[2]
+
+        def height(self):
+            return self._rect[3]
+
+        def left(self):
+            return self._rect[0]
+
+        def top(self):
+            return self._rect[1]
+
+    for geom in ("QLineF", "QPointF", "QPoint", "QSizeF", "QRect", "QSize"):
         setattr(core, geom, type(geom, (_Object,), {}))
+    core.QRectF = _RectF
 
     gui = types.ModuleType("PyQt6.QtGui")
     for name in ("QBrush", "QColor", "QCursor", "QFont", "QKeySequence",

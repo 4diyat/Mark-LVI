@@ -17,7 +17,7 @@ Artboard **1–6** dan **23–28** menggambar perilaku jendela sesuai spesifikas
 | # | Artboard | Yang ditunjukkan |
 |---|---|---|
 | 1 | Orb overlay | Overlay ±150 px transparan, hanya orb 56 px yang menerima klik |
-| 2 | Toast | Tiga toast menumpuk, sisanya antre, batas 3 saran/hari |
+| 2 | Toast | Tiga kartu menumpuk; yang keempat **menggantikan yang tertua** dan dihitung (bukan antre — lihat catatan di bawah), batas 3 saran/hari |
 | 3 | Command bar | Ctrl+Space, input fokus, Esc kembali ke jendela sebelumnya |
 | 4 | Orb | Klik kiri/kanan/seret, empat status dibaca dari isi orb |
 | 5 | Panel baki | Mengikuti taskbar, segmented Aktif/Fokus/Senyap |
@@ -141,6 +141,7 @@ stack-neutral dan berlaku apa adanya untuk implementasi Python.
 | Kebutuhan | Modul | Tes |
 |---|---|---|
 | Toast berantre + kapasitas + hitungan yang dibuang | `ui/toast_queue.py` | `tests/test_toast_queue.py` |
+| Kartu toast 340 px + jendela tanpa fokus | `ui/toast_card.py`, `ui/toast_stack.py` | `tests/test_toast_card.py`, `tests/test_toast_stack.py` |
 | Batas 3 saran/hari | `core/suggestion_quota.py` | `tests/test_suggestion_quota.py` |
 | Risiko 3 tingkat, default `risky` | `core/risk_policy.py` | `tests/test_risk_policy.py` |
 | Audit log terpisah dari `logs/jarvis.log` | `core/audit_log.py` | `tests/test_audit_log.py` |
@@ -186,3 +187,19 @@ salinan yang berbeda perilaku.
 - **Keputusan pemilik repo:** Fokus dan Senyap **meredupkan orb**, bukan hanya
   menahan notifikasi. Board 24 (28→18 px, cincin titik-titik) sekarang menjadi
   perilaku yang diuji, bukan asumsi.
+
+- **Board 2: "sisanya antre" TIDAK diterapkan sebagai tumpukan yang tumbuh.**
+  Artboard menulis "+2 lain dalam antrean", dan kata *antrean* berarti menunggu.
+  Yang dipilih pemilik repo: kartu keempat **menggantikan yang tertua** dan
+  jumlahnya diucapkan ("+2 lain dalam antrean"), karena antrean notifikasi yang
+  tumbuh tanpa akhir di permukaan desktop adalah antrean yang tidak pernah
+  dikosongkan siapa pun. Yang tidak boleh terjadi adalah diam-diam: angka itu
+  ada supaya kehilangannya terlihat.
+- **Kartu toast sekarang benar-benar digambar.** Sebelum board 2 dikerjakan,
+  `ui/toast_queue.py` hanya menyimpan aritmatika dan **tidak dipakai di mana
+  pun** selain smoke test; satu-satunya yang dilihat pengguna adalah notifikasi
+  OS dari `core/notify.py`. `ui/toast_card.py` menggambar kartunya dan
+  `ui/toast_stack.py` adalah jendelanya. `core/notify.py` tetap ada dan tetap
+  dipakai untuk notifikasi OS — keduanya menjawab pertanyaan berbeda: notifikasi
+  OS untuk "jawabannya sudah jadi saat Anda di aplikasi lain", kartu untuk
+  "berapa sisa kuota hari ini".

@@ -86,6 +86,12 @@ def test_the_package_has_exactly_the_mockup_modules():
         # drag, corner anchor) and builds nothing; `orb_canvas` is the paint
         # half (the QWidget, its `paintEvent`, and the one `paint_orb`).
         "orb_place.py", "orb_canvas.py",
+        # Board 2's card. `toast_queue` is the DATA (a scheduler thread may
+        # produce a toast, so no Qt), `toast_card` is the DRAWING (one function,
+        # one Toast, marks on a painter), and the window that stacks them is
+        # `toast_stack`. Three files for the same reason the tray panel has
+        # three: each answers a different question.
+        "toast_card.py", "toast_stack.py",
     }
     present = {p.name for p in _modules()}
     assert present == expected, (
