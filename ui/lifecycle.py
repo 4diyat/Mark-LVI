@@ -210,28 +210,32 @@ def start_interface(shell: "AmbientShell") -> None:
     except Exception as e:                          # noqa: BLE001
         note(shell, f"the bar surface failed to start — {type(e).__name__}: {e}")
 
-    # BOARD 6 IS BUILT HERE AND SHOWN LATER. The overlay covers the screen, so
-    # it must exist before the first LISTENING and must not be up for it: a
-    # 1280×720 frame that appeared during start-up would be the first thing a
-    # user saw of this program. It is not appended to `started`: it is a
-    # decoration with no way back to the assistant, so its failure must not
-    # read as "nothing came up".
-    start_voice_overlay(shell)
+    # BOARD 6 IS BUILT HERE AND SHOWN LATER: a 1280x720 frame up during
+    # start-up would be the first thing the user saw. Not appended to
+    # `started` — a decoration with no way back is not "a surface came up".
+    # GUARDED LIKE EVERY OTHER SURFACE, and this one does the most work: a
+    # 1280x720 window, a camera worker, a second global chord. An exception
+    # here escaped `start_interface`, which runs on the Qt thread BEFORE
+    # `exec()` — the tray icon stayed (Qt paints it synchronously) and the
+    # event loop never started. That is "the app hung" to a user.
+    try:
+        start_voice_overlay(shell)
+    except Exception as e:                          # noqa: BLE001
+        note(shell, f"the voice overlay failed to start — {type(e).__name__}: {e}")
 
-    # `--hidden` MEANS "START, BUT DO NOT APPEAR ON SOMEONE'S SCREEN" — a login
-    # entry runs while the user is working, and a face that pops up on the first
-    # frame is the thing the flag exists to prevent. The face is still BUILT:
-    # nothing built means nothing to summon, and the chord would bring up
-    # nothing at all.
+    # `--hidden`: still BUILT (nothing built means nothing to summon), just not
+    # shown — a login entry must not pop a face onto someone's screen.
     if getattr(getattr(shell, "_launch", None), "hidden", False):
         _set_bubble_visible(shell, False)
 
-    # THE WAY BACK. With no window, the summon chord is the only global key
-    # this program owns: without it the tray is the sole way to reach the
-    # assistant, and on a desktop with no notification area there is none. It
-    # is bound after the tray because the notice about a window-scoped chord
-    # goes through the tray's own log.
-    start_summon_hotkey(shell)
+    # THE WAY BACK: with no window this chord is the only global key we own, so
+    # it is bound after the tray — its "window-scoped" notice goes via the log.
+    # Same reason: `HotkeyTap.start()` probes the OS and this runs before
+    # `exec()`. A probe that raises costs the tray and every click — for a key.
+    try:
+        start_summon_hotkey(shell)
+    except Exception as e:                          # noqa: BLE001
+        note(shell, f"the summon shortcut failed to bind — {type(e).__name__}: {e}")
 
     if not started:
         # Nothing came up. This is the one outcome worth shouting about: the

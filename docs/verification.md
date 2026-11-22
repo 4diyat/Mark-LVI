@@ -75,6 +75,7 @@ semua komputer. Hasil uji lokal tidak otomatis menjadi hasil CI atau rilis.
 | Tangan → OS | Kebijakan murni: hanya tiga aksi, pembekuan saat fokus ada di JARVIS/konfirmasi/modal, pelepasan tombol saat tangan hilang atau mode dimatikan, penolakan lompatan sampel, margin sudut layar; uji AST yang melarang pemanggilan `press`/`hotkey`/`write` dan melarang impor allowlist shortcut | Desktop **Windows sungguhan**: apakah pointer benar-benar mengikuti tangan pada DPI dan monitor berbeda, apakah klik nyasar tidak pernah mengenai tombol tutup jendela, apakah tombol mouse benar-benar lepas saat tangan keluar frame, dan apakah tracking tetap layak dipakai di ruangan dengan cahaya redup |
 | Akses file penuh | Kebijakan murni: default = home saja, opt-in hanya dari `true` literal, penolakan kredensial (`~/.ssh`, `System32`, penyimpan sandi browser) meski folder induknya diizinkan, penolakan kunci milik aplikasi sendiri, resolusi symlink sebelum pemeriksaan, alasan penolakan, dan uji AST yang memastikan tidak ada tool/plugin yang bisa memanggil `save`/`disable` | Folder **sungguhan** di Windows (`C:\`), macOS (`~/Library`) dan Linux (`/`): apakah folder sistem benar-benar tertolak, apakah reparse point/junction Windows dan symlink OneDrive/Dropbox tidak menyelinap, dan apakah dialog pemilih folder mengembalikan path yang bisa disimpan |
 | Kamera keamanan | Kebijakan murni dan tanpa gambar: default mati, `tick()` tanpa parameter override, hanya `true` literal yang menyalakan, catatan perubahan di memori (bukan disk), deteksi perbedaan dan hold-off, uji AST yang melarang unggahan ke sesi dan penulisan file, serta uji bahwa tidak ada tool/plugin yang bisa menyalakan kamera | Kamera **sungguhan**: apakah lampu perangkat benar-benar padam saat fitur mati, apakah `core/camera_lease.py` berebut perangkat dengan pratinjau langsung dan kontrol tangan, berapa detik untuk membuka/menutup perangkat tiap 20 detik, dan apakah deteksi perbedaan tidak menyala karena kipas, tirai, atau TV |
+| Baki yang menjawab klik | `start_interface` dipanggil sebelum `exec()`, setiap permukaan punya pengaman sendiri (diuji dengan AST atas nama fungsinya), `should_repaint` sebagai fungsi murni yang diuji langsung, dan `facet_stride` yang benar-benar mengubah jumlah poligon yang digambar | Apakah klik pada ikon baki benar-benar dijawab di Windows, dan berapa CPU yang dipakai wajah saat diam di mesin nyata — keduanya hanya bisa dibuktikan di desktop sungguhan |
 
 Fitur kontrol tangan dan order MT5 tetap **eksperimental**. Smoke offscreen
 memverifikasi interaksi yang diprogram, bukan kesesuaian visual, performa nyata,
@@ -511,6 +512,21 @@ perilaku shell yang sebenarnya, dan itu tidak dapat disimulasikan.
       punya kemampuan itu — catat bila ia mengklaim bisa.
 - [ ] Tutup JARVIS saat tombol mouse sedang ditahan gestur. Desktop tidak boleh
       tertinggal dalam mode seret.
+### Baki yang menjawab klik
+
+- [ ] Jalankan `python main.py` di Windows. Ikon baki harus muncul **dan** klik
+      kiri harus membuka panel, klik kanan harus membuka menu. Ini yang dulu
+      gagal: ikon muncul, klik tidak dijawab.
+- [ ] Kalau panel tidak terbuka, lihat `logs/jarvis.log`. Baris yang hilang
+      memberi tahu di mana ia berhenti: `start_interface` mencetak satu baris
+      per permukaan yang gagal.
+- [ ] Biarkan aplikasi diam (tidak bicara) selama satu menit. CPU proses harus
+      rendah dan tetap rendah. Wajah yang berkedip tidak boleh memakai satu
+      inti penuh — kalau ya, `IDLE_REPAINT_MS` atau `IDLE_FACET_STRIDE` di
+      `ui/face_canvas.py` belum berlaku.
+- [ ] Bicara ke asisten. Mulut harus bergerak mulus. Kalau mulut tersendat,
+      `IDLE_FACET_STRIDE` ikut terpakai saat bicara — seharusnya tidak.
+
 ### Kamera keamanan
 
 > **Tidak ada saklar di layar.** Drawer CONTROLS tidak digambar oleh mockup

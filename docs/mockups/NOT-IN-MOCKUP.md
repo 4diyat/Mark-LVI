@@ -499,3 +499,45 @@ that test found a real bug:
   *outside* your home folder is reachable"), which is how the disagreement was
   caught: the sentence and the check could not both be true. Home is now always
   one of the effective roots.
+
+## The hang: an icon that answered nothing
+
+On Windows the tray icon appeared and then responded to no click at all. That
+combination is the signature of a blocked Qt thread rather than a failed start:
+`QSystemTrayIcon.show()` paints the icon synchronously, so an icon exists even
+when `app.exec()` is never reached — or when the loop behind it never runs.
+
+Four defects produced it, and each one is the same shape: work that looks
+harmless in a file and is a machine-gun on the one thread that can draw.
+
+- **The face bubble repainted 893 polygons 30 times a second.**
+  `ui/face_canvas.py` ran one 33 ms timer, and every tick called `update()`.
+  Every repaint walked the visible half of a 1,554-facet head: 893
+  `drawPolygon` calls plus their `QPolygonF`, three `QPointF` each, and a
+  `QLinearGradient` with two or three `setColorAt` calls. Measured on this
+  mesh that is **26,790 polygons and over 100,000 Qt calls per second**, all on
+  the Qt thread. The event loop then serviced the tray only in the gaps.
+  Two changes: the repaint is now a separate decision from the step
+  (`should_repaint`, `IDLE_REPAINT_MS` = 200 ms for a still face, every step
+  while speaking), and the idle FILL draws every third visible facet
+  (`IDLE_FACET_STRIDE`). The wireframe and the facial features are untouched,
+  so the silhouette, the eyes and the mouth stay exact.
+- **`start_voice_overlay` ran outside any `try`.** It builds a 1280×720
+  window, starts a camera worker and binds a chord — and it is called from
+  `start_interface`, which runs on the Qt thread before `exec()`. One exception
+  there left the tray icon on the taskbar with no event loop behind it.
+- **`start_summon_hotkey` ran outside any `try`** for the same reason, and it
+  probes the OS (`GetAsyncKeyState` on Windows, `XOpenDisplay` on X11).
+- **The guard is now asserted by name.** `tests/test_face_frame_budget.py`
+  walks `start_interface` and fails on any `start_*` call that is not inside a
+  `try`, so the next surface added to that function cannot reopen the hole.
+
+`HoloAvatar.paint` gained `facet_stride`, and `ui/face_canvas.py` gained
+`should_repaint` — a pure function rather than an inline `if`, because the
+first version of the test read the source text and a mutation that replaced the
+condition with `if True:` passed it.
+
+**Not proven here.** This was diagnosed by reading, measuring the mesh and
+driving the callbacks with a stub; Qt cannot run in this sandbox (the wheel
+installs, the system libraries do not). Whether the Windows tray now answers
+clicks is a check on the real desktop, and it is in `docs/verification.md`.
