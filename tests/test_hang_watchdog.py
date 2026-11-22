@@ -62,8 +62,12 @@ def test_the_watchdog_writes_a_stack_when_the_heartbeat_stops(tmp_path,
     # Pull `_install_hang_watchdog` out of main.py without importing main.py
     # (it needs sounddevice, google-genai and a Live session at import time).
     tree = ast.parse(source)
-    fn = next(n for n in tree.body
-              if isinstance(n, ast.FunctionDef) and n.name == "_arm_hang_watchdog")
+    # Both functions: the loop calls the pure decision, so it has to be in
+    # scope exactly as `main.py` would have it.
+    wanted = {"_arm_hang_watchdog", "_is_stall"}
+    fns = [n for n in tree.body if isinstance(n, ast.FunctionDef)
+           and n.name in wanted]
+    assert {n.name for n in fns} == wanted, "main.py lost a watchdog function"
     namespace: dict = {
         "Path": Path, "threading": threading, "time": time,
         "_LOG_PATH": tmp_path / "jarvis.log",
@@ -103,7 +107,7 @@ def test_the_watchdog_writes_a_stack_when_the_heartbeat_stops(tmp_path,
     sys.modules["PyQt6.QtCore"] = qt
     namespace["__builtins__"] = __builtins__
     try:
-        exec(compile(ast.Module(body=[fn], type_ignores=[]),
+        exec(compile(ast.Module(body=fns, type_ignores=[]),
                      str(ROOT / "main.py"), "exec"), namespace)
         namespace["_arm_hang_watchdog"](silence=0.3)
         report = tmp_path / "hang.txt"
@@ -127,6 +131,17 @@ def test_the_watchdog_writes_a_stack_when_the_heartbeat_stops(tmp_path,
             "the watchdog never wrote a stack; a stalled Qt thread would still "
             "leave no evidence")
         assert "File " in text, "the report has no traceback frames in it"
+
+        # ONE REPORT PER STALL. Writing every 15 s for the length of a hang is
+        # an unbounded file from a thread that cannot make progress — the hang
+        # making itself worse. Count the headers and then wait again.
+        first = text.count("— dumping every thread")
+        assert first == 1, f"one stall produced {first} dumps"
+        time.sleep(1.2)
+        again = report.read_text(encoding="utf-8").count("— dumping every thread")
+        assert again == 1, (
+            f"the watchdog kept writing during one stall ({again} dumps): a "
+            f"hang would grow the file without bound")
 
         # The watcher must re-arm after reporting, or the second hang is silent.
         assert started, ("the heartbeat timer was never started, so nothing "
@@ -177,3 +192,53 @@ def test_arming_can_never_stop_the_launch():
         namespace["_install_hang_watchdog"]()          # must simply return
     finally:
         sys.modules.pop("PyQt6", None)
+
+
+def _load_is_stall():
+    """The pure decision, exec'd out of main.py without importing it."""
+    tree = ast.parse(_source())
+    fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef)
+              and n.name == "_is_stall")
+    namespace = {"__builtins__": __builtins__}
+    exec(compile(ast.Module(body=[fn], type_ignores=[]),
+                 str(ROOT / "main.py"), "exec"), namespace)
+    return namespace["_is_stall"]
+
+
+def test_a_short_silence_is_not_a_hang():
+    """Two seconds of quiet is an idle app, not a stall.
+
+    This half is the one that decides whether a normal launch writes a dump of
+    every thread into a user's log directory on the first slow frame.
+    """
+    is_stall = _load_is_stall()
+    assert is_stall(0.0, 15.0, False) is False
+    assert is_stall(2.0, 15.0, False) is False
+    assert is_stall(14.999, 15.0, False) is False
+
+
+def test_the_threshold_itself_counts():
+    """At exactly the threshold the dump happens — not one tick later."""
+    is_stall = _load_is_stall()
+    assert is_stall(15.0, 15.0, False) is True
+    assert is_stall(60.0, 15.0, False) is True
+
+
+def test_a_stall_is_reported_once():
+    """`reported` is the difference between one dump and one every 15 seconds."""
+    is_stall = _load_is_stall()
+    assert is_stall(60.0, 15.0, True) is False, (
+        "an already-reported stall would dump again, so a long hang grows the "
+        "file without bound")
+
+
+def test_the_watcher_uses_the_pure_decision():
+    """A pure function nobody calls proves nothing."""
+    source = _source()
+    tree = ast.parse(source)
+    arm = next(n for n in tree.body if isinstance(n, ast.FunctionDef)
+               and n.name == "_arm_hang_watchdog")
+    body = ast.get_source_segment(source, arm) or ""
+    assert "_is_stall(" in body, (
+        "the loop compares the clock inline; the tested decision is not the "
+        "decision the program makes")

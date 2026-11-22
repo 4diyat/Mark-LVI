@@ -3171,6 +3171,22 @@ def _make_application(argv=None):
     return QApplication.instance()
 
 
+def _is_stall(quiet: float, silence: float, reported: bool) -> bool:
+    """Whether a silence this long deserves a stack dump.
+
+    A pure function rather than an `if` in the loop, for the reason
+    `ui/face_canvas.should_repaint` is one: a decision buried in a background
+    thread can only be tested by racing that thread, and the first version of
+    this file lost that race on one CI runner. Two numbers and a flag can be
+    tested exhaustively in microseconds, and a mutation that removes either
+    half of the condition fails immediately.
+
+    `reported` is what keeps a hang from writing a dump every fifteen seconds
+    for as long as it lasts.
+    """
+    return quiet >= silence and not reported
+
+
 def _install_hang_watchdog(silence: float = 15.0) -> None:
     """Arm the watchdog, and never let arming it be the reason a launch dies.
 
@@ -3212,6 +3228,14 @@ def _arm_hang_watchdog(silence: float = 15.0) -> None:
         stamp. A timer that stops firing IS the hang, so the watcher needs no
         theory about the cause — it reports the stacks and keeps the process
         running so the user can still quit it from the tray's existing handles.
+
+    ONCE PER STALL, NOT ONCE PER INTERVAL
+        The first version re-armed itself after every report, so one stall
+        produced a dump of every thread every fifteen seconds for as long as
+        the hang lasted — an unbounded file, written from a thread that cannot
+        make progress, which is a hang making itself worse. `reported` is
+        cleared only by a fresh pulse, so a stall is written once and a
+        recovered application is watched again.
     """
     import faulthandler
 
@@ -3222,10 +3246,11 @@ def _arm_hang_watchdog(silence: float = 15.0) -> None:
                      f"=== thread={threading.get_ident()}\n")
     except OSError:
         return                       # a read-only directory costs the report, not the app
-    beat = {"at": time.monotonic()}
+    beat = {"at": time.monotonic(), "reported": False}
 
     def _pulse() -> None:
         beat["at"] = time.monotonic()
+        beat["reported"] = False      # the Qt thread is alive again: watch on
 
     from PyQt6.QtCore import QTimer
 
@@ -3240,7 +3265,7 @@ def _arm_hang_watchdog(silence: float = 15.0) -> None:
         while True:
             time.sleep(1.0)
             quiet = time.monotonic() - beat["at"]
-            if quiet < silence:
+            if not _is_stall(quiet, silence, beat["reported"]):
                 continue
             handle.write(f"\n!!! the Qt thread has not run a timer for {quiet:.0f}s "
                          f"at {time.strftime('%Y-%m-%d %H:%M:%S')} "
@@ -3250,9 +3275,9 @@ def _arm_hang_watchdog(silence: float = 15.0) -> None:
             except Exception:                       # noqa: BLE001
                 pass
             handle.write("!!! end of stacks\n")
+            beat["reported"] = True
             print(f"[JARVIS] HANG: the Qt thread stopped for {quiet:.0f}s — "
                   f"stacks written to {path}", flush=True)
-            beat["at"] = time.monotonic()           # one report per stall, not a flood
 
     threading.Thread(target=_watch, name="hang-watchdog", daemon=True).start()
     print(f"[JARVIS] Hang watchdog armed — stacks go to {path}", flush=True)

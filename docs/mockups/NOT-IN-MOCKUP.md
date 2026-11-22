@@ -579,12 +579,28 @@ before this change — took the launch down with `ModuleNotFoundError: No module
 named 'PyQt6'`. A diagnostic that stops the program from starting is the
 failure it was built to catch.
 
+**One dump per stall, not one every fifteen seconds.** The first version
+re-armed the clock after reporting, so a hang that lasted two minutes wrote
+every thread's stack four times — an unbounded file, written by a thread that
+cannot make progress, which is a hang making itself worse. The decision is now
+a pure function, `_is_stall(quiet, silence, reported)`, and `reported` is
+cleared only by a fresh pulse. That is also why it is pure: a decision buried
+in a background thread can only be tested by racing the thread, and the first
+version of this file lost that race on one CI runner.
+
 **Tests.** `tests/test_hang_watchdog.py` drives the real function with a frozen
 heartbeat and a 0.3 s threshold, and asserts that `hang.txt` ends up containing
-traceback frames, not just a header. Six mutations were checked by hand and all
-six are caught: the loop skipping the arming, the watcher skipping the dump, the
-comparison removed, the report path moved out of the log directory, the timer
-never started, and the `except` narrowed so a real failure escapes.
+traceback frames, not just a header — and that a stall that continues writes
+nothing further. The pure decision is tested exhaustively: 0 s and 14.999 s are
+not a hang, 15.0 s is, an already-reported stall is not, and the loop is
+asserted to call it.
+
+Ten mutations were checked by hand and all ten are caught: the loop skipping
+the arming, the watcher skipping the dump, the comparison removed, the report
+path moved out of the log directory, the timer never started, the `except`
+narrowed so a real failure escapes, the threshold removed, the `reported` flag
+removed, the loop re-arming the clock after a report, and the pure decision
+bypassed in favour of an inline comparison.
 
 **Not proven here.** The file this produces on a real Windows hang. Qt cannot
 run in this sandbox. What is proven is that a heartbeat that stops produces
