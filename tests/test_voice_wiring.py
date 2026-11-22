@@ -278,9 +278,15 @@ def test_the_shells_set_state_is_what_drives_the_overlay():
     would be perfect and never appear.
 
     `ui/shell.py` is checked by AST because a real `AmbientShell` needs a Qt
-    that this machine does not have, and the claim is structural: `set_state`
-    must call `voice_wiring.sync(self)`, after the small surfaces have been
-    told.
+    that this machine does not have, and the claim is structural: the widget
+    half of `set_state` must call `voice_wiring.sync(self)`, after the small
+    surfaces have been told.
+
+    THE WIDGET HALF IS `_apply_state`, NOT `set_state`. `set_state` runs on the
+    asyncio thread and now hands the word to `_apply_state` through
+    `run_on_qt_thread`; the sync call is in the second function because that is
+    the one allowed to touch Qt. Following the edge rather than widening the
+    window keeps this test about the wiring and not about the wrapper.
     """
     import ast
     from pathlib import Path
@@ -291,10 +297,17 @@ def test_the_shells_set_state_is_what_drives_the_overlay():
     set_state = next(
         node for node in ast.walk(tree)
         if isinstance(node, ast.FunctionDef) and node.name == "set_state")
-    calls = [node for node in ast.walk(set_state) if isinstance(node, ast.Call)]
-    reached = [ast.unparse(c) for c in calls]
+    calls = [ast.unparse(node) for node in ast.walk(set_state)
+             if isinstance(node, ast.Call)]
+    assert any("_apply_state" in r for r in calls), (
+        f"set_state never hands the word to the surface code; it calls {calls}")
+    apply_state = next(
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "_apply_state")
+    reached = [ast.unparse(node) for node in ast.walk(apply_state)
+               if isinstance(node, ast.Call)]
     assert any("voice_wiring.sync" in r for r in reached), (
-        f"set_state never reaches the overlay; it calls {reached}")
+        f"_apply_state never reaches the overlay; it calls {reached}")
 
 
 def test_lifecycle_builds_the_overlay_at_start_up():
@@ -594,7 +607,14 @@ def test_the_shells_write_log_is_what_feeds_the_overlay():
     write_log = next(node for node in ast.walk(tree)
                      if isinstance(node, ast.FunctionDef) and node.name == "write_log")
     names = [ast.unparse(c) for c in ast.walk(write_log) if isinstance(c, ast.Call)]
-    assert any("voice_wiring.show_exchange" in n for n in names), names
+    # `write_log` runs on the audio, runner and reader threads, so it hands the
+    # line to `_show_exchange` rather than painting from there. The edge that
+    # matters is still exactly one: every sentence reaches one function.
+    assert any("_show_exchange" in n for n in names), names
+    exchange = next(node for node in ast.walk(tree)
+                    if isinstance(node, ast.FunctionDef) and node.name == "_show_exchange")
+    inner = [ast.unparse(c) for c in ast.walk(exchange) if isinstance(c, ast.Call)]
+    assert any("voice_wiring.show_exchange" in n for n in inner), inner
 
 
 # ── Ctrl+Alt+G ──────────────────────────────────────────────────────────────

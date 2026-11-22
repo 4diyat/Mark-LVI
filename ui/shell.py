@@ -52,6 +52,7 @@ from typing import Callable
 # The one door for user-visible text, from the module that already owns it for
 # the panel. `ui/shell.py` is not a drawer, so importing it here is allowed —
 # and `tests/test_i18n.py` checks that every key it asks for exists.
+from ui.qt_thread import run_on_qt_thread
 from ui.tray_panel_model import _t
 
 # The state words `main.py` sends. Kept as a set rather than a dict because
@@ -65,6 +66,12 @@ KNOWN_STATES = frozenset({
 
 
 class AmbientShell:
+    #: The thread that owns the widgets. Declared on the CLASS, not only set
+    #: in `__init__`, so a shell assembled by `__new__` in a test — the usual
+    #: way these tests build one, with no config read and no Qt — still
+    #: answers the question instead of raising inside `set_state`. `None`
+    #: means "every thread", which collapses the marshal to a direct call.
+    _ui_thread_id = None
     """Everything JARVIS has on screen when there is no window.
 
     Construct it once, on the Qt thread, after the QApplication exists. Every
@@ -119,7 +126,16 @@ class AmbientShell:
         self.request_say: Callable[[str], None] | None = None
         self.get_plugins: Callable[[], list] | None = None
         self.get_plugin_settings: Callable[[], list] | None = None
+        # The thread that built this object, which `main.py` makes the Qt thread
+        # by creating it there. Everything that touches a widget is marshalled
+        # onto it — see `_on_qt_thread`.
         self._ui_thread_id = threading.get_ident()
+
+        # The newest audio level and whether a flush is already queued. Both are
+        # written from the audio threads; a stale float is harmless and a queue
+        # of them is not.
+        self._pending_level = 0.0
+        self._level_flush_queued = False
 
     # ── what main.py asks about ──────────────────────────────────────────────
 
@@ -244,9 +260,34 @@ class AmbientShell:
         raising because it has no paint device is exactly the case where the
         TOOLTIP is the only readout left. Updating the tray first and then the
         orb, unguarded, would lose the tooltip in the one situation it matters.
+
+        ON THE QT THREAD, ALWAYS — and this docstring used to claim otherwise.
+            `main.py` calls this from the asyncio runner thread: 17 call sites,
+            including the microphone recovery loop every two seconds. The
+            module docstring said "the ones that touch a widget hand off to Qt
+            themselves", and this one did not — it called `QSystemTrayIcon`,
+            `QWidget` and the orb's `_repaint()` straight from that thread.
+
+            Qt has one event dispatcher and it is not re-entrant across
+            threads: touching a widget from a foreign thread is undefined
+            behaviour, and on Windows it presents as a UI that is painted and
+            will not answer, because the dispatcher's lock is held by a thread
+            that is not pumping. That is the reported symptom, exactly.
+
+            So the work is marshalled and the caller returns immediately. A
+            caller on the Qt thread would deadlock waiting for itself, so that
+            case runs inline — `ui/qt_thread.py` is where that rule lives.
         """
         word = str(state or "").strip().upper() or "INITIALISING"
-        self._state = word
+        self._state = word            # plain assignment: readable from anywhere
+        run_on_qt_thread(self._ui_thread_id, lambda: self._apply_state(word))
+        # Notification policy is thread-safe and consults config each call;
+        # it does not touch a widget, so it needs no queue.
+        from ui.notify_bridge import announce
+        announce(self, word)
+
+    def _apply_state(self, word: str) -> None:
+        """The half of `set_state` that touches widgets. Qt thread only."""
         for attr, method in (("_tray", "set_state"),
                              ("_bubble", "set_state"),
                              ("_orb", "set_state")):
@@ -266,48 +307,6 @@ class AmbientShell:
         from ui import voice_wiring
 
         voice_wiring.sync(self)
-        self._announce(word)
-
-    def _announce(self, word: str) -> None:
-        """Desktop notification for an answer that arrived while nobody looked.
-
-        THE POLICY IS NOT DECIDED HERE. `core.notify.Notifier` owns it: it
-        sends one message per finished turn, at most once a minute, and never
-        while the interface is on screen. This method only feeds it the state
-        and the last answer.
-
-        Config is consulted on EVERY call rather than read once at startup,
-        because it is the only way the setting can change without a restart —
-        and with no settings screen (see `docs/mockups/NOT-IN-MOCKUP.md`) a
-        restart is now the only other option. A read of one JSON key is cheap
-        next to the notification it guards.
-        """
-        try:
-            from core.notify import Notifier
-            from memory.config_manager import get_desktop_notifications
-
-            if not get_desktop_notifications():
-                return
-            notifier = self._notifier
-            if notifier is None:
-                notifier = Notifier(visible=self.interface_visible)
-                self._notifier = notifier
-            notifier.observe(word, self._last_answer or "")
-        except Exception as e:                      # noqa: BLE001
-            # A status update must never be the thing that raises — but silence
-            # here is "notifications never appear", which is unanswerable.
-            _note_once("notify", f"notification policy unavailable — "
-                                 f"{type(e).__name__}: {e}")
-
-    def interface_visible(self) -> bool:
-        """Whether anything the user can SEE is on screen.
-
-        `Notifier` suppresses a notification while this is True: a banner that
-        repeats what is already in front of the reader is the fastest way to get
-        the feature switched off. With no window, "visible" means the face.
-        """
-        bubble = getattr(self, "_bubble", None)
-        return bool(getattr(bubble, "visible", False))
 
     def apply_presence(self, mode: str) -> None:
         """Aktif / Fokus / Senyap, applied to the orb and saved."""
@@ -315,37 +314,14 @@ class AmbientShell:
         apply_presence_mode(self, mode)
 
     def set_audio_level(self, level: float) -> None:
-        """A 0..1 live level, from the audio threads.
-
-        A plain float store is atomic under the GIL, so this needs no signal
-        and no lock; the orb clamps what it is given because Qt refuses a
-        gradient stop outside 0..1 and the failure shows up as a plain ring.
-        """
-        for attr in ("_orb", "_bubble"):
-            target = getattr(self, attr, None)
-            callback = getattr(target, "set_audio_level", None)
-            if callback is None:
-                continue
-            try:
-                callback(level)
-            except Exception:                       # noqa: BLE001
-                # Cosmetic and 20×/second: a line per frame would be the
-                # problem, not the report. Reported ONCE per process, at the
-                # first failure, which is enough to find out the orb is broken
-                # without writing a log line 20 times a second.
-                _note_once("audio-level", "the orb cannot show the audio level")
+        """A 0..1 live level, from the audio threads. Marshalled to Qt."""
+        from ui.qt_thread import set_audio_level
+        set_audio_level(self, level)
 
     def push_visemes(self, frames, hop: float, at: float) -> None:
-        """Mouth frames for the face, if there is a face."""
-        bubble = self._bubble
-        callback = getattr(bubble, "push_visemes", None)
-        if callback is None:
-            return
-        try:
-            callback(frames, hop, at)
-        except Exception:                           # noqa: BLE001
-            # Same rule as the audio level: once, not per frame.
-            _note_once("visemes", "the face cannot animate the mouth")
+        """Mouth frames for the face, if there is a face. Marshalled to Qt."""
+        from ui.qt_thread import push_visemes
+        push_visemes(self, frames, hop, at)
 
     # ── the surfaces main.py drives ─────────────────────────────────────────
 
@@ -365,20 +341,32 @@ class AmbientShell:
         # at this one method with a `You: ` or `<name>: ` prefix — adding a
         # second call site in `main.py` would mean two paths to keep in step,
         # and the one that drifted would be the one on the full-screen surface.
+        #
+        # MARSHALLED, because this is called from the audio thread, the runner
+        # thread and the process reader. The exchange above only sets fields;
+        # everything below reaches a widget, so it goes through the one door.
+        run_on_qt_thread(self._ui_thread_id, lambda: self._show_exchange(line))
+
+    def _show_exchange(self, line: str) -> None:
+        """The board-6 half of `write_log`. Qt thread only."""
         from ui import voice_wiring
 
         voice_wiring.show_exchange(self, line)
+
         # The notification body is the last thing the assistant SAID. The log
         # mixes status words with answers, so only a line that came from the
         # assistant is kept — `JarvisLive` prefixes its own speech with none.
-        if line and not line.startswith(("SYS:", "ERR:", "USR:", "TOOL:")):
-            self._last_answer = line
+        self._remember_answer(line)
         toaster = self._toaster
         if toaster is not None:
             try:
-                toaster.push(str(text))
+                toaster.push(str(line))
             except Exception as e:                  # noqa: BLE001
                 _note(f"the toast could not show that — {type(e).__name__}: {e}")
+
+    def _remember_answer(self, line: str) -> None:
+        if line and not line.startswith(("SYS:", "ERR:", "USR:", "TOOL:")):
+            self._last_answer = line
 
     #: The last thing the assistant said, for the notification body. Kept here
     #: because the chat log that used to own it went with the window.

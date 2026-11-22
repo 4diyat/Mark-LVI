@@ -279,9 +279,15 @@ def test_a_missing_microphone_reaches_a_surface_not_only_the_log():
     assert "self.ui.set_state(_mic_status.NO_MIC)" in main_src, (
         "the orb no longer says the microphone is missing")
 
+    # THE STATE MUST REACH A WIDGET, AND THE WIDGET HALF MOVED. It used to be
+    # inline in `set_state`; it is now `_apply_state`, because `set_state` runs
+    # on the asyncio thread and must not touch Qt. Following the call rather
+    # than widening the window keeps this test about the surface.
     shell_src = (ROOT / "ui" / "shell.py").read_text(encoding="utf-8")
-    start = shell_src.index("def set_state(")
-    body = shell_src[start:start + 1200]
+    assert "_apply_state(word)" in shell_src, (
+        "set_state no longer hands the word to the function that draws it")
+    start = shell_src.index("def _apply_state(")
+    body = shell_src[start:start + 900]
     assert '"_tray"' in body and '"_orb"' in body, (
         "the state must reach the tooltip and the ring: on a machine with no "
         "microphone the ring is the only readout there is")

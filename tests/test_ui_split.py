@@ -96,6 +96,17 @@ def test_the_package_has_exactly_the_mockup_modules():
         # arithmetic about a screen and a window — the canvas keeps the pointer,
         # this keeps the rule, and that split is what makes a drag testable.
         "orb_snap.py",
+        # NOT A MOCKUP MODULE — the thread boundary. `main.py` calls
+        # `shell.set_state` from the asyncio runner and `set_audio_level` from
+        # the audio threads; both reached a QWidget directly, which is the
+        # undefined behaviour behind "painted and does not answer". This holds
+        # the one rule (inline on the Qt thread, `singleShot(0)` from anywhere
+        # else) and the two throttled pushes that use it.
+        "qt_thread.py",
+        # Also not a mockup module: the shell's half of the notification
+        # policy, split off at the 600-line ceiling. `core/notify` decides;
+        # this only supplies "what state is it" and "what was last said".
+        "notify_bridge.py",
     }
     present = {p.name for p in _modules()}
     assert present == expected, (

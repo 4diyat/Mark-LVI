@@ -264,7 +264,24 @@ class VoiceOverlay:
     # ── lifecycle ────────────────────────────────────────────────────────────
 
     def start(self, active: bool = True) -> bool:
-        """Build and show the overlay. Returns `available`; never raises.
+        """Build the overlay, and show it only if it was asked to be shown.
+
+        `active=False` MEANS HIDDEN, NOT "build it and show it anyway".
+            This used to call `window.show()` unconditionally and then set
+            `self._active = False`. The two disagreed: the window was on
+            screen with the flag saying it was not. `start_voice_overlay`
+            calls this with `active=False` on every launch — "built now and
+            shown later" — so a 1280×720 frameless, always-on-top window sat
+            at (0, 0) over the desktop from the first second, and its 12 fps
+            timer painted into it.
+
+            A VISIBLE WINDOW THAT IS NOT TRANSPARENT FOR INPUT TAKES THE
+            CLICKS. `window_flags` deliberately omits `WindowTransparentForInput`
+            because Esc has to reach the overlay while it is up. A window that
+            is up but not listening therefore swallows every click in its
+            rectangle — the tray panel behind it never gets one. That is
+            "the surfaces are visible and nothing responds", which is the
+            report this fixes.
 
         Same contract as the orb: a surface that fails to build must not turn
         the assistant's state update into an exception on the caller's thread.
@@ -287,8 +304,12 @@ class VoiceOverlay:
 
             self._window, self._canvas = window, canvas
             self._active = bool(active)
-            window.show()
-            self._start_timer()
+            # NO show() WHEN NOT ACTIVE, and no timer either: a timer painting
+            # into a hidden window is 12 fps of work whose only effect is to
+            # keep the Qt thread busy.
+            if self._active:
+                window.show()
+                self._start_timer()
             return True
         except Exception as exc:                    # noqa: BLE001
             self._window = None
