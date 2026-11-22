@@ -313,6 +313,17 @@ fulfils that promise. `test_the_window_flags_are_the_three_that_matter_and_not_c
 pins the absence. Windows click-through and focus return after Esc stay in the
 "untested on Windows" list below rather than being assumed.
 
+**The two lines of text are fed from `write_log`, not from new call sites.**
+Every sentence the user says and every sentence the assistant answers already
+reaches `AmbientShell.write_log` with a `You: ` or `<name>: ` prefix, so
+`voice_wiring.show_exchange` splits those two prefixes there. A second call site
+in `main.py` would be a second thing to keep in step, and the one that drifted
+would be the one on the full-screen surface. The program's own lines — `SYS:`,
+`ERR:`, `USR:`, `TOOL:` — are dropped: putting them on the transcript line would
+make the overlay claim the user said "Push-to-talk unavailable". Anything that is
+neither the user's nor a machine prefix is the assistant's own speech, which is
+the same rule `write_log` already uses to decide what to notify about.
+
 **When it is on screen is a rule, not a side effect.** `ui/voice_wiring.py`
 holds it in one pure function: the overlay covers the desktop for
 `LISTENING` and `SPEAKING` and for nothing else. `THINKING` is deliberately

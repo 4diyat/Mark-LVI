@@ -319,6 +319,15 @@ class AmbientShell:
         """
         line = str(text or "")
         print(f"[JARVIS] {line}", flush=True)
+
+        # BOARD 6 IS FED FROM HERE, and from nowhere else. Every sentence the
+        # user says and every sentence the assistant answers already arrives
+        # at this one method with a `You: ` or `<name>: ` prefix — adding a
+        # second call site in `main.py` would mean two paths to keep in step,
+        # and the one that drifted would be the one on the full-screen surface.
+        from ui import voice_wiring
+
+        voice_wiring.show_exchange(self, line)
         # The notification body is the last thing the assistant SAID. The log
         # mixes status words with answers, so only a line that came from the
         # assistant is kept — `JarvisLive` prefixes its own speech with none.

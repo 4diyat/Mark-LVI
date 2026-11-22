@@ -517,3 +517,74 @@ def test_the_overlay_and_the_camera_are_built_and_torn_down_by_lifecycle():
                     if isinstance(node, ast.FunctionDef) and node.name == "quit_app")
     names = [ast.unparse(c) for c in ast.walk(quit_app) if isinstance(c, ast.Call)]
     assert any("stop_voice_overlay" in n for n in names), names
+
+
+# ── what the user and the assistant said ────────────────────────────────────
+
+def _shell_with_overlay():
+    shell = FakeShell()
+    overlay = FakeOverlay()
+    shell._voice_overlay = overlay
+    return shell, overlay
+
+
+def test_what_the_user_said_lands_on_the_transcript_line():
+    shell, overlay = _shell_with_overlay()
+    voice_wiring.show_exchange(shell, "You: ringkas tabel ini dan tandai barisnya")
+    assert overlay.transcript == "ringkas tabel ini dan tandai barisnya"
+    assert overlay.answer == "", "the answer line must not be reused for this"
+
+
+def test_what_the_assistant_answered_lands_on_the_answer_line():
+    shell, overlay = _shell_with_overlay()
+    voice_wiring.show_exchange(shell, "JARVIS: Baris 7 dan 11 melewati plafon.")
+    assert "plafon" in overlay.answer
+    assert overlay.transcript == ""
+
+
+def test_an_answer_may_contain_colons_and_only_the_first_one_splits():
+    shell, overlay = _shell_with_overlay()
+    voice_wiring.show_exchange(shell, "JARVIS: Aturannya: 12% lalu 4%.")
+    assert overlay.answer == "Aturannya: 12% lalu 4%."
+
+
+def test_the_programs_own_lines_never_become_the_users_words():
+    """`SYS:` and `ERR:` lines are the program talking about itself. Putting them
+    on the transcript would make the overlay claim the user said them."""
+    shell, overlay = _shell_with_overlay()
+    for line in ("SYS: Push-to-talk unavailable", "ERR: the microphone died",
+                 "USR: something internal", "TOOL: browser_control"):
+        voice_wiring.show_exchange(shell, line)
+    assert overlay.transcript == ""
+    assert overlay.answer == ""
+
+
+def test_a_sentence_with_no_prefix_is_the_assistants_speech():
+    """The name is a setting, so the prefix cannot be relied on in every
+    locale; anything that is not the user's and not a machine prefix is the
+    assistant's own words."""
+    shell, overlay = _shell_with_overlay()
+    voice_wiring.show_exchange(shell, "Baris 7 melewati plafon.")
+    assert overlay.answer == "Baris 7 melewati plafon."
+
+
+def test_show_exchange_is_a_no_op_without_an_overlay_and_never_raises():
+    shell = FakeShell()
+    voice_wiring.show_exchange(shell, "You: apa saja")        # no overlay
+    voice_wiring.show_exchange(shell, "")
+
+
+def test_the_shells_write_log_is_what_feeds_the_overlay():
+    """Every sentence already reaches `write_log`. A second call site in
+    `main.py` would be a second thing to keep in step, and the one that drifted
+    would be on the full-screen surface."""
+    import ast
+    from pathlib import Path
+
+    source = (Path(__file__).resolve().parent.parent / "ui" / "shell.py"
+              ).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    write_log = next(node for node in ast.walk(tree)
+                     if isinstance(node, ast.FunctionDef) and node.name == "write_log")
+    names = [ast.unparse(c) for c in ast.walk(write_log) if isinstance(c, ast.Call)]
+    assert any("voice_wiring.show_exchange" in n for n in names), names

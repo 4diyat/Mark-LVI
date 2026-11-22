@@ -177,6 +177,45 @@ def set_camera_available(shell: "AmbientShell", available: bool) -> None:
         _note(shell, f"camera tile not updated — {type(exc).__name__}: {exc}")
 
 
+def show_exchange(shell: "AmbientShell", line: str) -> None:
+    """Split one log line into the transcript or the answer, and show it.
+
+    WHY THE PREFIXES AND NOT A NEW CALLBACK
+        `main.py` writes `You: <what the user said>` and
+        `<assistant name>: <what it answered>` to `write_log`, and has done
+        since the chat log was removed. Parsing those two prefixes is the
+        cheapest honest way to feed the overlay: no second parameter to thread
+        through 48 call sites, and no way for the session to forget to tell the
+        overlay something it told the log.
+
+    WHAT IT DELIBERATELY DROPS
+        `SYS:`, `ERR:`, `USR:` and `TOOL:` lines are the program talking about
+        itself. Putting them on the transcript line would make the overlay claim
+        the user said "Push-to-talk unavailable".
+
+    A NAME WITH OR WITHOUT A COLON
+        The assistant's name is a setting (`JARVIS`, `J.A.R.V.I.S`, anything the
+        user typed). Rather than guess, anything that is not `You: ` and not one
+        of the four machine prefixes is treated as the assistant's own speech —
+        which is exactly how `write_log` already decides what to notify about.
+    """
+    overlay = getattr(shell, "_voice_overlay", None)
+    if overlay is None or not line:
+        return
+    text = str(line)
+    if text.startswith("You: "):
+        set_transcript(shell, text[len("You: "):])
+        return
+    if text.startswith(("SYS:", "ERR:", "USR:", "TOOL:")):
+        return
+    # `<name>: answer` — split once, because an answer may contain colons.
+    _, sep, answer = text.partition(": ")
+    if sep and len(text.split(": ", 1)[0]) < 40:
+        set_answer(shell, answer)
+    else:
+        set_answer(shell, text)
+
+
 def _note(shell, text: str) -> None:
     """`lifecycle.note`, imported at call time to keep the arrow one-way."""
     try:
@@ -202,7 +241,8 @@ def stop_voice_overlay(shell: "AmbientShell") -> None:
 __all__ = [
     "HandFeed", "SHOWN_STATES", "camera_state", "overlay_state", "poll_hand",
     "set_answer", "set_camera_available", "set_hand", "set_transcript",
-    "should_show", "start_voice_overlay", "stop_voice_overlay", "sync",
+    "should_show", "show_exchange", "start_voice_overlay",
+    "stop_voice_overlay", "sync",
 ]
 
 
