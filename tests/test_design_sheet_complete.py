@@ -192,6 +192,33 @@ def test_every_state_view_is_drawn_under_the_board_it_belongs_to():
                     f"{label} is drawn after board {following[0]}, not under {parent}")
 
 
+def test_the_title_table_is_exactly_one_to_twenty_two():
+    """`BOARD_TITLES` is the numbering now, so a key of 23 is a 23rd board.
+
+    `BOARDS_LIST` cannot catch it: a title whose `bNN` does not exist is skipped
+    when the list is built, which is the silent-skip this test is here to stop.
+    """
+    build = _build_module()
+    assert sorted(build.BOARD_TITLES) == list(range(1, 23)), (
+        f"BOARD_TITLES is not 1..22: {sorted(build.BOARD_TITLES)}")
+
+
+def test_every_state_view_names_a_board_that_exists():
+    """`EXTRA`'s first column is a board number, and it must be one of the 22.
+
+    The renderer skips a view whose parent is not in the registry — a silent
+    skip, which is exactly the failure mode this whole file exists to stop. This
+    reads the REGISTRY, not the rendered HTML, so a typo fails here instead of
+    disappearing into the sheet.
+    """
+    build = _build_module()
+    boards = {int(row[0]) for row in build.BOARDS_LIST}
+    assert boards == set(range(1, 23))
+    strangers = [row for row in build.EXTRA if int(row[0]) not in boards]
+    assert not strangers, (
+        f"these EXTRA views are parented to a board that does not exist: {strangers}")
+
+
 def test_the_six_states_are_still_drawn():
     """Folding them in must not be a quiet way of dropping them."""
     html = SHEET.read_text(encoding="utf-8")
@@ -301,3 +328,81 @@ def test_every_artboard_is_well_formed_xml():
         except ET.ParseError as exc:            # noqa: PERF203 — one message
             raise AssertionError(
                 f"artboard {number} is not well-formed XML: {exc}") from exc
+
+# ── the sheet and the record of what is built must not drift apart ──────────
+#
+# `NOT-IN-MOCKUP.md` has two tables: the artboards with no `ui/` module, and the
+# artboards that have one. A board moving from one to the other is the event
+# this file is about — board 2 did exactly that on 2026-11-22 — and nothing
+# noticed, because a markdown table cannot fail. These tests can.
+
+RECORD = MOCKUPS / "NOT-IN-MOCKUP.md"
+
+
+def _record_tables() -> tuple[list[str], list[str]]:
+    """The board numbers in each table, in document order."""
+    text = RECORD.read_text(encoding="utf-8")
+    split = text.index("## Built, drawn")
+    unbuilt = re.findall(r"^\| (\d+)[a-z]? \|", text[:split], re.M)
+    built = re.findall(r"^\| (\d+)[a-z]? \|", text[split:], re.M)
+    return built, unbuilt
+
+
+def test_every_artboard_is_recorded_as_built_or_not_built():
+    """No board may fall through the record, or be listed twice.
+
+    Board 18 was in neither table when this test was written: it had the light
+    palette and no light page, and the prose had never decided which side that
+    put it on. A board that appears in neither is a board nobody has thought
+    about since the sheet grew.
+    """
+    built, unbuilt = _record_tables()
+    built_boards = {int(n) for n in built}
+    unbuilt_boards = {int(n) for n in unbuilt}
+    missing = sorted(set(range(1, 23)) - built_boards - unbuilt_boards)
+    assert not missing, (
+        f"NOT-IN-MOCKUP.md does not say whether these artboards are built: {missing}")
+    # ONE board is allowed in both, and it is the one the doc calls "partial":
+    # board 14 has the risk levels and the confirmation dialog, and has neither
+    # guest mode nor an OS-control switch. A second overlap would mean the
+    # "partial" exception had become the rule.
+    both = sorted(built_boards & unbuilt_boards)
+    assert both == [14], (
+        f"the only artboard that may be listed as both built and not is 14 "
+        f"(partial); these are: {both}")
+
+
+def test_the_record_names_modules_that_exist():
+    """Every ``ui/*.py`` a table names must be in the tree.
+
+    This is the cheap half of the check, and it is the half a machine can do:
+    a row pointing at a module that was renamed is a row that has stopped being
+    an answer to "where is this built?".
+    """
+    text = RECORD.read_text(encoding="utf-8")
+    # Only the two artboard tables. The rest of the file is the record of what
+    # was DELETED, and naming a file that no longer exists is the whole point of
+    # that section — checking it would demand that deleted files exist.
+    split = text.index("## Built, drawn")
+    after = text.index("Plus the surfaces the owner explicitly kept")
+    tables = text[:split] + text[split:after]
+    cited = set(re.findall(r"`(ui/[a-z_]+\.py)`", tables))
+    missing = sorted(path for path in cited if not (ROOT / path).exists())
+    assert not missing, (
+        f"NOT-IN-MOCKUP.md cites modules that do not exist: {missing}")
+
+
+def test_the_command_bar_is_recorded_as_built():
+    """The one row that moved this session, pinned so it cannot slide back.
+
+    Board 2 was a "drawn, not built" row with `**proposal**` where its module
+    belonged. It has a module now, and the record has to say so or the next
+    reader will rebuild it.
+    """
+    built, unbuilt = _record_tables()
+    assert "2" in built, "board 2's command bar is recorded as unbuilt"
+    assert "2" not in unbuilt
+    row = next(line for line in RECORD.read_text(encoding="utf-8").splitlines()
+               if line.startswith("| 2 |"))
+    assert "command_bar.py" in row and "command_paint.py" in row, (
+        f"board 2's row does not name the modules that implement it: {row}")
