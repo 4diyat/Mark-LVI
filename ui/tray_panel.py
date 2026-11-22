@@ -49,6 +49,11 @@ from __future__ import annotations
 
 from typing import Callable, Mapping
 
+from ui.tray_theme import THEMES, _rgba, resolve_theme  # noqa: F401
+from ui.tray_paint import (  # noqa: F401 — re-exported for the smoke tool
+    apply_style, mark_segments, paint, paint_history, paint_privacy,
+    paint_theme, show_page,
+)
 from ui.tray_pages import (
     PAGE_HISTORY, PAGE_MAIN, PAGE_PRIVACY, PAGES, PALETTES, PANEL_H, PANEL_W,
     build_history, build_main, build_privacy, panel_position,
@@ -56,13 +61,6 @@ from ui.tray_pages import (
 from ui.tray_panel_model import (
     MODE_LABELS, MODE_ORDER, PERMISSIONS, QUICK_ACTIONS, Snapshot, _t, snapshot,
 )
-
-
-def _rgba(hex_colour: str, alpha: float) -> str:
-    """`#RRGGBB` + alpha → the `rgba(...)` a stylesheet understands."""
-    value = hex_colour.lstrip("#")
-    r, g, b = (int(value[i:i + 2], 16) for i in (0, 2, 4))
-    return f"rgba({r}, {g}, {b}, {alpha:.2f})"
 
 
 class TrayPanel:
@@ -89,7 +87,14 @@ class TrayPanel:
                  app=None, on_close: Callable[[], None] | None = None,
                  logger: Callable[[str], None] | None = None):
         self._actions = dict(actions)
+        # `theme` is a RESOLVED palette name here, always one of PALETTES. The
+        # three-state setting (`auto`/`dark`/`light`) is `set_theme`'s job: a
+        # widget that has to consult the OS on every paint is a widget that
+        # changes colour halfway through somebody's morning.
+        self._requested = "dark"
         self._theme = theme if theme in PALETTES else "dark"
+        # `theme` above is a PALETTE; `_requested` is the three-state SETTING.
+        self._requested = theme if theme in THEMES else "dark"
         self._app = app
         self._on_close = on_close
         self._logger = logger
@@ -247,15 +252,60 @@ class TrayPanel:
         return True
 
     def set_theme(self, theme: str) -> bool:
-        """Dark ↔ light (board 28). Unknown themes are refused."""
+        """Dark ↔ light ↔ auto (board 28). Unknown themes are refused.
+
+        THREE VALUES, TWO PALETTES. `auto` is not a palette: it is the answer
+        to "which one does the OS use", asked once per call and never per
+        paint. `self._requested` keeps what the user asked for (so the panel
+        can say "auto"), `self._theme` keeps what is on screen.
+        """
         name = str(theme or "").strip().lower()
-        if name not in PALETTES:
+        if name not in THEMES:
             return False
-        self._theme = name
+        self._requested = name
+        self._theme = resolve_theme(name)
         if self._window is not None:
             self._style()
             self._paint(self._snapshot)
         return True
+
+    def press_theme(self) -> str:
+        """The header control: cycle, then tell the caller so it can be saved.
+
+        SAVED BY THE CALLER, not here. `ui/` must not import
+        `memory.config_manager` on the click path — the panel is one widget and
+        the config file is one file, and a surface that writes config is a
+        surface that can be made to write it on a thread nobody expects.
+
+        When no handler is wired (a test, a host that has not asked for it) the
+        cycle still happens: the palette change is visible either way, and the
+        worst case is a choice that does not survive a restart — reported
+        through `_note`, never raised.
+        """
+        name = self.cycle_theme()
+        self._call("theme", name)
+        return name
+
+    def cycle_theme(self) -> str:
+        """auto -> dark -> light -> auto, and say what it is now.
+
+        Cycles rather than showing three segments: the header has room for one
+        28 px control and the segments already belong to the presence mode. A
+        third segmented control in the same header would make two rows of
+        three-letter words that look identical.
+        """
+        order = THEMES
+        try:
+            index = order.index(self._requested)
+        except ValueError:
+            index = 0
+        self.set_theme(order[(index + 1) % len(order)])
+        return self._requested
+
+    @property
+    def requested_theme(self) -> str:
+        """What the user asked for: 'auto', 'dark' or 'light'."""
+        return self._requested
 
     # ── dispatch ─────────────────────────────────────────────────────────────
 
@@ -349,6 +399,7 @@ class TrayPanel:
             self._style()
             self._show_page()
             self._paint(self._snapshot)
+            self._load_saved_theme()
             return True
         except Exception as e:                       # noqa: BLE001
             self._window = None
@@ -369,6 +420,20 @@ class TrayPanel:
         self._labels["title"] = _placed(window, QLabel, 24, 22, 200, 24,
                                         _t("ui.panel.title"))
         self._labels["subtitle"] = _placed(window, QLabel, 24, 46, 412, 20, "")
+        # THE THEME SWITCH. Board 28 draws the same panel in light colours and
+        # the mockup has no button for it, because a mockup cannot click. This
+        # one is a 30 px control in the header, where it is out of the way of
+        # every reading path, and it cycles auto -> dark -> light.
+        #
+        # Without it the light palette existed and NOBODY COULD REACH IT: the
+        # settings drawer that would have held the switch is deleted, and
+        # `set_theme` was a method only a test called.
+        theme_button = QPushButton(window)
+        theme_button.setGeometry(408, 22, 28, 24)
+        theme_button.setToolTip(_t("ui.panel.theme"))
+        theme_button.clicked.connect(self.press_theme)
+        self._buttons["theme"] = theme_button
+        self._labels["theme"] = theme_button
 
         # Segments, board 5. One button per mode with the active one filled —
         # a segmented control, not three checkboxes and not a dropdown.
@@ -396,129 +461,40 @@ class TrayPanel:
         self._pages[PAGE_PRIVACY] = _page(window, QWidget, PAGE_PRIVACY)
         build_privacy(self, self._pages[PAGE_PRIVACY])
 
+    def _load_saved_theme(self) -> None:
+        """Start from the saved setting, once, when the window is first built.
+
+        ONCE, not on every open: a user who cycled the theme while the panel
+        was up is not overruled by the file the next time they click the tray.
+        """
+        try:
+            from memory.config_manager import get_ui_theme
+
+            self.set_theme(get_ui_theme())
+        except Exception as e:                       # noqa: BLE001
+            self._note(f"saved theme not applied — {type(e).__name__}: {e}")
+
     # ── painting ─────────────────────────────────────────────────────────────
 
+    # ── painting ─────────────────────────────────────────────────────────────
+    #
+    # The drawing lives in `ui/tray_paint.py`. It is pure of state — it reads a
+    # Snapshot and writes widgets — so keeping it here only meant this module
+    # held two jobs and sat 43 lines over the 600-line ceiling. The methods
+    # below are the surface the rest of the file (and the tests) use.
+
     def _paint(self, snap: Snapshot) -> None:
-        """Put one snapshot on the widgets. Never raises."""
-        labels = self._labels
+        paint(self, snap)
 
-        labels["title"].setText(snap.title)
-        labels["subtitle"].setText(snap.subtitle)
-        labels["quota"].setText(snap.quota_line)
-        labels["suggestion"].setText(
-            snap.suggestion or _t("ui.panel.suggestion.empty"))
-
-        for mode in MODE_ORDER:
-            self._buttons[f"mode:{mode}"].setChecked(mode == snap.mode)
-        self._mark_segments(snap)
-
-        # Board 23's strip: only in Fokus, because only Fokus holds anything.
-        held = labels["held"]
-        if snap.mode == "focus":
-            held.setText("\n".join((_t("ui.panel.focus.active_until", time="17.00"),
-                                     _t("ui.panel.focus.held"),
-                                     snap.held_line)))
-            held.show()
-        else:
-            held.hide()
-
-        for key, _name, _sub in PERMISSIONS[:3]:
-            button = self._buttons[f"perm:{key}"]
-            state = snap.permissions.get(key, {})
-            button.setChecked(bool(state.get("on")))
-            button.setEnabled(not bool(state.get("fixed")))
-
-        self._paint_history(snap)
-        self._paint_privacy(snap)
-
-    def _mark_segments(self, snap: Snapshot) -> None:
-        """The lit segment is filled; the others are outlines.
-
-        Colour alone is not enough — the active segment also carries the
-        heavier weight, so the difference survives a grey-scale screenshot and
-        the checked state survives a reader who cannot see the fill.
-        """
-        pal = PALETTES[self._theme]
-        for mode in MODE_ORDER:
-            button = self._buttons[f"mode:{mode}"]
-            if mode == snap.mode:
-                button.setStyleSheet(
-                    f"background:{pal['accent']};color:{pal['on_accent']};"
-                    f"border:none;border-radius:9px;font-weight:600;")
-            else:
-                button.setStyleSheet(
-                    f"background:transparent;color:{pal['muted']};"
-                    f"border:1px solid {pal['line']};border-radius:9px;")
-
-    def _paint_history(self, snap: Snapshot) -> None:
-        labels = self._labels
-        labels["history_count"].setText(snap.history_subtitle)
-        rows = list(snap.history)[:4]
-        for index in range(4):
-            row = rows[index] if index < len(rows) else None
-            labels[f"history:{index}"].setText(str(row["label"]) if row else "")
-            labels[f"history_meta:{index}"].setText(
-                _t("ui.panel.history.state.undoable") if row else "")
-            button = self._buttons[f"undo:{index}"]
-            # Only the OLDEST row may carry the button, because undo is a
-            # stack and `undo_last()` reverses the oldest entry. Two buttons
-            # for one operation would be two buttons that always do the same
-            # thing, in the two places a user would least expect it.
-            show = bool(row) and index == len(rows) - 1 and snap.can_undo
-            button.setVisible(show)
-        labels["audit"].setText(
-            "\n".join(snap.audit) or _t("ui.panel.audit.empty"))
-
-    def _paint_privacy(self, snap: Snapshot) -> None:
-        labels = self._labels
-        for key, _name, _sub in PERMISSIONS[:3]:
-            state = snap.permissions.get(key, {})
-            on = bool(state.get("on"))
-            note = str(state.get("note") or "")
-            labels[f"indicator_state:{key}"].setText(
-                note or _t("ui.panel.indicator.on" if on else "ui.panel.indicator.off"))
-        for key, _name, _sub in PERMISSIONS:
-            button = self._buttons[f"permx:{key}"]
-            state = snap.permissions.get(key, {})
-            button.setChecked(bool(state.get("on")))
-            # A fixed switch is DISABLED, not merely refused on click: drawing
-            # a live switch over something no click can change is a control
-            # that teaches the user not to trust the panel.
-            button.setEnabled(not bool(state.get("fixed")))
+    def _paint_theme(self) -> None:
+        paint_theme(self)
 
     def _show_page(self) -> None:
-        for name, page in self._pages.items():
-            try:
-                page.show() if name == self._page else page.hide()
-            except Exception as e:                   # noqa: BLE001
-                self._note(f"page {name!r} would not switch — {type(e).__name__}: {e}")
+        show_page(self)
 
     def _style(self) -> None:
-        """One stylesheet for the whole panel, rebuilt when the palette changes.
+        apply_style(self)
 
-        Set on the window rather than per widget, so board 28 is a palette swap
-        and not a second set of colours in twelve places.
-        """
-        window = self._window
-        if window is None:
-            return
-        pal = PALETTES[self._theme]
-        try:
-            window.setStyleSheet(f"""
-                QWidget {{ background:{pal['panel']};color:{pal['text']}; }}
-                QLabel {{ background:transparent;color:{pal['text']}; }}
-                QPushButton {{ background:{pal['card']};color:{pal['text']};
-                              border:1px solid {pal['line']};border-radius:10px;
-                              text-align:left;padding-left:14px; }}
-                QPushButton:checked {{ border:1px solid {pal['accent']};
-                                      background:{_rgba(pal['accent'], 0.12)}; }}
-                QPushButton:disabled {{ color:{pal['muted']}; }}
-                QLineEdit {{ background:{pal['card']};color:{pal['text']};
-                            border:1px solid {pal['line']};border-radius:20px;
-                            padding-left:18px; }}
-            """)
-        except Exception as e:                       # noqa: BLE001
-            self._note(f"stylesheet refused — {type(e).__name__}: {e}")
 
     # ── keys ─────────────────────────────────────────────────────────────────
 
@@ -553,5 +529,6 @@ def _page(window, cls, name: str):
 
 __all__ = [
     "PAGE_HISTORY", "PAGE_MAIN", "PAGE_PRIVACY", "PAGES", "PALETTES",
-    "PANEL_H", "PANEL_W", "TrayPanel", "panel_position",
+    "PANEL_H", "PANEL_W", "THEMES", "TrayPanel", "panel_position",
+    "resolve_theme",
 ]

@@ -62,8 +62,8 @@ def test_the_package_has_exactly_the_mockup_modules():
         "__init__.py", "ambient_shell.py", "command_bar.py", "confirm_banner.py",
         "face_bubble.py", "face_canvas.py", "lifecycle.py", "orb_overlay.py",
         "orb_paint.py", "shell.py", "theme.py", "toast_queue.py", "tray.py",
-        "tray_pages.py", "tray_panel.py", "tray_panel_model.py",
-        "tray_panel_wiring.py",
+        "tray_pages.py", "tray_paint.py", "tray_panel.py",
+        "tray_panel_model.py", "tray_panel_wiring.py", "tray_theme.py",
     }
     present = {p.name for p in _modules()}
     assert present == expected, (

@@ -440,3 +440,163 @@ def test_the_panel_opens_inside_the_screen_wherever_the_taskbar_is(panel_module)
 
     # A tiny screen smaller than the panel: clamp, do not centre off-screen.
     assert pages.panel_position(_Screen(0, 0, 400, 300), size) == (0, 0)
+
+
+# ── board 28: the setting, not just the palette ────────────────────────────
+#
+# The light palette existed for a while and NOBODY COULD REACH IT: the settings
+# drawer that would have held the switch was deleted with the window, and
+# `set_theme` was a method only a test called. Board 28 is the same panel in
+# light colours, so a panel with no way to get there is a board that does not
+# ship. These tests are about the way in.
+
+def test_auto_is_a_setting_and_not_a_palette(panel_module, clean_state):
+    """`auto` resolves to one of exactly two palettes, never to itself.
+
+    A palette dict keyed `auto` would be a third set of colours that somebody
+    has to keep in step; the whole point is that there are two.
+    """
+    tray_panel, pages, _model = panel_module
+    theme = tray_panel.resolve_theme
+
+    assert set(pages.PALETTES) == {"dark", "light"}
+    assert theme("dark") == "dark"
+    assert theme("light") == "light"
+    # Whatever the OS says, `auto` names a palette that exists.
+    assert theme("auto") in pages.PALETTES
+    # Garbage from a hand-edited config file is not a third answer.
+    assert theme("neon") in pages.PALETTES
+    assert theme("") in pages.PALETTES
+
+
+def test_auto_follows_the_operating_system_when_it_says_so(
+        panel_module, clean_state, monkeypatch):
+    from memory import config_manager
+
+    tray_panel, _pages, _model = panel_module
+    monkeypatch.setattr(config_manager, "system_prefers_light", lambda: True)
+    assert tray_panel.resolve_theme("auto") == "light"
+
+    monkeypatch.setattr(config_manager, "system_prefers_light", lambda: False)
+    assert tray_panel.resolve_theme("auto") == "dark"
+
+    # A config layer that raises must not take the panel with it: the answer is
+    # the palette the mockup has drawn since board 5.
+    def _boom():
+        raise RuntimeError("no config file")
+
+    monkeypatch.setattr(config_manager, "system_prefers_light", _boom)
+    assert tray_panel.resolve_theme("auto") == "dark"
+
+
+def test_the_panel_opens_on_the_saved_theme_not_on_dark(
+        panel_module, clean_state, monkeypatch):
+    """The setting is read ONCE, when the window is built.
+
+    This is the assertion that fails if `_load_saved_theme()` is dropped from
+    `_build()` — the panel would open dark for a user who chose light, which is
+    the whole complaint this fixes.
+    """
+    from memory import config_manager
+
+    tray_panel, _pages, _model = panel_module
+    monkeypatch.setattr(config_manager, "get_ui_theme", lambda: "light")
+    monkeypatch.setattr(config_manager, "system_prefers_light", lambda: False)
+
+    panel = tray_panel.TrayPanel({})
+    assert panel.open() is True
+    assert panel.theme == "light"
+    assert panel.requested_theme == "light"
+    assert "#FFFFFF" in panel._window._style
+
+
+def test_the_theme_control_cycles_three_values_and_says_which(
+        panel_module, clean_state, monkeypatch):
+    """Board 28 in reach: one control, three settings, no second widget.
+
+    The button shows the SETTING ("A"/"D"/"L"), not the resolved palette — a
+    button reading "light" because `auto` resolved light could never be set
+    back to auto.
+    """
+    from memory import config_manager
+
+    tray_panel, _pages, _model = panel_module
+    monkeypatch.setattr(config_manager, "get_ui_theme", lambda: "auto")
+    monkeypatch.setattr(config_manager, "system_prefers_light", lambda: False)
+
+    panel = tray_panel.TrayPanel({})
+    panel.open()
+    assert panel.requested_theme == "auto"
+    assert panel._buttons["theme"].text() == "A"
+    assert panel.theme == "dark", "auto on a dark desktop is the dark palette"
+
+    assert panel.cycle_theme() == "dark"
+    assert panel._buttons["theme"].text() == "D"
+    assert panel.cycle_theme() == "light"
+    assert panel.theme == "light" and panel._buttons["theme"].text() == "L"
+    assert panel.cycle_theme() == "auto"
+    assert panel.theme == "dark", "back to auto, which is dark here"
+
+
+def test_the_saved_theme_is_read_once_and_cycling_is_not_overruled(
+        panel_module, clean_state, monkeypatch):
+    """Re-opening the panel must not undo the user's click.
+
+    `_load_saved_theme` runs from `_build`, and `_build` happens once. If it ran
+    on every open, a user who cycled to light would be dragged back to the file
+    the next time they clicked the tray icon.
+    """
+    from memory import config_manager
+
+    tray_panel, _pages, _model = panel_module
+    monkeypatch.setattr(config_manager, "get_ui_theme", lambda: "dark")
+    monkeypatch.setattr(config_manager, "system_prefers_light", lambda: False)
+
+    panel = tray_panel.TrayPanel({})
+    panel.open()
+    assert panel.theme == "dark"
+    panel.cycle_theme()                       # -> light
+    assert panel.theme == "light"
+
+    panel.close()
+    panel.open()                              # second open, same widget
+    assert panel.theme == "light", "re-opening reloaded the file over the click"
+
+
+def test_the_two_theme_tuples_are_the_same_three_values(panel_module):
+    """`ui/tray_theme.THEMES` is written out twice on purpose.
+
+    `ui/` must validate a value without importing the config layer, which reads
+    a file on import. The price of writing it twice is that one copy can drift.
+    """
+    from memory import config_manager
+    from ui import tray_theme
+
+    assert tray_theme.THEMES == config_manager.THEMES
+    assert tray_theme.THEMES == ("auto", "dark", "light")
+
+
+def test_a_theme_saved_by_the_config_layer_comes_back_out_of_it(tmp_path, monkeypatch):
+    """The round trip, through the real writer.
+
+    `save_ui_theme` collapses an unknown value rather than rejecting it, which
+    is what makes a hand-edited `"ui_theme": "neon"` a working panel instead of
+    a KeyError — so the collapse is the behaviour under test, not just a nicety.
+    """
+    from memory import config_manager
+
+    written = {}
+
+    def _set(**values):
+        written.update(values)
+
+    monkeypatch.setattr(config_manager, "set_config_values", _set)
+    monkeypatch.setattr(config_manager, "load_api_keys", lambda: dict(written))
+
+    config_manager.save_ui_theme("light")
+    assert written == {"ui_theme": "light"}
+    assert config_manager.get_ui_theme() == "light"
+
+    config_manager.save_ui_theme("neon")
+    assert written == {"ui_theme": "auto"}, "an unknown value collapses to auto"
+    assert config_manager.get_ui_theme() == "auto"

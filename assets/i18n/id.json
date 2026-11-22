@@ -729,5 +729,6 @@
   "ui.panel.page.privacy": "Privasi",
   "ui.panel.mode.active": "Aktif",
   "ui.panel.mode.focus": "Fokus",
-  "ui.panel.mode.quiet": "Senyap"
+  "ui.panel.mode.quiet": "Senyap",
+  "ui.panel.theme": "Tema panel: otomatis, gelap, atau terang"
 }

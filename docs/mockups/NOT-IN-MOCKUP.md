@@ -37,7 +37,7 @@ copy of the old code is in git.
 | 25 | Risiko: konfirmasi | amber risk dialog, trusted UI | `ui/confirm_banner.py` |
 | 26 | Riwayat tugas + Urungkan | task history with undo, audit tail, export and clear | `ui/tray_panel.py` (history page) |
 | 27 | Izin & Privasi | three indicators, four explicit permissions, guest mode, erase | `ui/tray_panel.py` (privacy page) |
-| 28 | Tema terang — panel baki | the same panel, light palette | `ui/tray_pages.py` (`PALETTES["light"]`) |
+| 28 | Tema terang — panel baki | the same panel in light colours, plus the switch that reaches it | `ui/tray_pages.py` (`PALETTES["light"]`), `ui/tray_theme.py` |
 
 Plus the surfaces the owner explicitly kept that no board draws: the **face
 bubble** (`ui/face_bubble.py`, `ui/face_canvas.py`) and the **orchestrator**
@@ -65,6 +65,20 @@ The chords printed on the rows (`Ctrl+Shift+S`, `Ctrl+Win`, `Ctrl+Shift+F`,
 `Ctrl+Shift+J`) are the ARTBOARD'S. Only `Ctrl+Shift+J` (summon) and `Ctrl+Space`
 (command bar) are actually bound by this program; the other three are printed
 labels, not registered hotkeys. A chord on a row is not a promise the OS owns it.
+
+**The theme switch** is a 28 px control in the header, marked `A` / `D` / `L`.
+It cycles the SETTING (`auto → dark → light → auto`) and the value is written to
+`config/api_keys.json` as `ui_theme`. The button shows the setting, not the
+palette it resolved to — a button reading "light" because `auto` resolved light
+could never be set back to auto.
+
+`auto` is read from `ui_os_theme` in the same file, **not** from a live desktop
+query: detecting the running theme is a `QGuiApplication.styleHints()` question
+and belongs to whoever owns the QApplication. On a machine where the key is
+absent — every Linux desktop, and Windows until something writes it — `auto` is
+dark. That is a limitation, not a claim: the light palette is reachable, the
+switch to reach it exists, and following the OS automatically is the part still
+missing.
 
 The suggestion row is empty in this build and says "Belum ada saran hari ini."
 `core.suggestion_quota` counts suggestions; nothing generates them yet.

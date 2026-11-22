@@ -729,5 +729,6 @@
   "ui.panel.page.privacy": "Privacy",
   "ui.panel.mode.active": "Aktif",
   "ui.panel.mode.focus": "Fokus",
-  "ui.panel.mode.quiet": "Senyap"
+  "ui.panel.mode.quiet": "Senyap",
+  "ui.panel.theme": "Panel theme: auto, dark or light"
 }

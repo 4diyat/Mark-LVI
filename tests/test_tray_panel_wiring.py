@@ -284,15 +284,93 @@ def test_every_key_the_panel_can_press_has_a_handler(wiring):
         actions = wiring.actions_for(FakeShell())
         assert set(actions) == {
             "presence_set", "quick", "permission", "undo", "history_export",
-            "history_clear", "guest", "erase", "command"}
+            "history_clear", "guest", "erase", "command", "theme"}
 
         panel = TrayPanel(actions)
         assert panel.open() is True
         pressed = {key.split(":", 1)[0] for key in panel._buttons}
         assert pressed <= {"mode", "quick", "perm", "permx", "undo", "export",
-                           "clear", "guest", "erase", "send"}
-        # Every button group the panel draws has a handler behind it.
+                           "clear", "guest", "erase", "send", "theme"}
         assert {"mode", "quick", "perm", "permx", "undo", "export", "clear",
                 "guest", "erase", "send"} <= pressed
+    finally:
+        restore_ui(saved)
+
+
+# ── board 28: the switch has to persist ────────────────────────────────────
+
+def test_cycling_the_theme_writes_it_to_the_config_layer(wiring, monkeypatch):
+    from memory import config_manager
+
+    written = {}
+    monkeypatch.setattr(config_manager, "save_ui_theme", lambda v: written.update(theme=v))
+    monkeypatch.setattr(config_manager, "get_ui_theme", lambda: written.get("theme", "auto"))
+    shell = FakeShell()
+
+    assert wiring.set_theme(shell, "light") is True
+    assert written == {"theme": "light"}
+    assert any("Tema panel: light" in line for line in shell.lines)
+
+
+def test_a_theme_the_config_layer_collapses_is_reported_as_stored_not_asked(
+        wiring, monkeypatch):
+    """The sentence must match disk, not the click.
+
+    `save_ui_theme` collapses an unknown value to `auto`; reporting "light"
+    because that is what was asked for would be a log line disagreeing with the
+    config file it describes.
+    """
+    from memory import config_manager
+
+    monkeypatch.setattr(config_manager, "save_ui_theme", lambda v: None)
+    monkeypatch.setattr(config_manager, "get_ui_theme", lambda: "auto")
+    shell = FakeShell()
+
+    assert wiring.set_theme(shell, "neon") is False
+    assert any("Tema panel: auto" in line for line in shell.lines)
+
+
+def test_a_theme_write_that_throws_is_reported_and_returns_false(wiring):
+    from memory import config_manager
+
+    def _boom(_value):
+        raise OSError("read-only: the config folder is on a locked volume")
+
+    original, config_manager.save_ui_theme = config_manager.save_ui_theme, _boom
+    try:
+        shell = FakeShell()
+        assert wiring.set_theme(shell, "light") is False
+        assert any("Tidak bisa" in line or "tidak tersimpan" in line
+                   for line in shell.lines)
+    finally:
+        config_manager.save_ui_theme = original
+
+
+def test_pressing_the_theme_control_reaches_the_caller_and_cycles(wiring, monkeypatch):
+    """The panel's button, end to end: cycle, then hand the value out."""
+    from tests.qtstub import fresh_ui, restore_ui
+
+    saved = fresh_ui()
+    try:
+        from ui.tray_panel import TrayPanel
+
+        seen = []
+        # `_build` applies the SAVED setting, so the file is patched rather
+        # than the widget: a test that poked `_requested` would pass while
+        # `_load_saved_theme` was broken, which is the bug these cover.
+        from memory import config_manager
+
+        original_get = config_manager.get_ui_theme
+        config_manager.get_ui_theme = lambda: "dark"
+        try:
+            panel = TrayPanel({"theme": seen.append})
+            assert panel.open() is True
+        finally:
+            config_manager.get_ui_theme = original_get
+        assert panel.requested_theme == "dark"
+
+        assert panel.press_theme() == "light"
+        assert seen == ["light"]
+        assert panel.theme == "light"
     finally:
         restore_ui(saved)

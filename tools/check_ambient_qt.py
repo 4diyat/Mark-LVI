@@ -244,6 +244,11 @@ def _panel():
     assert panel.set_page("trading") is False, "an unknown page was accepted"
     assert panel.set_theme("light") and panel.theme == "light"
     _repaint(panel._window)
+    # Board 28's three-state setting: `auto` must resolve to a palette that
+    # exists, and the header control must be able to reach all three.
+    assert panel.press_theme() in ("auto", "dark", "light")
+    assert panel.theme in ("dark", "light")
+    _repaint(panel._window)
     assert panel.set_theme("dark")
     panel.close()
     assert panel.available, "closing must not destroy the widget"

@@ -314,6 +314,28 @@ def set_permission(shell: "AmbientShell", key: str, on: bool) -> bool:
     return ok
 
 
+def set_theme(shell: "AmbientShell", name: str) -> bool:
+    """Persist the panel theme the user cycled to (board 28).
+
+    `memory.config_manager` validates the value — an unknown name collapses to
+    `auto` there, not here — so this function only carries it across and says
+    what happened. It runs on the click path, which is why the write is one
+    small config update and not a rewrite of the whole file.
+    """
+    from memory import config_manager
+
+    try:
+        config_manager.save_ui_theme(name)
+    except Exception as e:                          # noqa: BLE001
+        _say(shell, f"Tema tidak tersimpan — {type(e).__name__}: {e}")
+        return False
+    # Read it back rather than trusting what was asked for: the config layer
+    # may have collapsed an unknown value, and the sentence has to match disk.
+    saved = config_manager.get_ui_theme()
+    _say(shell, f"Tema panel: {saved}.")
+    return saved == str(name or "").strip().lower()
+
+
 def set_guest(shell: "AmbientShell", on: bool) -> bool:
     """Board 27's MODE TAMU, which this build cannot honour yet.
 
@@ -358,6 +380,7 @@ def actions_for(shell: "AmbientShell") -> dict:
         "history_clear": lambda: clear_history(shell),
         "guest": lambda on: set_guest(shell, on),
         "erase": lambda: erase_local(shell),
+        "theme": lambda name: set_theme(shell, name),
         "command": lambda text: send_command(shell, text),
     }
 
@@ -399,6 +422,6 @@ def toggle_panel(shell: "AmbientShell", point=None) -> bool:
 __all__ = [
     "actions_for", "clear_history", "dictate", "erase_local", "export_history",
     "find_file", "open_panel", "quick_action", "screenshot", "send_command",
-    "set_guest", "set_permission", "set_presence", "tidy_windows",
+    "set_guest", "set_permission", "set_presence", "set_theme", "tidy_windows",
     "toggle_panel", "undo_last",
 ]

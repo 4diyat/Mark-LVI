@@ -31,7 +31,10 @@ semua komputer. Hasil uji lokal tidak otomatis menjadi hasil CI atau rilis.
 > transkrip, prompt, reconnect, provider, plugin, integrasi OS, Obsidian,
 > riwayat percakapan, dan seluruh permukaan ambient.
 >
-> **Panel baki (papan 5, 23, 26, 27, 28) sekarang ada.** Empat hal yang
+> **Panel baki (papan 5, 23, 26, 27, 28) sekarang ada**, termasuk saklar tema
+> tiga keadaan di header (papan 28). `auto` membaca `ui_os_theme` dari
+> `config/api_keys.json`, bukan kueri desktop langsung — deteksi tema berjalan
+> adalah urusan pemilik QApplication. Bila kunci itu tidak ada, `auto` = gelap. Empat hal yang
 > digambar tetapi belum sepenuhnya didukung, dan mengatakannya di layar:
 > *Susun jendela* (tidak ada kode window-snapping di pohon ini), *Mode tamu*
 > (belum ada yang berhenti membaca memori), *Dikte* (tahan enam detik lewat
