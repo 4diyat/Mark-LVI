@@ -86,6 +86,9 @@ def start_voice_overlay(shell: "AmbientShell") -> bool:
     feed = HandFeed(shell)
     feed.start()
     shell._hand_feed = feed
+
+    # The chord from the footnote, bound with the surface it acts on.
+    start_pause_hotkey(shell)
     return True
 
 
@@ -226,8 +229,70 @@ def _note(shell, text: str) -> None:
         print(f"[JARVIS] {text}")
 
 
+# The chord printed in board 6's own footnote. Ctrl+Alt+G, not Ctrl+G: the
+# second is a common browser and editor shortcut, and a pause key that also
+# does something in the window behind the overlay is worse than no key.
+PAUSE_CHORD = ("ctrl", "alt", "g")
+
+
+def start_pause_hotkey(shell: "AmbientShell") -> str:
+    """Bind Ctrl+Alt+G to the gesture pause. Returns the scope achieved.
+
+    WHY THIS IS A SECOND KEY FOR ONE FEATURE
+        `core.hand_gesture.HandController` polls the same chord as its own
+        emergency stop — that is a hardware-level kill switch and it must not
+        depend on this program's event loop. This binding is the other half: it
+        tells the OVERLAY to show the pause, because the controller stopping is
+        not something a tile can see.
+
+    A FAILED BINDING IS NOT A FAILURE. The chord still stops the pointer
+    through the controller's own polling — the user loses the word on the tile,
+    not the ability to stop. So this reports the scope and never raises.
+    """
+    from core.hotkey import HotkeyTap
+
+    tap = HotkeyTap(lambda: toggle_gestures(shell), chord=PAUSE_CHORD)
+    try:
+        scope = tap.start()
+    except Exception as exc:                        # noqa: BLE001
+        _note(shell, f"gesture pause shortcut unavailable — "
+                     f"{type(exc).__name__}: {exc}")
+        return "window"
+    shell._pause_hotkey = tap
+    return scope
+
+
+def stop_pause_hotkey(shell: "AmbientShell") -> None:
+    tap = getattr(shell, "_pause_hotkey", None)
+    if tap is None:
+        return
+    try:
+        tap.stop()
+    finally:
+        shell._pause_hotkey = None
+
+
+def toggle_gestures(shell: "AmbientShell") -> bool:
+    """Ctrl+Alt+G: pause or resume, and say which on the tile.
+
+    Returns the new paused flag, or False when there is no overlay to say it
+    on. The pointer itself is stopped by the gesture controller's own poll of
+    the same chord; this decides what the user is TOLD.
+    """
+    overlay = getattr(shell, "_voice_overlay", None)
+    if overlay is None:
+        return False
+    try:
+        return bool(overlay.handle_toggle_gestures())
+    except Exception as exc:                        # noqa: BLE001
+        _note(shell, f"gesture pause did not apply — "
+                     f"{type(exc).__name__}: {exc}")
+        return False
+
+
 def stop_voice_overlay(shell: "AmbientShell") -> None:
-    """Take the camera and the window down at quit. Never raises."""
+    """Take the chord, the camera and the window down at quit. Never raises."""
+    stop_pause_hotkey(shell)
     feed = getattr(shell, "_hand_feed", None)
     if feed is not None:
         feed.stop()
@@ -239,10 +304,11 @@ def stop_voice_overlay(shell: "AmbientShell") -> None:
 
 
 __all__ = [
-    "HandFeed", "SHOWN_STATES", "camera_state", "overlay_state", "poll_hand",
-    "set_answer", "set_camera_available", "set_hand", "set_transcript",
-    "should_show", "show_exchange", "start_voice_overlay",
-    "stop_voice_overlay", "sync",
+    "HandFeed", "PAUSE_CHORD", "SHOWN_STATES", "camera_state", "overlay_state",
+    "poll_hand", "set_answer", "set_camera_available", "set_hand",
+    "set_transcript", "should_show", "show_exchange", "start_pause_hotkey",
+    "start_voice_overlay", "stop_pause_hotkey", "stop_voice_overlay", "sync",
+    "toggle_gestures",
 ]
 
 
