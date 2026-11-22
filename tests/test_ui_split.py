@@ -68,7 +68,10 @@ def test_the_package_has_exactly_the_mockup_modules():
         # tray panel is — model (what is true), hand (what the camera said),
         # paint (every Qt call). The first draft was one 790-line file.
         "voice_hand.py", "voice_overlay.py", "voice_paint.py",
-        "voice_wiring.py",
+        # The camera and the hand split away from the overlay's rules at the
+        # 600-line ceiling; the boundary is real — nothing in `hand_feed`
+        # draws, and nothing in `voice_wiring` moves anything.
+        "hand_feed.py", "voice_wiring.py",
     }
     present = {p.name for p in _modules()}
     assert present == expected, (

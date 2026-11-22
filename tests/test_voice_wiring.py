@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import pytest
 
-from ui import voice_wiring
+from ui import hand_feed, voice_wiring
 
 
 class FakeOverlay:
@@ -693,3 +693,182 @@ def test_stopping_the_pause_hotkey_twice_is_safe():
     shell = FakeShell()
     voice_wiring.stop_pause_hotkey(shell)
     voice_wiring.stop_pause_hotkey(shell)
+
+
+# ── the bare hand reaching the desktop ──────────────────────────────────────
+
+class _Mouse:
+    def __init__(self):
+        self.calls = []
+
+    def moveTo(self, x, y):
+        self.calls.append("moveTo")
+
+    def mouseDown(self):
+        self.calls.append("mouseDown")
+
+    def mouseUp(self):
+        self.calls.append("mouseUp")
+
+    def scroll(self, amount):
+        self.calls.append("scroll")
+
+    def size(self):
+        return (1920, 1080)
+
+
+def test_the_feed_carries_a_bridge_and_pumps_it_with_the_same_sample(monkeypatch):
+    """The tile and the desktop read ONE sample, or the picture and the cursor
+    would disagree about where the hand is."""
+    mouse = _Mouse()
+    from core.gesture_bridge import GestureBridge
+
+    monkeypatch.setattr(hand_feed, "gesture_bridge_enabled", lambda: True)
+    shell = FakeShell()
+    shell._voice_overlay = FakeOverlay()
+    feed = voice_wiring.HandFeed(shell, controller=FakeController(
+        hands=[(0.5, 0.5, False, False)]), bridge=GestureBridge(mouse=mouse))
+    assert feed.bridge.enable() is True
+
+    feed.poll()
+
+    assert mouse.calls == ["moveTo"]
+    assert shell._voice_overlay.hand == (0.5, 0.5, False)
+
+
+def test_a_paused_feed_sends_no_hand_to_the_desktop_either(monkeypatch):
+    """Ctrl+Alt+G must stop the cursor, not only the picture — and stopping
+    mid-drag must let go, which the policy does when the hand disappears.
+
+    The bridge is ENABLED here on purpose: the toggle is off by default, so a
+    test that left the switch alone would pass with the pause ignored — it would
+    be asserting that a pipeline which was never built moved nothing.
+    """
+    mouse = _Mouse()
+    from core.gesture_bridge import GestureBridge
+
+    monkeypatch.setattr(hand_feed, "gesture_bridge_enabled", lambda: True)
+    shell = FakeShell()
+    overlay = FakeOverlay()
+    overlay.gestures_paused = True
+    shell._voice_overlay = overlay
+    feed = voice_wiring.HandFeed(shell, controller=FakeController(
+        hands=[(0.5, 0.5, False, False)]), bridge=GestureBridge(mouse=mouse))
+    feed.bridge.enable()
+
+    feed.poll()
+
+    assert mouse.calls == [], "a paused gesture moved the cursor"
+
+
+def test_stopping_the_feed_lets_go_of_the_mouse(monkeypatch):
+    """The one failure the user cannot fix by waving."""
+    mouse = _Mouse()
+    from core.gesture_bridge import GestureBridge
+
+    monkeypatch.setattr(hand_feed, "gesture_bridge_enabled", lambda: True)
+
+    shell = FakeShell()
+    shell._voice_overlay = FakeOverlay()
+    feed = voice_wiring.HandFeed(shell, controller=FakeController(
+        hands=[(0.5, 0.5, True, False)]), bridge=GestureBridge(mouse=mouse))
+    feed.start()
+    feed.bridge.enable()
+    # Two frames of the same pinch: the first starts the hold, the second is
+    # past PINCH_HOLD_SECONDS and actually presses.
+    feed.bridge.pump((0.5, 0.5, True, False),
+                     voice_wiring.gesture_context(shell, now=0.0))
+    feed.bridge.pump((0.5, 0.5, True, False),
+                     voice_wiring.gesture_context(shell, now=1.0))
+    assert "mouseDown" in mouse.calls
+
+    feed.stop()
+
+    assert mouse.calls[-1] == "mouseUp"
+
+
+def test_the_context_reads_the_three_facts_from_where_they_live(monkeypatch):
+    import core.confirm as confirm
+
+    shell = FakeShell()
+    monkeypatch.setattr(hand_feed, "gesture_bridge_enabled", lambda: True)
+    monkeypatch.setattr(confirm, "pending_title", lambda: "Kirim laporan")
+
+    ctx = voice_wiring.gesture_context(shell, now=1.5)
+
+    assert ctx.os_mode is True
+    assert ctx.confirmation_open is True
+    assert ctx.now == 1.5
+    assert ctx.own_window_focused is False, "no window means nothing of ours has focus"
+
+
+def test_an_unreadable_confirmation_state_freezes_the_hand(monkeypatch):
+    """Freezing when we cannot tell is the safe direction: a hand that does not
+    move for a frame costs nothing, a webcam click on a bank-transfer banner
+    costs everything."""
+    import core.confirm as confirm
+
+    def _boom():
+        raise RuntimeError("confirm state is gone")
+
+    monkeypatch.setattr(confirm, "pending_title", _boom)
+    monkeypatch.setattr(hand_feed, "gesture_bridge_enabled", lambda: True)
+
+    ctx = voice_wiring.gesture_context(FakeShell(), now=0.0)
+
+    assert ctx.confirmation_open is True
+    assert ctx.frozen is True
+
+
+def test_the_switch_is_read_fresh_so_one_click_turns_it_off(monkeypatch):
+    import memory.config_manager as config
+
+    monkeypatch.setattr(config, "get_gesture_os_enabled", lambda: True)
+    assert voice_wiring.gesture_bridge_enabled() is True
+    monkeypatch.setattr(config, "get_gesture_os_enabled", lambda: False)
+    assert voice_wiring.gesture_bridge_enabled() is False
+
+
+def test_turning_it_off_saves_and_stops_the_pointer(monkeypatch):
+    from core.gesture_bridge import GestureBridge
+    import memory.config_manager as config
+
+    saved = {}
+    monkeypatch.setattr(config, "save_gesture_os_enabled",
+                        lambda value: saved.setdefault("value", value))
+    mouse = _Mouse()
+    shell = FakeShell()
+    shell._hand_feed = voice_wiring.HandFeed(
+        shell, controller=FakeController(), bridge=GestureBridge(mouse=mouse))
+    shell._hand_feed.bridge.enable()
+    assert shell._hand_feed.bridge.enabled is True
+
+    assert voice_wiring.set_gesture_os(shell, False) is False
+
+    assert saved["value"] is False
+    assert shell._hand_feed.bridge.enabled is False
+
+
+def test_turning_it_on_reports_whether_this_machine_can_actually_do_it(monkeypatch):
+    """A switch that appears on and moves nothing is worse than one that
+    refuses with a reason."""
+    import memory.config_manager as config
+    from core import gesture_bridge
+
+    monkeypatch.setattr(config, "save_gesture_os_enabled", lambda value: None)
+    shell = FakeShell()
+    shell._hand_feed = voice_wiring.HandFeed(
+        shell, controller=FakeController(), bridge=gesture_bridge.GestureBridge())
+
+    assert voice_wiring.set_gesture_os(shell, True) is False, (
+        "no pyautogui on this runner, so the honest answer is no")
+
+
+def test_the_switch_survives_having_no_feed_at_all(monkeypatch):
+    import memory.config_manager as config
+
+    calls = []
+    monkeypatch.setattr(config, "save_gesture_os_enabled",
+                        lambda value: calls.append(value))
+    assert voice_wiring.set_gesture_os(FakeShell(), True) is False
+    assert calls == [True], "the intent is still saved for the next start"

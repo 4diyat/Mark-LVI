@@ -260,7 +260,7 @@ NOT deleted because the day a surface returns they are the expensive half.
 | Module | Why it is still here |
 |---|---|
 | `core/file_access.py` | the permission MODEL is sound; its prompt was `ui/file_access_row.py` |
-| `core/gesture_os.py` | the pointer/click/scroll rules; the camera tile is a proposal |
+| `core/gesture_os.py` | **no longer orphaned** — `core/gesture_bridge.py` calls it per frame (see board 6); the rules are live, the camera is Windows-only |
 | `core/ssh_session.py` | a working SSH client with no screen to type into |
 | `core/pointer_ring.py`, `core/floating.py`, `core/dashboard.py` | the models behind the deleted desktop |
 | `core/browser_vault.py` | the encrypted browser-session store; `ui/browser_read.py` asked for consent and is gone |
@@ -352,6 +352,40 @@ this program's event loop. What the binding adds is the half a controller cannot
 know: telling the overlay to show "GESTUR DIPENGGU", and sending no further
 samples while it is up. A machine where the chord cannot bind globally still has
 the kill switch; it only loses the word on the tile.
+
+**The hand now reaches the desktop — and the switch that allows it is off
+until somebody turns it on.** `core/gesture_os.py` decided what a hand may do
+and `core/gesture_os_pointer.py` knew how to deliver it, and neither had a
+caller outside its own tests: the tile showed the hand and the hand controlled
+nothing. `core/gesture_bridge.py` is the missing third piece and nothing more —
+samples in, one policy call out to the desktop.
+
+| rule | how it is kept |
+|---|---|
+| **off means off** | `gesture_os_enabled` in the config is `False` by default, and the disabled path builds no pointer, imports no driver, and holds no reference. A corrupt config reads as *off*, never *on* |
+| **switching off lets go** | `disable()` asks the policy for `release_now()` and delivers it there and then — there may be no next frame, and a button left down makes the desktop drag-select and cannot be fixed by waving |
+| **our own focus freezes the hand** | `gesture_context()` reads it from Qt; with no window there is nothing of ours to have focus |
+| **a confirmation freezes the hand** | `core.confirm.pending_title()` — the same function that already expires banners. Unreadable is treated as *a banner might be up*, because freezing a hand for a frame costs nothing and a webcam click on a transfer confirmation costs everything |
+| **a lost hand releases the button** | on that same frame, which is rule 3 of the policy, driven from the seam |
+| **nothing raises into the Qt thread** | every path is on a 12 fps timer; a driver failure is counted and the loop continues, because the gesture that releases a stuck button has to arrive after one that failed |
+
+Where it runs: `ui/hand_feed.HandFeed` owns the bridge and pumps it from the
+same sample the tile draws, on the same timer, in the same Qt thread. The
+camera worker never calls pyautogui — it publishes, and this polls.
+
+**What it cannot do here, stated in the module that cannot do it:** this runner
+has no pyautogui, no camera and no display, so the delivery path is exercised
+with a recording mouse and the policy with the real `HandPointer`. Nothing
+above claims a real cursor was moved. On Windows the pipeline is bounded by the
+same three calls the allowlist names — `moveTo`, `mouseDown`, `mouseUp`,
+`scroll` — and a test fails if a fifth appears.
+
+**Still missing, and named rather than hidden:** there is no control in the
+panel for this switch, because board 27 draws exactly four permissions and a
+fifth would be a change to the artboard, not to the code. The setter is
+`ui.hand_feed.set_gesture_os(shell, on)`; until a surface offers it the feature
+is reachable only by editing `config/api_keys.json`. That is a gap with a
+proposed fix, not a finished feature.
 
 **The hand on the tile comes from the camera that already drives the OS
 pointer.** `ui/voice_wiring.HandFeed` owns one `WorkspaceHandController`, polls
