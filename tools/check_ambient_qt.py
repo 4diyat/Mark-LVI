@@ -75,22 +75,34 @@ def _repaint(widget) -> None:
     widget.render(pixmap)
 
 
+# THE REFERENCE IS THE POINT. `QApplication.instance()` returns the object Qt
+# holds, but PyQt does NOT own it: an application assigned only to a local goes
+# out of scope at the end of the check that created it, gets garbage collected,
+# and the NEXT widget dies with
+#
+#     QWidget: Must construct a QApplication before a QWidget
+#
+# which is `qFatal`, not an exception — it aborted the whole process in CI and
+# looked like the orb's fault. The module-level name is what keeps it alive.
+_APP = None
+
+
 def _require_app():
-    """The one `QApplication`, built on demand, or a real exception.
+    """The one `QApplication`, built on demand and kept alive, or a real error.
 
     Every check calls this FIRST. Creating a widget with no application is
     `qFatal` and kills the process instead of failing a check, so the guard has
-    to be here rather than in a setup step that could itself have failed — the
-    first version had exactly that shape and aborted silently in CI.
+    to be here rather than in a setup step that could itself have failed.
     """
+    global _APP
     from PyQt6.QtWidgets import QApplication
 
-    app = QApplication.instance()
-    if app is None:
-        app = QApplication(sys.argv[:1] or ["jarvis-check"])
-    if app is None:
+    _APP = QApplication.instance() or _APP
+    if _APP is None:
+        _APP = QApplication(sys.argv[:1] or ["jarvis-check"])
+    if _APP is None:
         raise RuntimeError("Qt refused to build a QApplication")
-    return app
+    return _APP
 
 
 @check("the application is built")
