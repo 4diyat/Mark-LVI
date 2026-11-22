@@ -152,6 +152,7 @@ stack-neutral dan berlaku apa adanya untuk implementasi Python.
 | Orb overlay 146 px (board 1), hanya cincin yang bisa diklik; meredup di Fokus/Senyap | `ui/orb_overlay.py`, `ui/orb_place.py`, `ui/orb_canvas.py` | `tests/test_orb_overlay_board1.py`, `tests/test_orb_place.py` |
 | Board 4: klik kiri → panel, klik kanan → menu cepat, drag menempel ke tepi | `ui/ambient_shell.py`, `ui/orb_snap.py` | `tests/test_orb_board4.py` |
 | Board 23: strip Fokus tanpa tenggat, tiga baris aksi sendiri, jeda penjadwalan yang tersimpan | `ui/tray_paint.py`, `ui/tray_panel_model.py`, `actions/proactive.py`, `ui/tray_panel_wiring.py` | `tests/test_focus_board23.py` |
+| Startup: setiap permukaan benar-benar dibangun saat aplikasi dijalankan | `main.py`, `ui/lifecycle.py` | `tests/test_startup_board7.py` |
 | Command bar Ctrl+Space, Esc mengembalikan fokus | `ui/command_bar.py` | `tests/test_command_bar.py` |
 | Sambungan mode → orb, chord, dan baki | `ui/lifecycle.py`, `memory/config_manager.py` | `tests/test_presence_wiring.py` |
 
@@ -254,3 +255,37 @@ salinan yang berbeda perilaku.
   bawah** kartu saran, bukan di dalamnya: kartu board 5 dipatok 62 px oleh
   `tests/test_tray_geometry.py`, dan baris ketiga tidak muat tanpa mengubah kotak
   yang diukur board lain.
+
+### Startup — kenapa JARVIS tidak muncul sama sekali
+
+- **`main()` tidak pernah memanggil `ui.lifecycle.start_interface`.** Fungsi itu
+  membangun baki, face bubble, orb, command bar, overlay suara, dan hotkey
+  summon — semuanya. Pemanggilnya hanya tes. Jadi `python main.py` membuat satu
+  `QApplication` tanpa jendela, menjalankan `app.exec()` di atas aplikasi kosong,
+  dan menunggu mikrofon: proses yang hidup, mendengarkan, dan tidak bisa dilihat
+  maupun ditutup selain lewat Task Manager. Satu-satunya jendela yang mungkin
+  muncul adalah layar setup API key, karena `wait_for_api_key()` membukanya dari
+  thread runner; setelah kunci disimpan, layar itu ditutup dan tidak ada apa pun
+  yang menggantikannya.
+- **Kenapa 2.344 tes hijau selama itu.** Setiap tes memanggil
+  `lifecycle.start_interface(shell)` langsung. Tidak satu pun bertanya apakah
+  aplikasi memanggilnya. Permukaan yang dibangun lalu tidak pernah ditampilkan
+  dan permukaan yang tidak pernah dibangun sama-sama tidak terlihat dari dalam
+  tes. Ini kelas yang sama dengan `_ready` yang tidak pernah menjadi `True` dan
+  clamp mati di `snap_to_edge`: tes tidak bisa gagal karena tidak ada yang diuji.
+- **Pemanggilan itu duduk di thread Qt, setelah `_launch` terpasang, sebelum
+  `exec()`.** Sebelum `exec()` karena permukaan yang dibuat setelahnya tidak
+  pernah sempat dilukis. Di thread Qt karena QWidget dibuat di thread yang
+  menjalankan event loop. Setelah `_launch` karena `--hidden` dan tautan
+  `jarvis://` dibaca oleh permukaan yang dibangun di dalamnya.
+- **`--hidden` akhirnya berarti sesuatu, dan artinya dijaga.** Sebelumnya flag
+  itu tidak berpengaruh karena tidak ada yang tampil. Sekarang ia menyembunyikan
+  **wajah**, bukan orb: orb adalah satu-satunya permukaan yang membuka panel
+  dengan klik (board 4), jadi menyembunyikannya akan membuat `--hidden` berarti
+  "mulai tanpa cara mouse apa pun".
+- **Satu permukaan yang gagal tidak boleh menjatuhkan yang lain.** Memindahkan
+  pemanggilan ke `main()` menciptakan jalan baru untuk mati: exception yang lolos
+  dari `start_interface` sekarang membunuh proses sebelum `exec()`. Tiga dari
+  `start_*` tidak menangkap exception sendiri, dan mereka membuat objek Qt.
+  Setiap permukaan sekarang punya pengamannya sendiri, dan kegagalannya dicatat
+  dengan nama permukaannya.

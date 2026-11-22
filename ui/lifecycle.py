@@ -171,15 +171,44 @@ def start_interface(shell: "AmbientShell") -> None:
 
     watch_for_another_launch(shell)
 
+    # ONE SURFACE THAT RAISES MUST NOT TAKE THE OTHERS DOWN.
+    #
+    # Every `start_*` is WRITTEN to report failure by returning False, and three
+    # of them catch their own exceptions. The rest do not, and they construct Qt
+    # objects — the one thing on this path that can raise for reasons nobody
+    # wrote a `try` for: a desktop with no notification area, a platform plugin
+    # that refuses a translucent window, a Qt version that moved a flag.
+    #
+    # Before `main()` called this function, a raise here cost nothing because
+    # nothing ran. Now it runs on the main thread BEFORE `exec()`, so an
+    # escaping exception kills the process with no window, no tray and no event
+    # loop — indistinguishable, to the user, from the bug that put this call
+    # here in the first place.
+    #
+    # The order is written out rather than looped over because it IS the design:
+    # the tray is the only surface that can always get the user back, so it goes
+    # first, and the orb goes last.
     started = []
-    if start_tray(shell):
-        started.append("tray")
-    if start_bubble(shell):
-        started.append("face")
-    if start_orb(shell):
-        started.append("orb")
-    if start_command_bar(shell):
-        started.append("bar")
+    try:
+        if start_tray(shell):
+            started.append("tray")
+    except Exception as e:                          # noqa: BLE001
+        note(shell, f"the tray surface failed to start — {type(e).__name__}: {e}")
+    try:
+        if start_bubble(shell):
+            started.append("face")
+    except Exception as e:                          # noqa: BLE001
+        note(shell, f"the face surface failed to start — {type(e).__name__}: {e}")
+    try:
+        if start_orb(shell):
+            started.append("orb")
+    except Exception as e:                          # noqa: BLE001
+        note(shell, f"the orb surface failed to start — {type(e).__name__}: {e}")
+    try:
+        if start_command_bar(shell):
+            started.append("bar")
+    except Exception as e:                          # noqa: BLE001
+        note(shell, f"the bar surface failed to start — {type(e).__name__}: {e}")
 
     # BOARD 6 IS BUILT HERE AND SHOWN LATER. The overlay covers the screen, so
     # it must exist before the first LISTENING and must not be up for it: a

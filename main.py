@@ -3234,6 +3234,23 @@ def main():
     # auto-start toggle on every platform and failing at the next login.
     ui._program_path = str(Path(__file__).resolve())
 
+    # BUILD EVERY SURFACE, AND DO IT FROM THE QT THREAD, BEFORE `exec()`.
+    #
+    # THIS LINE WAS MISSING, and nothing noticed for the life of the ambient
+    # shell: `ui/lifecycle.py` has held `start_interface` the whole time — the
+    # tray icon, the face bubble, the orb, the command bar, the voice overlay
+    # and the summon hotkey — and every path that reached it started at a test.
+    # A launch ran `app.exec()` over an empty application: no tray, no orb, no
+    # window, and no way to quit except the task manager.
+    #
+    # It has to be HERE and not inside the runner thread: QWidgets are created
+    # on the thread that runs the event loop, and a tray icon built on the
+    # Gemini thread is a crash waiting for the first paint. It is also after
+    # `_launch` is attached, because `--hidden` and `jarvis://` links are read
+    # by the surfaces this call builds.
+    from ui import lifecycle as _lifecycle
+    _lifecycle.start_interface(ui)
+
     def runner():
         ui.wait_for_api_key()
         jarvis = JarvisLive(ui)
