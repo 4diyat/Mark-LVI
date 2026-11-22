@@ -327,6 +327,22 @@ Esc goes through `voice_wiring._on_close` → `shell.request_sleep()`, the same
 path the tray's Sleep control uses. "Esc keluar" has to mean the microphone
 closed, not only the picture — the close handler is tested for exactly that.
 
+**The hand on the tile comes from the camera that already drives the OS
+pointer.** `ui/voice_wiring.HandFeed` owns one `WorkspaceHandController`, polls
+it on the overlay's own 12 fps timer, and puts the **first** hand of the newest
+frame on the tile. An empty sample — a lost hand, a stale frame, or a closed hand
+that has not been deliberately re-opened — empties the tile rather than freezing
+the last picture, which is the same signal `core.gesture_os` uses to release a
+held button. The tile is lit for `status == "active"` and for nothing else:
+`starting`, `off`, `windows_only` and `error` all mean the hand is not backed by
+frames. Ctrl+Alt+G sends nothing at all, so the pause is visible in the one
+place a user can see it. The feed is stopped **before** the event loop quits —
+a camera light still on after Quit is the one failure nobody forgives.
+
+Off Windows the feed refuses (`WorkspaceHandController.start()` sets
+`windows_only`, and mediapipe is a Windows-only dependency here), the tile reads
+"KAMERA NONAKTIF", and that is the honest state rather than a placeholder.
+
 **The split is three files, and the ceiling is why.** The first draft —
 window, state, hand geometry and every Qt call — was 790 lines against a 600
 line ceiling. `ui/voice_hand.py` took the geometry (the only part that comes

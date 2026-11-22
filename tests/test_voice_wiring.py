@@ -35,6 +35,10 @@ class FakeOverlay:
         self.camera = None
         self.error = "no display"
         self.stop_calls = 0
+        # The real surface exposes this; a fake that forgot it made
+        # `poll_hand` read a missing attribute as "paused" and quietly drop
+        # every sample.
+        self.gestures_paused = False
 
     def start(self, active=True):
         self.active = bool(active and self.starts)
@@ -301,3 +305,215 @@ def test_lifecycle_builds_the_overlay_at_start_up():
                  and node.name == "start_interface")
     names = [ast.unparse(c) for c in ast.walk(start) if isinstance(c, ast.Call)]
     assert any("start_voice_overlay" in n for n in names), names
+
+
+# ── the camera feed ─────────────────────────────────────────────────────────
+
+class FakeController:
+    """`WorkspaceHandController`'s published surface, and nothing else."""
+
+    def __init__(self, status="active", hands=(), starts=True):
+        self.status = status
+        self.hands = hands
+        self.starts = starts
+        self.started = 0
+        self.stopped = 0
+
+    def start(self):
+        self.started += 1
+        if self.starts:
+            self.status = "active"
+        return self.starts
+
+    def stop(self):
+        self.stopped += 1
+        self.status = "off"
+
+    def sample(self):
+        return tuple(self.hands)
+
+
+def test_the_tile_is_lit_only_when_frames_are_actually_arriving():
+    """`starting`, `off`, `windows_only` and `error` all mean the hand on the
+    tile is not backed by anything."""
+    assert voice_wiring.camera_state(FakeController(status="active")) is True
+    for status in ("off", "starting", "windows_only", "error", "", None):
+        controller = FakeController()
+        controller.status = status
+        assert voice_wiring.camera_state(controller) is False, status
+
+
+def test_a_sample_reaches_the_tile_as_the_three_fields_it_draws():
+    shell = FakeShell()
+    overlay = FakeOverlay()
+    shell._voice_overlay = overlay
+    controller = FakeController(hands=[(0.31, 0.62, True, 0.0, 0, 0)])
+
+    voice_wiring.poll_hand(shell, controller)
+
+    assert overlay.camera is True
+    assert overlay.hand == (0.31, 0.62, True)
+
+
+def test_no_hand_empties_the_tile_rather_than_freezing_the_last_one():
+    """`sample()` returns `()` for a lost hand, a stale frame, or a closed hand
+    that has not been deliberately re-opened. All three mean "not there"."""
+    shell = FakeShell()
+    overlay = FakeOverlay()
+    shell._voice_overlay = overlay
+    shell._voice_overlay.hand = (0.5, 0.5, True)
+
+    voice_wiring.poll_hand(shell, FakeController(hands=[]))
+
+    assert overlay.hand is None
+
+
+def test_a_paused_feed_sends_nothing_even_if_the_camera_is_busy():
+    """Ctrl+Alt+G promises the gestures are paused; a tile that kept moving
+    would be the one place the user could see that promise broken."""
+    shell = FakeShell()
+    overlay = FakeOverlay()
+    overlay.gestures_paused = True
+    overlay.set_hand = lambda sample: setattr(overlay, "hand", sample)
+    shell._voice_overlay = overlay
+
+    voice_wiring.poll_hand(shell, FakeController(hands=[(0.1, 0.1, True)]))
+
+    assert overlay.hand is None
+
+
+def test_a_controller_that_dies_mid_run_is_an_unlit_tile_not_an_exception():
+    shell = FakeShell()
+    overlay = FakeOverlay()
+    shell._voice_overlay = overlay
+
+    class Dying(FakeController):
+        def sample(self):
+            raise RuntimeError("the camera was unplugged")
+
+    voice_wiring.poll_hand(shell, Dying())          # must not raise
+
+
+def test_the_feed_reads_the_first_hand_and_ignores_the_rest():
+    shell = FakeShell()
+    overlay = FakeOverlay()
+    shell._voice_overlay = overlay
+    controller = FakeController(hands=[(0.2, 0.3, False), (0.9, 0.9, True)])
+
+    voice_wiring.poll_hand(shell, controller)
+    assert overlay.hand == (0.2, 0.3, False)
+
+
+# ── the feed's lifetime ─────────────────────────────────────────────────────
+
+def test_a_feed_off_windows_is_not_a_failure_and_does_not_raise():
+    """`WorkspaceHandController.start()` refuses on Linux, macOS and anywhere
+    mediapipe is missing. That is the normal answer here, not an error."""
+    shell = FakeShell()
+    feed = voice_wiring.HandFeed(shell, controller=FakeController(
+        status="windows_only", starts=False))
+    assert feed.start() is False
+    assert feed.status == "windows_only"
+    assert feed.error == "", "a refusal is not an error message"
+
+
+def test_stopping_the_feed_stops_the_controller_and_is_idempotent():
+    shell = FakeShell()
+    controller = FakeController()
+    feed = voice_wiring.HandFeed(shell, controller=controller)
+    feed.start()
+    feed.stop()
+    feed.stop()
+    assert controller.stopped == 1, "a second stop must not touch the camera again"
+
+
+def test_the_feed_stops_the_timer_before_the_camera():
+    """The other order would leave one tick reading from a closing controller.
+
+    WHAT THIS TEST CAN AND CANNOT PROVE
+        QTimer callbacks run on the Qt event loop, so a tick cannot interleave
+        with this function on a real desktop — the timer only has to be stopped
+        BEFORE the call that could block, and `_stop_timer()` clears the
+        reference first, which is why reversing the two lines here is
+        undetectable and harmless. What is asserted is the part that is real:
+        the timer is stopped and forgotten before the controller is touched, and
+        the camera is stopped exactly once.
+    """
+    shell = FakeShell()
+    order = []
+
+    class Ordered(FakeController):
+        def stop(self):
+            # THE CLAIM IS THAT THE TIMER IS ALREADY DOWN when the camera closes.
+            # Recording the order is not enough: a reversed implementation that
+            # still happened to append in that order would pass. So the camera
+            # checks the state it cares about.
+            order.append(("camera", feed._timer is None))
+            super().stop()
+
+    feed = voice_wiring.HandFeed(shell, controller=Ordered())
+    feed.start()
+
+    class Timer:
+        def stop(self):
+            order.append(("timer", None))
+
+    feed._timer = Timer()
+    feed.stop()
+    assert order[0][0] == "timer", f"the camera closed first: {order}"
+    assert order[1] == ("camera", True), (
+        f"the camera closed while a timer could still tick: {order}")
+
+
+def test_a_feed_that_cannot_build_says_why_and_leaves_the_overlay_alone():
+    shell = FakeShell()
+
+    class Broken:
+        status = "off"
+
+        def start(self):
+            raise RuntimeError("no mediapipe")
+
+    feed = voice_wiring.HandFeed(shell, controller=Broken())
+    assert feed.start() is False
+    assert "mediapipe" in feed.error
+
+
+# ── quitting ────────────────────────────────────────────────────────────────
+
+def test_stopping_the_overlay_takes_the_camera_with_it():
+    """A camera light still on after Quit is the one failure a user cannot
+    forgive, so the feed is stopped with the surface."""
+    shell = FakeShell()
+    overlay = FakeOverlay()
+    controller = FakeController()
+    shell._voice_overlay = overlay
+    shell._hand_feed = voice_wiring.HandFeed(shell, controller=controller)
+    shell._hand_feed.start()
+
+    voice_wiring.stop_voice_overlay(shell)
+
+    assert controller.stopped == 1
+    assert overlay.stop_calls == 1
+    assert shell._voice_overlay is None and shell._hand_feed is None
+
+
+def test_quitting_with_no_overlay_is_not_an_error():
+    voice_wiring.stop_voice_overlay(FakeShell())     # must not raise
+
+
+def test_the_overlay_and_the_camera_are_built_and_torn_down_by_lifecycle():
+    """Structural, because `AmbientShell` needs a Qt this machine lacks."""
+    import ast
+    from pathlib import Path
+
+    source = (Path(__file__).resolve().parent.parent / "ui" / "lifecycle.py"
+              ).read_text(encoding="utf-8")
+    assert "start_voice_overlay(shell)" in source
+    assert "stop_voice_overlay(shell)" in source
+
+    tree = ast.parse(source)
+    quit_app = next(node for node in ast.walk(tree)
+                    if isinstance(node, ast.FunctionDef) and node.name == "quit_app")
+    names = [ast.unparse(c) for c in ast.walk(quit_app) if isinstance(c, ast.Call)]
+    assert any("stop_voice_overlay" in n for n in names), names
