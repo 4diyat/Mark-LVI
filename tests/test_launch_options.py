@@ -289,16 +289,30 @@ def test_a_first_run_is_never_silent_about_the_api_key(monkeypatch):
 
     The setup screen was inside the window, so a hidden launch on a first run
     used to show the window instead. There is no window; the equivalent promise
-    is that the wait SAYS what is wrong on a surface that exists. This asserts
-    the notice, not the window, because asserting the window would now be
-    asserting the bug back into place.
+    is that the wait SAYS what is wrong on a surface that exists.
+
+    THE MESSAGE IS READ FROM THE CATALOGUE, not from the source of
+    `ui/shell.py`: the sentence moved into `assets/i18n/*.json` when it became
+    translatable, and a source-text assertion would then have passed on a file
+    whose user-visible text was the key name `ui.setup.waiting`. What matters is
+    the sentence the user reads, so that is what is asserted — in both locales.
     """
     source = (ROOT / "ui" / "shell.py").read_text(encoding="utf-8")
     start = source.index("def wait_for_api_key")
-    body = source[start:start + 1800]
+    body = source[start:start + 2400]
     assert "notify" in body, "an unconfigured install waits with nothing said"
-    assert "config/api_keys.json" in body, (
-        "the message must name the file the user has to edit")
+    assert "ui.setup.waiting" in body, (
+        "the wait must name the catalogue sentence it shows")
+
+    # Both locales, read from the files: a sentence that names the file in
+    # English and not in Indonesian is a sentence half the users cannot act on.
+    import json
+
+    for locale in ("en", "id"):
+        data = json.loads((ROOT / "assets" / "i18n" / f"{locale}.json")
+                          .read_text(encoding="utf-8"))
+        assert "config/api_keys.json" in data["ui.setup.waiting"], (
+            f"{locale}.json: the wait notice must name the file to fill in")
 
 
 # ── the two callers on opposite sides of the same flag ─────────────────────

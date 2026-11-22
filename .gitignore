@@ -5,16 +5,29 @@
 # never be.
 
 # ── Secrets. Committing any of these publishes them. ──────────────────────────
-config/api_keys.json          # your Gemini API key, plus per-plugin credentials
-config/certs/                 # the dashboard's TLS private key and certificate
-config/whatsapp_web/          # a LINKED WhatsApp session — committing it hands
-                              # somebody your WhatsApp account, not just a key
-**/token*.json                # Google OAuth tokens (Gmail / Calendar plugins)
-config/.calendar-token-*      # temporary OAuth token during an atomic save
-config/audit.jsonl            # the action audit log — names files and decisions the
-                              # user made. Personal by definition; erase from the app.
-config/suggestions.json       # today's suggestion count; meaningless once committed
-**/client_secret*.json        # Google OAuth client secrets
+#
+# NOTHING BELOW MAY CARRY A TRAILING COMMENT. Gitignore has no inline comments:
+# `path   # why` is read as one file name whose text includes the `#`, so the
+# rule matches nothing. This block said exactly that for its whole life and
+# `config/api_keys.json` was tracked as a result; `tests/test_gitignore.py` now
+# fails the build if a rule here stops matching.
+#
+# Your Gemini API key, plus per-plugin credentials.
+config/api_keys.json
+# The dashboard's TLS private key and certificate.
+config/certs/
+# A LINKED WhatsApp session — committing it hands somebody your account.
+config/whatsapp_web/
+# Google OAuth tokens (Gmail / Calendar plugins).
+**/token*.json
+# Temporary OAuth token during an atomic save.
+config/.calendar-token-*
+# The action audit log: names files and decisions the user made.
+config/audit.jsonl
+# Today's suggestion count; meaningless once committed.
+config/suggestions.json
+# Google OAuth client secrets.
+**/client_secret*.json
 *credentials*.json
 .env
 .env.*

@@ -49,6 +49,11 @@ from pathlib import Path
 # is no cycle and no second definition of "summon".
 from typing import Callable
 
+# The one door for user-visible text, from the module that already owns it for
+# the panel. `ui/shell.py` is not a drawer, so importing it here is allowed —
+# and `tests/test_i18n.py` checks that every key it asks for exists.
+from ui.tray_panel_model import _t
+
 # The state words `main.py` sends. Kept as a set rather than a dict because
 # nothing here maps them to text — the tooltip and the orb each have their own
 # opinion, and this list exists so an unknown word is visibly unknown instead
@@ -84,6 +89,7 @@ class AmbientShell:
         self._summon_hotkey = None
         self._toaster = None
         self._confirm_banner = None
+        self._setup = None
 
         # State that `main.py` reads.
         self._muted = False
@@ -164,36 +170,70 @@ class AmbientShell:
         tray = self._tray
         return tray is not None and getattr(tray, "available", False)
 
-    def wait_for_api_key(self) -> None:
-        """Block until `_ready`. main.py sets it once the session is up.
+    def mark_ready(self) -> None:
+        """The key is accepted: let `main.py`'s runner start.
 
-        Nothing here can ask the user for a key any more: the setup screen was
-        an overlay inside the window. What remains is the loop's contract —
-        start when ready — and a machine with no key logs why it is waiting
-        instead of hanging silently.
+        THIS WAS MISSING. `_ready` had two writes, both `False`, and nothing set
+        it `True` — so `wait_for_api_key()` waited forever on every start, key
+        or no key. Idempotent, callable from any thread.
         """
-        waited = 0.0
-        told = False
+        self._ready = True
+
+    def wait_for_api_key(self) -> None:
+        """Block until `_ready`. With no key, the setup screen is the wait.
+
+        Called on `main.py`'s runner thread, never the Qt thread. When Qt cannot
+        build the screen it says so once and keeps waiting: a tray app that
+        exits because it could not draw a dialog is worse than one that prints
+        where to put the key.
+        """
+        from ui.setup_screen import has_key
+
+        if self._ready or has_key():
+            # A KEY IS THE GATE, NOT THE SESSION. This used to wait for
+            # `_ready`, which only a SAVED key sets — so a working install with
+            # a key already in the file waited forever too. The session tries
+            # that key, and a rejected one comes back through
+            # `prompt_reconfig()`, which is the one place `_ready` is cleared.
+            return
+        if not self.open_setup():
+            self.notify(_t("ui.setup.waiting"))
+        waited, told = 0.0, False
         while not self._ready:
             time.sleep(0.1)
             waited += 0.1
-            # ONCE, after half a minute, and through the tray as well as stdout.
-            # This loop blocks `main.py`'s runner thread, so a silent wait is an
-            # app that looks alive and answers nothing. Repeating the notice
-            # every tick would turn that into a tray balloon every 30 seconds,
-            # which is how a useful message becomes noise the user mutes.
+            # ONCE, after half a minute. This loop blocks the runner thread, so
+            # a silent wait is an app that looks alive and answers nothing —
+            # and a notice every tick would be a tray balloon every 30 s, which
+            # is how a useful message becomes noise the user mutes.
             if not told and waited >= 30.0:
                 told = True
-                reason = ("Menunggu API key. Tidak ada layar setup di mode "
-                          "ambient — isi config/api_keys.json lalu mulai ulang.")
+                if self._setup is not None:
+                    continue    # the screen is up and the user can see it
+                reason = _t("ui.setup.waiting")
                 _note(reason)
                 try:
                     self.notify(reason, "API key")
                 except Exception as e:              # noqa: BLE001
-                    # The loop's job is to wait, not to report. A tray that
-                    # refuses is already covered by `_note` above.
                     _note_once("api-key-notice",
                                f"API key notice not shown: {type(e).__name__}: {e}")
+
+    def open_setup(self) -> bool:
+        """Show the setup window on the Qt thread. False if Qt is not here."""
+        from ui.setup_screen import open_setup
+
+        return open_setup(self)
+
+    def _setup_done(self, verdict) -> None:
+        """The screen closed on a saved key: let the runner go.
+
+        REACHED ONLY AFTER A SAVE — `SetupWindow.finish()` is called from the
+        success path and nowhere else — so this is a statement about the file,
+        not an optimistic guess.
+        """
+        self._setup = None
+        _note(f"API key saved ({getattr(verdict, 'kind', '?')})")
+        self.mark_ready()
 
     # ── status ──────────────────────────────────────────────────────────────
 
@@ -440,9 +480,21 @@ class AmbientShell:
         confirm.resolve(token, accepted)
 
     def prompt_reconfig(self) -> None:
-        """main.py's reaction to an auth error: say so, on the only surface."""
+        """main.py's reaction to an auth error: ask for a new key, on screen.
+
+        IT USED TO SAY "edit config/api_keys.json and restart", which is an
+        instruction to hand-edit JSON from a tray balloon — and it cleared
+        `_ready` without ever offering a way to set it again, so the two wait
+        loops this flag gates had no exit. Now the setup screen comes back,
+        pre-verified, and `mark_ready()` runs when a new key is saved.
+
+        Called from the asyncio loop, which is not the Qt thread: `open_setup`
+        is what marshals the build.
+        """
         self._ready = False
-        self.notify("API key rejected or missing. Edit config/api_keys.json and restart.")
+        if self.open_setup():
+            return
+        self.notify(_t("ui.setup.rejected_notice"))
 
     def notify_phone_connected(self) -> None:
         self.notify("Phone connected.")

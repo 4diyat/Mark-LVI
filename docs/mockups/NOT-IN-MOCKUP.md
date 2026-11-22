@@ -206,13 +206,33 @@ module docstring says so: `show_video` / `play_audio` were methods on
 Settings, provider keys, the first-run setup screen, creative tools, the
 speech caption, the notification toggle row, the file-access prompt.
 
-**The setup screen is the one to think about.** `main.py` blocks in
-`wait_for_api_key()`. The screen that collected the key was inside the window,
-so a first run with no key had only one honest answer — and it is now a notice
-on the tray plus a line on stdout naming `config/api_keys.json`
-(`ui/shell.py::wait_for_api_key`). That is worse than a key field and it is
-better than a silent wait; it is written here because it is a real regression
-in first-run experience, accepted to get the cut.
+**The setup screen was the one to think about, and it is back.** `main.py`
+blocks in `wait_for_api_key()`. The screen that collected the key was inside
+the window, so after the cut a first run with no key had only one honest answer
+— a notice on the tray plus a line naming `config/api_keys.json`. That was a
+real regression in first-run experience, accepted to get the cut, and recorded
+here as one.
+
+It is no longer a regression. **No artboard draws it**, so it borrows the
+language it must not contradict: the 460×660 panel, board 5's dark palette, and
+`panel_head()`'s "JARVIS / subtitle" header from `build.py`. What it adds is the
+one control the mockup has no place for — a password field for the API key, one
+button, three sentences (works / rejected / saved-but-unverified).
+
+`ui/setup_window.py` draws and decides; `ui/setup_screen.py` is the thread hop
+(`main.py`'s runner thread and the asyncio recovery loop both ask for it, and Qt
+may only build widgets on the Qt thread). The decisions behind it are the
+owner's, taken on 2026-11-22:
+
+| Question | Decision |
+|---|---|
+| Where is the key stored? | `config/api_keys.json` only. The OS keychain write was removed. |
+| Can it be skipped? | No. There is no "Lewati" button, not even a disabled one. |
+| Is the key tested? | Yes — `core/key_check.py` makes one real `models.get` call. |
+| And offline? | The key is saved with a sentence saying it was not verified. |
+
+`tests/test_setup_window.py` (22 tests) and `tests/test_shell_setup.py` (11)
+cover the three verdicts, the no-skip rule, and both wait loops exiting.
 
 ### SSH and trading — 5 modules, 1,200 lines
 

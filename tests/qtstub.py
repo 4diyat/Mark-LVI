@@ -256,6 +256,17 @@ class _Object:
     def setPlaceholderText(self, text):
         self._placeholder_text = text
 
+    # Echo mode is STATE, and the setup screen is why: a key field that is not
+    # a password field shows the key to anyone looking at the desktop. A stub
+    # that answered `echoMode` with a no-op lambda made that assertion pass for
+    # the wrong reason (it compared a function to an int) — the same class of
+    # fake-agrees-with-the-bug this file's docstring warns about.
+    def setEchoMode(self, mode):
+        self._echo_mode = mode
+
+    def echoMode(self):
+        return self.__dict__.get("_echo_mode", 0)
+
     def clear(self):
         self._text = ""
 
@@ -348,6 +359,20 @@ class _Layout(_Object):
 
     def parentWidget(self):
         return self._owner
+
+
+class _EchoMode:
+    """`QLineEdit.EchoMode`, with Qt's own four values.
+
+    Deliberately NOT `_ENUMS`: `echoMode() == QLineEdit.EchoMode.Password` is
+    the assertion that says the key is hidden, and the catch-all enum compares
+    unequal to everything, including itself.
+    """
+
+    Normal = 0
+    NoEcho = 1
+    Password = 2
+    PasswordEchoOnEdit = 3
 
 
 class _Enums:
@@ -674,6 +699,7 @@ def _install_qt() -> dict[str, types.ModuleType]:
         def widget(self):
             return self._widget
     widgets.QScrollArea = _ScrollArea
+    widgets.QLineEdit.EchoMode = _EchoMode
     widgets.QToolButton = _stub_class("QToolButton")
     widgets.QMainWindow = _stub_class("QMainWindow")
     class _MdiArea(_Object):

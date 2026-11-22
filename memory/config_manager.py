@@ -177,31 +177,29 @@ def load_api_keys() -> dict:
 # ── Setup screen ─────────────────────────────────────────────────────────────
 
 def save_api_keys(gemini_api_key: str, **extra) -> bool:
-    """Store the API key, keeping every other setting that is already there.
+    """Store the API key in `config/api_keys.json`, keeping every other setting.
 
-    THE KEY GOES TO THE KEYCHAIN FIRST, AND THE FILE KEEPS A COPY.
-        `core/keychain.py` explains the argument in full. The short version: this
-        is the one secret in the file that is actually a key, every desktop OS
-        has held one for a decade, and `keyring` is optional — so the keychain
-        is tried and the file copy is written either way. That ordering is what
-        makes the feature safe to add to an app that must also run headless: a
-        machine without a keyring behaves exactly as it did before.
+    THE KEYCHAIN IS NO LONGER USED, AND THAT IS A DECISION, NOT AN OMISSION.
+        `core/keychain.py` exists and works: it holds the key in Keychain,
+        Credential Manager or Secret Service so it is not readable by every
+        process running as the user. The owner chose otherwise on 2026-11-22 —
+        one file, `config/api_keys.json`, so that what the app reads is what the
+        user can see and edit. `core/keychain.py` stays for the other secrets
+        that use it; this path no longer calls it.
 
-        When the keychain accepts it, the file copy is written with a marker key
-        (`gemini_api_key_source`) so reads prefer the correct store. A failed
-        keychain write marks the file authoritative over any stale keychain key.
+        THE COST, WRITTEN DOWN RATHER THAN DISCOVERED: the key is a chmod-0600
+        text file, so anything running as this user — a plugin, a build script, a
+        shared backup — can read it. That is why `.gitignore` had to be fixed
+        before this screen was built: the file must never leave the machine
+        through a commit. `tests/test_gitignore.py` is what enforces it now.
+
+    `gemini_api_key_source` is still written, and always says `"file"`. The key
+    remains because `get_gemini_key()` reads it to pick a store, and a config
+    written by an older build may still say `"keychain"` — that value keeps
+    working for anybody upgrading, and the next save rewrites it.
     """
     key = (gemini_api_key or "").strip()
-    stored = False
-    try:
-        from core import keychain
-        stored = keychain.set_secret(key) if key else False
-    except Exception as e:      # noqa: BLE001 — the file copy is the fallback
-        # Reported rather than swallowed: a keyring that fails on every save is
-        # a fact the user should be able to see, and this is the only place that
-        # knows it happened.
-        print(f"⚠ Keychain unavailable, keeping the key in the config file: {e}")
-    fields = {"gemini_api_key": key, "gemini_api_key_source": "keychain" if stored else "file"}
+    fields = {"gemini_api_key": key, "gemini_api_key_source": "file"}
     fields.update(extra)
     return set_config_values(**fields)
 
@@ -222,11 +220,12 @@ def save_setup(gemini_api_key: str, os_name: str = "") -> bool:
 
 
 def get_gemini_key() -> str | None:
-    """The Gemini key: the keychain if it has one, else the file.
+    """The Gemini key from `config/api_keys.json`.
 
-    The keychain wins for legacy configs and successful keychain writes. If a
-    keychain write failed, the newly saved file is authoritative instead, so a
-    readable but stale keychain entry cannot undo the user's key rotation.
+    A CONFIG FROM AN OLDER BUILD MAY STILL SAY `"keychain"`, and it is honoured:
+    a user who saved a key into Keychain before this change keeps working
+    without being asked to paste it again. Everything written from now on says
+    `"file"`, so the branch is a one-way door rather than a second store.
     """
     config = load_api_keys()
     if config.get("gemini_api_key_source") == "file":

@@ -72,6 +72,14 @@ def test_the_package_has_exactly_the_mockup_modules():
         # 600-line ceiling; the boundary is real — nothing in `hand_feed`
         # draws, and nothing in `voice_wiring` moves anything.
         "hand_feed.py", "voice_wiring.py",
+        # The setup screen: "where does the key go" was answered by a tray
+        # balloon saying "edit config/api_keys.json and restart". The mockup
+        # draws no artboard for it (see docs/mockups/NOT-IN-MOCKUP.md), so it
+        # borrows board 5's 460×660 panel and dark palette rather than
+        # inventing a second visual language at a gate. Two files for the same
+        # reason the tray panel has three: `setup_window` decides and draws,
+        # `setup_screen` is the thread hop that a headless test can skip.
+        "setup_screen.py", "setup_window.py",
     }
     present = {p.name for p in _modules()}
     assert present == expected, (

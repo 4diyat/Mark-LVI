@@ -88,10 +88,10 @@ UPLOADS_DIR = _make_uploads_dir()
 def _get_gemini_key() -> str | None:
     """The Gemini key through the config manager, never a private file read.
 
-    Reading `api_keys.json` here meant the dashboard answered from the file even
-    when `core/keychain.py` held the current key, and it knew nothing about
-    `gemini_api_key_source`. The dashboard runs in a thread of its own, so the
-    import is local: it keeps `memory/` off this module's import path.
+    Reading `api_keys.json` here meant the dashboard kept a second opinion about
+    where the key lives and knew nothing about `gemini_api_key_source`. The
+    dashboard runs in a thread of its own, so the import is local: it keeps
+    `memory/` off this module's import path.
     """
     try:
         from memory.config_manager import get_gemini_key
