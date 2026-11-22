@@ -65,7 +65,7 @@ def paint(panel, snap) -> None:
 
     paint_quick(panel, snap)
 
-    # Board 23's strip: only in Fokus, because only Fokus holds anything.
+    # Board 05a's strip: only in Fokus, because only Fokus holds anything.
     held = labels["held"]
     if snap.mode == "focus":
         # NO DEADLINE LINE. It used to read "Fokus aktif sampai 17.00" with 17.00
@@ -92,7 +92,7 @@ def paint(panel, snap) -> None:
 
 
 def paint_quick(panel, snap) -> None:
-    """Board 5's four rows in Aktif/Senyap, board 23's three in Fokus.
+    """Board 5's four rows in Aktif/Senyap, board 05a's three in Fokus.
 
     THE ROWS ARE SET HERE AND NOT AT BUILD TIME, because the list depends on the
     mode and the mode changes while the panel is open. Each widget is looked up
@@ -243,7 +243,7 @@ def show_page(panel) -> None:
 def apply_style(panel) -> None:
     """One stylesheet for the whole panel, rebuilt when the palette changes.
 
-    Set on the window rather than per widget, so board 28 is a palette swap
+    Set on the window rather than per widget, so board 17a is a palette swap
     and not a second set of colours in twelve places.
     """
     window = panel._window

@@ -103,7 +103,7 @@ def _restore_modules():
     test that builds a `QTimer` gets this file's three-method fake and fails
     with `no attribute 'setInterval'` — for a reason that has nothing to do
     with what it is testing. The same leak, from the same direction, is why
-    the board 24 fixture restores `PyQt6*` and `ui*` together.
+    the board 05b fixture restores `PyQt6*` and `ui*` together.
     """
     saved = dict(sys.modules)
     real_qt = {name: mod for name, mod in saved.items()

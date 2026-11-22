@@ -16,14 +16,14 @@ WHY A PANEL AT ALL, WHEN THERE IS ALREADY A MENU
 WHAT EACH BOARD BECOMES, IN ORDER
       * board 5  — the default page: segments, four quick actions, the quota
         line, three permission toggles, the command field.
-      * board 23 — the same page with Fokus lit, plus the hold strip: toasts are
+      * board 05a — the same page with Fokus lit, plus the hold strip: toasts are
         held, counted and shown later. The strip is drawn from the snapshot, so
         the number is the number `core.presence_mode` holds.
-      * board 26 — the history page: undoable rows with their own button, the
+      * board 08a — the history page: undoable rows with their own button, the
         last three audit lines, and the two buttons at the bottom.
-      * board 27 — the privacy page: three indicators, four explicit switches,
+      * board 06a — the privacy page: three indicators, four explicit switches,
         and the erase button.
-      * board 28 — the same widget with the light palette. The palette is a
+      * board 17a — the same widget with the light palette. The palette is a
         table in `ui/tray_pages.py`, not a second widget: one panel that can be
         either colour is the only version of this that cannot drift.
 
@@ -72,10 +72,10 @@ class TrayPanel:
         presence_set(mode)   the user pressed a segment
         quick(key)           one of ALL_QUICK_KEYS
         permission(key, on)  one of PERMISSIONS (never a `fixed` one)
-        undo()               board 26's Urungkan
-        history_export()     board 26's Ekspor log
-        history_clear()      board 26's Hapus riwayat
-        erase()              board 27's Hapus semua data lokal
+        undo()               board 08a's Urungkan
+        history_export()     board 08a's Ekspor log
+        history_clear()      board 08a's Hapus riwayat
+        erase()              board 06a's Hapus semua data lokal
         command(text)        the field at the bottom of board 5
 
     A missing key is a control that does nothing, reported by `notes`, never
@@ -252,7 +252,7 @@ class TrayPanel:
         return True
 
     def set_theme(self, theme: str) -> bool:
-        """Dark ↔ light ↔ auto (board 28). Unknown themes are refused.
+        """Dark ↔ light ↔ auto (board 17a). Unknown themes are refused.
 
         THREE VALUES, TWO PALETTES. `auto` is not a palette: it is the answer
         to "which one does the OS use", asked once per call and never per
@@ -341,7 +341,7 @@ class TrayPanel:
         return True
 
     def press_undo(self) -> bool:
-        """Board 26's Urungkan. Refused when there is nothing to undo, because
+        """Board 08a's Urungkan. Refused when there is nothing to undo, because
         a button that reports success on an empty stack is a lie."""
         if not self._snapshot.can_undo:
             return False
@@ -352,7 +352,7 @@ class TrayPanel:
     def press_quick(self, key: str) -> bool:
         """Press one quick row. Accepts BOTH modes' rows.
 
-        Board 5 draws four and board 23 draws three — "Lihat yang tertahan",
+        Board 5 draws four and board 05a draws three — "Lihat yang tertahan",
         "Akhiri fokus sekarang", "Jeda semua penjadwalan". A panel that refused
         the second list would have three rows that answer False.
         """
@@ -426,7 +426,7 @@ class TrayPanel:
         self._labels["title"] = _placed(window, QLabel, 24, 22, 200, 24,
                                         _t("ui.panel.title"))
         self._labels["subtitle"] = _placed(window, QLabel, 24, 46, 412, 20, "")
-        # THE THEME SWITCH. Board 28 draws the same panel in light colours and
+        # THE THEME SWITCH. Board 17a draws the same panel in light colours and
         # the mockup has no button for it, because a mockup cannot click. This
         # one is a 30 px control in the header, where it is out of the way of
         # every reading path, and it cycles auto -> dark -> light.
@@ -453,7 +453,7 @@ class TrayPanel:
             button.clicked.connect(lambda _checked=False, m=mode: self.press_mode(m))
             self._buttons[f"mode:{mode}"] = button
 
-        # Board 23's hold strip. Hidden entirely outside Fokus: a strip that
+        # Board 05a's hold strip. Hidden entirely outside Fokus: a strip that
         # says "0 tertahan" in a mode that holds nothing is noise.
         self._labels["held"] = _placed(window, QLabel, 32, 128, 396, 96, "")
         self._labels["held"].hide()

@@ -160,7 +160,7 @@ def test_the_accent_rule_runs_down_the_left_edge_inset_14_px(card):
 
 
 def test_a_risky_card_is_amber_and_an_info_card_is_cyan(card):
-    """The accent comes from the toast, so board 25's confirmation colour and
+    """The accent comes from the toast, so board 14a's confirmation colour and
     board 2's danger card cannot drift apart."""
     from ui.toast_queue import KIND_INFO, KIND_RISKY, Toast
 

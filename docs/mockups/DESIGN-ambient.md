@@ -10,42 +10,73 @@ Dua berkas, satu sumber:
 Artboard **tidak** memuat penjelasan desain. Semua asumsi, rasio kontras, dan alasan
 ada di bagian Ringkasan **di dalam** HTML, setelah artboard 22.
 
-## Tambahan: shell ambient (Fase 1)
+## Dua puluh dua artboard, satu penomoran
 
-Artboard **1–6** dan **23–28** menggambar perilaku jendela sesuai spesifikasi Tauri:
+Lembar ini **22 artboard**, bernomor 1–22 dan tidak lebih. Tabel di bawah adalah
+isi setiap artboard — yang benar-benar digambar `build.py: bNN()`, bukan daftar
+keinginan.
 
-| # | Artboard | Yang ditunjukkan |
+| # | Artboard | Yang digambar | Ada di `ui/`? |
+|---|---|---|---|
+| 1 | Desktop ambient | Desktop contoh, orb 56 px + glow di pojok, satu toast | ya — `orb_paint`, `orb_overlay` |
+| 2 | Command bar | Kotak 640×184, gradien, tiga baris hasil dengan titik risiko | ya — `command_bar.py` |
+| 3 | Kontrol gestur | Tile kamera 320×236, kerangka tangan, pil gestur aktif | tidak — lihat `NOT-IN-MOCKUP.md` |
+| 4 | Mode suara | Glow tepi layar penuh, orb, pil transkrip, lima bar level | ya — `voice_paint`, `voice_overlay` |
+| 5 | Panel baki sistem | 460×640: segmen, empat aksi cepat, percakapan, tiga izin, kolom perintah | ya — `tray_pages`, `tray_panel` |
+| 6 | Izin & privatisasi | Empat izin eksplisit dengan kartu, log aktivitas bertimestamp | ya — `build_privacy()` |
+| 7 | Onboarding 2/4 | Layar izin mikrofon, tiga kalimat privasi, dua tombol | tidak |
+| 8 | Riwayat tugas | Enam baris hari ini, status per baris, saring/pulihkan, hapus | ya — `build_history()` |
+| 9 | Memori personal | Enam fakta tentang Anda, "12 hal yang JARVIS ingat" | tidak |
+| 10 | Detail memori | Satu memori: isi, sumber, keyakinan, dipakai oleh | tidak |
+| 11 | Rutinitas & saran | Tiga rutinitas aktif dengan jadwalnya, tiga saran proaktif | tidak |
+| 12 | Alat cepat & clipboard | Tiga alat tersering, clipboard cerdas (rekening terdeteksi), cari berkas bahasa alami | tidak |
+| 13 | Dikte · baca layar · isi form | Tiga panel: dikte, pembaca layar kontekstual, isi form dengan tinjau dulu | tidak |
+| 14 | Keamanan | Tiga tingkat risiko, mode tamu, izin layar/kamera, kontrol OS | ya (sebagian) — `confirm_banner`, `risk_policy` |
+| 15 | Bahasa & gestur | Bahasa UI, ukuran teks, kontras, kurangi animasi, gestur kustom | tidak |
+| 16 | Plugin & ponsel | Dua dari lima plugin aktif, sinkron ponsel, kode pasangan | tidak |
+| 17 | Tema terang — panel baki | Panel 5 dalam token terang, dengan sakelarnya | ya — `PALETTES["light"]`, `tray_theme` |
+| 18 | Tema terang — izin & privasi | Panel 6 dalam token terang | tidak — paletnya ada, halamannya tidak digambar terang |
+| 19 | Peta gestur | Enam gestur dengan bentuk tangannya, 720×640 | tidak (modulnya ada: `core/gesture_os`) |
+| 20 | Status orb | Empat status orb, dibedakan lewat siluet bukan warna | ya — `orb_paint.paint_orb` |
+| 21 | Brand & ikon | Ikon aplikasi, empat ikon baki, swatch, skala huruf, komponen | tidak |
+| 22 | Installer 1/4 | Layar pemasangan: pilih mode kehadiran | tidak |
+
+### Enam keadaan, digambar di bawah artboard-nya
+
+Fokus, Senyap, konfirmasi risiko, riwayat, izin dan tema terang **bukan** artboard
+bernomor sendiri. Dulu mereka 23–28, dan penomoran kedua itu bentrok dengan yang
+pertama: 05-nya artboard panel baki dan `b05` juga. Keputusan pemilik repo
+(2026-11-22): satu penomoran, 1–22. Setiap keadaan digambar tepat di bawah
+artboard yang bersangkutan, berlabel `05a`, `05b`, `06a`, `08a`, `14a`, `17a`:
+
+| Label | Keadaan | Digambar oleh |
 |---|---|---|
-| 1 | Orb overlay | Overlay ±150 px transparan, hanya orb 56 px yang menerima klik |
-| 2 | Toast | Tiga kartu menumpuk; yang keempat **menggantikan yang tertua** dan dihitung (bukan antre — lihat catatan di bawah), batas 3 saran/hari |
-| 3 | Command bar | Ctrl+Space, input fokus, Esc kembali ke jendela sebelumnya |
-| 4 | Orb | Klik kiri/kanan/seret, empat status dibaca dari isi orb |
-| 5 | Panel baki | Mengikuti taskbar, segmented Aktif/Fokus/Senyap |
-| 6 | Overlay suara + kamera | Glow tepi hanya saat aktif, preview gestur kecil |
-| 23 | Fokus | Toast **ditahan**, bukan dibuang — jumlahnya bisa dilihat |
-| 24 | Senyap | Orb menyusut 28→18 px, glow hilang, cincin jadi titik |
-| 25 | Konfirmasi risiko | Dirender UI tepercaya, tombol besar, ada asal permintaan |
-| 26 | Riwayat tugas | Urungkan/ulang, audit log bertimestamp, ekspor |
-| 27 | Izin & Privasi | Indikator mikon/kamera/layar, izin eksplisit, mode tamu |
-| 28 | Tema terang | Panel baki versi terang dengan token terang |
+| 05a | Fokus — toast ditahan dan dihitung | `n07()` |
+| 05b | Senyap — orb memudar dan menyusut | `n08()` |
+| 06a | Izin & Privasi — halaman penuh panel | `n11()` |
+| 08a | Riwayat tugas + Urungkan | `n10()` |
+| 14a | Konfirmasi risiko | `n09()` |
+| 17a | Panel baki versi terang | `n12()` |
 
-## Ringkasan isi
+Angka `n07`–`n12` di tabel itu adalah **nama fungsi**, bukan nomor artboard.
 
-| Kelompok | Artboard |
-|---|---|
-| Desktop 1280×720 | 1 desktop ambient · 2 command bar · 3 kontrol gestur · 4 mode suara |
-| Panel 460×640 | 5 baki · 6 izin · 7 onboarding (2/4) · 8 riwayat · 9 memori · 10 detail memori · 11 rutinitas · 12 alat cepat · 13 dikte/baca/form · 14 keamanan · 15 aksesibilitas · 16 plugin & ponsel · 17–18 tema terang |
-| Lainnya | 19 peta gestur 720×640 · 20 status orb 1280×300 · 21 brand & ikon 1280×640 · 22 installer 720×480 |
+## Yang digambar tapi belum dibangun
+
+Kolom terakhir tabel di atas adalah keadaan hari ini, dan sengaja tidak
+dibulatkan ke atas: **delapan artboard punya permukaan di `ui/`, tiga belas belum,
+dan satu (board 14) baru separuh.** Yang belum dibangun tetap **digambar** di lembar, dan setiap
+barisnya dicatat di `NOT-IN-MOCKUP.md` dengan alasan dan keputusan pemilik repo
+yang menyertainya — bukan dihapus dari lembar, dan bukan dipalsukan di kode.
 
 ## Prinsip yang dipegang di setiap artboard
 
 1. **Ambient dulu.** Orb kecil + ikon baki. Jendela besar hanya saat dipanggil
    (artboard 1, 5, 22).
-2. **Tidak merebut fokus.** Toast punya dua tombol dan hilang sendiri 8 detik (artboard 1).
+2. **Tidak merebut fokus.** Toast punya dua tombol dan hilang sendiri 8 detik (1).
 3. **Dipanggil kapan saja.** Ctrl+Space (2), kata kunci, dan gestur (3, 19).
 4. **Transparan soal privasi.** Empat izin eksplisit, log aktivitas, tombol hapus riwayat
    (6, 7, 18).
-5. **Aman.** Tiga tingkat risiko; berisiko selalu minta konfirmasi fisik (14).
+5. **Aman.** Tiga tingkat risiko; berisiko selalu minta konfirmasi fisik (14, 14a).
 
 ## Kontras yang sudah dihitung (bukan diklaim)
 
@@ -97,11 +128,19 @@ Spesifikasi tidak memberi angka untuk ini; saya pilih dan catat di ringkasan HTM
 
 ## Batasan
 
-- Lembar ini **konsep**, belum kode. Tidak ada berkas `core/` atau `ui/` yang disentuh.
-- Perender SVG di sandbox ini punya keterbatasan (gradien radial dan teks diskalakan
-  berbeda), jadi gambar pratinjau bisa sedikit berbeda dari peramban. Geometri, warna,
-  dan teks sudah diperiksa secara terprogram: 22 artboard valid, tanpa elemen meluber,
-  tanpa bentuk berukuran nol.
+- Lembar ini **konsep visual**. Yang diperiksa secara terprogram hari ini, oleh
+  `tests/test_design_sheet_complete.py`:
+
+  - semua 22 artboard ada, bernomor 1–22 tanpa celah, dan setiap fungsinya
+    menghasilkan SVG pada ukuran yang tabel di atas sebutkan;
+  - setiap artboard adalah **XML yang valid**, tidak menggambar elemen di luar
+    kanvasnya, dan tidak menggambar bentuk berukuran nol;
+  - lembar yang di-commit identik dengan keluaran `build.py`;
+  - jumlah artboard yang disebut `README.md`, dokumen ini, dan lembar itu sama.
+
+  Yang **tidak** diperiksa dan karenanya jangan diklaim: apakah hasilnya *terlihat*
+  benar. Perender SVG di sandbox punya keterbatasan (gradien radial dan teks
+  diskalakan berbeda), dan tidak ada perbandingan tangkapan layar di repo ini.
 
 ## Target implementasi: repo ini, Python + PyQt6
 
@@ -110,7 +149,7 @@ Keputusan perilaku yang menyertai modul pertama ada di
 yang tidak bisa dipalsukan model, dan janji "3 tertahan" pada mode Fokus.
 
 
-Keputusan: **tidak** ditulis ulang ke Tauri/React. Artboard shell (1–6, 23–28) digambar
+Keputusan: **tidak** ditulis ulang ke Tauri/React. Kedua puluh dua artboard digambar
 stack-neutral dan berlaku apa adanya untuk implementasi Python.
 
 ### Bagian spesifikasi yang **sudah ada** di repo
@@ -151,10 +190,10 @@ stack-neutral dan berlaku apa adanya untuk implementasi Python.
 | Sambungan gate ke `main.py` + daftar aksi berpagar sendiri | `main.py` | `tests/test_gate_wiring.py` |
 | Orb overlay 146 px (board 1), hanya cincin yang bisa diklik; meredup di Fokus/Senyap | `ui/orb_overlay.py`, `ui/orb_place.py`, `ui/orb_canvas.py` | `tests/test_orb_overlay_board1.py`, `tests/test_orb_place.py` |
 | Board 4: klik kiri → panel, klik kanan → menu cepat, drag menempel ke tepi | `ui/ambient_shell.py`, `ui/orb_snap.py` | `tests/test_orb_board4.py` |
-| Board 23: strip Fokus tanpa tenggat, tiga baris aksi sendiri, jeda penjadwalan yang tersimpan | `ui/tray_paint.py`, `ui/tray_panel_model.py`, `actions/proactive.py`, `ui/tray_panel_wiring.py` | `tests/test_focus_board23.py` |
+| Board 05a: strip Fokus tanpa tenggat, tiga baris aksi sendiri, jeda penjadwalan yang tersimpan | `ui/tray_paint.py`, `ui/tray_panel_model.py`, `actions/proactive.py`, `ui/tray_panel_wiring.py` | `tests/test_focus_board23.py` |
 | Startup: setiap permukaan benar-benar dibangun saat aplikasi dijalankan | `main.py`, `ui/lifecycle.py` | `tests/test_startup_board7.py` |
-| Board 27: MODE TAMU dihapus, tombol hapus jujur, judul per halaman, kartu artboard | `ui/tray_pages.py`, `ui/tray_panel_model.py`, `ui/tray_panel_wiring.py` | `tests/test_privacy_board27.py` |
-| Board 24: orb Senyap 18 px, bertitik, dan menulis namanya di bawah cincin | `ui/orb_paint.py`, `ui/orb_canvas.py` | `tests/test_quiet_board24.py` |
+| Board 06a: MODE TAMU dihapus, tombol hapus jujur, judul per halaman, kartu artboard | `ui/tray_pages.py`, `ui/tray_panel_model.py`, `ui/tray_panel_wiring.py` | `tests/test_privacy_board27.py` |
+| Board 05b: orb Senyap 18 px, bertitik, dan menulis namanya di bawah cincin | `ui/orb_paint.py`, `ui/orb_canvas.py` | `tests/test_quiet_board24.py` |
 | Command bar Ctrl+Space, Esc mengembalikan fokus | `ui/command_bar.py` | `tests/test_command_bar.py` |
 | Sambungan mode → orb, chord, dan baki | `ui/lifecycle.py`, `memory/config_manager.py` | `tests/test_presence_wiring.py` |
 
@@ -190,7 +229,7 @@ salinan yang berbeda perilaku.
   mencatat permintaan dan hasilnya, tetapi `activateWindow()` tidak melaporkan
   apakah berhasil.
 - **Keputusan pemilik repo:** Fokus dan Senyap **meredupkan orb**, bukan hanya
-  menahan notifikasi. Board 24 (28→18 px, cincin titik-titik) sekarang menjadi
+  menahan notifikasi. Board 05b (28→18 px, cincin titik-titik) sekarang menjadi
   perilaku yang diuji, bukan asumsi.
 
 - **Board 2: "sisanya antre" TIDAK diterapkan sebagai tumpukan yang tumbuh.**
@@ -200,7 +239,8 @@ salinan yang berbeda perilaku.
   tumbuh tanpa akhir di permukaan desktop adalah antrean yang tidak pernah
   dikosongkan siapa pun. Yang tidak boleh terjadi adalah diam-diam: angka itu
   ada supaya kehilangannya terlihat.
-- **Kartu toast sekarang benar-benar digambar.** Sebelum board 2 dikerjakan,
+- **Kartu toast sekarang benar-benar digambar.** Sebelum toast dikerjakan
+  (dulu "board 2"; nomor itu sekarang artboard command bar),
   `ui/toast_queue.py` hanya menyimpan aritmatika dan **tidak dipakai di mana
   pun** selain smoke test; satu-satunya yang dilihat pengguna adalah notifikasi
   OS dari `core/notify.py`. `ui/toast_card.py` menggambar kartunya dan
@@ -209,12 +249,13 @@ salinan yang berbeda perilaku.
   OS untuk "jawabannya sudah jadi saat Anda di aplikasi lain", kartu untuk
   "berapa sisa kuota hari ini".
 
-- **Board 4 mengubah arti klik kiri pada orb, dan itu disengaja.** Sebelumnya
-  klik kiri membuka **command bar** (board 3, satu baris). Board 4 menulis
-  "KLIK KIRI — buka panel baki", jadi klik kiri sekarang membuka panel 460×660.
-  Command bar tidak kehilangan jalannya: Ctrl+Space tetap ada (board 3), dan
-  panel sendiri punya kolom perintah. Catatan lama di board 1 yang menyebut orb
-  sebagai pintu command bar sudah tidak berlaku.
+- **Klik kiri pada orb membuka PANEL, bukan command bar, dan itu disengaja.**
+  Sebelumnya klik kiri membuka command bar (artboard 2, satu baris). Keputusan
+  yang lalu — diambil dari artboard orb versi lama — adalah "KLIK KIRI — buka
+  panel baki", jadi klik kiri sekarang membuka panel 460×660. Command bar tidak
+  kehilangan jalannya: Ctrl+Space tetap ada (2), dan panel sendiri punya kolom
+  perintah. Catatan lama yang menyebut orb sebagai pintu command bar sudah tidak
+  berlaku.
 - **Klik kanan punya menu sendiri: Aktif / Fokus / Senyap, Riwayat, Privasi,
   Keluar.** Artboard hanya menulis "menu cepat" tanpa daftar isi, jadi menu itu
   sengaja pendek: apa yang orang minta tepat di orb dan tidak lebih. Menu dibuat
@@ -225,7 +266,7 @@ salinan yang berbeda perilaku.
   Menempel saat pointer masih bergerak membuat orb melompat dari bawah tangan,
   jadi snap hanya terjadi saat dilepas.
 
-### Board 23 — Fokus (toast ditahan)
+### Board 05a — Fokus (toast ditahan)
 
 - **Strip Fokus tidak menyebut tenggat, karena tidak ada tenggat.** Artboard
   menulis "Fokus aktif sampai 17.00", dan `17.00` itu **literal di dalam
@@ -283,7 +324,7 @@ salinan yang berbeda perilaku.
 - **`--hidden` akhirnya berarti sesuatu, dan artinya dijaga.** Sebelumnya flag
   itu tidak berpengaruh karena tidak ada yang tampil. Sekarang ia menyembunyikan
   **wajah**, bukan orb: orb adalah satu-satunya permukaan yang membuka panel
-  dengan klik (board 4), jadi menyembunyikannya akan membuat `--hidden` berarti
+  dengan klik (artboard 1), jadi menyembunyikannya akan membuat `--hidden` berarti
   "mulai tanpa cara mouse apa pun".
 - **Satu permukaan yang gagal tidak boleh menjatuhkan yang lain.** Memindahkan
   pemanggilan ke `main()` menciptakan jalan baru untuk mati: exception yang lolos
@@ -292,7 +333,7 @@ salinan yang berbeda perilaku.
   Setiap permukaan sekarang punya pengamannya sendiri, dan kegagalannya dicatat
   dengan nama permukaannya.
 
-### Board 27 — Izin & Privasi
+### Board 06a — Izin & Privasi
 
 - **MODE TAMU tidak digambar, dan itu keputusan, bukan kelalaian.** Artboard
   menggambar switch "Sembunyikan memori & riwayat" yang bisa diklik; `set_guest`
@@ -318,28 +359,28 @@ salinan yang berbeda perilaku.
   izin dan `rect(x, 102, 132, 62)` di belakang tiap indikator. Tanpa keduanya,
   empat baris izin terbaca sebagai satu paragraf, bukan empat keputusan terpisah.
   Kuncinya diberi awalan sendiri (`permx_*`, `indicator_*`) karena `GEOMETRY`
-  yang lama adalah halaman utama board 5 dan dipatok `tests/test_tray_geometry.py`.
+  yang lama adalah halaman utama artboard 5 dan dipatok `tests/test_tray_geometry.py`.
 - **Stub Qt sekarang merekam geometri.** `setGeometry` dulu tidak menyimpan
   apa pun, jadi `card.x()` menjawab lewat `__getattr__` — sebuah lambda, bukan
   angka. Itu persis kelas kesalahan yang sudah ditulis di docstring `_RectF`:
   tes tidak bisa membedakan kartu di (24, 208) dari kartu di (0, 0). Itu sebabnya
   kartu yang tidak pernah dibuat pun bisa "lulus" pemeriksaan geometri.
 
-### Board 24 — Senyap
+### Board 05b — Senyap
 
 - **Senyap digambar 18 px, bukan 14.** Artboard menulis sendiri "Orb menyusut
   28 → 18 px", dan 14 adalah angka yang masuk akal yang ditulis dari ingatan
   tentang artboard, bukan dari artboard. Itu kelas bug yang sama dengan "Fokus
   aktif sampai 17.00": angka ajaib yang tidak dibandingkan dengan gambarnya oleh
   satu tes pun.
-- **Fokus menjadi 22 px, dan itu diturunkan, bukan dikarang.** Board 24 hanya
+- **Fokus menjadi 22 px, dan itu diturunkan, bukan dikarang.** Board 05b hanya
   mematok Senyap (18) dan tidak memberi ukuran untuk Fokus. Sebelum ini Fokus
   18. Membiarkan keduanya 18 membuat dua mode berbeda identik ukurannya, dan tes
   lama menuntut urutannya dengan alasan yang benar: "two states must not be
   distinguishable by hue alone". 22 berada di antara 28 dan 18, jadi ketiga
   ukuran terbaca sebagai urutan, bukan dua nilai dengan satu duplikat. Alpha
   juga menjaga urutan: 255 → 165 → 110.
-- **Orb menulis namanya di bawah cincin.** Alasan board 24 sendiri adalah
+- **Orb menulis namanya di bawah cincin.** Alasan board 05b sendiri adalah
   "status harus terbaca tanpa warna": meredupkan cincin, menghapus glow dan
   membuatnya bertitik adalah tiga perbedaan di kanal yang SAMA — kecerahan —
   dan di desktop gelap sebuah tangkapan layar tidak bisa membedakan orb Senyap
@@ -356,7 +397,7 @@ salinan yang berbeda perilaku.
   karena captionnya tidak bisa digayakan adalah kegagalan yang lebih buruk
   daripada caption tanpa tracking.
 
-### Board 25 — Risiko: konfirmasi
+### Board 14a — Risiko: konfirmasi
 
 - **Judulnya BERISIKO, bukan "⚠  KONFIRMASI".** Dua kesalahannya berbeda kelas.
   Yang lama menuliskan keadaan dialognya ("ini konfirmasi" — sudah jelas dari dua

@@ -8,21 +8,21 @@ WHY THIS IS A SECOND MODULE
     tidiness: the module ceiling for `ui/` is 600 lines and the panel crossed
     it, which is the rule doing its job.
 
-    It is also the split that makes the palette honest. Board 28 is the SAME
+    It is also the split that makes the palette honest. Board 17a is the SAME
     panel in light colours, so the colours are a table here and the pages read
     it by name. A second widget for the light theme — the obvious way to build
     it — would be two panels to keep in step forever.
 
 WHAT IS IN HERE
-    `PALETTES`          dark (boards 5/23/27) and light (board 28), taken from
+    `PALETTES`          dark (boards 5/23/27) and light (board 17a), taken from
                         `docs/mockups/build.py` rather than retyped by eye.
     `build_main()`      boards 5 and 23: four quick actions, the quota line,
                         three switches and the command field. The segments and
                         the hold strip live on the panel itself, because both
                         are shared with the other pages' header.
-    `build_history()`   board 26: four undoable rows, the audit tail, and the
+    `build_history()`   board 08a: four undoable rows, the audit tail, and the
                         two buttons at the bottom.
-    `build_privacy()`   board 27: three indicators, four explicit switches,
+    `build_privacy()`   board 06a: three indicators, four explicit switches,
                         guest mode, the erase button.
 
     Every function takes `(panel, page)` and fills `panel._labels` and
@@ -100,7 +100,7 @@ GEOMETRY = {
     "permx_pitch":      66,
 }
 
-# Which page the panel is showing. Board 26 and 27 are pages, not other
+# Which page the panel is showing. Board 08a and 27 are pages, not other
 # windows: a tray panel that spawns three windows is three things to close.
 PAGE_MAIN, PAGE_HISTORY, PAGE_PRIVACY = "main", "history", "privacy"
 PAGES = (PAGE_MAIN, PAGE_HISTORY, PAGE_PRIVACY)
@@ -251,7 +251,7 @@ def build_history(panel, page) -> None:
     panel._pages[PAGE_HISTORY] = page
 
     panel._labels["history_count"] = _at(page, QLabel, 24, 46, 412, 20, "")
-    # Four rows at board 26's pitch, each with its own label and its own
+    # Four rows at board 08a's pitch, each with its own label and its own
     # Urungkan button. Four, not a scroll area: the panel is a glance, and
     # a scroll inside a 660 px popup is a scroll nobody performs.
     for index in range(4):

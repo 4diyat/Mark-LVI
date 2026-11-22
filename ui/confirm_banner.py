@@ -21,7 +21,7 @@ from PyQt6.QtWidgets import (
 
 from core.i18n import label as _t
 
-# ── board 25's tokens, declared here rather than borrowed ───────────────────
+# ── board 14a's tokens, declared here rather than borrowed ───────────────────
 #
 # THE HUD PALETTE IS NOT THIS DIALOG'S PALETTE. `ui.theme.C` still carries the
 # #171719 / #ff6b00 look of the full-screen window that ambient mode replaced.
@@ -45,7 +45,7 @@ AMBER_BG = "#0C1B26"
 #: because Space Grotesk is not installed on every machine.
 FONT = "Space Grotesk, Segoe UI, Arial"
 
-# ── board 25's two constants ────────────────────────────────────────────────
+# ── board 14a's two constants ────────────────────────────────────────────────
 #
 # BOTH ARE FIXED TEXT RATHER THAN CATALOGUE KEYS, AND THAT IS DELIBERATE.
 #
@@ -123,7 +123,7 @@ class ConfirmBanner(_HudOverlay):
     def resizeEvent(self, event):                   # noqa: N802 — Qt's name
         """Keep the risk bar against the left edge, inset like the artboard.
 
-        Board 25 insets it 18 px from the dialog's top and bottom, so it reads
+        Board 14a insets it 18 px from the dialog's top and bottom, so it reads
         as a marker rather than a frame. Pinned here rather than in the layout
         because it must not take part in the column: it is an edge decoration,
         and a layout row would push the 28 px text inset sideways.
@@ -138,7 +138,7 @@ class ConfirmBanner(_HudOverlay):
         bar = getattr(self, "_risk_bar", None)
         if bar is not None:
             bar.setGeometry(1, 18, 3, max(0, self.height() - 36))
-    #: Board 25's dialog is 520 px wide. This used to be 430, which is 90 px
+    #: Board 14a's dialog is 520 px wide. This used to be 430, which is 90 px
     #: narrower than the artboard — the title wrapped earlier than the drawing
     #: and the two buttons sat closer together than the sheet shows.
     _OW = 520
@@ -176,7 +176,7 @@ class ConfirmBanner(_HudOverlay):
             f"background: {AMBER}; border-radius: 1.5px;")
 
         lay = QVBoxLayout(self)
-        # Artboard 25: every element is inset 28 px from the dialog edge, and
+        # Artboard 14a: every element is inset 28 px from the dialog edge, and
         # the rows are 20–24 px apart. The old 20/16 padding drew the title 8 px
         # left of where the sheet puts it and pulled the whole column up.
         lay.setContentsMargins(28, 22, 28, 22)
@@ -195,7 +195,7 @@ class ConfirmBanner(_HudOverlay):
         lay.addWidget(ttl)
         self._title_label = ttl
 
-        # "Tindakan ini tidak bisa diurungkan." — artboard 25 prints it under
+        # "Tindakan ini tidak bisa diurungkan." — artboard 14a prints it under
         # the title as a standing sentence, so the user reads WHY they are being
         # asked before they read what they are being asked about.
         never = QLabel(CANNOT_UNDO)
@@ -221,7 +221,7 @@ class ConfirmBanner(_HudOverlay):
         self._detail_label = dtl
 
         # ── ASAL PERMINTAAN ─────────────────────────────────────────────
-        # Artboard 25 has this field and the banner did not. It answers the
+        # Artboard 14a has this field and the banner did not. It answers the
         # question a user actually has in front of an irreversible action:
         # "who asked for this?" — not "what is JARVIS about to do", which the
         # title already says.
@@ -297,7 +297,7 @@ class ConfirmBanner(_HudOverlay):
     #
     # THE OWNER'S RULING REVERSED THE OLD ONE. `test_cancel_has_the_focus_so_a
     # _stray_enter_is_safe` pinned CANCEL as default so an unread Enter could
-    # never confirm. Board 25 writes "Enter · Esc" in the corner, so the dialog
+    # never confirm. Board 14a writes "Enter · Esc" in the corner, so the dialog
     # answers to both — AND THE INITIAL FOCUS STILL STARTS ON CANCEL, which is
     # what keeps the old safety property: Enter pressed without touching
     # anything confirms nothing, because the focused widget swallows it. Enter
@@ -374,7 +374,7 @@ def build_confirm_window(parent=None) -> "ConfirmBanner":
         The orb is 28-56 px. A 430 px banner parented to it is clipped to the
         orb's own geometry, so the user is told to confirm something that is not
         on screen — and `core/confirm` refuses the action 90 seconds later with
-        nothing to explain why. Artboard 25 draws this banner bottom-centre over
+        nothing to explain why. Artboard 14a draws this banner bottom-centre over
         whatever the user is doing, which is a window, not a child widget.
 
     Tool + WindowStaysOnTop + Frameless is the same trio the face bubble uses
@@ -394,7 +394,7 @@ def build_confirm_window(parent=None) -> "ConfirmBanner":
 
 
 def _place_bottom_centre(banner) -> None:
-    """Put the banner where artboard 25 puts it, on whichever screen has focus.
+    """Put the banner where artboard 14a puts it, on whichever screen has focus.
 
     Not the primary screen: a user with two monitors confirms on the one they
     are looking at. A missing screen (headless, or before the first window) is

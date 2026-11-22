@@ -1,4 +1,4 @@
-"""Board 27 — Izin & Privasi, dan tiga hal yang diklaim tetapi tidak dilakukan.
+"""Board 06a — Izin & Privasi, dan tiga hal yang diklaim tetapi tidak dilakukan.
 
 WHY THESE TESTS EXIST
     The privacy page already drew four switches, three indicator words and two
@@ -223,7 +223,7 @@ def test_the_main_page_keeps_the_assistant_name(panel_module):
 
 
 def test_the_history_page_titles_itself(panel_module):
-    """Board 26's page has its own name too, and the same bug hid it."""
+    """Board 08a's page has its own name too, and the same bug hid it."""
     tray_panel, tray_pages, tray_paint, tray_panel_model = panel_module
 
     panel = tray_panel.TrayPanel({})

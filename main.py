@@ -1082,7 +1082,7 @@ class JarvisLive:
     def _on_text_command(self, text: str):
         if not self._loop or not self.session:
             return
-        # Board 25: the risk dialog says where the request came from. This is
+        # Board 14a: the risk dialog says where the request came from. This is
         # the typed door; the input transcription marks the spoken one.
         from core import input_source
         input_source.mark("typed")
@@ -2047,7 +2047,7 @@ class JarvisLive:
                                 self._visemes.feed_text(txt)
 
                         if sc.input_transcription and sc.input_transcription.text:
-                            # Board 25's origin line. This event fires when the
+                            # Board 14a's origin line. This event fires when the
                             # USER'S SPEECH was transcribed — i.e. a spoken
                             # command exists — rather than on every audio chunk,
                             # which would also fire from a room's background

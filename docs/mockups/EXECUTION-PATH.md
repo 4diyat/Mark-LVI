@@ -162,7 +162,7 @@ dan tes memegangnya: `offer()` mengembalikan tiga jawaban berbeda (`show`,
 `hold`, `drop`), dan meninggalkan Fokus **tidak** menghapus yang tertahan;
 pemanggil mengalirkannya lewat `take_held()` supaya urutannya tetap.
 
-**Diputuskan:** Fokus dan Senyap **meredupkan orb**. Board 24 (redup 28→18 px,
+**Diputuskan:** Fokus dan Senyap **meredupkan orb**. Board 05b (redup 28→18 px,
 glow hilang, cincin jadi titik-titik) sekarang menjadi perilaku di
 `ui/orb_overlay.appearance()` dan diuji di `tests/test_orb_overlay.py` serta
 `tests/test_presence_wiring.py`.

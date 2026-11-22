@@ -8,7 +8,7 @@ WHY THIS FILE EXISTS
 
       * `ui/confirm_banner.py` read `ui.theme.C`, which still carries the look
         of the full-screen window ambient mode replaced — #171719 base,
-        #ff6b00 orange accent, Courier New. Board 25's dialog was therefore
+        #ff6b00 orange accent, Courier New. Board 14a's dialog was therefore
         # near-black with an orange border at a 6 px radius, not #0C1B26 with
         an amber border at 16.
       * `ui/face_canvas.py` read `C.PRI` (#4b9fff, blue) and `C.MUTED_C`
@@ -141,7 +141,7 @@ def test_no_drawing_surface_reads_the_retired_hud_palette():
         "system: " + ", ".join(offenders))
 
 
-# ── board 25, measured against its artboard ─────────────────────────────────
+# ── board 14a, measured against its artboard ─────────────────────────────────
 
 def test_board_25_dialog_uses_the_artboards_tokens():
     """#0C1B26 fill, amber border, 16 px radius — all four were wrong."""
@@ -152,7 +152,7 @@ def test_board_25_dialog_uses_the_artboards_tokens():
     assert "background: {AMBER_BG}" in source, (
         "the dialog body is not drawn in the artboard's fill")
     assert "border: 1px solid {AMBER}" in source, (
-        "the border is not amber; board 25 frames a risk, it does not decorate")
+        "the border is not amber; board 14a frames a risk, it does not decorate")
     assert "border-radius: 16px" in source, "the radius is not the artboard's 16"
     assert "rgba(" not in source, (
         "the near-black red-cast body is back; the artboard fills the dialog "
@@ -201,7 +201,7 @@ def test_board_25_is_the_artboards_width():
         if isinstance(n, ast.Assign)
         and any(getattr(t, "id", "") == "_OW" for t in n.targets)
         and isinstance(n.value, ast.Constant))
-    assert width == 520, "board 25 draws the dialog 520 px wide"
+    assert width == 520, "board 14a draws the dialog 520 px wide"
 
 
 # ── board 1, the floating face ──────────────────────────────────────────────
@@ -328,7 +328,7 @@ def test_the_risk_bar_survives_a_resize():
                 placed["geometry"] = a
 
         banner._risk_bar = _Bar()
-        banner.height = lambda: 250          # board 25's dialog height
+        banner.height = lambda: 250          # board 14a's dialog height
         banner.resizeEvent(None)
         assert placed["geometry"] == (1, 18, 3, 250 - 36), (
             "the risk bar is not inset 18 px top and bottom on a 250 px dialog")

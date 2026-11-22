@@ -403,7 +403,7 @@ class AmbientShell:
     def _show_confirm_now(self, token: str, title: str, detail: str) -> None:
         """Build and place the banner on the Qt thread.
 
-        The banner is the topmost mockup surface (artboard 25) and the only one
+        The banner is the topmost mockup surface (artboard 14a) and the only one
         that must be visible on a desktop with nothing else on it, so it is a
         window of its own: frameless, always on top, bottom-centre. Parenting it
         to the orb would clip a 430 px banner to a 28 px window, which is
@@ -421,7 +421,7 @@ class AmbientShell:
                 self._confirm_token = ""
             self._confirm_token = token
             banner.set_title(title, detail)
-            # Board 25's "ASAL PERMINTAAN": who asked, when, and that it is on
+            # Board 14a's "ASAL PERMINTAAN": who asked, when, and that it is on
             # the record. The time is taken HERE rather than inside the banner
             # so the line describes the request, not the repaint.
             from datetime import datetime

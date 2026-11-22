@@ -248,7 +248,7 @@ class _Object:
         WHY THIS IS STATE, AND WHY THE DEFAULT STAYED. `_RectF` above already
         carries the lesson: a geometry that answers through `__getattr__` is a
         lambda, not a number, and a test cannot tell a card at (24, 208) from
-        one at (0, 0). That is exactly how board 27's cards could be MISSING
+        one at (0, 0). That is exactly how board 06a's cards could be MISSING
         from the page while a test "checked" their geometry.
 
         Accepts `setGeometry(x, y, w, h)` and `setGeometry(QRect)`/`QRectF`.
@@ -804,7 +804,7 @@ def _install_qt() -> dict[str, types.ModuleType]:
     gui.QPainter.font = _painter_font
     gui.QPainter.setFont = _painter_set_font
 
-    # A REAL PAINTER ANSWERS `font()`, and the orb's board 24 caption asks for
+    # A REAL PAINTER ANSWERS `font()`, and the orb's board 05b caption asks for
     # it to inherit the window's typeface. A stub without it made `draw_label`
     # raise on every mode, which surfaced as "the painter runs in every mode"
     # failing in a file that has nothing to do with labels.

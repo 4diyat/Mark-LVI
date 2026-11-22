@@ -303,7 +303,7 @@ def test_every_key_the_panel_can_press_has_a_handler(wiring):
         restore_ui(saved)
 
 
-# ── board 28: the switch has to persist ────────────────────────────────────
+# ── board 17a: the switch has to persist ────────────────────────────────────
 
 def test_cycling_the_theme_writes_it_to_the_config_layer(wiring, monkeypatch):
     from memory import config_manager

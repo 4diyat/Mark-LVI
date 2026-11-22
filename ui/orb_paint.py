@@ -78,8 +78,8 @@ CYAN = "#4FD8F0"
 CORE = "#BFF6FF"
 DEEP = "#0B4A5C"
 AMBER = "#F5A524"
-# Board 24's caption colour, from the token table in `docs/mockups/build.py`.
-# The orb module had no MUTED because until board 24 it never drew a word.
+# Board 05b's caption colour, from the token table in `docs/mockups/build.py`.
+# The orb module had no MUTED because until board 05b it never drew a word.
 MUTED = "#8FA9B5"
 
 # HUD states are shouted and about the machine ("NO MIC"); the painter's are
@@ -116,7 +116,7 @@ _APPEARANCE = {
     "active": Appearance(RADIUS, glow=True, dotted=False, alpha=255),
     # FOKUS STAYS AT 22, AND THAT IS DERIVED RATHER THAN INVENTED.
     #
-    # Board 24 fixes Senyap at 18 ("Orb menyusut 28 -> 18 px"). It gives no
+    # Board 05b fixes Senyap at 18 ("Orb menyusut 28 -> 18 px"). It gives no
     # size for Fokus — only that Fokus is dimmed — and 18 was Fokus's size
     # before Senyap moved to the artboard's number. Leaving both at 18 would
     # make two different modes identical in size, and the old overlay test
@@ -144,7 +144,7 @@ def appearance(mode: str) -> Appearance:
 def label_for(mode: str) -> str:
     """The mode's name, for the line the artboard draws under the ring.
 
-    WHY THE ORB NEEDS WORDS AT ALL. Board 24's own reason is "status harus
+    WHY THE ORB NEEDS WORDS AT ALL. Board 05b's own reason is "status harus
     terbaca tanpa warna". Dimming to alpha 110, dropping the glow and going
     dotted are three differences that all live in the same channel — how bright
     the ring is — and on a dark desktop a screenshot cannot tell a quiet orb
@@ -328,9 +328,9 @@ def label_y(cy: float, radius: float) -> float:
 
 def draw_label(painter, cx: float, cy: float, radius: float, mode: str,
                room: float) -> bool:
-    """Board 24: the mode's name, centred under the ring.
+    """Board 05b: the mode's name, centred under the ring.
 
-    DRAWN, NOT MERELY AVAILABLE. Board 24's reason is "status harus terbaca
+    DRAWN, NOT MERELY AVAILABLE. Board 05b's reason is "status harus terbaca
     tanpa warna": dimming the ring, dropping the glow and going dotted are
     three differences in the SAME channel — brightness — and on a dark desktop
     a screenshot cannot tell a quiet orb from an active one. A word can.
@@ -349,7 +349,7 @@ def draw_label(painter, cx: float, cy: float, radius: float, mode: str,
     # THE CAPTION IS DECORATION ON TOP OF A WORKING ORB, so nothing about it may
     # take the orb down. A painter is not guaranteed to answer `font()` or
     # `setFont()` — an older binding, a platform backend, a test double — and
-    # board 24's own reason for existing is that the orb must stay readable.
+    # board 05b's own reason for existing is that the orb must stay readable.
     # An orb that vanished because its caption could not be styled would be a
     # strictly worse failure than a caption without tracking.
     if not (hasattr(painter, "setFont") and hasattr(painter, "drawText")):

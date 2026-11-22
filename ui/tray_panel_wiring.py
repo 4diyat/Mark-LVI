@@ -61,7 +61,7 @@ def set_presence(shell: "AmbientShell", mode: str) -> bool:
 def quick_action(shell: "AmbientShell", key: str) -> bool:
     """One quick row. False when the row cannot do anything.
 
-    TWO BOARDS DRAW ROWS HERE. Board 5's four in Aktif and Senyap; board 23's
+    TWO BOARDS DRAW ROWS HERE. Board 5's four in Aktif and Senyap; board 05a's
     three in Fokus — "Lihat yang tertahan", "Akhiri fokus sekarang", "Jeda semua
     penjadwalan". One table, because the panel decides which rows to DREW and
     this decides what a row DOES: splitting them would let the two drift, and a
@@ -81,7 +81,7 @@ def quick_action(shell: "AmbientShell", key: str) -> bool:
     return bool(handler(shell))
 
 
-# ── board 23: the three rows Fokus draws ────────────────────────────────────
+# ── board 05a: the three rows Fokus draws ────────────────────────────────────
 
 def show_held(shell: "AmbientShell") -> bool:
     """Say what is waiting, and how much. Does NOT release it.
@@ -298,7 +298,7 @@ def tidy_windows(shell: "AmbientShell") -> bool:
 # ── history and privacy ──────────────────────────────────────────────────────
 
 def undo_last(shell: "AmbientShell") -> bool:
-    """Board 26's Urungkan, through `core.undo`'s own stack."""
+    """Board 08a's Urungkan, through `core.undo`'s own stack."""
     try:
         from core import undo
 
@@ -343,7 +343,7 @@ def _desktop_path():
 
 
 def clear_history(shell: "AmbientShell") -> bool:
-    """Empty the undo stack. Does NOT erase the audit log — that is board 27.
+    """Empty the undo stack. Does NOT erase the audit log — that is board 06a.
 
     Two buttons on two pages for two different things: "Hapus riwayat" forgets
     what can be undone, "Hapus semua data lokal" forgets what happened. Merging
@@ -361,7 +361,7 @@ def clear_history(shell: "AmbientShell") -> bool:
 
 
 def erase_local(shell: "AmbientShell") -> bool:
-    """Board 27's erase: the audit log, on this machine, now.
+    """Board 06a's erase: the audit log, on this machine, now.
 
     WHAT IT DOES NOT DO, SAID PLAINLY. It does not delete `config/api_keys.json`
     (that holds the user's API key, and a privacy button that logs them out is a
@@ -383,7 +383,7 @@ def erase_local(shell: "AmbientShell") -> bool:
 
 
 def set_permission(shell: "AmbientShell", key: str, on: bool) -> bool:
-    """A board 27 switch. Only the two that are real can ever reach here.
+    """A board 06a switch. Only the two that are real can ever reach here.
 
     `screen` is disabled in the panel (always on when asked) and `microphone` is
     disabled too (a device either exists or it does not), so this handles the
@@ -403,7 +403,7 @@ def set_permission(shell: "AmbientShell", key: str, on: bool) -> bool:
 
 
 def set_theme(shell: "AmbientShell", name: str) -> bool:
-    """Persist the panel theme the user cycled to (board 28).
+    """Persist the panel theme the user cycled to (board 17a).
 
     `memory.config_manager` validates the value — an unknown name collapses to
     `auto` there, not here — so this function only carries it across and says

@@ -4,12 +4,12 @@ WHY THESE ASSERTIONS AND NOT "IT DRAWS"
     A panel is only worth building if it says something TRUE. Every test below
     is about a way the panel could lie:
 
-      * board 23's count saying 3 when `presence_mode` holds 4;
-      * board 27's Mikrofon drawn as a live switch on a machine with no
+      * board 05a's count saying 3 when `presence_mode` holds 4;
+      * board 06a's Mikrofon drawn as a live switch on a machine with no
         microphone — a control that cannot work and does not say so;
-      * board 26's Urungkan offered when the stack is empty;
+      * board 08a's Urungkan offered when the stack is empty;
       * the panel reporting success when the caller's handler threw;
-      * board 28 shipping a second widget instead of the same one recoloured.
+      * board 17a shipping a second widget instead of the same one recoloured.
 
     Each one fails if the behaviour is removed, not merely if a call is deleted:
     the mode test drives the REAL `core.presence_mode`, the undo test pushes a
@@ -192,7 +192,7 @@ def test_an_unknown_mode_is_refused_without_reaching_the_handler(
     assert setter.calls == []
 
 
-# ── board 26: history and undo ──────────────────────────────────────────────
+# ── board 08a: history and undo ──────────────────────────────────────────────
 
 def test_the_history_page_lists_the_undo_stack_newest_first(panel_module, clean_state):
     from core import undo
@@ -263,7 +263,7 @@ def test_the_audit_tail_is_newest_first_and_never_empty_looking(
     assert text.index("screen_processor") < text.index("send_email")
 
 
-# ── board 27: permissions, and the ones that cannot be switched ─────────────
+# ── board 06a: permissions, and the ones that cannot be switched ─────────────
 
 def test_a_fact_about_the_machine_is_drawn_as_disabled_not_as_a_switch(
         panel_module, clean_state, monkeypatch):
@@ -317,7 +317,7 @@ def test_board_27_draws_all_four_explicit_permissions(panel_module, clean_state)
         assert panel._labels[f"permx_sub:{key}"].text() == model._t(sub)
 
 
-# ── board 28: one widget, two palettes ─────────────────────────────────────
+# ── board 17a: one widget, two palettes ─────────────────────────────────────
 
 def test_the_light_theme_is_the_same_widget_with_another_palette(
         panel_module, clean_state):
@@ -331,7 +331,7 @@ def test_the_light_theme_is_the_same_widget_with_another_palette(
 
     assert panel.set_theme("light") is True
     assert panel.theme == "light"
-    assert panel._window is window, "board 28 must not build a second widget"
+    assert panel._window is window, "board 17a must not build a second widget"
     assert "#FFFFFF" in window._style and "#F6F9FB" not in window._style
     # The artboard's own light accent, not a tinted dark one.
     assert pages.PALETTES["light"]["accent"] == "#0A7A93"
@@ -442,11 +442,11 @@ def test_the_panel_opens_inside_the_screen_wherever_the_taskbar_is(panel_module)
     assert pages.panel_position(_Screen(0, 0, 400, 300), size) == (0, 0)
 
 
-# ── board 28: the setting, not just the palette ────────────────────────────
+# ── board 17a: the setting, not just the palette ────────────────────────────
 #
 # The light palette existed for a while and NOBODY COULD REACH IT: the settings
 # drawer that would have held the switch was deleted with the window, and
-# `set_theme` was a method only a test called. Board 28 is the same panel in
+# `set_theme` was a method only a test called. Board 17a is the same panel in
 # light colours, so a panel with no way to get there is a board that does not
 # ship. These tests are about the way in.
 
@@ -512,7 +512,7 @@ def test_the_panel_opens_on_the_saved_theme_not_on_dark(
 
 def test_the_theme_control_cycles_three_values_and_says_which(
         panel_module, clean_state, monkeypatch):
-    """Board 28 in reach: one control, three settings, no second widget.
+    """Board 17a in reach: one control, three settings, no second widget.
 
     The button shows the SETTING ("A"/"D"/"L"), not the resolved palette — a
     button reading "light" because `auto` resolved light could never be set

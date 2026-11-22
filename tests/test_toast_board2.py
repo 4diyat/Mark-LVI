@@ -139,7 +139,7 @@ def test_the_height_is_read_from_the_artboard_function():
 
 def test_the_accent_follows_the_kind():
     """Board 2's card has a 3 px rule down its left edge in the accent colour.
-    Info and warn are cyan; risky is amber — the same rule board 25 uses for a
+    Info and warn are cyan; risky is amber — the same rule board 14a uses for a
     confirmation, so a dangerous toast cannot look like a friendly one."""
     assert Toast(text="x", kind=KIND_INFO).accent == "#4FD8F0"
     assert Toast(text="x", kind=KIND_WARN).accent == "#4FD8F0"

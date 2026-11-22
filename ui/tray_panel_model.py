@@ -45,16 +45,16 @@ def _t(key: str, **fields) -> str:
     except Exception:                                # noqa: BLE001
         return f"⟪{key}⟫"
 
-# The sentence under the title, per mode. Board 5 draws the Aktif one; board 23
+# The sentence under the title, per mode. Board 5 draws the Aktif one; board 05a
 # draws the Fokus one, which is the only mode with something to say beyond its
 # own name — notifications are HELD, not dropped, and a panel that stays silent
 # about that is a panel whose toast count later looks like a bug.
 # BOARD 27 (and 26) GIVE EACH PAGE ITS OWN TWO LINES.
 #
 # Every page used to draw "JARVIS / Panel baki · mengikuti posisi taskbar",
-# which is the identity of the APPLICATION, not of the page. Board 27's first
+# which is the identity of the APPLICATION, not of the page. Board 06a's first
 # two lines are "Izin & Privasi / Semua data diproses lokal secara default";
-# board 26's are its own. `ui.panel.privacy.title` was already in the catalogue
+# board 08a's are its own. `ui.panel.privacy.title` was already in the catalogue
 # in both languages and called by nothing — a key nobody reads is a translation
 # nobody notices is missing.
 #
@@ -121,7 +121,7 @@ def quick_actions_for(mode: str) -> tuple:
     """
     return FOCUS_ACTIONS if str(mode or "").strip().lower() == "focus" else QUICK_ACTIONS
 
-# Board 27's explicit list. `key` is what `act()` receives; `label` and `sub` are
+# Board 06a's explicit list. `key` is what `act()` receives; `label` and `sub` are
 # what the user reads. Kept here rather than in the widget so the test asserts
 # the same four rows the artboard draws.
 PERMISSIONS = (
@@ -197,7 +197,7 @@ class Snapshot:
 
     @property
     def held_line(self) -> str:
-        """Board 23's count, spelled out. Never hidden when it is zero —
+        """Board 05a's count, spelled out. Never hidden when it is zero —
         "0 tertahan" is a fact, a missing line is a question."""
         return _t("ui.panel.focus.held_count", count=self.held)
 
@@ -243,7 +243,7 @@ def _mode() -> str:
 
 
 def _permissions() -> dict:
-    """The four switches of board 27, from the only place each is decided.
+    """The four switches of board 06a, from the only place each is decided.
 
     TWO KINDS OF SWITCH, AND THE PANEL MUST NOT PRETEND THEY ARE ONE.
 
@@ -275,7 +275,7 @@ def _permissions() -> dict:
 
 
 def _history() -> tuple:
-    """The undoable work, newest first, in board 26's shape.
+    """The undoable work, newest first, in board 08a's shape.
 
     `core.undo.history()` is already newest-first — it returns
     `reversed(_stack)` — so this must not reverse it again. (Reversing twice is
@@ -289,7 +289,7 @@ def _history() -> tuple:
 
 
 def _audit() -> tuple:
-    """The last three audit lines, oldest first, as board 26 draws them.
+    """The last three audit lines, oldest first, as board 08a draws them.
 
     `entries()` returns dicts, newest last. The board puts the newest at the
     TOP of its little table, so the order is reversed here once, deliberately.
@@ -318,7 +318,7 @@ def _quota() -> tuple[int, int]:
 
 
 def quota_note() -> str:
-    """The second quota sentence: board 23's "Dua sisanya ditahan sampai fokus
+    """The second quota sentence: board 05a's "Dua sisanya ditahan sampai fokus
     berakhir". Empty outside Fokus.
 
     WHY IT EXISTS ONLY IN FOKUS. Outside Fokus nothing is being held — the

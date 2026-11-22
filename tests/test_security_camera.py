@@ -425,8 +425,7 @@ def test_the_setting_is_reachable_without_a_window(config):
     it. If `core/security_camera.py` ever stopped reading `enabled`, the
     watcher would be unreachable and this fails.
 
-    The row itself is NOT rebuilt here. Putting a fifth permission row on board
-    27 would draw a control the artboard does not have, which is a bigger
+    The row itself is NOT rebuilt here. Putting a fifth permission row on board 06a would draw a control the artboard does not have, which is a bigger
     problem than a setting that is only in a config file.
     """
     config.write_text('{"security_camera": {"enabled": true}}', encoding="utf-8")

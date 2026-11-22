@@ -5,8 +5,8 @@ WHY THIS FILE EXISTS
     and every one of them runs: `DESIGN-ambient.md` lists them by number, size
     and content, and each function returns valid SVG.
 
-    None of them were ever rendered. `BOARDS_LIST` names `n01`–`n06` and
-    `EXTRA` names `n07`–`n12`, a second set of twelve boards with different
+    None of them were ever rendered. `BOARDS_LIST` named `n01`–`n06` and
+    `EXTRA` named `n07`–`n12`, a second set of twelve boards with different
     numbering and different content, so `jarvis-design-system.html` shipped
     twelve artboards out of twenty-two and no test noticed. The README, the
     sheet's own header and `DESIGN-ambient.md` all went on claiming twenty-two.
@@ -14,6 +14,15 @@ WHY THIS FILE EXISTS
     A design sheet that silently drops half its boards is worse than no sheet:
     it is the document everything else is measured against, and it was
     measuring itself against a list it no longer generated.
+
+    THE SECOND HALF OF THE FIX, WHICH IS A RULING RATHER THAN A REPAIR
+        The twelve `n*` views were worth keeping — they are the states (Fokus,
+        Senyap, the risk confirmation, history, permissions, light theme) that
+        the build has tests for. But they carried a SECOND numbering, 23–28,
+        and it collided with the first: their 05 was a tray panel and `b05` is
+        one too. The owner's ruling on 2026-11-22: one set of numbers, 1–22.
+        Each state is now drawn as `NNx` directly under the board it is a state
+        of, and nothing is numbered past 22.
 
 WHAT IS PROVEN HERE
     That every `bNN` function exists, runs, returns SVG of the size the
@@ -120,14 +129,76 @@ def test_each_artboard_is_the_size_the_documentation_states():
 
 # ── and the sheet the repo ships must contain them ─────────────────────────
 
+def _labels(html: str) -> tuple[list[int], list[str]]:
+    """The sheet's labels, split into board numbers and state views.
+
+    Boards are `01`..`22`; a state view is `05a`, `05b`, `14a` — the board it
+    belongs to plus a letter, which is what folding six states into their
+    parents looks like on the page.
+    """
+    drawn = re.findall(r'class="num">([^<]+)</span>', html)
+    boards = sorted(int(d) for d in drawn if d.isdigit())
+    views = [d for d in drawn if not d.isdigit()]
+    return boards, views
+
+
 def test_the_shipped_sheet_contains_all_twenty_two():
     """The file in the repo, not the generator's ambition."""
     html = SHEET.read_text(encoding="utf-8")
-    drawn = re.findall(r'class="num">([^<]+)</span>', html)
-    numbers = sorted(int(d) for d in drawn if d.isdigit())
+    numbers, _views = _labels(html)
     assert numbers == list(range(1, 23)), (
         f"jarvis-design-system.html contains {len(numbers)} artboards "
         f"({numbers}); the generator defines twenty-two")
+
+
+def test_nothing_on_the_sheet_is_numbered_past_twenty_two():
+    """The 23–28 numbering is retired, and this is what would bring it back.
+
+    It is not cosmetic: `ui/`, the tests and `NOT-IN-MOCKUP.md` all say "board 14a" meaning the risk dialog, and board 14a no longer exists.
+    """
+    html = SHEET.read_text(encoding="utf-8")
+    numbers, views = _labels(html)
+    assert max(numbers) == 22, f"a board is numbered past 22: {numbers}"
+    for label in views:
+        assert re.fullmatch(r"\d{2}[a-z]", label), (
+            f"{label!r} is neither a board number nor a state view")
+        assert int(label[:2]) <= 22, (
+            f"{label!r} is a state of board {int(label[:2])}, which does not exist")
+
+
+def test_every_state_view_is_drawn_under_the_board_it_belongs_to():
+    """`05a` must come after board 5 and before board 6, not in a section of its own.
+
+    That is the whole content of "the six states fold into their parents": a
+    reader meets a state where they met the board.
+    """
+    html = SHEET.read_text(encoding="utf-8")
+    order = re.findall(r'class="num">([^<]+)</span>', html)
+    seen = []
+    for label in order:
+        seen.append(label)
+    for index, label in enumerate(seen):
+        if re.fullmatch(r"\d{2}[a-z]", label):
+            parent = int(label[:2])
+            # A parent board is printed WITHOUT leading zeros ('5'), a state
+            # label with them ('05a') — that is the sheet's own formatting, and
+            # comparing strings here is how the first version of this test
+            # failed on its own subject rather than on the sheet.
+            assert str(parent) in seen[:index], (
+                f"{label} is drawn before board {parent}")
+            following = [s for s in seen[index + 1:] if s.isdigit()]
+            if following:
+                assert int(following[0]) == parent + 1, (
+                    f"{label} is drawn after board {following[0]}, not under {parent}")
+
+
+def test_the_six_states_are_still_drawn():
+    """Folding them in must not be a quiet way of dropping them."""
+    html = SHEET.read_text(encoding="utf-8")
+    _numbers, views = _labels(html)
+    assert len(views) == 6, (
+        f"the sheet draws {len(views)} state views; the build has tests for six "
+        f"(Fokus, Senyap, konfirmasi risiko, riwayat, izin, tema terang)")
 
 
 def test_the_sheet_is_what_the_generator_produces():
@@ -161,3 +232,72 @@ def test_every_document_that_states_a_count_states_the_same_one():
         for value in claimed:
             assert int(value) == total, (
                 f"{label} claims {value} artboards; build.py defines {total}")
+
+# ── "drawn inside its own canvas", which the doc used to claim unchecked ────
+#
+# `DESIGN-ambient.md` said "22 artboard valid, tanpa elemen meluber, tanpa
+# bentuk berukuran nol" and nothing verified it. It was nearly true: one orb on
+# board 1 painted its 72.8 px glow past the right edge. These two tests are what
+# make the sentence a fact rather than a hope.
+
+def _shapes(svg: str):
+    """Every primitive that has a position and an extent, parsed from the SVG."""
+    import xml.etree.ElementTree as ET
+
+    root = ET.fromstring(svg)
+    for el in root.iter():
+        tag = el.tag.split("}")[-1]
+        try:
+            if tag == "rect":
+                yield tag, (float(el.get("x", 0)), float(el.get("y", 0)),
+                            float(el.get("width", 0)), float(el.get("height", 0)))
+            elif tag == "circle":
+                cx, cy, r = (float(el.get("cx", 0)), float(el.get("cy", 0)),
+                             float(el.get("r", 0)))
+                yield tag, (cx - r, cy - r, r * 2, r * 2)
+        except (TypeError, ValueError):
+            continue
+
+
+@pytest.mark.parametrize("number", range(1, 23))
+def test_every_artboard_paints_inside_its_own_canvas(number):
+    """An element outside the canvas is drawn into nothing.
+
+    The tolerance is 1 px: a 1 px stroke on the edge is centred, so half of it
+    is legitimately outside the box.
+    """
+    build = _build_module()
+    svg = getattr(build, f"b{number:02d}")()
+    m = re.search(r'<svg[^>]*width="(\d+)" height="(\d+)"', svg)
+    width, height = int(m.group(1)), int(m.group(2))
+    outside = []
+    for tag, (x, y, w, h) in _shapes(svg):
+        if x < -1 or y < -1 or x + w > width + 1 or y + h > height + 1:
+            outside.append((tag, round(x, 1), round(y, 1),
+                            round(x + w, 1), round(y + h, 1)))
+    assert not outside, (
+        f"artboard {number} ({width}×{height}) paints {len(outside)} element(s) "
+        f"outside its canvas: {outside[:4]}")
+
+
+@pytest.mark.parametrize("number", range(1, 23))
+def test_no_artboard_draws_a_zero_sized_shape(number):
+    """A zero-width rect is an invisible element pretending to be a mark."""
+    build = _build_module()
+    svg = getattr(build, f"b{number:02d}")()
+    zero = [(tag, box) for tag, box in _shapes(svg) if box[2] <= 0 or box[3] <= 0]
+    assert not zero, f"artboard {number} draws {len(zero)} zero-sized shape(s)"
+
+
+def test_every_artboard_is_well_formed_xml():
+    """Inline SVG that a browser has to repair is a drawing nobody can trust."""
+    import xml.etree.ElementTree as ET
+
+    build = _build_module()
+    for number in range(1, 23):
+        svg = getattr(build, f"b{number:02d}")()
+        try:
+            ET.fromstring(svg)
+        except ET.ParseError as exc:            # noqa: PERF203 — one message
+            raise AssertionError(
+                f"artboard {number} is not well-formed XML: {exc}") from exc
