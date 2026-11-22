@@ -38,6 +38,46 @@ from ui.tray_panel_model import PERMISSIONS, QUICK_ACTIONS, _t
 # geometry; the panel imports it so the two cannot disagree.
 PANEL_W, PANEL_H = 460, 660
 
+# ── board 5's geometry, as numbers you can check ───────────────────────────
+#
+# WHY A TABLE AND NOT THE SAME NUMBERS INSIDE THE BUILDER
+#     Every value below is read off `docs/mockups/build.py: n05()` and nothing
+#     else. Written inline in `build_main()` they were unverifiable: four of
+#     them had drifted from the artboard (the suggestion card was never drawn,
+#     its two lines sat 8 px high, and the whole IZIN block sat 18-26 px high
+#     with no toggle column), and no test could tell, because a call to
+#     `setGeometry` is not a fact anyone can assert against a drawing.
+#
+#     As a dict, `tests/test_tray_geometry.py` can compare it with `build.py`
+#     itself — so the next drift fails a test instead of surviving a review.
+#
+# THE ONE DELIBERATE DIFFERENCE
+#     `PANEL_H` is 660 and the artboard is 640. That is not drift and it is not
+#     in this table: `DESIGN-ambient.md` records the decision ("tiga baris izin
+#     + input butuh 20 px ekstra"), and the values below already sit in the
+#     taller panel — which is why the input is at y=596 rather than 576.
+GEOMETRY = {
+    # section headers: (x, y, w, h)
+    "quick_header":      (24, 140, 200, 16),
+    "suggestion_header": (24, 366, 200, 16),
+    "perm_header":       (24, 478, 200, 16),
+    # the four quick rows: first y, height, pitch
+    "quick_row_y": 154, "quick_row_h": 40, "quick_pitch": 48,
+    # the suggestion card the artboard draws and this panel did not
+    "suggestion_card":     (24, 380, 412, 62),
+    "suggestion_bar":      (24, 392, 3, 38),
+    "suggestion_title":    (44, 396, 372, 20),
+    "suggestion_quota":    (44, 416, 372, 18),
+    # the three permission rows: text at x=24, toggle at x=396, pitch 30
+    "perm_row_y": 492, "perm_pitch": 30, "perm_row_h": 26, "perm_toggle_x": 396,
+    # the command line, and the send disc the artboard draws at cx=404
+    "field": (24, 596, 340, 40),
+    # A 36 px box whose CENTRE is the artboard's circle centre (404, 616):
+    # the circle is drawn by centre, a QPushButton by its corner, and 596 put
+    # the disc two pixels high of the drawing.
+    "send":  (386, 598, 36, 36),
+}
+
 # Which page the panel is showing. Board 26 and 27 are pages, not other
 # windows: a tray panel that spawns three windows is three things to close.
 PAGE_MAIN, PAGE_HISTORY, PAGE_PRIVACY = "main", "history", "privacy"
@@ -94,41 +134,76 @@ def panel_position(screen, size=(PANEL_W, PANEL_H), point=None) -> tuple[int, in
 
 
 def build_main(panel, page) -> None:
+    """Board 5, built from `GEOMETRY` — see the table's own note on why.
+
+    The permission rows are a text label plus a DOT TOGGLE at x=396, not one
+    wide button. That is the artboard's shape: a 40x22 track with a knob on
+    the left when off and on the right when on. A full-width pill was the
+    earlier version and it read as a menu row, not a switch.
+    """
     from PyQt6.QtWidgets import QLabel, QLineEdit, QPushButton
+
     panel._pages = {PAGE_MAIN: page}
+    g = GEOMETRY
 
     panel._labels["quick_header"] = _at(
-        page, QLabel, 24, 140, 200, 16, _t("ui.panel.section.quick"))
+        page, QLabel, *g["quick_header"], _t("ui.panel.section.quick"))
     for index, (key, name, chord) in enumerate(QUICK_ACTIONS):
-        y = 154 + index * 48
+        y = g["quick_row_y"] + index * g["quick_pitch"]
         button = QPushButton(f"{_t(name)}\t{chord}", page)
-        button.setGeometry(24, y, 412, 40)
+        button.setGeometry(24, y, 412, g["quick_row_h"])
         button.clicked.connect(lambda _checked=False, k=key: panel.press_quick(k))
         panel._buttons[f"quick:{key}"] = button
 
+    # THE SUGGESTION CARD. The artboard draws a 412x62 card with an amber bar
+    # down its left edge — amber because a suggestion is the one thing on this
+    # page the user did not ask for. Neither existed before: the text floated
+    # on the panel background and the card was simply missing.
     panel._labels["suggestion_header"] = _at(
-        page, QLabel, 24, 366, 200, 16, _t("ui.panel.section.suggestion"))
-    panel._labels["suggestion"] = _at(page, QLabel, 44, 396, 372, 20, "")
-    panel._labels["quota"] = _at(page, QLabel, 44, 416, 372, 18, "")
+        page, QLabel, *g["suggestion_header"], _t("ui.panel.section.suggestion"))
+    panel._labels["suggestion_card"] = _at(
+        page, QLabel, *g["suggestion_card"], "")
+    panel._labels["suggestion_card"].setStyleSheet(
+        f"background:{PALETTES['dark']['card']};"
+        f"border:1px solid {PALETTES['dark']['line']};border-radius:12px;")
+    panel._labels["suggestion_bar"] = _at(
+        page, QLabel, *g["suggestion_bar"], "")
+    panel._labels["suggestion_bar"].setStyleSheet(
+        f"background:{PALETTES['dark']['amber']};border-radius:1.5px;")
+    panel._labels["suggestion"] = _at(
+        page, QLabel, *g["suggestion_title"], "")
+    panel._labels["quota"] = _at(page, QLabel, *g["suggestion_quota"], "")
 
     panel._labels["perm_header"] = _at(
-        page, QLabel, 24, 452, 200, 16, _t("ui.panel.section.permissions"))
+        page, QLabel, *g["perm_header"], _t("ui.panel.section.permissions"))
     for index, (key, name, _sub) in enumerate(PERMISSIONS[:3]):
-        y = 474 + index * 30
+        y = g["perm_row_y"] + index * g["perm_pitch"]
+        # The label is the switch: clicking the word "Mikrofon" toggles it.
+        # A 26 px row with a separate 40 px dot is below the 44 px touch
+        # target, so the row has to be the target — the dot is the readout.
         button = QPushButton(_t(name), page)
         button.setCheckable(True)
-        button.setGeometry(24, y, 412, 26)
+        button.setGeometry(24, y, 360, g["perm_row_h"])
+        button.setStyleSheet("text-align:left;padding-left:0;border:none;")
         button.clicked.connect(
             lambda checked=False, k=key: panel.press_permission(k, checked))
         panel._buttons[f"perm:{key}"] = button
+        dot = _at(page, QLabel, g["perm_toggle_x"], y + 4, 40, 22, "")
+        dot.setStyleSheet(
+            f"background:{PALETTES['dark']['card']};"
+            f"border:1px solid {PALETTES['dark']['line']};border-radius:11px;")
+        panel._labels[f"perm_dot:{key}"] = dot
 
     field = QLineEdit(page)
     field.setPlaceholderText(_t("ui.panel.command.placeholder"))
-    field.setGeometry(24, 596, 340, 40)
+    field.setGeometry(*g["field"])
     field.returnPressed.connect(panel.submit_command)
     panel._field = field
+    # The send control is a 36 px disc at the same place the artboard puts its
+    # 18 px-radius circle, rather than the 50x40 rectangle it was.
     send = QPushButton(_t("ui.panel.command.send"), page)
-    send.setGeometry(386, 596, 50, 40)
+    send.setGeometry(*g["send"])
+    send.setStyleSheet("border-radius:18px;padding:0;")
     send.clicked.connect(panel.submit_command)
     panel._buttons["send"] = send
 

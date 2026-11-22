@@ -60,10 +60,38 @@ def paint(panel, snap) -> None:
         state = snap.permissions.get(key, {})
         button.setChecked(bool(state.get("on")))
         button.setEnabled(not bool(state.get("fixed")))
+        _paint_dot(panel, key, state)
 
     paint_history(panel, snap)
     paint_privacy(panel, snap)
 
+
+
+def _paint_dot(panel, key: str, state: dict) -> None:
+    """The 40x22 track at x=396: cyan with the knob to the right when on.
+
+    IT IS A READOUT, NOT A CONTROL — the row's label is the click target, and
+    a second control for one boolean would be two places to disagree. But an
+    unlit dot that never moves would be a lie of a worse kind: it would show
+    "off" for a permission that is on, which is the exact failure the panel
+    was built to avoid. `fixed` (a Microphone that does not exist) draws
+    muted, because there is nothing behind the switch to permit.
+    """
+    dot = panel._labels.get(f"perm_dot:{key}")
+    if dot is None:
+        return
+    pal = PALETTES[panel._theme]
+    if state.get("fixed"):
+        track, border = pal["card"], pal["line"]
+    elif state.get("on"):
+        track, border = pal["accent"], pal["accent"]
+    else:
+        track, border = pal["card"], pal["line"]
+    try:
+        dot.setStyleSheet(
+            f"background:{track};border:1px solid {border};border-radius:11px;")
+    except Exception as e:                       # noqa: BLE001
+        panel._note(f"permission dot {key!r} refused — {type(e).__name__}: {e}")
 
 
 def paint_theme(panel) -> None:
