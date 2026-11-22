@@ -145,8 +145,26 @@ class _Object:
     def adjustSize(self):
         return None
 
-    def move(self, *_a):
+    def move(self, *a):
+        """Remember the position, as Qt does.
+
+        WHY THIS IS STATE AND NOT A NO-OP. `ui/orb_place` saves the orb's
+        position BY READING THE WINDOW BACK (`self.position` → `window.pos()`).
+        A stub whose `move` forgot and whose `pos` answered None made every
+        drag test save nothing — and the drag tests then "passed" against a
+        function that could not work. This is the same class of fake as the
+        echo-mode one below: a stub that answers plausibly hides the bug.
+        """
+        x, y = (a[0], a[1]) if len(a) >= 2 else (a[0].x(), a[0].y())
+        self._pos = (int(x), int(y))
         return None
+
+    def pos(self):
+        x, y = self.__dict__.get("_pos", (0, 0))
+        point = _Object()
+        point.x = lambda: x
+        point.y = lambda: y
+        return point
 
     def raise_(self):
         return None

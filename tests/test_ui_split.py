@@ -80,6 +80,12 @@ def test_the_package_has_exactly_the_mockup_modules():
         # reason the tray panel has three: `setup_window` decides and draws,
         # `setup_screen` is the thread hop that a headless test can skip.
         "setup_screen.py", "setup_window.py",
+        # Board 1, split off `orb_overlay` at the 600-line ceiling. Two new
+        # modules, and the boundary is the one this file keeps drawing:
+        # `orb_place` is pure functions (size, clickable circle, mask, saved
+        # drag, corner anchor) and builds nothing; `orb_canvas` is the paint
+        # half (the QWidget, its `paintEvent`, and the one `paint_orb`).
+        "orb_place.py", "orb_canvas.py",
     }
     present = {p.name for p in _modules()}
     assert present == expected, (

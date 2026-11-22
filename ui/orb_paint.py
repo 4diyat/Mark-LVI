@@ -47,12 +47,30 @@ GLOW = 20
 SIZE = (RADIUS + GLOW) * 2
 
 # The ring the user may click, on the desktop overlay. Nine pixels outside the
-# drawn circle: far enough that a near miss still lands, close enough that the
-# transparent corner of the window does not swallow clicks meant for the
-# desktop underneath. It is here rather than in `orb_overlay` because the
+# drawn circle: far enough that a near miss still lands, close enough that a
+# near miss is still a miss. It is here rather than in `orb_overlay` because the
 # window's size and its hit region are the same fact, and this module now owns
 # both the geometry and the drawing.
 HIT_RING = RADIUS + 9
+
+# THE OVERLAY BOX — board 1's dashed square, `r * 2.6` on each side.
+#
+# WHY IT GREW FROM 96 px, AND WHY THAT WAS A BUG AND NOT A TASTE
+#     `paint_ring` draws its furthest mark — the amber alert dot — at
+#     `r * 2.24` from the centre: 62.7 px at the active radius of 28. The window
+#     was 96 px, so its half was 48 px. The alarm was drawn 15 px outside the
+#     window and clipped away: the one indicator that says something needs the
+#     user never appeared, and every test passed because nothing compared the
+#     painter's reach with the window's size.
+#
+#     146 px is the artboard's own number (`half = r * 2.6` = 72.8, round up).
+#     It is chosen for the drawing, not fitted to it — but it has to be at least
+#     as large as the drawing, and `tests/test_orb_overlay_board1.py` asserts
+#     that rather than trusting this comment.
+#
+# The window is square in every mode, because a window that resizes under the
+# cursor moves its own centre and the click lands on nothing.
+OVERLAY_PX = 146
 
 CYAN = "#4FD8F0"
 CORE = "#BFF6FF"
@@ -109,6 +127,33 @@ def appearance(mode: str) -> Appearance:
 def hud_state(word: str) -> str:
     """Translate the HUD's shouted state to the painter's. Unknown -> idle."""
     return _HUD_STATES.get(str(word or "").strip().upper(), "idle")
+
+
+def paint_overlay_box(painter, cx: float, cy: float, half: float,
+                      colour: str = CYAN) -> None:
+    """The dashed square around the desktop orb — board 1's "overlay ±150 px".
+
+    DRAWN, THOUGH NOTHING DEPENDS ON IT CLICKING. It is the only visual answer
+    to "how far does this thing reach", and without it the window's 146 px would
+    be invisible: the orb would sit in a larger transparent hole the user cannot
+    see. Opacity is low on purpose — it is a boundary, not a frame, and a solid
+    one would read as a widget rather than as an edge.
+
+    A NO-OP FOR A HALF THAT WOULD DRAW THROUGH THE ORB. The caller passes the
+    half directly, and a box smaller than the ring is a box over the orb.
+    """
+    from PyQt6.QtCore import QRectF, Qt
+    from PyQt6.QtGui import QColor, QPen
+
+    if half <= 0:
+        return
+    edge = QColor(colour)
+    edge.setAlpha(64)                  # a boundary you notice second
+    pen = QPen(edge, 1.0)
+    pen.setStyle(Qt.PenStyle.DashLine)
+    painter.setPen(pen)
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.drawRect(QRectF(cx - half, cy - half, half * 2, half * 2))
 
 
 def paint_ring(painter, cx: float, cy: float, radius: float,

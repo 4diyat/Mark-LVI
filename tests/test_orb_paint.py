@@ -146,7 +146,12 @@ def test_every_surface_draws_through_the_same_painter(qt):
     """Two painters is how the orb, the face and the tray drifted apart."""
     source = (ROOT / "ui" / "face_canvas.py").read_text(encoding="utf-8")
     assert "paint_ring(" in source
-    assert "paint_ring(" in (ROOT / "ui" / "orb_overlay.py").read_text(encoding="utf-8")
+    # The call lives in `orb_canvas.py` since the desktop orb's paint half was
+    # split off `orb_overlay` at the 600-line ceiling. The SURFACE is still the
+    # orb overlay — what moved is where its painter is written, and a test that
+    # kept pointing at the old file would fail for a rename, not for a second
+    # painter coming back.
+    assert "paint_ring(" in (ROOT / "ui" / "orb_canvas.py").read_text(encoding="utf-8")
     # and the old, mode-blind painter is gone rather than merely unused
     assert not (ROOT / "ui" / "desktop_orb.py").exists(), (
         "ui/desktop_orb.py is back: it draws the orb without knowing the "
@@ -256,3 +261,69 @@ def test_alert_is_amber_and_marks_itself_above_the_orb(qt):
             break
     else:
         pytest.fail("the alert drew no tick")
+
+
+# ── board 1's overlay boundary ────────────────────────────────────────────
+
+def test_the_overlay_box_is_one_rectangle_and_never_a_fill(qt):
+    """Board 1's boundary: exactly one `drawRect`, and no brush that would fill
+    it. A filled rect here is an opaque square on someone's wallpaper — the
+    same rule `paint_ring` is already held to."""
+    painter = Recorder()
+    qt.paint_overlay_box(painter, 73.0, 73.0, 72.0)
+    assert len([c for c in painter.calls if c[0] == "drawRect"]) == 1
+    brushes = [c for c in painter.calls if c[0] == "setBrush"]
+    assert brushes, "the box must clear the brush before drawing"
+
+
+def test_the_overlay_box_is_dashed_not_solid(qt, monkeypatch):
+    """The dash is set on the PEN, so it is invisible from the painter side.
+
+    `PenSpy` replaces the module's `QPen` and records the style it is given.
+    Comparing the style's NAME would not work: the stub's enum is a catch-all
+    object whose `name` is another enum. What is asserted instead is that a
+    style was set at all and that it is the dash Qt was asked for by attribute
+    path — which fails if someone drops the `setStyle` line entirely, the way
+    M15's neighbour did.
+    """
+    seen = {}
+
+    class PenSpy:
+        def __init__(self, *a, **k):
+            self.width = a[1] if len(a) > 1 else k.get("width")
+            seen["pen"] = self
+
+        def setStyle(self, style):
+            seen["style"] = style
+
+    # The function imports QPen INSIDE itself (`from PyQt6.QtGui import QPen`),
+    # so patching the module attribute does nothing — the patch has to be on
+    # the QtGui module the import actually reads.
+    # WRITTEN INTO THE MODULE'S `__dict__`, NOT patched with monkeypatch.
+    # `paint_overlay_box` does `from PyQt6.QtGui import QPen` INSIDE the
+    # function, and the stub's QtGui answers unknown names from a module-level
+    # `__getattr__` — so an attribute patch is answered by that fallback while
+    # the import reads the dict. Writing the dict entry is what the import
+    # actually sees. The old value is restored below, because a spy left in
+    # place would make every later test in this file draw with it.
+    import sys as _sys
+
+    gui = _sys.modules["PyQt6.QtGui"]
+    saved_pen = gui.__dict__.get("QPen")
+    gui.__dict__["QPen"] = PenSpy
+    try:
+        qt.paint_overlay_box(Recorder(), 73.0, 73.0, 72.0)
+    finally:
+        if saved_pen is None:
+            gui.__dict__.pop("QPen", None)
+        else:
+            gui.__dict__["QPen"] = saved_pen
+    assert "style" in seen, "the boundary pen never had a style set — it is solid"
+
+
+def test_the_overlay_box_refuses_a_half_that_would_cover_the_orb(qt):
+    """`half <= 0` draws nothing. A box smaller than the ring is a box THROUGH
+    the orb, which reads as a rendering glitch rather than a boundary."""
+    painter = Recorder()
+    qt.paint_overlay_box(painter, 73.0, 73.0, 0.0)
+    assert [c for c in painter.calls if c[0] == "drawRect"] == []

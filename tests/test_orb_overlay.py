@@ -145,10 +145,16 @@ def test_the_three_modes_are_all_different(orb):
 # ── geometry: the window never moves under the cursor ─────────────────────
 
 def test_the_window_is_the_same_size_in_every_mode(orb):
-    """Resizing on a mode change would shift the centre and lose the click."""
+    """Resizing on a mode change would shift the centre and lose the click.
+
+    The SIZE IS NO LONGER `SIZE` — it is board 1's 146 px overlay, because 96 px
+    clipped the painter's own alert dot. See `test_orb_overlay_board1.py` for
+    that arithmetic; what this test has always been about is that the number
+    does not change with the mode.
+    """
     sizes = {orb.window_size(m) for m in ("active", "focus", "quiet")}
     assert len(sizes) == 1
-    assert sizes.pop() == (orb.SIZE, orb.SIZE)
+    assert sizes.pop() == (orb.OVERLAY_PX, orb.OVERLAY_PX)
 
 
 def test_the_window_is_big_enough_for_the_glow(orb):
@@ -156,20 +162,32 @@ def test_the_window_is_big_enough_for_the_glow(orb):
 
 
 def test_the_hit_region_is_round_the_orb_and_inside_the_window(orb):
+    """The centre follows the WINDOW, and the window is the overlay now.
+
+    This assertion is the one that caught the change from 96 to 146 px doing
+    half a job: the painter moved to the new centre and the hit test did not,
+    which would have made the drawn orb unclickable by half a ring.
+    """
     cx, cy, r = orb.hit_region("active")
-    assert (cx, cy) == (orb.SIZE // 2, orb.SIZE // 2)
+    assert (cx, cy) == (orb.OVERLAY_PX // 2, orb.OVERLAY_PX // 2)
     assert r >= orb.RADIUS
-    assert cx + r <= orb.SIZE and cy + r <= orb.SIZE
+    assert cx + r <= orb.OVERLAY_PX and cy + r <= orb.OVERLAY_PX
 
 
 def test_a_click_on_the_ring_is_ours(orb):
-    assert orb.inside_hit_region(orb.SIZE // 2, orb.SIZE // 2) is True
+    assert orb.inside_hit_region(orb.OVERLAY_PX // 2, orb.OVERLAY_PX // 2) is True
 
 
 def test_a_click_a_few_pixels_outside_the_ring_is_the_desktops(orb):
-    """The transparent corner belongs to whatever is underneath."""
+    """The transparent corner belongs to whatever is underneath.
+
+    AND SINCE BOARD 1 IT BELONGS THERE IN FACT, not just in this function: the
+    window carries a mask of the same circle, so the press never arrives here to
+    be refused. This assertion is the second half of that rule — the hit test
+    still says no, so nothing changes for a click that does reach us.
+    """
     assert orb.inside_hit_region(0, 0) is False
-    assert orb.inside_hit_region(orb.SIZE - 1, orb.SIZE - 1) is False
+    assert orb.inside_hit_region(orb.OVERLAY_PX - 1, orb.OVERLAY_PX - 1) is False
 
 
 def test_the_hit_ring_does_not_shrink_when_the_orb_dims(orb):
@@ -351,6 +369,6 @@ def test_the_audio_level_is_clamped_before_the_painter_sees_it(orb):
 def test_the_painter_never_fills_the_whole_window(orb):
     """A filled rect would be a 96 px dark square on the user's desktop — the
     single most visible way this widget can be wrong."""
-    source = (ROOT / "ui" / "orb_overlay.py").read_text(encoding="utf-8")
+    source = (ROOT / "ui" / "orb_canvas.py").read_text(encoding="utf-8")
     paint = source.split("def paint_orb", 1)[1]
     assert "fillRect" not in paint

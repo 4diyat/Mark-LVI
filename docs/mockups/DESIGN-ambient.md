@@ -148,7 +148,7 @@ stack-neutral dan berlaku apa adanya untuk implementasi Python.
 | Gerbang eksekusi: klasifikasi → catat → jalan/tahan | `core/action_gate.py` | `tests/test_action_gate.py` |
 | Tingkat per panggilan (`computer_settings` ≠ satu tingkat) | `core/tool_risk.py` | `tests/test_tool_risk.py` |
 | Sambungan gate ke `main.py` + daftar aksi berpagar sendiri | `main.py` | `tests/test_gate_wiring.py` |
-| Orb overlay 96 px, meredup di Fokus/Senyap | `ui/orb_overlay.py` | `tests/test_orb_overlay.py` |
+| Orb overlay 146 px (board 1), hanya cincin yang bisa diklik, bisa digeser; meredup di Fokus/Senyap | `ui/orb_overlay.py`, `ui/orb_place.py`, `ui/orb_canvas.py` | `tests/test_orb_overlay_board1.py`, `tests/test_orb_place.py` |
 | Command bar Ctrl+Space, Esc mengembalikan fokus | `ui/command_bar.py` | `tests/test_command_bar.py` |
 | Sambungan mode → orb, chord, dan baki | `ui/lifecycle.py`, `memory/config_manager.py` | `tests/test_presence_wiring.py` |
 
@@ -158,11 +158,28 @@ salinan yang berbeda perilaku.
 
 ### Batasan platform yang harus diuji di Windows
 
-- Orb **tidak** click-through, dan itu disengaja: ia satu-satunya permukaan yang
-  bisa diklik di mode ambient, jadi klik di luar cincin ditolak oleh hit test
-  (`inside_hit_region`), bukan oleh flag jendela. Yang belum bisa dibuktikan:
-  apakah jendela frameless benar-benar mengabaikan klik di area transparannya di
-  setiap window manager.
+- Orb: **hanya cincin yang menerima klik.** Keputusan ini berubah — dulu di sini
+  tertulis bahwa orb sengaja TIDAK click-through dan klik di luar cincin ditolak
+  oleh hit test. Penolakan itu terjadi SESUDAH jendela mengambil klik, jadi klik
+  di sudut transparan hilang: desktop di bawahnya tidak pernah menerimanya.
+  Board 1 menulis "overlay ±150 px, click-through", dan pemilik repo memilih
+  artboard-nya. Sekarang jendela dipasangi mask (`ui/orb_place.overlay_mask`)
+  seukuran lingkaran yang bisa diklik, jadi sudutnya tidak ada lagi untuk
+  mengambil klik. `inside_hit_region` tetap berlaku sebagai jawaban kedua untuk
+  klik yang memang sampai ke jendela — dua-duanya harus sepakat, dan itu diuji.
+  Yang belum bisa dibuktikan: apakah window manager benar-benar menghormati
+  `setMask` pada jendela frameless transparan di setiap platform.
+- **Jendela orb 146 px, bukan 96 px.** `n01()` menggambar kotak `r × 2.6`. Yang
+  membuat ini bukan soal selera: `paint_ring` menggambar titik alert amber pada
+  `r × 2.24` = 62,7 px dari pusat, sedangkan setengah jendela 96 px hanya 48 px.
+  Indikator "ada yang butuh Anda" tergambar di luar jendela dan terpotong, dan
+  tidak ada tes yang membandingkan jangkauan painter dengan ukuran jendela.
+  Angka itu sekarang diuji sebagai aritmatika di `tests/test_orb_overlay_board1.py`.
+- **Orb bisa digeser dan posisinya diingat** (`orb_position` di
+  `config/api_keys.json`). Posisi yang tersimpan di monitor yang sudah dicabut
+  tidak dipulihkan: pusat orb harus berada di area layar yang tersedia, kalau
+  tidak orb ada di tempat yang tidak bisa dijangkau — dan itu terlihat persis
+  seperti aplikasi yang mati.
 - Fokus kembali setelah Esc bergantung pada window manager; `FocusLedger`
   mencatat permintaan dan hasilnya, tetapi `activateWindow()` tidak melaporkan
   apakah berhasil.
