@@ -62,6 +62,13 @@ IDLE_REPAINT_MS = 200
 # drawn in full, so the silhouette, the eyes and the mouth are exact.
 IDLE_FACET_STRIDE = 3
 
+#: The specular accent on the iris and the lip cavity. Board 1 has one accent
+#: (#4FD8F0) and one highlight (#BFF6FF); the face uses the highlight for the
+#: iris ring so the eye reads as lit rather than as a second cyan disc. These
+#: are the values from `docs/mockups/build.py`, and copying them beats importing
+#: `ui.theme` — that module still carries the retired HUD palette.
+FACE_ACCENT = "#BFF6FF"
+
 
 def should_repaint(now_ms: float, last_ms: float, speaking: bool) -> bool:
     """Whether this tick is worth a repaint. A pure function, so it is testable.
@@ -273,10 +280,21 @@ def build_face_canvas(parent, face_path: str = "", name: str = "J.A.R.V.I.S"):
             radius = min(width, height) * HEAD_SPAN
 
             if self._avatar is not None:
-                from ui.theme import C, qcol
-                primary = qcol(C.MUTED_C) if self.muted else qcol(C.PRI)
+                # BOARD 1'S TOKENS, NOT THE RETIRED HUD PALETTE.
+                #
+                # This used `C.PRI` (#4b9fff, blue), `C.WHITE` (#f5f5f7) and
+                # `C.MUTED_C` (#ff3366, pink). The floating head therefore drew
+                # BLUE rings inside a CYAN orb, and went pink when muted. Every
+                # other ambient surface — `orb_paint`, `toast_card`,
+                # `tray_pages`, `voice_paint` — declares the design system's
+                # numbers directly, so the one surface a user looks at most was
+                # the only one in a different palette.
+                from ui.orb_paint import CYAN, MUTED
+                from ui.theme import qcol
+
+                primary = qcol(MUTED) if self.muted else qcol(CYAN)
                 self._avatar.paint(painter, cx, cy, radius, primary,
-                                   qcol(C.WHITE), None, wireframe=False,
+                                   qcol(FACE_ACCENT), None, wireframe=False,
                                    floating_head=True,
                                    facet_stride=(1 if self.speaking
                                                  else IDLE_FACET_STRIDE))

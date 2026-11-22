@@ -22,6 +22,24 @@ from __future__ import annotations
 from ui import voice_hand as _hand
 from ui import voice_overlay as _model
 
+# ── board 6's tokens, from `docs/mockups/build.py` ──────────────────────────
+#
+# THE SHEET IS UNUSUAL HERE AND THE CODE HAD DRIFTED FROM IT. Board 6 is drawn
+# entirely with the same CYAN as every other artboard — the edge glow, the four
+# 2 px border lines, the "MENDENGARKAN" label, the orb. This module used
+# #00d4ff instead, in nine places: a lighter, bluer cyan that no other surface
+# in the application uses. Beside the orb overlay it is visibly a different
+# accent, and beside board 1's dashed box it is a different design.
+#
+# #1c3a4a (the camera tile's border) is the same story with a smaller gap:
+# the sheet draws that tile with LINE_ACC (#2A6477). #7f97a6 is MUTED
+# (#8FA9B5). #eaf6ff (the transcript) is TEXT (#E6F4F8).
+CYAN = "#4FD8F0"
+TEXT = "#E6F4F8"
+MUTED = "#8FA9B5"
+LINE_ACC = "#2A6477"
+TILE = "#071018"        # the camera inset, drawn as such in the sheet
+
 
 
 
@@ -61,15 +79,15 @@ def paint_frame(painter, size, overlay) -> None:
         if alpha > 0:
             gradient = QRadialGradient(QPointF(width / 2.0, height / 2.0),
                                        max(width, height) * 0.75)
-            inner = QColor("#00d4ff")
+            inner = QColor(CYAN)
             inner.setAlphaF(0.0)
-            outer = QColor("#00d4ff")
+            outer = QColor(CYAN)
             outer.setAlphaF(alpha)
             gradient.setColorAt(_model.GLOW_INNER, inner)
             gradient.setColorAt(1.0, outer)
             painter.fillRect(QRectF(0, 0, width, height), gradient)
 
-            edge = QColor("#00d4ff")
+            edge = QColor(CYAN)
             edge.setAlphaF(_model.EDGE_OPACITY if active else 0.0)
             pen = QPen(edge)
             pen.setWidth(_model.EDGE_PX)
@@ -92,11 +110,11 @@ def _paint_camera(painter, overlay) -> None:
     QPointF, _QRectF, Qt, QColor, QPen, _QRadial = _qt()
     x, y, w, h = _model.CAMERA
     frame = _QRectF(x, y, w, h)
-    painter.setPen(QPen(QColor("#1c3a4a"), 1))
-    painter.setBrush(QColor("#071018"))
+    painter.setPen(QPen(QColor(LINE_ACC), 1))
+    painter.setBrush(QColor(TILE))
     painter.drawRoundedRect(frame, _model.CAMERA_RADIUS, _model.CAMERA_RADIUS)
 
-    label = QColor("#7f97a6")
+    label = QColor(MUTED)
     painter.setPen(label)
     font = painter.font()
     font.setPixelSize(10)
@@ -104,7 +122,7 @@ def _paint_camera(painter, overlay) -> None:
     painter.drawText(QPointF(x + 16, y + 24), _model.camera_label(overlay._camera_available))
 
     if overlay.gestures_paused:
-        painter.setPen(QColor("#7f97a6"))
+        painter.setPen(QColor(MUTED))
         painter.drawText(QPointF(x + 16, y + 44), _model.PAUSED_WORD)
         return
 
@@ -112,7 +130,7 @@ def _paint_camera(painter, overlay) -> None:
     palm = _hand.hand_point(hand)
     pose = _hand.pose_of(hand)
     spread = 0.95
-    cyan = QColor("#00d4ff")
+    cyan = QColor(CYAN)
     pen = QPen(cyan, 2)
     pen.setCapStyle(Qt.PenCapStyle.RoundCap)
     painter.setPen(pen)
@@ -164,12 +182,12 @@ def _paint_words(painter, overlay) -> None:
 
     font.setPixelSize(11)
     painter.setFont(font)
-    painter.setPen(QColor("#00d4ff"))
+    painter.setPen(QColor(CYAN))
     painter.drawText(QPointF(*_model.LABEL_AT), _model.status_word(overlay.state))
 
     font.setPixelSize(13)
     painter.setFont(font)
-    painter.setPen(QColor("#eaf6ff"))
+    painter.setPen(QColor(TEXT))
     transcript = _model.lines_for(overlay.transcript, 74)[:3]
     for index, line in enumerate(transcript):
         painter.drawText(QPointF(_model.TRANSCRIPT_AT[0] - _half_width(painter, line),
@@ -177,7 +195,7 @@ def _paint_words(painter, overlay) -> None:
 
     font.setPixelSize(11)
     painter.setFont(font)
-    painter.setPen(QColor("#7f97a6"))
+    painter.setPen(QColor(MUTED))
     answer = _model.lines_for(overlay.answer, 96)[:2]
     for index, line in enumerate(answer):
         painter.drawText(QPointF(_model.ANSWER_AT[0] - _half_width(painter, line),

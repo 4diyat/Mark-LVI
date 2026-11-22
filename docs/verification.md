@@ -566,6 +566,28 @@ membaca kode.
       tersendat: `push_visemes` sekarang melewati antrean Qt, dan antrean yang
       menumpuk akan terlihat sebagai mulut yang tertinggal.
 
+### Visual sesuai lembar desain
+
+Buka `docs/mockups/jarvis_design_system` / `jarvis-desktop-spec.html`
+berdampingan dengan aplikasi, lalu periksa enam permukaan ini.
+
+- [ ] **Board 25, dialog konfirmasi.** Latar biru-gelap `#0C1B26`, **border
+      amber**, sudut membulat 16 px, dan **garis amber 3 px di tepi kiri**.
+      Tombol "Konfirmasi" harus **berisi amber** dengan teks gelap, bukan
+      transparan. Dialog **520 px** lebar. Tidak boleh ada huruf monospace.
+- [ ] **Board 1, wajah melayang.** Warna wajah harus **sama** dengan cincin orb
+      di sebelahnya (cyan `#4FD8F0`), bukan biru. Saat senyap warnanya redup
+      `#8FA9B5`, **bukan merah muda**.
+- [ ] **Board 6, overlay suara.** Glow tepi, garis bingkai, label
+      "MENDENGARKAN", dan orb semuanya cyan `#4FD8F0` — warnanya harus identik
+      dengan orb di board 1.
+- [ ] **Board 5 / 23 / 27 / 28, panel baki.** Latar `#0A1722`, kartu `#081520`,
+      aksen cyan, peringatan amber.
+- [ ] **Board 2, toast.** Kartu `#0C1B26` dengan border `#17323F`.
+- [ ] Kalau ada permukaan yang warnanya beda dari yang lain, curigai
+      `ui/theme.py` — modul itu menyimpan palet lama dan **tidak boleh** dibaca
+      permukaan mana pun. `tests/test_visual_conformance.py` menegakkannya.
+
 ### Kamera keamanan
 
 > **Tidak ada saklar di layar.** Drawer CONTROLS tidak digambar oleh mockup

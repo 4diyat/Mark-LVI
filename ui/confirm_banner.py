@@ -20,7 +20,30 @@ from PyQt6.QtWidgets import (
 )
 
 from core.i18n import label as _t
-from ui.theme import C
+
+# ── board 25's tokens, declared here rather than borrowed ───────────────────
+#
+# THE HUD PALETTE IS NOT THIS DIALOG'S PALETTE. `ui.theme.C` still carries the
+# #171719 / #ff6b00 look of the full-screen window that ambient mode replaced.
+# Every ambient surface that draws (`orb_paint`, `toast_card`, `tray_pages`,
+# `voice_paint`, `face_canvas`) declares the design system's numbers directly,
+# and this module was the last one reading `C` — which is exactly why it was
+# the one surface that looked nothing like its artboard.
+#
+# Values are copied from `docs/mockups/build.py`, not invented: BASE, TEXT,
+# MUTED, AMBER and LINE are the sheet's tokens, and #0C1B26 is the artboard's
+# own card fill for the risk dialog.
+BASE = "#04080D"
+PANEL = "#0A1722"
+LINE = "#17323F"
+LINE_ACC = "#2A6477"
+AMBER = "#F5A524"
+TEXT = "#E6F4F8"
+MUTED = "#8FA9B5"
+AMBER_BG = "#0C1B26"
+#: `FONT` in the sheet is 'Space Grotesk','Segoe UI',Arial — a fallback chain,
+#: because Space Grotesk is not installed on every machine.
+FONT = "Space Grotesk, Segoe UI, Arial"
 
 # ── board 25's two constants ────────────────────────────────────────────────
 #
@@ -96,34 +119,79 @@ class ConfirmBanner(_HudOverlay):
     tool round trips on every power command."""
 
     answered = pyqtSignal(bool)
-    _OW = 430
+
+    def resizeEvent(self, event):                   # noqa: N802 — Qt's name
+        """Keep the risk bar against the left edge, inset like the artboard.
+
+        Board 25 insets it 18 px from the dialog's top and bottom, so it reads
+        as a marker rather than a frame. Pinned here rather than in the layout
+        because it must not take part in the column: it is an edge decoration,
+        and a layout row would push the 28 px text inset sideways.
+        """
+        # `super()` is guarded because `resizeEvent` is not on every Qt binding
+        # this project can be run against, and a decoration failing to place
+        # itself must never be the reason the dialog cannot be shown at all.
+        try:
+            super().resizeEvent(event)
+        except AttributeError:
+            pass
+        bar = getattr(self, "_risk_bar", None)
+        if bar is not None:
+            bar.setGeometry(1, 18, 3, max(0, self.height() - 36))
+    #: Board 25's dialog is 520 px wide. This used to be 430, which is 90 px
+    #: narrower than the artboard — the title wrapped earlier than the drawing
+    #: and the two buttons sat closer together than the sheet shows.
+    _OW = 520
 
     def __init__(self, title: str = "", detail: str = "", parent=None):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        # BOARD 25'S OWN TOKENS, not the legacy HUD palette.
+        #
+        # This used `rgba(14, 3, 0, 250)` — near-black with a red cast — a
+        # `AMBER` (#ff6b00) orange border and a 6 px radius. The artboard draws
+        # #0C1B26, an AMBER border, a 16 px radius and a 3 px amber bar inset
+        # 18 px down the left edge. Four differences at once is not a shade
+        # apart, it is a different dialog: the HUD palette belongs to the
+        # window that no longer exists, and this is the one surface a user is
+        # asked to trust with an irreversible action.
+        # The 3 px risk bar is NOT a CSS `border-left`. Qt's stylesheet engine
+        # only paints per-side borders on some widget classes, and a
+        # `QWidget` with `WA_StyledBackground` is one of the ones where it
+        # silently draws nothing — `ASSUMPTIONS` A5 makes that bar load-bearing
+        # ("bahaya dibedakan lewat bentuk: garis kiri 3 px"), so it is a real
+        # widget pinned to the left edge instead of a hope about the renderer.
         self.setStyleSheet(f"""
             ConfirmBanner {{
-                background: rgba(14, 3, 0, 250);
-                border: 1px solid {C.ACC};
-                border-radius: 6px;
+                background: {AMBER_BG};
+                border: 1px solid {AMBER};
+                border-radius: 16px;
             }}
         """)
         self.setFixedWidth(self._OW)
 
+        self._risk_bar = QWidget(self)
+        self._risk_bar.setFixedWidth(3)
+        self._risk_bar.setStyleSheet(
+            f"background: {AMBER}; border-radius: 1.5px;")
+
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(20, 16, 20, 16)
-        lay.setSpacing(8)
+        # Artboard 25: every element is inset 28 px from the dialog edge, and
+        # the rows are 20–24 px apart. The old 20/16 padding drew the title 8 px
+        # left of where the sheet puts it and pulled the whole column up.
+        lay.setContentsMargins(28, 22, 28, 22)
+        lay.setSpacing(10)
 
         hdr = QLabel(_t("ui.confirm.heading"))
-        hdr.setFont(QFont("Courier New", 11, QFont.Weight.Bold))
-        hdr.setStyleSheet(f"color: {C.ACC}; background: transparent;")
+        hdr.setFont(QFont(FONT, 10, QFont.Weight.DemiBold))
+        hdr.setStyleSheet(f"color: {AMBER}; background: transparent;")
         lay.addWidget(hdr)
 
         ttl = QLabel(title)
         ttl.setTextFormat(Qt.TextFormat.PlainText)
         ttl.setWordWrap(True)
-        ttl.setFont(QFont("Courier New", 10, QFont.Weight.Bold))
-        ttl.setStyleSheet(f"color: {C.TEXT}; background: transparent;")
+        ttl.setFont(QFont(FONT, 13, QFont.Weight.Medium))
+        ttl.setStyleSheet(f"color: {TEXT}; background: transparent;")
         lay.addWidget(ttl)
         self._title_label = ttl
 
@@ -133,8 +201,8 @@ class ConfirmBanner(_HudOverlay):
         never = QLabel(CANNOT_UNDO)
         never.setTextFormat(Qt.TextFormat.PlainText)
         never.setWordWrap(True)
-        never.setFont(QFont("Courier New", 8))
-        never.setStyleSheet(f"color: {C.TEXT_MED}; background: transparent;")
+        never.setFont(QFont(FONT, 7))
+        never.setStyleSheet(f"color: {MUTED}; background: transparent;")
         lay.addWidget(never)
         self._never_label = never
 
@@ -146,8 +214,8 @@ class ConfirmBanner(_HudOverlay):
         dtl = QLabel(detail)
         dtl.setTextFormat(Qt.TextFormat.PlainText)
         dtl.setWordWrap(True)
-        dtl.setFont(QFont("Courier New", 8))
-        dtl.setStyleSheet(f"color: {C.TEXT_MED}; background: transparent;")
+        dtl.setFont(QFont(FONT, 7))
+        dtl.setStyleSheet(f"color: {MUTED}; background: transparent;")
         dtl.setVisible(bool(detail))
         lay.addWidget(dtl)
         self._detail_label = dtl
@@ -158,41 +226,50 @@ class ConfirmBanner(_HudOverlay):
         # "who asked for this?" — not "what is JARVIS about to do", which the
         # title already says.
         self._origin_header = QLabel(_t("ui.confirm.origin").upper())
-        self._origin_header.setFont(QFont("Courier New", 8, QFont.Weight.Bold))
+        self._origin_header.setFont(QFont(FONT, 7, QFont.Weight.DemiBold))
         self._origin_header.setStyleSheet(
-            f"color: {C.TEXT_MED}; background: transparent;")
+            f"color: {MUTED}; background: transparent;")
         lay.addWidget(self._origin_header)
 
         self._origin_label = QLabel("")
         self._origin_label.setTextFormat(Qt.TextFormat.PlainText)
         self._origin_label.setWordWrap(True)
-        self._origin_label.setFont(QFont("Courier New", 8))
+        self._origin_label.setFont(QFont(FONT, 7))
         self._origin_label.setStyleSheet(
-            f"color: {C.TEXT}; background: transparent;")
+            f"color: {TEXT}; background: transparent;")
         lay.addWidget(self._origin_label)
 
         row = QHBoxLayout(); row.setSpacing(8)
 
         yes = QPushButton(_t("ui.confirm.button"))
-        yes.setFixedHeight(32)
-        yes.setFont(QFont("Courier New", 9, QFont.Weight.Bold))
+        # ARTBOARD 25's PILL: 150×40, radius h/2, FILLED with the accent and
+        # dark text on it (`pill_btn(..., primary=True)`). The old button was
+        # 32 px tall with a transparent body and a 3 px radius, so the one
+        # action the dialog exists for was drawn like a secondary one.
+        yes.setFixedHeight(40)
+        yes.setMinimumWidth(150)
+        yes.setFont(QFont(FONT, 9, QFont.Weight.DemiBold))
         yes.setCursor(Qt.CursorShape.PointingHandCursor)
         yes.setStyleSheet(f"""
-            QPushButton {{ background: transparent; color: {C.ACC};
-                border: 1px solid {C.ACC}; border-radius: 3px; }}
-            QPushButton:hover {{ background: rgba(255,107,0,40); }}
+            QPushButton {{ background: {AMBER}; color: {BASE};
+                border: 1px solid {AMBER}; border-radius: 20px; }}
+            QPushButton:hover {{ background: #FFB944; border-color: #FFB944; }}
+            QPushButton:focus {{ border: 1px solid {TEXT}; }}
         """)
         yes.clicked.connect(lambda: self.answered.emit(True))
         row.addWidget(yes)
 
         no = QPushButton(_t("ui.cancel"))
-        no.setFixedHeight(32)
-        no.setFont(QFont("Courier New", 9))
+        # The artboard's secondary pill: 130×40, transparent, hairline border.
+        no.setFixedHeight(40)
+        no.setMinimumWidth(130)
+        no.setFont(QFont(FONT, 9))
         no.setCursor(Qt.CursorShape.PointingHandCursor)
         no.setStyleSheet(f"""
-            QPushButton {{ background: transparent; color: {C.TEXT_MED};
-                border: 1px solid {C.BORDER}; border-radius: 3px; }}
-            QPushButton:hover {{ color: {C.TEXT}; border-color: {C.BORDER_B}; }}
+            QPushButton {{ background: transparent; color: {TEXT};
+                border: 1px solid {LINE_ACC}; border-radius: 20px; }}
+            QPushButton:hover {{ background: {PANEL}; border-color: {TEXT}; }}
+            QPushButton:focus {{ border: 1px solid {TEXT}; }}
         """)
         no.clicked.connect(lambda: self.answered.emit(False))
         row.addWidget(no)
@@ -205,10 +282,10 @@ class ConfirmBanner(_HudOverlay):
         # legend rather than prose. `setAlignment` on a label inside a vertical
         # layout is enough: no second row of buttons to hang it off.
         self._keys_label = QLabel(KEYS_HINT)
-        self._keys_label.setFont(QFont("Courier New", 8))
+        self._keys_label.setFont(QFont(FONT, 7))
         self._keys_label.setAlignment(Qt.AlignmentFlag.AlignRight)
         self._keys_label.setStyleSheet(
-            f"color: {C.TEXT_MED}; background: transparent;")
+            f"color: {MUTED}; background: transparent;")
         lay.addWidget(self._keys_label)
 
         # Default focus on CANCEL: if someone hits Enter without reading, the

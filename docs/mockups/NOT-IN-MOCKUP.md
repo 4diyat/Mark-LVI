@@ -673,3 +673,65 @@ that test now installs a Qt.
 cannot run in this sandbox. What is proven is that no widget is touched from a
 non-owning thread any more, which is the condition that produced it — and
 `hang.txt` from #68 will confirm it on the desktop if anything is left.
+
+## The look that was not the sheet
+
+The report was "the visual result differs from the design mockup". It did, and
+the audit found four surfaces drawing something the sheet does not: two of them
+the same *kind* of mistake, two of them drift.
+
+**The whole ambient shell had already moved to the sheet's palette.** `orb_paint`,
+`toast_card`, `tray_pages`, `voice_paint`, `face_canvas` and `confirm_banner`
+each declare their colours directly from `docs/mockups/build.py`, and
+`ui/tray_pages.py` even says so in a comment. What was wrong was the exceptions:
+
+**1. The confirmation dialog was in a different application.** `ui/confirm_banner.py`
+read `ui.theme.C` — the palette of the full-screen window ambient mode replaced
+— and drew `rgba(14, 3, 0, 250)`, a near-black body with a red cast, behind a
+`#ff6b00` orange border at a 6 px radius, in Courier New. Board 25 draws
+`#0C1B26`, an amber `#F5A524` border, a 16 px radius, a 3 px amber bar inset
+18 px, and the design system's font. It was also **430 px** wide where the
+artboard is **520**, and its confirm button was drawn transparent and 32 px tall
+where `pill_btn(primary=True)` is a filled 150×40 pill with dark text on it.
+
+`tests/test_blocking_surfaces.py` pinned `430` — a number that was never in the
+sheet, so the test would have failed the correct value. It now names the
+artboard.
+
+**2. The floating face was blue inside a cyan orb.** `ui/face_canvas.py` passed
+`C.PRI` (`#4b9fff`), `C.WHITE` (`#f5f5f7`) and `C.MUTED_C` (`#ff3366`) to
+`HoloAvatar.paint`, so a 260 px head drew blue rings inside the `#4FD8F0` orb
+rings beside it, and went **pink** when muted. It now takes `CYAN` and `MUTED`
+from `ui.orb_paint` — the same two values the ring uses — and `#BFF6FF` for the
+iris.
+
+**3. Board 6 was a different cyan in nine places.** `ui/voice_paint.py` used
+`#00d4ff` for the edge glow, the four border lines, the "MENDENGARKAN" label and
+the orb — a lighter, bluer cyan than the `#4FD8F0` every other artboard uses. Its
+camera tile border was `#1c3a4a` where the sheet draws `LINE_ACC` (`#2A6477`),
+its labels `#7f97a6` where the sheet draws `MUTED`, and its transcript
+`#eaf6ff` where the sheet draws `TEXT`. All now come from named tokens.
+
+**4. The bar that Qt would not draw.** A5 in the sheet makes board 25's 3 px
+left bar load-bearing — it is how "berisiko" is told apart from "aman" without
+a red the palette does not have. It was written as a CSS `border-left`, which
+Qt does not reliably paint on a `QWidget` with `WA_StyledBackground`. It is now
+a real widget, 3 px wide, pinned 18 px from each end by `resizeEvent`.
+
+**Why the suite never noticed.** Every existing test asked what a surface
+*said*. None asked what it *looked like*, and the palette was not in any
+assertion. `tests/test_visual_conformance.py` is that missing test: it reads
+the sheet's tokens out of `build.py`, walks the six drawing modules with AST,
+and fails on any colour outside the design system, on any read of the retired
+`ui.theme.C`, and on each of board 25's numbers by name. Comments are stripped
+before the colour audit — the first version failed on its own documentation,
+which is the right failure for the wrong reason.
+
+Thirteen mutations, all caught: the near-black body, the orange border, the
+6 px radius, Courier New, the transparent button, 430 px, the blue face, the
+pink mute, `#00d4ff`, `#1c3a4a`, the stylesheet bar, the missing inset, and a
+surface reading `ui.theme.C` again.
+
+**Not proven here.** The rendered pixels. Qt cannot run in this sandbox, so
+`docs/verification.md` gains a manual pass that compares the six surfaces to
+the sheet side by side.
