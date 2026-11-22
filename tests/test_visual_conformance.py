@@ -51,26 +51,49 @@ TOK = _sheet_tokens()
 # ── the retired palette must not reach an ambient surface ───────────────────
 
 def _without_comments(source: str) -> str:
-    """The source with `#` comments and docstrings removed.
+    """The source with comments and docstrings removed, strings left intact.
 
     A hex value in prose describes the design; a hex value in code draws it.
     Only the second kind is the subject of the colour audit.
-    """
-    import io
-    import tokenize
 
-    out = []
-    try:
-        for tok in tokenize.generate_tokens(io.StringIO(source).readline):
-            if tok.type == tokenize.COMMENT:
-                continue
-            if tok.type == tokenize.STRING and tok.string.lstrip("rbuRBU").startswith(
-                    ('"""', "\'\'\'")):
-                continue
-            out.append(tok.string)
-    except (tokenize.TokenError, IndentationError):
-        return source
-    return " ".join(out)
+    WHY NOT `tokenize`, WHICH WAS THE FIRST VERSION AND COST A CI RUN.
+        PEP 701 (Python 3.12) tokenizes f-strings into separate tokens, so
+        `f"background: {AMBER_BG};"` comes back as several pieces and joining
+        them turns the source into something that no longer contains the text
+        under test. It passed on 3.11 and failed on all three 3.12 runners.
+
+    WHY NOT "CUT EVERY LINE AT `#`", WHICH WAS THE SECOND VERSION.
+        `BASE = "#04080D"` is a string containing a hash. The second attempt
+        cut it in half and the test then failed on the very constant it was
+        written to check. A quote-aware scan is small and has no version-
+        dependent behaviour, which is the whole requirement here.
+    """
+    out, in_doc, quote = [], False, None
+    for line in source.splitlines():
+        stripped = line.strip()
+        if not in_doc and quote is None and stripped.startswith(('"""', "\'\'\'")):
+            if stripped.count(stripped[:3]) >= 2 and len(stripped) > 3:
+                continue                     # a one-line docstring
+            in_doc = True
+            continue
+        if in_doc:
+            if stripped.endswith(('"""', "\'\'\'")):
+                in_doc = False
+            continue
+        kept, index = [], 0
+        while index < len(line):
+            char = line[index]
+            if quote is None and char in "\"'":
+                quote = char
+            elif quote is not None and char == quote:
+                quote = None
+            elif quote is None and char == "#":
+                break
+            kept.append(char)
+            index += 1
+        out.append("".join(kept))
+        quote = None                          # a quote never spans a line here
+    return "\n".join(out)
 
 
 def _ambient_sources() -> list[Path]:
@@ -313,3 +336,49 @@ def test_the_risk_bar_survives_a_resize():
         for name in [k for k in sys.modules if k.startswith("PyQt6")]:
             sys.modules.pop(name, None)
         sys.modules.update(saved)
+
+
+# ── the stripper belongs to the FORMATTING, so it is tested as such ─────────
+
+def test_the_comment_stripper_keeps_code_and_drops_prose():
+    """This function caused a CI failure on all three 3.12 runners.
+
+    The first version used `tokenize`, and PEP 701 breaks f-strings into
+    separate tokens there; the second cut every line at `#`, which decapitated
+    `BASE = "#04080D"` — the constant the audit exists to check. Both are the
+    same lesson: the stripper is only correct if a hash inside a string is not
+    a comment, and no tokenizer is needed to say so.
+    """
+    sample = (
+        '"""Module docstring with #00d4ff in it."""\n'
+        'BASE = "#04080D"\n'
+        'AMBER = "#F5A524"  # the sheet\'s warning\n'
+        '# a whole-line comment mentioning #1c3a4a\n'
+        'x = f"background: {BASE};"\n'
+    )
+    kept = _without_comments(sample)
+    assert '#04080D' in kept, "a colour inside a string was treated as a comment"
+    assert '#F5A524' in kept
+    assert '"background: {BASE};"' in kept, (
+        "an f-string was mangled — the failure PEP 701 causes on Python 3.12")
+    assert 'the sheet' not in kept, "a trailing comment survived"
+    assert '#1c3a4a' not in kept, "a whole-line comment survived"
+    # Docstrings are dropped too. That is tidiness, not safety: every audit
+    # assertion looks for code that DRAWS, and prose cannot draw. Left in, a
+    # docstring could only ever add text that no assertion matches.
+    assert 'Module docstring' not in kept
+
+
+def test_the_stripper_does_not_depend_on_the_python_version():
+    """No `tokenize`, no `ast` unparse — both changed behaviour across 3.11/3.12."""
+    # The AST, not the text: the docstring of the function being checked
+    # explains why `tokenize` was removed, and a text search would fail on its
+    # own explanation — which is what the first version of this test did.
+    tree = ast.parse((ROOT / "tests" / "test_visual_conformance.py")
+                     .read_text(encoding="utf-8"))
+    fn = next(n for n in ast.walk(tree)
+              if isinstance(n, ast.FunctionDef) and n.name == "_without_comments")
+    names = {node.id for node in ast.walk(fn) if isinstance(node, ast.Name)}
+    attrs = {node.attr for node in ast.walk(fn) if isinstance(node, ast.Attribute)}
+    assert "tokenize" not in names and "tokenize" not in attrs, (
+        "the stripper tokenizes again; PEP 701 makes that version-dependent")
