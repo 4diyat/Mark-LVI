@@ -662,7 +662,13 @@ def _install_qt() -> dict[str, types.ModuleType]:
                 raise AttributeError(name)
             return _PathEnum(self._path + (name,))
 
-    _KEY_ROOTS = ("Key", "KeyboardModifier")
+    # MOUSE BUTTONS ARE PATHS, LIKE KEYS. `Qt.MouseButton` used to fall into
+    # `_Enum`, whose `__eq__` is False even against itself — so
+    # `event.button() == Qt.MouseButton.RightButton` was ALWAYS false and no
+    # code could tell a right click from a left one. The stub made a real bug
+    # invisible: the canvas treated every press as a left click, and a test
+    # could not have caught it.
+    _KEY_ROOTS = ("Key", "KeyboardModifier", "MouseButton")
     core.Qt = _Enum()
     for _root in _KEY_ROOTS:
         setattr(core.Qt, _root, _PathEnum((_root,)))

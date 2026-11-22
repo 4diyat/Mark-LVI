@@ -149,7 +149,8 @@ stack-neutral dan berlaku apa adanya untuk implementasi Python.
 | Gerbang eksekusi: klasifikasi → catat → jalan/tahan | `core/action_gate.py` | `tests/test_action_gate.py` |
 | Tingkat per panggilan (`computer_settings` ≠ satu tingkat) | `core/tool_risk.py` | `tests/test_tool_risk.py` |
 | Sambungan gate ke `main.py` + daftar aksi berpagar sendiri | `main.py` | `tests/test_gate_wiring.py` |
-| Orb overlay 146 px (board 1), hanya cincin yang bisa diklik, bisa digeser; meredup di Fokus/Senyap | `ui/orb_overlay.py`, `ui/orb_place.py`, `ui/orb_canvas.py` | `tests/test_orb_overlay_board1.py`, `tests/test_orb_place.py` |
+| Orb overlay 146 px (board 1), hanya cincin yang bisa diklik; meredup di Fokus/Senyap | `ui/orb_overlay.py`, `ui/orb_place.py`, `ui/orb_canvas.py` | `tests/test_orb_overlay_board1.py`, `tests/test_orb_place.py` |
+| Board 4: klik kiri → panel, klik kanan → menu cepat, drag menempel ke tepi | `ui/ambient_shell.py`, `ui/orb_snap.py` | `tests/test_orb_board4.py` |
 | Command bar Ctrl+Space, Esc mengembalikan fokus | `ui/command_bar.py` | `tests/test_command_bar.py` |
 | Sambungan mode → orb, chord, dan baki | `ui/lifecycle.py`, `memory/config_manager.py` | `tests/test_presence_wiring.py` |
 
@@ -203,3 +204,19 @@ salinan yang berbeda perilaku.
   dipakai untuk notifikasi OS — keduanya menjawab pertanyaan berbeda: notifikasi
   OS untuk "jawabannya sudah jadi saat Anda di aplikasi lain", kartu untuk
   "berapa sisa kuota hari ini".
+
+- **Board 4 mengubah arti klik kiri pada orb, dan itu disengaja.** Sebelumnya
+  klik kiri membuka **command bar** (board 3, satu baris). Board 4 menulis
+  "KLIK KIRI — buka panel baki", jadi klik kiri sekarang membuka panel 460×660.
+  Command bar tidak kehilangan jalannya: Ctrl+Space tetap ada (board 3), dan
+  panel sendiri punya kolom perintah. Catatan lama di board 1 yang menyebut orb
+  sebagai pintu command bar sudah tidak berlaku.
+- **Klik kanan punya menu sendiri: Aktif / Fokus / Senyap, Riwayat, Privasi,
+  Keluar.** Artboard hanya menulis "menu cepat" tanpa daftar isi, jadi menu itu
+  sengaja pendek: apa yang orang minta tepat di orb dan tidak lebih. Menu dibuat
+  saat diminta dan dibuang saat ditutup — popup yang di-cache adalah popup yang
+  menampilkan centang kemarin.
+- **Drag menempel ke tepi dengan ambang 64 px.** Drop dalam 64 px dari sebuah
+  sisi duduk di sisi itu pada jarak 24 px; drop di tengah tetap di tempat.
+  Menempel saat pointer masih bergerak membuat orb melompat dari bawah tangan,
+  jadi snap hanya terjadi saat dilepas.

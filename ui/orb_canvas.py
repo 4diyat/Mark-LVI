@@ -31,6 +31,23 @@ from __future__ import annotations
 # painter.
 from ui.orb_paint import OVERLAY_PX, appearance, paint_overlay_box, paint_ring
 
+def _is_right(event) -> bool:
+    """Whether this press was the right button. False when it cannot be read.
+
+    FAILING TOWARDS THE LEFT BUTTON is deliberate: an unreadable button on a
+    platform whose events this sandbox cannot see should still open the panel.
+    A silent menu is recoverable with a chord; a dead orb is not.
+    """
+    try:
+        from PyQt6.QtCore import Qt
+
+        return event.button() == Qt.MouseButton.RightButton
+    except Exception as e:                          # noqa: BLE001
+        print(f"[JARVIS] Orb overlay: could not read the mouse button "
+              f"({type(e).__name__}: {e}); treating it as a left click")
+        return False
+
+
 def _painter_for(widget, event=None):
     """A `QPainter` on `widget` — or the one handed in as `event.painter`.
 
@@ -110,6 +127,15 @@ def _build_canvas(parent, owner):
             """
             try:
                 pos = event.position()
+                x, y = int(pos.x()), int(pos.y())
+                # WHICH BUTTON, BEFORE ANYTHING ELSE. Board 4 gives the right
+                # button its own job, and the canvas only ever handled presses —
+                # it treated every one as the left button, so a right click
+                # opened the panel and the menu was unreachable.
+                if _is_right(event):
+                    if owner.handle_click(x, y, button="right"):
+                        event.accept()
+                    return
                 gx = gy = None
                 try:
                     glob = event.globalPosition()
@@ -119,7 +145,7 @@ def _build_canvas(parent, owner):
                     # this session. Said out loud rather than swallowed.
                     print(f"[JARVIS] Orb overlay: no global press point, drag "
                           f"disabled ({type(e).__name__}: {e})")
-                owner.begin_drag(int(pos.x()), int(pos.y()), gx, gy)
+                owner.begin_drag(x, y, gx, gy)
                 event.accept()
             except Exception as e:                  # noqa: BLE001
                 print(f"[JARVIS] Orb overlay: press not handled — "

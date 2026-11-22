@@ -50,6 +50,8 @@ from ui.orb_paint import (                      # noqa: F401 — re-exported
 # lines: the size, the clickable circle, the mask and the remembered drag are
 # pure functions with no display in them, and they are what a test can hold.
 # Re-exported here because every caller has always asked this module.
+from ui.orb_snap import snap_to_edge
+
 from ui.orb_place import (                      # noqa: F401 — re-exported
     POSITION_KEY, corner_anchor, hit_region, inside_hit_region, overlay_mask,
     read_position, save_position, screen_area as _screen_area, window_size,
@@ -119,9 +121,16 @@ class OrbOverlay:
     """
 
     def __init__(self, mode: str = "active",
-                 on_click: Callable[[], None] | None = None):
+                 on_click: Callable[[], None] | None = None,
+                 on_menu: Callable[[], None] | None = None):
         self._mode = mode
         self._on_click = on_click
+        # Board 4: "KLIK KANAN — menu cepat". Optional, because a caller that
+        # only wants the panel must not be forced to build a menu, and a right
+        # click with no handler is consumed and does nothing — it must not fall
+        # through to the left handler, which would make the same click open the
+        # panel on a machine with no menu.
+        self._on_menu = on_menu
         self._window = None
         self._canvas = None
         self._state = "idle"
@@ -446,28 +455,50 @@ class OrbOverlay:
             return False
         here = self.position
         if here is not None:
+            # BOARD 4: "menempel ke tepi". The snap runs on RELEASE, not during
+            # the drag: snapping while the pointer moves makes the orb jump out
+            # from under the hand, which reads as a stuck window.
+            area = _screen_area()
+            if area is not None:
+                here = snap_to_edge(area, here[0], here[1], OVERLAY_PX)
+                try:
+                    self._window.move(*here)
+                except Exception as e:              # noqa: BLE001
+                    print(f"[JARVIS] Orb overlay: could not settle on an edge — "
+                          f"{type(e).__name__}: {e}")
             save_position(*here)
         # TRUE EVEN IF THE POSITION COULD NOT BE READ. "Was this a drag" decides
         # whether the release also counts as a click, and that answer must not
         # depend on whether the window manager let us query the window.
         return True
 
-    def handle_click(self, x: int, y: int) -> bool:
+    def handle_click(self, x: int, y: int, button: str = "left") -> bool:
         """Route one click. True if it landed on the ring and was handled.
 
-        Separate from the Qt event so the rule — a click three pixels outside
-        the ring belongs to the desktop, not to us — can be tested without a
-        display.
+        Board 4 gives the two buttons two jobs — left opens the tray panel,
+        right opens the quick menu — so the button is part of the question. It
+        is a STRING rather than a Qt enum so this rule stays testable without a
+        display; the canvas translates.
+
+        A right click with no handler returns False and does NOT fall through to
+        the left one: the same press opening the panel on a machine with no menu
+        is worse than the press doing nothing.
         """
         if not inside_hit_region(x, y, self._mode):
             return False
-        cb = self._on_click
+        cb = self._on_menu if str(button).lower() == "right" else self._on_click
         if cb is None:
             return False
         try:
             cb()
             return True
         except Exception as e:                      # noqa: BLE001
-            print(f"[JARVIS] Orb overlay: click handler failed — "
+            print(f"[JARVIS] Orb overlay: {button} click handler failed — "
                   f"{type(e).__name__}: {e}")
             return False
+
+    def menu_point(self) -> tuple[int, int]:
+        """Where a quick menu should open: the window's top-left, in screen
+        coordinates. The caller positions its own menu; this is the one place
+        that knows it should be next to the orb rather than at the cursor."""
+        return self.position or (0, 0)

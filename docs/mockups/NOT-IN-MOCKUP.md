@@ -29,7 +29,7 @@ copy of the old code is in git.
 | 1 | Orb overlay — Siaga & area klik | a ring in a 146 px box on the desktop; only the ring takes clicks | `ui/orb_overlay.py`, `ui/orb_place.py`, `ui/orb_canvas.py` |
 | 2 | Toast — antrean & batas harian | three cards at 340 px, the fourth replaces the oldest and is counted; 8 s; never takes focus | `ui/toast_queue.py`, `ui/toast_card.py`, `ui/toast_stack.py` |
 | 3 | Command bar — Ctrl+Space | one line, Esc gives focus back | `ui/command_bar.py` |
-| 4 | Orb overlay — interaksi & status | the same ring, five states | `ui/orb_paint.py` |
+| 4 | Orb overlay — interaksi & status | left click opens the panel, right click a short menu, a drag snaps to an edge; four states read from the orb itself | `ui/orb_paint.py`, `ui/ambient_shell.py`, `ui/orb_snap.py` |
 | 5 | Panel baki sistem | the 460×660 tray panel: three segments, four quick actions with chords, today's suggestion, permissions, one line to type in | `ui/tray_panel.py`, `ui/tray_pages.py`, `ui/tray_panel_model.py` |
 | 6 | Overlay suara + kamera gestur | listening overlay, gesture camera tile | **proposal — see below** |
 | 23 | Fokus — toast ditahan | held notifications, counted `core/presence_mode`, shown by the same stack | `ui/toast_queue.py`, `ui/toast_stack.py` |

@@ -92,6 +92,10 @@ def test_the_package_has_exactly_the_mockup_modules():
         # `toast_stack`. Three files for the same reason the tray panel has
         # three: each answers a different question.
         "toast_card.py", "toast_stack.py",
+        # Board 4's edge snap: what a dropped orb settles against. Pure
+        # arithmetic about a screen and a window — the canvas keeps the pointer,
+        # this keeps the rule, and that split is what makes a drag testable.
+        "orb_snap.py",
     }
     present = {p.name for p in _modules()}
     assert present == expected, (
