@@ -138,7 +138,7 @@ def run_deeplink(shell: "AmbientShell") -> bool:
 # `main.py` and the tests call these through `lifecycle`, and the surface code
 # lives in a module of its own so this file stays readable. One import line is
 # the whole cost of the split on every caller's side.
-from ui.voice_wiring import start_voice_overlay
+from ui.voice_wiring import start_voice_overlay, stop_voice_overlay
 
 from ui.ambient_shell import (                      # noqa: F401
     BAR_CHORD, apply_presence_mode, current_presence, cycle_presence_mode,
@@ -509,6 +509,11 @@ def quit_app(shell: "AmbientShell", code: int = 0) -> None:
             getattr(target, stop_name)()
         except Exception as e:                      # noqa: BLE001
             note_quiet(f"could not stop {attr} — {type(e).__name__}: {e}")
+    # THE CAMERA LAST, AND BEFORE THE APP: `_hand_feed` owns a worker thread
+    # that holds the device; quitting the event loop first would leave it
+    # running while the process tears down, and a camera light that stays on
+    # after Quit is the one failure a user cannot forgive.
+    stop_voice_overlay(shell)
     stop_summon_hotkey(shell)
     stop_bar_hotkey(shell)
     try:
