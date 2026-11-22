@@ -256,3 +256,121 @@ def test_the_bar_is_not_transparent_to_the_keyboard(bar):
     which reads as a bar that ignores typing."""
     source = (ROOT / "ui" / "command_bar.py").read_text(encoding="utf-8")
     assert "WA_ShowWithoutActivating, False" in source
+
+# ── board 3: the box is drawn, and the rows are the gate's ───────────────────
+
+def test_the_bar_draws_board_3s_box(bar):
+    """It used to be a translucent window with a `QLineEdit` in it.
+
+    A `QLineEdit` alone is not board 3: the artboard draws a filled box, a
+    gradient, a 16 px radius, a cyan rule and three rows. `paint_bar` is the
+    function that draws them, and it must survive being called — a paint
+    exception on a window opened by a global chord is an invisible failure.
+    """
+    from PyQt6.QtGui import QPainter
+
+    b = bar.CommandBar()
+    assert b.open() is True, b.error
+    b.set_hint("Konteks: RAB Q4 · anggaran.xlsx")
+    bar.paint_bar(QPainter(b._window), b._window)      # must not raise
+
+
+def test_the_bar_is_the_artboards_geometry_not_an_invented_one(bar):
+    """Every number is `n03()`'s: 640 × 184, a 16 px radius, rows 26 px apart."""
+    g = bar.GEOMETRY
+    assert (bar.BAR_WIDTH, bar.BAR_HEIGHT) == (640, 184)
+    assert g["radius"] == 16
+    assert g["rows_y"] == 106 and g["rows_pitch"] == 26
+    assert g["rule"] == (16, 1, 608, 2)
+    assert g["esc"] == (566, 28, 50, 22)
+    # The footer fits INSIDE the 184 px box the artboard measures: the last
+    # row's text ends at 158, the rule lands below it, and the legend ends on
+    # the box's own bottom edge rather than past it.
+    assert g["rows_y"] + 2 * g["rows_pitch"] < g["footer_rule"][1]
+    assert g["footer_rule"][1] + g["footer"][3] <= bar.BAR_HEIGHT
+
+
+def test_the_three_rows_come_from_the_risk_policy(bar):
+    """The artboard's three states are `safe`/`medium`/`risky`, and this module
+    must ASK for them rather than print them beside a hardcoded colour.
+
+    `to_row` goes through `core.tool_risk.classify`, the same call the gate
+    makes, so a row that says "berisiko" and an action that runs unasked is a
+    contradiction this code cannot express.
+    """
+    from core import risk_policy
+
+    for row in bar.default_rows():
+        assert row.level in risk_policy.LEVELS, row
+    levels = {row.level for row in bar.default_rows()}
+    assert levels == {"safe", "medium", "risky"}, (
+        f"board 3 draws one row per level; these are {levels}")
+
+
+def test_a_row_is_classified_by_the_tool_it_names(bar):
+    """Ask the classifier directly, so this is not a test of the table."""
+    from core import tool_risk
+
+    row = bar.to_row("Kirim ke tim keuangan", "send_message")
+    assert row.level == tool_risk.classify("send_message").level == "risky"
+    assert row.state == "berisiko · konfirmasi"
+    assert row.dot == bar.AMBER
+
+    row = bar.to_row("Ringkas 14 baris terpilih", "screen_processor")
+    assert row.level == "safe"
+    assert row.dot == bar.CYAN
+
+
+def test_an_unknown_tool_is_drawn_as_risky(bar):
+    """A forgotten name must be noisy and safe on screen, as it is at the gate."""
+    row = bar.to_row("Sesuatu yang baru", "a_tool_nobody_registered")
+    assert row.level == "risky" and row.dot == bar.AMBER
+
+
+def test_a_classifier_that_raises_is_drawn_as_risky(bar, monkeypatch):
+    """`core.tool_risk` refusing to import must not print "aman"."""
+    import core.tool_risk as real
+
+    def boom(*_a, **_k):
+        raise RuntimeError("the registry is broken")
+
+    monkeypatch.setattr(real, "classify", boom)
+    row = bar.to_row("apa pun", "web_search")
+    assert row.level == "risky", "an unclassifiable row was drawn as safe"
+
+
+def test_the_box_shows_three_rows_and_a_fourth_is_not_drawn(bar):
+    """184 px fits three rows above the footer; the fourth would be under it."""
+    rows = [bar.to_row(f"row {i}", "web_search") for i in range(5)]
+    assert len(bar.shown_rows(rows)) == 3
+
+
+def test_set_rows_repaints_and_keeps_the_type(bar):
+    b = bar.CommandBar()
+    assert b.open() is True
+    b.set_rows([bar.to_row("Hapus berkas", "file_delete")])
+    assert len(b.rows) == 1 and b.rows[0].level == "risky"
+
+
+def test_the_footers_keys_are_not_translated(bar):
+    """Esc, ↑↓ and ↵ are printed on keyboards, not prose.
+
+    The artboard's last entry is "Ctrl+Space tutup", and Ctrl+Space is how the
+    bar was OPENED — a legend that closes on the instruction that opened it
+    would be the one line on screen contradicting the hotkey that summoned it.
+    Esc is the key that closes, so the footer names Esc.
+    """
+    assert "Esc" in bar.FOOTER and "↑↓" in bar.FOOTER and "↵" in bar.FOOTER
+    assert "Ctrl+Space" not in bar.FOOTER, (
+        "the footer tells the user to close the bar with the chord that opened it")
+
+
+def test_the_bar_reads_none_of_the_retired_hud_palette(bar):
+    """Same rule as every other ambient surface: tokens, not `ui.theme.C`."""
+    import ast
+
+    tree = ast.parse((ROOT / "ui" / "command_bar.py").read_text(encoding="utf-8"))
+    offenders = [f"line {n.lineno}" for n in ast.walk(tree)
+                 if isinstance(n, ast.ImportFrom) and n.module == "ui.theme"]
+    assert not offenders, f"the command bar imports the retired palette: {offenders}"
+    assert bar.CYAN == "#4FD8F0" and bar.AMBER == "#F5A524"
