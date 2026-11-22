@@ -180,22 +180,23 @@ def test_undo_last_empties_one_entry_from_the_real_stack(wiring):
     undo.clear()
 
 
-def test_exporting_writes_the_real_history_to_the_desktop(wiring, monkeypatch):
+def test_exporting_writes_the_real_history_to_the_desktop(wiring, monkeypatch, tmp_path):
+    """`tmp_path`, not `/tmp`: this suite runs on Windows in CI, where `/tmp`
+    is not a directory and a test that hardcodes it fails there and passes
+    here — which is the worst kind of green."""
     from core import undo
 
     undo.clear()
     undo.push_undo("Susun jendela 2 kolom", lambda: "ok")
-    monkeypatch.setattr(wiring, "_desktop_path", lambda: Path("/tmp"))
+    monkeypatch.setattr(wiring, "_desktop_path", lambda: Path(tmp_path))
     shell = FakeShell()
-    target = Path("/tmp/jarvis-history.txt")
-    target.unlink(missing_ok=True)
+    target = Path(tmp_path) / "jarvis-history.txt"
 
     try:
         assert wiring.export_history(shell) is True
         assert target.read_text(encoding="utf-8").strip() == "Susun jendela 2 kolom"
         assert any(str(target) in line for line in shell.lines)
     finally:
-        target.unlink(missing_ok=True)
         undo.clear()
 
 
