@@ -61,7 +61,7 @@ def set_presence(shell: "AmbientShell", mode: str) -> bool:
 def quick_action(shell: "AmbientShell", key: str) -> bool:
     """One quick row. False when the row cannot do anything.
 
-    TWO BOARDS DRAW ROWS HERE. Board 5's four in Aktif and Senyap; board 23's
+    TWO BOARDS DRAW ROWS HERE. Board 5's four in Aktif and Senyap; board 05a's
     three in Fokus — "Lihat yang tertahan", "Akhiri fokus sekarang", "Jeda semua
     penjadwalan". One table, because the panel decides which rows to DREW and
     this decides what a row DOES: splitting them would let the two drift, and a
@@ -81,7 +81,7 @@ def quick_action(shell: "AmbientShell", key: str) -> bool:
     return bool(handler(shell))
 
 
-# ── board 23: the three rows Fokus draws ────────────────────────────────────
+# ── board 05a: the three rows Fokus draws ────────────────────────────────────
 
 def show_held(shell: "AmbientShell") -> bool:
     """Say what is waiting, and how much. Does NOT release it.
@@ -298,7 +298,7 @@ def tidy_windows(shell: "AmbientShell") -> bool:
 # ── history and privacy ──────────────────────────────────────────────────────
 
 def undo_last(shell: "AmbientShell") -> bool:
-    """Board 26's Urungkan, through `core.undo`'s own stack."""
+    """Board 08a's Urungkan, through `core.undo`'s own stack."""
     try:
         from core import undo
 
@@ -334,6 +334,38 @@ def export_history(shell: "AmbientShell") -> bool:
     return True
 
 
+def export_audit(shell: "AmbientShell") -> bool:
+    """Write the ACTIVITY LOG (the audit log) to a file, and say where.
+
+    WHY THIS IS NOT `export_history`. Board 6 draws "Ekspor log" underneath an
+    ACTIVITY LOG card; board 08a draws the same two words underneath the undo
+    stack. `export_history` writes `undo.history()`, so using it here would
+    export a different store than the one on screen. Same name, same place on
+    the panel, different data — which is exactly why the action key is its own.
+    """
+    try:
+        from core import audit_log
+
+        entries = audit_log.shared().entries() or ()
+    except Exception as e:                          # noqa: BLE001
+        _say(shell, f"Ekspor log gagal — {type(e).__name__}: {e}")
+        return False
+    lines = []
+    for item in entries:
+        when = str(item.get("at") or item.get("time") or "")
+        parts = [when] + [str(item.get(k) or "") for k in
+                          ("tool", "level", "outcome", "detail")]
+        lines.append(" · ".join(p for p in parts if p))
+    target = _desktop_path() / "jarvis-activity-log.txt"
+    try:
+        target.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+    except OSError as e:
+        _say(shell, f"Ekspor log gagal menulis {target} — {e}")
+        return False
+    _say(shell, f"Log aktivitas diekspor ke {target}")
+    return True
+
+
 def _desktop_path():
     """Where a file the panel wrote goes: Desktop if it exists, else home."""
     from pathlib import Path
@@ -343,7 +375,7 @@ def _desktop_path():
 
 
 def clear_history(shell: "AmbientShell") -> bool:
-    """Empty the undo stack. Does NOT erase the audit log — that is board 27.
+    """Empty the undo stack. Does NOT erase the audit log — that is board 06a.
 
     Two buttons on two pages for two different things: "Hapus riwayat" forgets
     what can be undone, "Hapus semua data lokal" forgets what happened. Merging
@@ -361,7 +393,7 @@ def clear_history(shell: "AmbientShell") -> bool:
 
 
 def erase_local(shell: "AmbientShell") -> bool:
-    """Board 27's erase: the audit log, on this machine, now.
+    """Board 06a's erase: the audit log, on this machine, now.
 
     WHAT IT DOES NOT DO, SAID PLAINLY. It does not delete `config/api_keys.json`
     (that holds the user's API key, and a privacy button that logs them out is a
@@ -383,7 +415,7 @@ def erase_local(shell: "AmbientShell") -> bool:
 
 
 def set_permission(shell: "AmbientShell", key: str, on: bool) -> bool:
-    """A board 27 switch. Only the two that are real can ever reach here.
+    """A board 06a switch. Only the two that are real can ever reach here.
 
     `screen` is disabled in the panel (always on when asked) and `microphone` is
     disabled too (a device either exists or it does not), so this handles the
@@ -403,7 +435,7 @@ def set_permission(shell: "AmbientShell", key: str, on: bool) -> bool:
 
 
 def set_theme(shell: "AmbientShell", name: str) -> bool:
-    """Persist the panel theme the user cycled to (board 28).
+    """Persist the panel theme the user cycled to (board 17a).
 
     `memory.config_manager` validates the value — an unknown name collapses to
     `auto` there, not here — so this function only carries it across and says
@@ -455,6 +487,7 @@ def actions_for(shell: "AmbientShell") -> dict:
         "history_export": lambda: export_history(shell),
         "history_clear": lambda: clear_history(shell),
         "erase": lambda: erase_local(shell),
+        "export_audit": lambda: export_audit(shell),
         "theme": lambda name: set_theme(shell, name),
         "command": lambda text: send_command(shell, text),
     }

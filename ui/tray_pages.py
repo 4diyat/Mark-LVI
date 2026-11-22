@@ -8,22 +8,23 @@ WHY THIS IS A SECOND MODULE
     tidiness: the module ceiling for `ui/` is 600 lines and the panel crossed
     it, which is the rule doing its job.
 
-    It is also the split that makes the palette honest. Board 28 is the SAME
+    It is also the split that makes the palette honest. Board 17a is the SAME
     panel in light colours, so the colours are a table here and the pages read
     it by name. A second widget for the light theme — the obvious way to build
     it — would be two panels to keep in step forever.
 
 WHAT IS IN HERE
-    `PALETTES`          dark (boards 5/23/27) and light (board 28), taken from
+    `PALETTES`          dark (boards 5/23/27) and light (board 17a), taken from
                         `docs/mockups/build.py` rather than retyped by eye.
-    `build_main()`      boards 5 and 23: four quick actions, the quota line,
+    `build_main()`      boards 5 and 05a: four quick actions, the quota line,
                         three switches and the command field. The segments and
                         the hold strip live on the panel itself, because both
                         are shared with the other pages' header.
-    `build_history()`   board 26: four undoable rows, the audit tail, and the
+    `build_history()`   board 08a: four undoable rows, the audit tail, and the
                         two buttons at the bottom.
-    `build_privacy()`   board 27: three indicators, four explicit switches,
-                        guest mode, the erase button.
+    `build_permissions()` board 6: IZIN AKSES over four switches at the
+                        artboard's 72 px pitch, the activity log, and the
+                        two buttons beneath it.
 
     Every function takes `(panel, page)` and fills `panel._labels` and
     `panel._buttons`. They are functions rather than methods because they hold
@@ -86,21 +87,32 @@ GEOMETRY = {
     # the disc two pixels high of the drawing.
     "send":  (386, 598, 36, 36),
 
-    # ── BOARD 27'S PAGE ──────────────────────────────────────────────────
-    # Its own keys, because the block above is board 5's main page and is
-    # pinned by `tests/test_tray_geometry.py`. Sharing names between two
-    # pages is how one of them gets measured against the other's drawing.
-    #
-    # The artboard gives each of these a card. Without them the three
-    # indicator words float loose and the four permissions read as one
-    # paragraph instead of four separate decisions.
-    "indicator_card":   (24, 102, 132, 62),
-    "indicator_pitch":  140,
-    "permx_card":       (24, 208, 412, 56),
-    "permx_pitch":      66,
+    # ── BOARD 6'S PAGE ────────────────────────────────────────────────────
+    # The artboard is 460x640 and the panel is 460x660, so the extra 20 px sits
+    # BETWEEN the last permission row and the activity log: rows 1-4 keep the
+    # artboard's y exactly (106 + i*72), and everything from the log down is
+    # shifted +20. Nothing above the log moves, which is what makes this a fit
+    # rather than a re-layout. `tests/test_tray_geometry.py` compares this
+    # table with `build.py: b06()`.
+    "p6_head":        (24, 34, 412, 22),      # "Izin & privatisasi"
+    "p6_sub":         (24, 54, 412, 18),      # "Semua proses di perangkat"
+    "p6_perm_header": (24, 92, 240, 16),      # "IZIN AKSES"
+    "p6_row_y": 106, "p6_pitch": 72,          # card tops
+    "p6_card": (24, 62, 412),                 # x, height, width
+    "p6_name": (44, 26),                      # name inside the card
+    "p6_sub_off": (44, 45),                   # subtitle inside the card
+    "p6_toggle_x": 378, "p6_toggle_dy": 20,
+    "p6_log_header": (24, 432, 240, 16),      # "LOG AKTIVITAS" (412 + 20)
+    "p6_log_card": (24, 446, 412, 118),
+    "p6_log_row_y": 468, "p6_log_pitch": 32,  # 448 + 20, same 32 px pitch
+    "p6_log_time_x": 40, "p6_log_text_x": 92,
+    "p6_divider": (24, 576, 412, 1),          # 556 + 20
+    "p6_clear":  (24, 594, 200, 40),          # 574 + 20
+    "p6_export": (236, 594, 200, 40),
+
 }
 
-# Which page the panel is showing. Board 26 and 27 are pages, not other
+# Which page the panel is showing. Board 08a and 27 are pages, not other
 # windows: a tray panel that spawns three windows is three things to close.
 PAGE_MAIN, PAGE_HISTORY, PAGE_PRIVACY = "main", "history", "privacy"
 PAGES = (PAGE_MAIN, PAGE_HISTORY, PAGE_PRIVACY)
@@ -251,7 +263,7 @@ def build_history(panel, page) -> None:
     panel._pages[PAGE_HISTORY] = page
 
     panel._labels["history_count"] = _at(page, QLabel, 24, 46, 412, 20, "")
-    # Four rows at board 26's pitch, each with its own label and its own
+    # Four rows at board 08a's pitch, each with its own label and its own
     # Urungkan button. Four, not a scroll area: the panel is a glance, and
     # a scroll inside a 660 px popup is a scroll nobody performs.
     for index in range(4):
@@ -279,70 +291,99 @@ def build_history(panel, page) -> None:
     panel._buttons["clear"] = clear
 
 
-def build_privacy(panel, page) -> None:
+def build_permissions(panel, page) -> None:
+    """Board 6: IZIN AKSES, the activity log, and the two buttons under it.
+
+    WHY THIS REPLACED `build_privacy()`, BY OWNER RULING (2026-11-22)
+        Two artboards draw "the permissions page" and they are almost disjoint.
+        `b06` has `IZIN AKSES`, a 72 px row pitch, a `LOG AKTIVITAS` card and
+        `Ekspor log` / `Hapus riwayat`. `n11` (board 06a) has `INDIKATOR
+        PRIVASI`, `IZIN EKSPLISIT`, a `MODE TAMU` card and `Hapus semua data
+        lokal`.
+
+        `n11` can never be drawn faithfully, and that is why it lost: its MODE
+        TAMU card was already deleted by an earlier ruling — guest mode needs
+        every surface to stop reading memory and history, and nothing does that
+        — so the artboard requires a control this build may not draw. `b06`
+        asks for nothing that contradicts a ruling.
+
+    The four permissions are the SAME `PERMISSIONS` rows as board 5, so a switch
+    means the same thing on every page.
+    """
     from PyQt6.QtWidgets import QLabel, QPushButton
     page.hide()
     panel._pages[PAGE_PRIVACY] = page
-
-    panel._labels["indicator_header"] = _at(
-        page, QLabel, 24, 78, 240, 16, _t("ui.panel.section.indicators"))
     g = GEOMETRY
-    for index, (key, name, _sub) in enumerate(PERMISSIONS[:3]):
-        x = g["indicator_card"][0] + index * g["indicator_pitch"]
-        # The card is a label with a border, like the suggestion card on the
-        # main page: a QFrame would be a second widget class for the same job.
-        card = _at(page, QLabel, *g["indicator_card"], "")
-        card.setGeometry(x, g["indicator_card"][1],
-                         g["indicator_card"][2], g["indicator_card"][3])
-        card.setStyleSheet(
-            f"background:{PALETTES['dark']['card']};"
-            f"border:1px solid {PALETTES['dark']['line']};border-radius:12px;")
-        panel._labels[f"indicator_card:{key}"] = card
-        panel._labels[f"indicator:{key}"] = _at(
-            page, QLabel, x + 12, 108, 110, 18, _t(name))
-        panel._labels[f"indicator_state:{key}"] = _at(
-            page, QLabel, x + 12, 138, 110, 18, "")
 
-    panel._labels["permx_header"] = _at(
-        page, QLabel, 24, 184, 240, 16, _t("ui.panel.section.explicit"))
+    panel._labels["p6_head"] = _at(page, QLabel, *g["p6_head"], "")
+    panel._labels["p6_sub"] = _at(page, QLabel, *g["p6_sub"], "")
+    panel._labels["p6_perm_header"] = _at(
+        page, QLabel, *g["p6_perm_header"], _t("ui.panel.section.access"))
+
+    card_x, card_h, card_w = g["p6_card"]
     for index, (key, name, sub) in enumerate(PERMISSIONS):
-        y = g["permx_card"][1] + index * g["permx_pitch"]
-        card = _at(page, QLabel, *g["permx_card"], "")
-        card.setGeometry(g["permx_card"][0], y,
-                         g["permx_card"][2], g["permx_card"][3])
+        y = g["p6_row_y"] + index * g["p6_pitch"]
+        card = _at(page, QLabel, card_x, y, card_w, card_h, "")
         card.setStyleSheet(
             f"background:{PALETTES['dark']['card']};"
             f"border:1px solid {PALETTES['dark']['line']};border-radius:12px;")
-        panel._labels[f"permx_card:{key}"] = card
-        panel._labels[f"permx:{key}"] = _at(
-            page, QLabel, 44, y + 10, 300, 20, _t(name))
-        panel._labels[f"permx_sub:{key}"] = _at(
-            page, QLabel, 44, y + 30, 300, 18, _t(sub))
-        button = QPushButton("", page)
+        panel._labels[f"p6_card:{key}"] = card
+        # The ROW is the click target (a 40 px switch is under the 44 px touch
+        # target), and the track at x=378 is the readout — the same split board
+        # 5 uses, so a permission is toggled the same way on both pages.
+        button = QPushButton(_t(name), page)
         button.setCheckable(True)
-        button.setGeometry(378, y + 17, 42, 22)
+        button.setGeometry(card_x + 20, y,
+                           g["p6_toggle_x"] - card_x - 20, card_h)
+        button.setStyleSheet("text-align:left;padding-left:24px;border:none;")
         button.clicked.connect(
             lambda checked=False, k=key: panel.press_permission(k, checked))
-        panel._buttons[f"permx:{key}"] = button
+        panel._buttons[f"p6:{key}"] = button
+        panel._labels[f"p6_sub:{key}"] = _at(
+            page, QLabel, g["p6_name"][0], y + g["p6_sub_off"][1], 300, 18, _t(sub))
+        track = _at(page, QLabel, g["p6_toggle_x"], y + g["p6_toggle_dy"], 40, 22, "")
+        track.setStyleSheet(
+            f"background:{PALETTES['dark']['card']};"
+            f"border:1px solid {PALETTES['dark']['line']};border-radius:11px;")
+        panel._labels[f"perm_dot:{key}"] = track
 
-    # MODE TAMU IS NOT DRAWN, AND THAT IS A RULING RATHER THAN AN OVERSIGHT.
+    panel._labels["p6_log_header"] = _at(
+        page, QLabel, *g["p6_log_header"], _t("ui.panel.section.activity"))
+    log_card = _at(page, QLabel, *g["p6_log_card"], "")
+    log_card.setStyleSheet(
+        f"background:{PALETTES['dark']['card']};"
+        f"border:1px solid {PALETTES['dark']['line']};border-radius:12px;")
+    panel._labels["p6_log_card"] = log_card
+    for index in range(3):
+        y = g["p6_log_row_y"] + index * g["p6_log_pitch"]
+        panel._labels[f"p6_log_time:{index}"] = _at(
+            page, QLabel, g["p6_log_time_x"], y - 12, 48, 16, "")
+        panel._labels[f"p6_log_text:{index}"] = _at(
+            page, QLabel, g["p6_log_text_x"], y - 12, 330, 16, "")
+
+    divider = _at(page, QLabel, *g["p6_divider"], "")
+    divider.setStyleSheet(f"background:{PALETTES['dark']['line']};")
+    panel._labels["p6_divider"] = divider
+
+    # THE TWO BUTTONS UNDER THE ACTIVITY LOG ACT ON THE ACTIVITY LOG.
     #
-    # The artboard draws a "MODE TAMU — Sembunyikan memori & riwayat" switch
-    # here. Guest mode needs every surface to stop reading memory and history,
-    # and nothing in this tree does that: clicking the switch printed "mode tamu
-    # belum ada" and returned False, and the next paint put it back.
+    # The artboard labels them "Hapus riwayat" and "Ekspor log", and the same
+    # two labels on the HISTORY page mean the undo stack — `clear_history`'s own
+    # docstring says it does not erase the audit log, and `export_history` writes
+    # `undo.history()`. Wiring board 6's buttons to those handlers would put a
+    # button under an activity log that clears a different store, which is the
+    # class of lie this build keeps removing.
     #
-    # It is also not drawn DISABLED. A disabled switch still says "this exists
-    # and you are not allowed yet", which is a promise about a feature that does
-    # not exist. With `screen` and `microphone` the promise is true — the
-    # capability is real and the machine decides — so those stay and explain
-    # themselves. This one has nothing behind it at all.
-    panel._labels["camera_note"] = _at(
-        page, QLabel, 24, 566, 412, 18, _t("ui.panel.camera.note"))
-    erase = QPushButton(_t("ui.panel.erase"), page)
-    erase.setGeometry(24, 590, 412, 38)
-    erase.clicked.connect(lambda: panel._call("erase"))
-    panel._buttons["erase"] = erase
+    # So: same words, the store the card above them shows. The action keys are
+    # distinct (`erase` / `export_audit`) so the two pages cannot be confused.
+    clear = QPushButton(_t("ui.panel.history.clear"), page)
+    clear.setGeometry(*g["p6_clear"])
+    clear.clicked.connect(lambda: panel._call("erase"))
+    panel._buttons["p6_clear"] = clear
+    export = QPushButton(_t("ui.panel.history.export"), page)
+    export.setGeometry(*g["p6_export"])
+    export.clicked.connect(lambda: panel._call("export_audit"))
+    panel._buttons["p6_export"] = export
 
 
 def _at(parent, cls, x: int, y: int, w: int, h: int, text: str):
@@ -355,5 +396,5 @@ def _at(parent, cls, x: int, y: int, w: int, h: int, text: str):
 
 __all__ = [
     "PAGE_HISTORY", "PAGE_MAIN", "PAGE_PRIVACY", "PAGES", "PALETTES",
-    "PANEL_H", "PANEL_W", "build_history", "build_main", "build_privacy",
+    "PANEL_H", "PANEL_W", "build_history", "build_main", "build_permissions",
 ]

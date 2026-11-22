@@ -65,7 +65,7 @@ def paint(panel, snap) -> None:
 
     paint_quick(panel, snap)
 
-    # Board 23's strip: only in Fokus, because only Fokus holds anything.
+    # Board 05a's strip: only in Fokus, because only Fokus holds anything.
     held = labels["held"]
     if snap.mode == "focus":
         # NO DEADLINE LINE. It used to read "Fokus aktif sampai 17.00" with 17.00
@@ -87,12 +87,12 @@ def paint(panel, snap) -> None:
         _paint_dot(panel, key, state)
 
     paint_history(panel, snap)
-    paint_privacy(panel, snap)
+    paint_permissions(panel, snap)
 
 
 
 def paint_quick(panel, snap) -> None:
-    """Board 5's four rows in Aktif/Senyap, board 23's three in Fokus.
+    """Board 5's four rows in Aktif/Senyap, board 05a's three in Fokus.
 
     THE ROWS ARE SET HERE AND NOT AT BUILD TIME, because the list depends on the
     mode and the mode changes while the panel is open. Each widget is looked up
@@ -212,23 +212,66 @@ def paint_history(panel, snap) -> None:
 
 
 
-def paint_privacy(panel, snap) -> None:
-    labels = panel._labels
-    for key, _name, _sub in PERMISSIONS[:3]:
-        state = snap.permissions.get(key, {})
-        on = bool(state.get("on"))
-        note = str(state.get("note") or "")
-        labels[f"indicator_state:{key}"].setText(
-            note or _t("ui.panel.indicator.on" if on else "ui.panel.indicator.off"))
-    for key, _name, _sub in PERMISSIONS:
-        button = panel._buttons[f"permx:{key}"]
-        state = snap.permissions.get(key, {})
-        button.setChecked(bool(state.get("on")))
-        # A fixed switch is DISABLED, not merely refused on click: drawing
-        # a live switch over something no click can change is a control
-        # that teaches the user not to trust the panel.
-        button.setEnabled(not bool(state.get("fixed")))
+def paint_permissions(panel, snap) -> None:
+    """Board 6's page: the heading, the four switches, and the activity log.
 
+    THE LOG IS READ HERE RATHER THAN AT BUILD TIME. `core.audit_log` grows while
+    the panel is open — an action completes, a permission is refused — and a log
+    captured when the page was built would be a screenshot of the past. Three
+    rows, newest first, which is what the artboard draws and what
+    `core.audit_log.entries()` already returns.
+    """
+    labels = panel._labels
+    # b06's own heading and subtitle, not 06a's: the artboard says
+    # "Izin & privatisasi / Semua proses di perangkat", where 06a says
+    # "Izin & Privasi / Semua data diproses lokal secara default". Two
+    # artboards, two sentences; using one pair for both would draw one of them
+    # wrong.
+    labels["p6_head"].setText(_t("ui.panel.perm.title"))
+    labels["p6_sub"].setText(_t("ui.panel.perm.subtitle"))
+
+    for key, _name, _sub in PERMISSIONS:
+        state = snap.permissions.get(key, {})
+        button = panel._buttons[f"p6:{key}"]
+        button.setChecked(bool(state.get("on")))
+        # A permission the machine cannot grant is DISABLED, not a switch that
+        # refuses a click — the same rule the main page's switches follow.
+        button.setEnabled(not bool(state.get("fixed")))
+        _paint_dot(panel, key, state)
+
+    lines = _activity_lines()
+    for index in range(3):
+        when, what = lines[index] if index < len(lines) else ("", "")
+        labels[f"p6_log_time:{index}"].setText(when)
+        labels[f"p6_log_text:{index}"].setText(
+            what or (_t("ui.panel.activity.empty") if index == 0 else ""))
+
+
+def _activity_lines() -> list[tuple[str, str]]:
+    """The newest three audit entries as (time, what), or an empty list.
+
+    `entries()` returns dicts, newest last. The artboard puts the newest at the
+    TOP of its little table, so the order is reversed once, here — the same
+    convention `tray_panel_model._audit()` uses for board 08a, written twice on
+    purpose: the two pages can be drawn in different states and a shared helper
+    would have to know which one is asking.
+    """
+    try:
+        from core import audit_log
+
+        entries = audit_log.shared().entries(3) or ()
+    except Exception as e:                       # noqa: BLE001
+        panel_note = f"activity log unavailable — {type(e).__name__}"
+        print(f"[JARVIS] {panel_note}")
+        return []
+    lines = []
+    for item in entries:
+        when = str(item.get("at") or item.get("time") or "")[11:19]
+        what = " · ".join(str(item.get(k) or "") for k in ("tool", "outcome")
+                          if item.get(k))
+        detail = str(item.get("detail") or "")
+        lines.append((when, f"{what} — {detail}" if detail else what))
+    return list(reversed(lines))
 
 
 def show_page(panel) -> None:
@@ -243,7 +286,7 @@ def show_page(panel) -> None:
 def apply_style(panel) -> None:
     """One stylesheet for the whole panel, rebuilt when the palette changes.
 
-    Set on the window rather than per widget, so board 28 is a palette swap
+    Set on the window rather than per widget, so board 17a is a palette swap
     and not a second set of colours in twelve places.
     """
     window = panel._window

@@ -1,11 +1,22 @@
 # What the mockup does not draw, and what happened to it
 
 **Read this before adding a surface to `ui/`.** The design sheet
-(`jarvis-design-system.html`, built by `build.py`) is twelve artboards, and
-nothing else exists in this build. Everything that used to be in the app but is
-not on one of those boards was **deleted**, not hidden, not disabled and not
-left in place "for later". This file is the record: what it was, why it is
-gone, and how to get it back.
+(`jarvis-design-system.html`, built by `build.py`) is **22 artboards**, numbered
+1–22. This file records two things, in two directions:
+
+1. **Built, not drawn.** Everything that used to be in the app but is on no
+   artboard was **deleted** — not hidden, not disabled, not left in place "for
+   later". What it was, why it is gone, and how to get it back is below.
+2. **Drawn, not built.** Artboards that exist on the sheet and have no surface in
+   `ui/` yet. They stay on the sheet and are listed here rather than quietly
+   dropped, because an artboard is a picture of work that is still owed.
+
+The first list used to say "twelve artboards, and nothing else exists" — and
+that was false in the direction that mattered. `build.py` has always defined
+`b01`–`b22`; the registry rendered twelve of them, so ten artboards were
+invisible while this file said the sheet was complete. Fixed on 2026-11-22 (see
+`docs/verification.md`); the sheet now draws all 22 and
+`tests/test_design_sheet_complete.py` fails if that stops being true.
 
 The commit this file describes is the one that carries it. To compare against
 the last build with a window:
@@ -22,22 +33,86 @@ copy of the old code is in git.
 
 ---
 
-## The twelve boards, and the only surfaces they justify
+## Drawn, not built: the artboards with no surface
+
+Thirteen of the 22 artboards have no `ui/` module behind them, and a fourteenth
+(board 14) has half of one. This is the list, and it is the honest scope of
+"every artboard implemented": the rest of this file covers the opposite
+direction.
+
+`tests/test_design_sheet_complete.py` checks this table's **shape** — that it
+holds thirteen absent boards plus the half one, that the halves add up to the
+twenty-two, and that the same counts appear in `DESIGN-ambient.md` — and cannot
+check its **content**: whether board 9 really has no UI is a claim about code,
+and only a reader can check that by opening the files the row names.
+
+| # | Artboard | What it would need | Why it is not built |
+|---|---|---|---|
+| 3 | Kontrol gestur | a camera preview tile with a 21-joint hand skeleton | `core/gesture_os.py` is a pure, tested decision function, but nothing calls it: the tile is still a **proposal** (`DESIGN-ambient.md`), and the bridge and loop are in git at `376909f1` |
+| 7 | Onboarding 2/4 | a multi-step first-run flow with per-step permission consent | no onboarding exists. The setup screen (`ui/setup_window.py`) borrows this panel's language for the API key, but it is one step, not four |
+| 9 | Memori personal | a list of remembered facts, editable | `memory/memory_manager.py` stores them; there is no UI. `NOT-IN-MOCKUP.md`'s deletion table is why — the drawer that showed them went with the window |
+| 10 | Detail memori | one memory: source, confidence, used-by | same as 9 |
+| 11 | Rutinitas & saran | a routine list and proactive-suggestion cards | `actions/proactive.py` schedules suggestions; nothing lists the routines |
+| 12 | Alat cepat & clipboard | clipboard inspection and natural-language file search | `actions/computer_control.py` reads the clipboard; the "smart clipboard" (detect an account number, offer "tandai aman") is not written |
+| 13 | Dikte · baca layar · isi form | dictation into any app, screen reading, form filling with preview | dictation exists as a chord (`Ctrl+Win`), not as this panel. Form filling does not exist at all and is the largest missing feature on the sheet |
+| 14 | Keamanan | three risk levels, guest mode, OS-control switch | **partial**: `core/risk_policy` + `ui/confirm_banner.py` implement the levels and the confirmation. Guest mode was **deleted by ruling** (see below), and the OS-control switch has no backend |
+| 15 | Aksesibilitas | language, text size, contrast, reduced motion | `assets/i18n/` ships en/id and the orb can be stilled, but there is no settings surface |
+| 16 | Plugin & ponsel | a plugin list with on/off, phone pairing | the plugin manager was part of the deleted window. Plugins are toggled by their manifest files |
+| 18 | Tema terang — izin & privasi | the permission page in light tokens | the page exists and reads `PALETTES["light"]` like every other page, but nothing has been LOOKED AT in light: the screenshot check in `verification.md` is still the only test of it |
+| 19 | Peta gestur | the six-gesture reference, drawn | a picture of gestures is not a control; it would be a help page with no way to open it |
+| 21 | Brand & ikon | the app icon, tray icons, swatches, type scale | the tray icon exists (`ui/tray.py`); this artboard is a **specification sheet**, not a surface |
+| 22 | Installer 1/4 | a first-install flow choosing presence mode | `core/installer.py` installs dependencies; there is no installer UI |
+
+Board 3's command bar **was** on this list until 2026-11-22 and is now
+implemented (`ui/command_bar.py` + `ui/command_paint.py`), which is the pattern
+for removing a row: build it, test it, delete the row.
+
+### Board 06a is retired, and that is the reason board 6 was drawn
+
+`n11` — the artboard this file used to call `06a` — draws `INDIKATOR PRIVASI`,
+`IZIN EKSPLISIT`, a `MODE TAMU` card and `Hapus semua data lokal`. Its
+`MODE TAMU` card was **deleted by an earlier ruling** (guest mode needs every
+surface to stop reading memory and history, and nothing does that), so the
+artboard can never be drawn faithfully: it requires a control this build may not
+draw.
+
+`b06` asks for nothing that contradicts a ruling, so on 2026-11-22 the owner
+chose it as the page and `build_privacy()` was deleted. The consequences, each
+deliberate:
+
+| 06a had | Now |
+|---|---|
+| three `INDIKATOR PRIVASI` cards | gone — `b06` draws no indicators |
+| `IZIN EKSPLISIT` at a 66 px pitch | `IZIN AKSES` at `b06`'s 72 px pitch |
+| `MODE TAMU` (already deleted) | gone with the artboard that drew it |
+| `Hapus semua data lokal` (the audit log) | `b06`'s `Hapus riwayat` — SAME store, worded as the artboard words it |
+| — | `b06`'s `LOG AKTIVITAS` card, three lines from `core.audit_log` |
+| — | `b06`'s `Ekspor log` — the audit log, not the undo stack |
+
+The last two matter: the same two labels on the **history** page mean the undo
+stack (`clear_history`'s docstring says it does not touch the audit log). Board
+6's buttons therefore press `erase` and `export_audit`, so a button under an
+activity log acts on the activity log.
+
+## Built, drawn — the 22 boards and the surfaces they justify
+
+Boards without a row here are the "drawn, not built" ones above.
 
 | # | Board | What it draws | Module |
 |---|---|---|---|
-| 1 | Orb overlay — Siaga & area klik | a ring in a 146 px box on the desktop; only the ring takes clicks | `ui/orb_overlay.py`, `ui/orb_place.py`, `ui/orb_canvas.py` |
-| 2 | Toast — antrean & batas harian | three cards at 340 px, the fourth replaces the oldest and is counted; 8 s; never takes focus | `ui/toast_queue.py`, `ui/toast_card.py`, `ui/toast_stack.py` |
-| 3 | Command bar — Ctrl+Space | one line, Esc gives focus back | `ui/command_bar.py` |
-| 4 | Orb overlay — interaksi & status | left click opens the panel, right click a short menu, a drag snaps to an edge; four states read from the orb itself | `ui/orb_paint.py`, `ui/ambient_shell.py`, `ui/orb_snap.py` |
+| 1 | Desktop ambient | a ring in a 146 px box on the desktop; only the ring takes clicks | `ui/orb_overlay.py`, `ui/orb_place.py`, `ui/orb_canvas.py` |
+| 2 | Command bar | a 640×184 box: gradient, cyan rule, Esc chip, three result rows with their risk dots, footer | `ui/command_bar.py`, `ui/command_paint.py` |
+| 4 | Mode suara | listening overlay, gesture camera tile | `ui/voice_overlay.py`, `ui/voice_paint.py` |
 | 5 | Panel baki sistem | the 460×660 tray panel: three segments, four quick actions with chords, today's suggestion, permissions, one line to type in | `ui/tray_panel.py`, `ui/tray_pages.py`, `ui/tray_panel_model.py` |
-| 6 | Overlay suara + kamera gestur | listening overlay, gesture camera tile | **proposal — see below** |
-| 23 | Fokus — toast ditahan | held notifications counted by `core/presence_mode`; a strip that states no deadline; three quick rows of its own (no "Ubah durasi"); a persisted scheduling pause; the second quota sentence, counted | `ui/toast_queue.py`, `ui/toast_stack.py`, `ui/tray_paint.py`, `ui/tray_panel_model.py`, `actions/proactive.py`, `ui/tray_panel_wiring.py` |
-| 24 | Senyap — orb memudar | the orb shrinks to 18 px, loses its glow, goes dotted, and writes its mode under the ring; the 146 px frame does not resize | `ui/orb_paint.py`, `ui/orb_canvas.py`, `ui/orb_place.py` |
-| 25 | Risiko: konfirmasi | BERISIKO heading, "Tindakan ini tidak bisa diurungkan.", ASAL PERMINTAAN fed by the real entry point (voice/typed/unknown), Konfirmasi/Batal, Enter confirms and Esc cancels with the initial focus still on Batal; the store lives in `core/input_source` so the audio callback never imports Qt | `ui/confirm_banner.py`, `core/input_source.py`, `ui/shell.py` |
-| 26 | Riwayat tugas + Urungkan | task history with undo, audit tail, export and clear | `ui/tray_panel.py` (history page) |
-| 27 | Izin & Privasi | three indicators with cards, four explicit permissions with cards, a per-page title, erase — and **no guest mode** (see below) | `ui/tray_pages.py`, `ui/tray_panel_model.py` |
-| 28 | Tema terang — panel baki | the same panel in light colours, plus the switch that reaches it | `ui/tray_pages.py` (`PALETTES["light"]`), `ui/tray_theme.py` |
+| 5a | Fokus — toast ditahan | held notifications counted by `core/presence_mode`; a strip that states no deadline; three quick rows of its own (no "Ubah durasi"); a persisted scheduling pause; the second quota sentence, counted | `ui/toast_queue.py`, `ui/toast_stack.py`, `ui/tray_paint.py`, `ui/tray_panel_model.py`, `actions/proactive.py`, `ui/tray_panel_wiring.py` |
+| 5b | Senyap — orb memudar | the orb shrinks to 18 px, loses its glow, goes dotted, and writes its mode under the ring; the 146 px frame does not resize | `ui/orb_paint.py`, `ui/orb_canvas.py`, `ui/orb_place.py` |
+| 6 | Izin & privatisasi | `IZIN AKSES` over four 62 px cards at a 72 px pitch, a `LOG AKTIVITAS` card of three timestamped lines, and `Ekspor log` / `Hapus riwayat` wired to the audit log they sit under | `ui/tray_pages.py` (`build_permissions()`), `ui/tray_paint.py`, `ui/tray_panel_wiring.py` (`export_audit`) |
+| 8 | Riwayat tugas | task history with undo, audit tail, export and clear | `ui/tray_panel.py` (history page) |
+| 8a | Riwayat tugas + Urungkan | the same page with the undo column live | `ui/tray_panel.py` |
+| 14a | Risiko: konfirmasi | BERISIKO heading, "Tindakan ini tidak bisa diurungkan.", ASAL PERMINTAAN fed by the real entry point (voice/typed/unknown), Konfirmasi/Batal, Enter confirms and Esc cancels with the initial focus still on Batal; the store lives in `core/input_source` so the audio callback never imports Qt | `ui/confirm_banner.py`, `core/input_source.py`, `ui/shell.py` |
+| 17 | Tema terang — panel baki | the same panel in light colours, plus the switch that reaches it | `ui/tray_pages.py` (`PALETTES["light"]`), `ui/tray_theme.py` |
+| 17a | Panel baki versi terang | the light palette, drawn | `ui/tray_pages.py` |
+| 20 | Status orb | four orb states, readable by silhouette | `ui/orb_paint.py` |
 
 Plus the surfaces the owner explicitly kept that no board draws: the **face
 bubble** (`ui/face_bubble.py`, `ui/face_canvas.py`) and the **orchestrator**
@@ -57,7 +132,7 @@ than by omission:
 | Control | What it does today |
 |---|---|
 | **Susun jendela** | Refused out loud. There is no window-snapping code in this tree — it was never written. The row is on the artboard, so the row is drawn; pressing it explains that and points at the chord. |
-| **Mode tamu** | **Deleted from the panel, the wiring and both catalogues.** Guest mode needs every surface to stop reading memory and history, and nothing does that. The switch used to be drawn and to answer a click with a sentence; a disabled switch was rejected too, because it still promises the feature exists. The owner's ruling: if it cannot be done, do not draw it — see `docs/mockups/DESIGN-ambient.md`, board 27. |
+| **Mode tamu** | **Deleted from the panel, the wiring and both catalogues.** Guest mode needs every surface to stop reading memory and history, and nothing does that. The switch used to be drawn and to answer a click with a sentence; a disabled switch was rejected too, because it still promises the feature exists. The owner's ruling: if it cannot be done, do not draw it — see `docs/mockups/DESIGN-ambient.md`, board 6. |
 | **Dikte** | Works, but it is a SIX-SECOND hold released on a timer — a button cannot express "until I let go". The press-and-hold version is the chord on the same row. |
 | **Cari berkas** | Opens the command bar with `Cari berkas ` already typed instead of searching: the search needs a query, and the bar is where the user already types one. |
 
@@ -85,7 +160,7 @@ The suggestion row is empty in this build and says "Belum ada saran hari ini."
 
 ### The risk gate: what a confirmation still costs
 
-Board 25 draws the confirmation. What it does not draw is HOW OFTEN it appears,
+Board 14a draws the confirmation. What it does not draw is HOW OFTEN it appears,
 and that number was wrong in a way no screenshot could show: `core/tool_risk`
 classifies sixteen tools in `actions/`, four of them had per-action tables and
 seven were in no table at all. An unlisted tool used to be refused as `risky`
@@ -401,7 +476,7 @@ same three calls the allowlist names — `moveTo`, `mouseDown`, `mouseUp`,
 `scroll` — and a test fails if a fifth appears.
 
 **Still missing, and named rather than hidden:** there is no control in the
-panel for this switch, because board 27 draws exactly four permissions and a
+panel for this switch, because board 6 draws exactly four permissions and a
 fifth would be a change to the artboard, not to the code. The setter is
 `ui.hand_feed.set_gesture_os(shell, on)`; until a surface offers it the feature
 is reachable only by editing `config/api_keys.json`. That is a gap with a
@@ -435,8 +510,10 @@ holds the seam: the painter may CALL `status_word`, never DEFINE it.
 
 ## How to bring something back
 
-1. **Look at the board first.** If a surface is not on one of the twelve, it is
+1. **Look at the board first.** If a surface is not on one of the 22, it is
    a `DESIGN-ambient.md` proposal and needs the owner's decision, not a commit.
+   If it IS on one of the 22 and has no module, it is a row in "drawn, not
+   built" above — build it and delete the row.
 2. `git checkout 376909f1 -- ui/<file>.py` — one file, not the tree.
 3. Re-point its imports: `ui/window` is gone, `ui/icons` is gone.
 4. If it touched `MainWindow`, it needs a holder. `AmbientShell` deliberately
@@ -449,12 +526,15 @@ holds the seam: the painter may CALL `status_word`, never DEFINE it.
 
 - **No Settings, no Plugin Manager.** Accepted, listed above with the file to edit.
 - **No first-run key entry.** A notice, and `config/api_keys.json`.
-- **The camera/gesture overlay exists but cannot open a camera here.** Board 6
+- **The camera/gesture overlay exists but cannot open a camera here.** Board 4
   is built (`ui/voice_overlay.py`, `ui/voice_hand.py`, `ui/voice_paint.py`); the
   tile it draws is fed by `core.workspace_gesture`, whose camera needs
   mediapipe, which this repo's `requirements.txt` installs on Windows only. On
   Linux the tile reads "KAMERA NONAKTIF" — the honest state, not a placeholder.
 - **No media playback.** `actions/video_player.py` went with the widget.
+- **Thirteen artboards are drawn and not built, and one is half built.**
+  The table at the top of this file is the list. The largest gap is board 13's
+  form filling, which has no backend at all.
 - **Untested on Windows.** Frameless transparency, click-through
   (`WindowTransparentForInput`), focus return after Esc and DPAPI can only be
   proven on a real Windows desktop. CI runs Linux.
@@ -471,7 +551,7 @@ default, the camera is never opened while off, it never speaks first, nothing is
 recorded or uploaded. What changed is only how a person reaches it: the
 `security_camera.enabled` key in `config/api_keys.json`, and nothing else.
 
-- **A fifth row was not added to board 27.** It would be a control the artboard
+- **A fifth row was not added to board 6.** It would be a control the artboard
   does not draw — the same reason the drawer was deleted — and two rows is how
   the permissions page stops being the four things the mockup shows. Between a
   setting that lives in a config file and a surface that contradicts the
@@ -688,7 +768,7 @@ each declare their colours directly from `docs/mockups/build.py`, and
 **1. The confirmation dialog was in a different application.** `ui/confirm_banner.py`
 read `ui.theme.C` — the palette of the full-screen window ambient mode replaced
 — and drew `rgba(14, 3, 0, 250)`, a near-black body with a red cast, behind a
-`#ff6b00` orange border at a 6 px radius, in Courier New. Board 25 draws
+`#ff6b00` orange border at a 6 px radius, in Courier New. Board 14a draws
 `#0C1B26`, an amber `#F5A524` border, a 16 px radius, a 3 px amber bar inset
 18 px, and the design system's font. It was also **430 px** wide where the
 artboard is **520**, and its confirm button was drawn transparent and 32 px tall
@@ -712,7 +792,7 @@ camera tile border was `#1c3a4a` where the sheet draws `LINE_ACC` (`#2A6477`),
 its labels `#7f97a6` where the sheet draws `MUTED`, and its transcript
 `#eaf6ff` where the sheet draws `TEXT`. All now come from named tokens.
 
-**4. The bar that Qt would not draw.** A5 in the sheet makes board 25's 3 px
+**4. The bar that Qt would not draw.** A5 in the sheet makes board 14a's 3 px
 left bar load-bearing — it is how "berisiko" is told apart from "aman" without
 a red the palette does not have. It was written as a CSS `border-left`, which
 Qt does not reliably paint on a `QWidget` with `WA_StyledBackground`. It is now
@@ -723,7 +803,7 @@ a real widget, 3 px wide, pinned 18 px from each end by `resizeEvent`.
 assertion. `tests/test_visual_conformance.py` is that missing test: it reads
 the sheet's tokens out of `build.py`, walks the six drawing modules with AST,
 and fails on any colour outside the design system, on any read of the retired
-`ui.theme.C`, and on each of board 25's numbers by name. Comments are stripped
+`ui.theme.C`, and on each of board 14a's numbers by name. Comments are stripped
 before the colour audit — the first version failed on its own documentation,
 which is the right failure for the wrong reason.
 

@@ -7,7 +7,7 @@ from datetime import datetime
 
 # ── the pause, and why it is a setting rather than a switch on the object ────
 #
-# Board 23 draws "Jeda semua penjadwalan" as a row the user presses. That is a
+# Board 05a draws "Jeda semua penjadwalan" as a row the user presses. That is a
 # decision that outlives the process: a pause a restart forgets is a promise the
 # user has to keep making every morning, and the machine that most needs it is
 # the one that reboots.

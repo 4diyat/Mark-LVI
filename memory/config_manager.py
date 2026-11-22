@@ -869,7 +869,7 @@ def save_providers(mode: str = None, pipeline: dict = None, creds: dict = None,
 
 
 # ── Theme ────────────────────────────────────────────────────────────────────
-# Board 28 is the tray panel in light colours; board 5 is the same panel in
+# Board 17a is the tray panel in light colours; board 5 is the same panel in
 # dark. The palette lives in `ui/tray_pages.PALETTES`, and this is the key that
 # decides which one is used — one key, two values, no third state.
 #

@@ -23,11 +23,33 @@ WHAT IT DOES NOT DO
     It does not run commands. `on_submit` is given the text and decides; a bar
     that could execute would be a second dispatcher with its own copy of the
     risk policy.
+
+WHAT IT DID NOT DRAW, AND NOW DOES
+    Until board 3 was implemented this window was a translucent box with a
+    `QLineEdit` floating in it: no fill, no border, no caret, no hint row, no
+    result rows. Board 3 draws all of them, plus a footer that says what the
+    keys do. Everything drawn here comes from `docs/mockups/build.py: n03()` —
+    the gradient, the 16 px radius, the 2 px cyan rule, the three result rows
+    with their 3 px dots, and the `Esc` chip — and the three rows are FED BY
+    `core.tool_risk`, so "aman · langsung", "sedang · bisa diurungkan" and
+    "berisiko · konfirmasi" are read from the same classifier the gate uses
+    rather than typed into a label.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Callable
+
+# The drawing half: tokens, geometry, the risk rows and `paint_bar`. Imported
+# rather than defined here because the 600-line ceiling in `ui/` is what put the
+# tray panel into three files, and it applies to this one too. Nothing in
+# `ui/command_paint.py` imports this module back.
+from ui.command_paint import (  # noqa: F401 — re-exported for the tests
+    AMBER, BAR_HEIGHT, BAR_WIDTH, BASE, CYAN, FIELD_HEIGHT, FIELD_MARGIN,
+    FILL_BOTTOM, FILL_TOP, FONT, FOOTER, GEOMETRY, LINE, LINE_ACC, MONO, MUTED,
+    PANEL, ROW_ACTIVE, ROW_LEVELS, SECONDARY, TEXT, Row, _BarWindow, _style_field,
+    default_rows, paint_bar, shown_rows, to_row,
+)
 
 # The number of remembered entries. Ten is the point past which a recall list
 # stops being a memory aid and becomes something to read through.
@@ -37,12 +59,6 @@ HISTORY_MAX = 10
 # paste that arrives with newlines is flattened rather than truncated, because
 # truncating silently loses the second half of an instruction.
 MAX_CHARS = 2000
-
-# Geometry, in one place because the test asserts the field fits inside the
-# window rather than re-deriving the numbers from the board.
-BAR_WIDTH, BAR_HEIGHT = 640, 184
-FIELD_MARGIN, FIELD_HEIGHT = 24, 48
-
 
 def flatten(text: str) -> str:
     """One line, no leading/trailing space, capped.
@@ -110,6 +126,11 @@ class CommandBar:
         self._history: list[str] = []
         self._recall = -1
         self._error = ""
+        # The three result rows and the context line are BOARD 3's, and they
+        # are built from `core.tool_risk` rather than from a literal in a
+        # painter. A caller that has a real list calls `set_rows`.
+        self._rows: list[Row] = default_rows()
+        self._hint: str = ""
 
     # ── what happened ────────────────────────────────────────────────────────
 
@@ -277,9 +298,9 @@ class CommandBar:
             return True
         try:
             from PyQt6.QtCore import Qt
-            from PyQt6.QtWidgets import QLineEdit, QWidget
+            from PyQt6.QtWidgets import QLineEdit
 
-            window = QWidget()
+            window = _BarWindow()
             window.setWindowFlags(Qt.WindowType.FramelessWindowHint
                                   | Qt.WindowType.Tool
                                   | Qt.WindowType.WindowStaysOnTopHint)
@@ -291,14 +312,23 @@ class CommandBar:
 
             field = QLineEdit(window)
             field.setPlaceholderText(self._placeholder)
-            field.setGeometry(FIELD_MARGIN, FIELD_MARGIN,
-                              BAR_WIDTH - FIELD_MARGIN * 2, FIELD_HEIGHT)
+            # The field is TRANSPARENT and sits exactly on the title line, so
+            # the drawing and the text control are one thing rather than a
+            # styled box with an unstyled control on top of it. `paint_bar`
+            # draws the caret only while the field is empty.
+            _style_field(field)
+            g = GEOMETRY
+            field.setGeometry(g["title"][0], g["title"][1] - 22,
+                              BAR_WIDTH - g["title"][0] * 2, 28)
             # Enter sends, Esc closes, Up/Down walk the history. Bound on the
             # widget rather than through QShortcut: a shortcut needs the window
             # to have focus, and the whole point is that it just got it.
             field.returnPressed.connect(self.submit)
             window.keyPressEvent = self._on_key
 
+            window._rows = self._rows
+            window._hint = self._hint
+            window._field = field
             self._window, self._field = window, field
             return True
         except Exception as e:                      # noqa: BLE001
@@ -306,6 +336,40 @@ class CommandBar:
             self._field = None
             self._error = f"{type(e).__name__}: {e}"
             return False
+
+    # ── what the box says ────────────────────────────────────────────────────
+
+    @property
+    def rows(self) -> list[Row]:
+        """The three lines under the divider, in the order they are drawn."""
+        return list(self._rows)
+
+    def set_rows(self, rows: list[Row]) -> None:
+        """Replace the result rows. Used when a real result list arrives."""
+        self._rows = shown_rows(rows)
+        window = self._window
+        if window is not None:
+            try:
+                window._rows = self._rows
+                window.update()
+            except Exception as e:                  # noqa: BLE001
+                print(f"[JARVIS] Command bar: rows not repainted — "
+                      f"{type(e).__name__}: {e}")
+
+    @property
+    def hint(self) -> str:
+        return self._hint
+
+    def set_hint(self, text: str) -> None:
+        """The "Konteks: …" line. Empty is honest when nothing is selected."""
+        self._hint = str(text or "")
+        window = self._window
+        if window is not None:
+            try:
+                window.update()
+            except Exception as e:                  # noqa: BLE001
+                print(f"[JARVIS] Command bar: hint not repainted — "
+                      f"{type(e).__name__}: {e}")
 
     def _on_key(self, event) -> None:
         """Esc closes and hands focus back; Up/Down recall."""

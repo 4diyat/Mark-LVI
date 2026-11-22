@@ -76,6 +76,21 @@ class _Object:
         # of them together. A stub that answered None made that OR a TypeError
         # which had nothing to do with the code under test.
         self._flags = 0
+        # PER-INSTANCE SIGNALS. These used to be class attributes, which is the
+        # one thing this stub cannot be: `clicked` lives on the class, so every
+        # button in the process shared one signal object. A test that pressed
+        # board 6's `Hapus riwayat` also pressed the history page's `Hapus
+        # riwayat`, and "the buttons reach the audit log" passed while half the
+        # calls went to the undo stack. Instances get their own, and `_Signal`
+        # is now only a class attribute as a last-resort default for the widget
+        # types whose signal names differ.
+        # Walk the MRO: the signals are declared on `_Object`, and the
+        # concrete widgets are built by `_Meta`, so their own `__dict__` does
+        # not list them.
+        for _klass in type(self).__mro__:
+            for _name, _value in list(vars(_klass).items()):
+                if isinstance(_value, _Signal) and _name not in self.__dict__:
+                    setattr(self, _name, _Signal())
         # `QVBoxLayout(parent)` INSTALLS ITSELF, as Qt's does. The window relies
         # on that (`QVBoxLayout(self._content_panel)` with no setLayout), and a
         # stub that ignored it would make `panel.layout()` None — which is the
@@ -248,7 +263,7 @@ class _Object:
         WHY THIS IS STATE, AND WHY THE DEFAULT STAYED. `_RectF` above already
         carries the lesson: a geometry that answers through `__getattr__` is a
         lambda, not a number, and a test cannot tell a card at (24, 208) from
-        one at (0, 0). That is exactly how board 27's cards could be MISSING
+        one at (0, 0). That is exactly how board 06a's cards could be MISSING
         from the page while a test "checked" their geometry.
 
         Accepts `setGeometry(x, y, w, h)` and `setGeometry(QRect)`/`QRectF`.
@@ -804,7 +819,7 @@ def _install_qt() -> dict[str, types.ModuleType]:
     gui.QPainter.font = _painter_font
     gui.QPainter.setFont = _painter_set_font
 
-    # A REAL PAINTER ANSWERS `font()`, and the orb's board 24 caption asks for
+    # A REAL PAINTER ANSWERS `font()`, and the orb's board 05b caption asks for
     # it to inherit the window's typeface. A stub without it made `draw_label`
     # raise on every mode, which surfaced as "the painter runs in every mode"
     # failing in a file that has nothing to do with labels.

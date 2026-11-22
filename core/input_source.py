@@ -1,7 +1,7 @@
 """How the last command reached the assistant — spoken, typed, or unknown.
 
 WHY THIS IS A MODULE OF ITS OWN AND NOT A FIELD ON THE BANNER
-    The risk dialog (board 25) prints "ASAL PERMINTAAN / Perintah suara ·
+    The risk dialog (board 14a) prints "ASAL PERMINTAAN / Perintah suara ·
     14:31 · tercatat di audit log", and the first third of that line is a fact
     only the entry points know. Two doors exist — the microphone and the typed
     field — and until this module there was no record of which one was used, so

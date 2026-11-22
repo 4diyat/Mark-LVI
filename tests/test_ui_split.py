@@ -96,6 +96,12 @@ def test_the_package_has_exactly_the_mockup_modules():
         # arithmetic about a screen and a window — the canvas keeps the pointer,
         # this keeps the rule, and that split is what makes a drag testable.
         "orb_snap.py",
+        # Board 3's DRAWING, split off `command_bar` at the 600-line ceiling.
+        # The boundary is the one `toast_card`/`toast_queue` and
+        # `voice_paint`/`voice_overlay` already use: `command_paint` holds the
+        # tokens, the geometry, the risk rows and every painter call;
+        # `command_bar` holds what the bar DOES (open, type, Esc, recall).
+        "command_paint.py",
         # NOT A MOCKUP MODULE — the thread boundary. `main.py` calls
         # `shell.set_state` from the asyncio runner and `set_audio_level` from
         # the audio threads; both reached a QWidget directly, which is the

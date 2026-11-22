@@ -1,11 +1,11 @@
-"""Board 25 — the risk confirmation, and the two things it was missing.
+"""Board 14a — the risk confirmation, and the two things it was missing.
 
 WHY THESE TESTS EXIST
     `ui/confirm_banner.py` was already a working gate: a human finger answers,
     `core/confirm` refuses on a 90 s timeout, and nothing blocks while it is up.
     What it did not have was the artboard's own information:
 
-      1. NO ORIGIN. Artboard 25 has a field the panel does not:
+      1. NO ORIGIN. Artboard 14a has a field the panel does not:
          "ASAL PERMINTAAN / Perintah suara · 14:31 · tercatat di audit log".
          The banner showed a heading, a title and a detail. A user asked to
          approve an irreversible action could not see what ASKED for it —
@@ -58,7 +58,7 @@ def qt():
     """The repo's stub, with BOTH module families restored afterwards.
 
     Restoring `PyQt6` matters: a later test that asserts its ABSENCE fails for
-    a reason unrelated to what it tests. That leak was found on board 24.
+    a reason unrelated to what it tests. That leak was found on board 05b.
     """
     import sys
 
@@ -198,7 +198,7 @@ def test_escape_answers_no(qt, monkeypatch):
 
 
 def test_enter_answers_yes(qt):
-    """THE OWNER'S RULING, WHICH REVERSED AN EARLIER TEST. Artboard 25 writes
+    """THE OWNER'S RULING, WHICH REVERSED AN EARLIER TEST. Artboard 14a writes
     "Enter · Esc"; the dialog answers to both."""
     from PyQt6.QtCore import Qt
 

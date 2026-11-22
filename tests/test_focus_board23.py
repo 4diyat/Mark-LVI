@@ -1,4 +1,4 @@
-"""Board 23: what the panel says and offers while the assistant is in Fokus.
+"""Board 05a: what the panel says and offers while the assistant is in Fokus.
 
 WHAT BOARD 23 DRAWS, AND WHAT WAS NOT TRUE OF IT
     A 460x660 panel with the mode set to Fokus, and four claims in it:
@@ -93,10 +93,10 @@ def test_the_panel_still_says_fokus_plainly():
     assert "aktif" in data["ui.panel.focus.title"].lower()
 
 
-# ── 2. the four rows board 23 draws ───────────────────────────────────────
+# ── 2. the four rows board 05a draws ───────────────────────────────────────
 
 def test_fokus_has_its_own_quick_rows():
-    """Board 5's four actions are for a normal session. Board 23 draws three
+    """Board 5's four actions are for a normal session. Board 05a draws three
     different ones, and the panel must show the ones for the mode it is in."""
     from ui.tray_panel_model import FOCUS_ACTIONS, QUICK_ACTIONS
 
@@ -414,7 +414,7 @@ def test_the_held_note_counts_the_remainder_from_the_quota(monkeypatch):
     assert "2" in note or "dua" in note.lower(), note
 
 
-# ── 5. the wiring: every row board 23 draws has a handler ─────────────────
+# ── 5. the wiring: every row board 05a draws has a handler ─────────────────
 
 def test_every_focus_row_has_a_handler():
     """A row without a handler is a button that does nothing, and the panel's

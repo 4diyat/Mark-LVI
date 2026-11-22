@@ -199,7 +199,7 @@ def artboard(num, title, w, h, body, bg=BASE):
     svg = body if body.lstrip().startswith("<svg") else frame(w, h, body, bg)
     return f"""
 <section class="ab">
-  <div class="abhead"><span class="num">{num:02d}</span><span class="ttl">{esc(title)}</span>
+  <div class="abhead"><span class="num">{esc(str(num))}</span><span class="ttl">{esc(title)}</span>
     <span class="dim">{w} × {h}</span></div>
   <div class="sheet" style="width:{w}px">{svg}</div>
 </section>"""
@@ -314,6 +314,13 @@ def timer_ring(cx, cy, r, pct):
 
 # ── 1. Desktop ambient ─────────────────────────────────────────────────────
 def b01():
+    # THE ORB SITS HIGHER THAN THE BOTTOM-RIGHT CORNER WOULD SUGGEST, AND THAT
+    # IS ARITHMETIC RATHER THAN TASTE. Its glow is a circle at r × 2.6 = 72.8 px,
+    # so an orb centred at y = 596 paints to y = 668.8 on a 720 px canvas and
+    # its caption at y = 660 lands inside the glow. Placed on the second row
+    # of the desktop chrome's own tray baseline it fits, and
+    # `tests/test_design_sheet_complete.py` fails if any artboard paints
+    # outside its own canvas again.
     o = [txt(24, 30, "Desktop", 11, MUTED, 500, track="1.6"),
          doc_window(96, 62, 720, 400, "RAB Q4 · anggaran.xlsx", [
              ("h", "Ringkasan anggaran kuartal empat"),
@@ -327,8 +334,8 @@ def b01():
     o.append(toast(760, 470, 340, "Rapat tim dimulai 10 menit lagi",
                    "Ruang Rapat 2 · 5 peserta sudah masuk", ("Buka tautan", "Tunda 5 mnt")))
     # orb 56px
-    o.append(orb(1224, 596, 28))
-    o.append(txt(1224, 660, "Siaga", 10, MUTED, 500, "middle", track="1.6"))
+    o.append(orb(1204, 620, 28))
+    o.append(txt(1204, 614, "Siaga", 10, MUTED, 500, "middle", track="1.6"))
     return frame(1280, 720, "".join(o))
 
 
@@ -1300,25 +1307,86 @@ def n06():
     return frame(W, H, "".join(o))
 
 
-BOARDS_LIST = [
-    (1, "Orb overlay — Siaga & area klik", 1280, 720, n01),
-    (2, "Toast — antrean & batas harian", 1280, 720, n02),
-    (3, "Command bar — Ctrl+Space", 1280, 720, n03),
-    (4, "Orb overlay — interaksi & status", 1280, 720, n04),
-    (5, "Panel baki sistem", 460, 660, n05),
-    (6, "Overlay suara + kamera gestur", 1280, 720, n06),
-]
+# ── the registry ───────────────────────────────────────────────────────────
+#
+# WHY THIS REPLACED A HAND-WRITTEN LIST OF TWELVE
+#     `BOARDS_LIST` used to name `n01`–`n06` and `EXTRA` `n07`–`n12`, while this
+#     file defined `b01`–`b22` in full and ran none of them. The sheet shipped
+#     twelve artboards while `README.md`, `DESIGN-ambient.md` and the sheet's own
+#     header all claimed twenty-two, and no test noticed, because the list and
+#     the functions were two independent statements of the same fact.
+#
+#     Now the list is DERIVED from the functions: one row per `bNN`, numbered
+#     from 1 to 22, so a board cannot exist without appearing. The title is
+#     prose and lives here; everything else about a board is in its function.
+BOARD_TITLES = {
+    1: "Desktop ambient",
+    2: "Command bar",
+    3: "Kontrol gestur",
+    4: "Mode suara",
+    5: "Panel baki sistem",
+    6: "Izin & privatisasi",
+    7: "Onboarding — langkah 2 dari 4",
+    8: "Riwayat tugas — hari ini",
+    9: "Memori personal",
+    10: "Detail memori",
+    11: "Rutinitas & saran",
+    12: "Alat cepat, clipboard & cari berkas",
+    13: "Dikte · baca layar · isi form",
+    14: "Keamanan — tiga tingkat risiko",
+    15: "Aksesibilitas — bahasa & gestur",
+    16: "Plugin & ponsel",
+    17: "Tema terang — panel baki",
+    18: "Tema terang — izin & privasi",
+    19: "Peta gestur",
+    20: "Status orb",
+    21: "Brand & ikon",
+    22: "Installer — langkah 1 dari 4",
+}
+
+BOARDS_LIST = []
+for _num, _title in BOARD_TITLES.items():
+    _fn = globals().get(f"b{_num:02d}")
+    if _fn is not None:                    # a missing one fails the test file
+        BOARDS_LIST.append((_num, _title, None, None, _fn))
 
 
-# ── the sheet itself ───────────────────────────────────────────────────────
-
+# ── the six states, as EXTRA VIEWS of the boards they belong to ─────────────
+#
+# They used to be boards 23–28, a second numbering that collided with the first
+# (their 05 drew a tray panel, and `b05` draws one too). The owner's ruling on
+# 2026-11-22: ONE set of numbers, 1–22, and these six fold into the board whose
+# state they show. Each is still drawn — an artboard is the only way to review
+# a state — but none is a board of its own, and nothing is numbered past 22.
+#
+# The first column is the BOARD this is a state of, as a string, because it is
+# printed as "05b" beside the number and is not an integer of its own.
 EXTRA = [
-    (23, "Fokus — toast ditahan", 460, 660, None),
-    (24, "Senyap — orb memudar", 1280, 720, None),
-    (25, "Risiko: konfirmasi (berisiko)", 1280, 720, None),
-    (26, "Riwayat tugas + Urungkan", 460, 660, None),
-    (27, "Izin & Privasi", 460, 660, None),
-    (28, "Tema terang — panel baki", 460, 660, None),
+    # THE SIX `n01`-`n06` BOARDS. They were the first sheet's shell artboards and
+    # they are NOT duplicates of `b01`-`b06`: `n03` draws the command bar the
+    # implementer built (`command_paint.py` is measured against it), `n05` draws
+    # the tray panel's suggestion card, and `n01`/`n02`/`n04`/`n06` draw the orb,
+    # toast and overlay states. Folding them in as views is what keeps the
+    # implemented surface and the picture of it on the same sheet; dropping them
+    # was the mistake this table now cannot make, because
+    # `tests/test_design_sheet_complete.py` asserts every `nNN` is rendered.
+    #
+    # The letters are pinned in this order so a label already cited in `ui/` or
+    # in a test (`02a` is the command bar) cannot move when a row is added.
+    ("2", "Command bar — satu baris, Esc mengembalikan fokus", 1280, 720, "n03"),
+    ("1", "Orb overlay — Siaga & area klik", 1280, 720, "n01"),
+    ("5", "Panel baki — saran hari ini", 460, 660, "n05"),
+    ("1", "Toast — antrean & batas harian", 1280, 720, "n02"),
+    ("1", "Orb overlay — interaksi & status", 1280, 720, "n04"),
+    ("4", "Overlay suara + kamera gestur", 1280, 720, "n06"),
+    # The six states, unchanged: Fokus, Senyap, konfirmasi risiko, riwayat,
+    # izin, tema terang. Same boards, same order, same letters as before.
+    ("5", "Fokus — toast ditahan", 460, 660, "n07"),
+    ("5", "Senyap — orb memudar", 1280, 720, "n08"),
+    ("14", "Konfirmasi (berisiko)", 1280, 720, "n09"),
+    ("8", "Halaman riwayat + Urungkan", 460, 660, "n10"),
+    ("6", "Halaman Izin & Privasi", 460, 660, "n11"),
+    ("17", "Panel baki versi terang", 460, 660, "n12"),
 ]
 
 
@@ -1488,11 +1556,6 @@ def n12():
     return frame(W, H, "".join(o), bg=LBASE)
 
 
-for _num, _title, _w, _h, _fn in EXTRA:
-    if _fn is None:
-        _fn = {23: n07, 24: n08, 25: n09, 26: n10, 27: n11, 28: n12}[_num]
-    BOARDS_LIST.append((_num, _title, _w, _h, _fn))
-
 ASSUMPTIONS = [
     ("A1", "Orb 56 px digambar pada 1280×720 tanpa penskalaan DPI.",
      "Spesifikasi menyebut 56 px dan target sentuh 44 px; keduanya sudah terpenuhi "
@@ -1551,18 +1614,34 @@ def build_html():
 <h1>JARVIS — Shell Ambient</h1>
 <p class="sub">Orb overlay, toast, command bar, panel baki, dan dua overlay. Semua jendela
 frameless, transparan, dan selalu di atas — digambar apa adanya di atas desktop pengguna.</p>
-<p class="sub" style="color:#6C7C88">Lembar ini melanjutkan
-<code>jarvis-design-system.html</code> (22 artboard) dengan token yang sama, tanpa
-mengubah artboard lama. Artboard 1–6 adalah shell Fase 1; 23–28 adalah keadaan yang
-menentukan (fokus, senyap, konfirmasi risiko, riwayat, izin, tema terang).</p>
+<p class="sub" style="color:#6C7C88"><b>22 artboard</b>, bernomor 1–22 dan tidak
+lebih. Enam di antaranya punya keadaan yang menentukan (Fokus, Senyap, konfirmasi
+risiko, riwayat, izin, tema terang); keadaan itu digambar tepat di bawah artboard
+yang bersangkutan, berlabel <code>05b</code>, <code>14b</code> dan seterusnya —
+bukan sebagai artboard bernomor sendiri, karena penomoran kedua pernah ada di sini
+dan bentrok dengan yang pertama.</p>
 """
-    groups = [(1, 6, "Fase 1 — shell ambient"), (23, 28, "Keadaan yang menentukan")]
+    groups = [
+        (1, 4, "Desktop — 1280 × 720"),
+        (5, 18, "Panel baki — 460 × 640"),
+        (19, 22, "Peta, orb, brand, installer"),
+    ]
+    # The extra views, indexed by the board they belong to, so a state is drawn
+    # directly under its board rather than in a section of its own.
+    views: dict[int, list] = {}
+    for parent, title, w, h, fname in EXTRA:
+        fn = globals().get(fname)
+        if fn is not None:
+            views.setdefault(int(parent), []).append((title, w, h, fn))
     body = []
     for start, end, name in groups:
         body.append(f'<div class="meta">{name}</div>')
         for num, title, w, h, fn in BOARDS_LIST:
             if start <= num <= end:
                 body.append(artboard(num, title, w, h, fn()))
+                for index, (vtitle, vw, vh, vfn) in enumerate(views.get(num, []), 1):
+                    body.append(artboard(f"{num:02d}{chr(96 + index)}", vtitle,
+                                         vw, vh, vfn()))
     rows = "".join(f'<tr><td class="mono">{k}</td><td>{v}</td><td>{r}</td></tr>'
                    for k, v, r in ASSUMPTIONS)
     summary = f"""

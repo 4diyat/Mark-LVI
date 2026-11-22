@@ -1,4 +1,4 @@
-"""Board 27 — Izin & Privasi, dan tiga hal yang diklaim tetapi tidak dilakukan.
+"""Board 06a — Izin & Privasi, dan tiga hal yang diklaim tetapi tidak dilakukan.
 
 WHY THESE TESTS EXIST
     The privacy page already drew four switches, three indicator words and two
@@ -223,7 +223,7 @@ def test_the_main_page_keeps_the_assistant_name(panel_module):
 
 
 def test_the_history_page_titles_itself(panel_module):
-    """Board 26's page has its own name too, and the same bug hid it."""
+    """Board 08a's page has its own name too, and the same bug hid it."""
     tray_panel, tray_pages, tray_paint, tray_panel_model = panel_module
 
     panel = tray_panel.TrayPanel({})
@@ -256,22 +256,221 @@ def test_switching_pages_repaints_the_title(panel_module):
         "the title did not change with the page — it is baked in at build time")
 
 
-# ── 4. the artboard's cards ─────────────────────────────────────────────────
+# ── 4. the artboard's cards (BOARD 6, which replaced 06a) ───────────────────
 
-def test_the_permission_and_indicator_cards_are_in_the_geometry_table(panel_module):
-    """`rect(24, y, 412, 56)` behind each permission row (y = 208 + i*66) and
-    `rect(x, 102, 132, 62)` behind each indicator (x = 24 + i*140).
+def test_the_permission_cards_are_in_the_geometry_table(panel_module):
+    """`rect(24, y, 412, 62)` behind each row, y = 106 + i*72 — `b06()`'s pitch.
 
-    Without the cards the four rows read as one paragraph rather than four
-    separate permissions, and the three indicators are loose words.
+    The page used to draw 06a's 56 px cards at a 66 px pitch. Board 6 draws
+    62 px cards 72 px apart, so this is the number a reader can check against
+    the sheet rather than against the widget code.
     """
     from ui import tray_pages
 
     g = tray_pages.GEOMETRY
-    assert g["permx_card"] == (24, 208, 412, 56)
-    assert g["permx_pitch"] == 66
-    assert g["indicator_card"] == (24, 102, 132, 62)
-    assert g["indicator_pitch"] == 140
+    assert g["p6_card"] == (24, 62, 412)
+    assert g["p6_row_y"] == 106
+    assert g["p6_pitch"] == 72
+
+
+def test_the_activity_log_is_board_6s_and_not_06as(tmp_path, monkeypatch):
+    """Board 6 draws three timestamped lines from the audit log.
+
+    The old page drew no log at all — the log lived on the history page under
+    a different label. This asserts the log is ON the permissions page now,
+    filled from the same store the gate writes to.
+    """
+    from core import audit_log
+
+    log = audit_log.AuditLog(path=str(tmp_path / "audit.jsonl"))
+    log.record("screen_processor", "safe", "done", "membaca layar")
+    monkeypatch.setattr(audit_log, "shared", lambda: log)
+
+    from ui import tray_pages
+    from ui.tray_paint import _activity_lines
+
+    lines = _activity_lines()
+    assert lines, "the activity log came back empty with an entry in the store"
+    when, what = lines[0]
+    assert "screen_processor" in what
+    # Newest first, as the artboard draws them.
+    assert tray_pages.GEOMETRY["p6_log_row_y"] < tray_pages.GEOMETRY["p6_divider"][1]
+
+
+def test_board_6s_buttons_act_on_the_log_they_sit_under(panel_module):
+    """THE TRAP IN THIS PAGE, AND IT IS A REAL ONE.
+
+    Board 6 draws "Ekspor log" and "Hapus riwayat" UNDER an activity log card.
+    The same two labels are on the history page, where they mean the UNDO STACK
+    — `clear_history`'s own docstring says it does not erase the audit log, and
+    `export_history` writes `undo.history()`.
+
+    Wiring board 6's buttons to those handlers would put a button under an
+    activity log that clears a different store. This test pins the stores, not
+    the labels.
+    """
+    tray_panel, _pages, _paint, _model = panel_module
+    called = []
+
+    def recorder(key):
+        def handler(*_a, **_k):
+            called.append(key)
+            return True
+        return handler
+
+    actions = {key: recorder(key) for key in
+               ("erase", "export_audit", "history_clear", "history_export")}
+    panel = tray_panel.TrayPanel(actions)
+    panel.open()
+
+    # PRESS THE BUTTONS, THROUGH THE SIGNAL. The first version called
+    # `panel._call()` with the two keys it EXPECTED, which asserted that
+    # `_call` works and nothing else: wiring a button to the undo stack is a
+    # mutation it could not see. The second version used `.click()`, which this
+    # stub does not implement — `__getattr__` handed back a lambda, so it
+    # pressed nothing and passed for the wrong reason. `clicked.emit()` is the
+    # one path the stub really supports.
+    panel._buttons["p6_clear"].clicked.emit()
+    panel._buttons["p6_export"].clicked.emit()
+    assert called == ["erase", "export_audit"], (
+        f"board 6's buttons reached {called}, not the audit-log handlers")
+
+
+def test_the_export_writes_the_audit_log_not_the_undo_stack(tmp_path, monkeypatch):
+    """`export_audit` reads `core.audit_log`; `export_history` reads `undo`."""
+    from core import audit_log
+
+    log = audit_log.AuditLog(path=str(tmp_path / "audit.jsonl"))
+    log.record("screen_processor", "safe", "done", "membaca layar")
+    monkeypatch.setattr(audit_log, "shared", lambda: log)
+
+    from ui import tray_panel_wiring as wiring
+
+    said = []
+    monkeypatch.setattr(wiring, "_say", lambda _shell, text: said.append(text))
+    monkeypatch.setattr(wiring, "_desktop_path", lambda: tmp_path)
+    assert wiring.export_audit(object()) is True
+    written = (tmp_path / "jarvis-activity-log.txt").read_text(encoding="utf-8")
+    assert "screen_processor" in written
+    assert said and "jarvis-activity-log.txt" in said[-1]
+
+
+def test_the_activity_log_is_written_by_the_paint(tmp_path, monkeypatch, panel_module):
+    """The three log lines come from `paint_permissions`, on every refresh.
+
+    A log filled once at build time is a screenshot of the moment the panel was
+    constructed: an action that completes while the panel is open would never
+    appear, and the card would look like the record while being stale.
+    """
+    from core import audit_log
+
+    log = audit_log.AuditLog(path=str(tmp_path / "audit.jsonl"))
+    monkeypatch.setattr(audit_log, "shared", lambda: log)
+
+    tray_panel, _pages, tray_paint, _model = panel_module
+    panel = tray_panel.TrayPanel({})
+    panel.open()
+    log.record("screen_processor", "safe", "done", "membaca layar")
+    tray_paint.paint(panel, panel.snapshot)
+
+    texts = [panel._labels[f"p6_log_text:{i}"].text() for i in range(3)]
+    assert any("screen_processor" in t for t in texts), (
+        f"the activity log was not refreshed by the paint: {texts}")
+    times = [panel._labels[f"p6_log_time:{i}"].text() for i in range(3)]
+    assert any(":" in t for t in times), f"no timestamped row: {times}"
+
+
+def test_an_empty_audit_log_says_so_rather_than_reading_blank(tmp_path,
+                                                              monkeypatch,
+                                                              panel_module):
+    """A fresh install's log is empty, and an empty card looks like a broken one.
+
+    `_activity_lines()` returns `[]` for both "nothing has happened yet" and
+    "the log could not be read". The page must say which one the user is
+    looking at, so the first row carries the empty-state sentence instead of
+    three blank lines under a LOG AKTIVITAS header.
+    """
+    from core import audit_log
+
+    log = audit_log.AuditLog(path=str(tmp_path / "empty.jsonl"))
+    monkeypatch.setattr(audit_log, "shared", lambda: log)
+
+    tray_panel, _pages, tray_paint, _model = panel_module
+    panel = tray_panel.TrayPanel({})
+    panel.open()
+    tray_paint.paint(panel, panel.snapshot)
+
+    first = panel._labels["p6_log_text:0"].text()
+    assert first.strip(), "the log is empty and the page says nothing about it"
+    assert panel._labels["p6_log_text:1"].text() == ""
+    assert panel._labels["p6_log_time:0"].text() == ""
+
+
+def test_the_log_puts_the_newest_entry_on_top(tmp_path, monkeypatch,
+                                             panel_module):
+    """b06 draws its log newest-first, and the audit log stores oldest-first.
+
+    Getting this backwards is invisible: the card still fills with plausible
+    lines, and every row still has a time. It is only wrong to a user who
+    watches an action happen and finds it on the bottom row.
+    """
+    from core import audit_log
+
+    log = audit_log.AuditLog(path=str(tmp_path / "ordered.jsonl"))
+    monkeypatch.setattr(audit_log, "shared", lambda: log)
+    log.record("first_tool", "safe", "done", "satu")
+    log.record("last_tool", "safe", "done", "tiga")
+
+    tray_panel, _pages, tray_paint, _model = panel_module
+    panel = tray_panel.TrayPanel({})
+    panel.open()
+    tray_paint.paint(panel, panel.snapshot)
+
+    top = panel._labels["p6_log_text:0"].text()
+    assert "last_tool" in top, (
+        f"the newest entry is not the top row: {top!r}")
+
+
+def test_the_log_fills_all_three_rows_when_there_is_that_much(tmp_path,
+                                                              monkeypatch,
+                                                              panel_module):
+    """Three entries in, three rows out. Reading two of them leaves the third
+    row blank under a header that promised a table."""
+    from core import audit_log
+
+    log = audit_log.AuditLog(path=str(tmp_path / "full.jsonl"))
+    monkeypatch.setattr(audit_log, "shared", lambda: log)
+    for n in range(4):
+        log.record(f"tool_{n}", "safe", "done", f"langkah {n}")
+
+    tray_panel, _pages, tray_paint, _model = panel_module
+    panel = tray_panel.TrayPanel({})
+    panel.open()
+    tray_paint.paint(panel, panel.snapshot)
+
+    filled = [panel._labels[f"p6_log_text:{i}"].text() for i in range(3)]
+    assert all(t.strip() for t in filled), f"a log row came up blank: {filled}"
+    assert "tool_3" in filled[0] and "tool_1" in filled[2], (
+        f"the three newest entries are not on the card: {filled}")
+
+
+def test_the_log_card_has_exactly_three_rows(panel_module):
+    """Three, because that is what fits in the 118 px card at a 32 px pitch.
+
+    A fourth row would be drawn underneath the divider and the buttons.
+    """
+    tray_panel, tray_pages, _paint, _model = panel_module
+
+    panel = tray_panel.TrayPanel({})
+    panel.open()
+
+    rows = [k for k in panel._labels if k.startswith("p6_log_text:")]
+    assert len(rows) == 3, f"board 6 draws {len(rows)} log rows, not 3"
+
+    g = tray_pages.GEOMETRY
+    last_y = g["p6_log_row_y"] + 2 * g["p6_log_pitch"] + 16
+    assert last_y < g["p6_divider"][1], (
+        "the third log row runs into the divider")
 
 
 def test_the_cards_are_actually_widgets(panel_module):
@@ -283,20 +482,23 @@ def test_the_cards_are_actually_widgets(panel_module):
     panel.open()
     g = tray_pages.GEOMETRY
 
-    for index, key in enumerate(("screen", "microphone", "files")):
-        card = panel._labels.get(f"indicator_card:{key}")
-        assert card is not None, f"no card behind the {key} indicator"
-        expected = (g["indicator_card"][0] + index * g["indicator_pitch"],
-                    g["indicator_card"][1],
-                    g["indicator_card"][2], g["indicator_card"][3])
-        assert (card.x(), card.y(), card.width(), card.height()) == expected
-
     for index, key in enumerate(("screen", "microphone", "files", "apps")):
-        card = panel._labels.get(f"permx_card:{key}")
+        card = panel._labels.get(f"p6_card:{key}")
         assert card is not None, f"no card behind the {key} permission row"
-        expected_y = g["permx_card"][1] + index * g["permx_pitch"]
+        expected_y = g["p6_row_y"] + index * g["p6_pitch"]
         assert (card.x(), card.y(), card.width(), card.height()) == (
-            g["permx_card"][0], expected_y, g["permx_card"][2], g["permx_card"][3])
+            g["p6_card"][0], expected_y, g["p6_card"][2], g["p6_card"][1])
+
+    # The activity log's card too. It is the widest surface on the page, and a
+    # page that drew the IZIN AKSES cards and forgot this one would still pass
+    # every row assertion above.
+    log_card = panel._labels.get("p6_log_card")
+    assert log_card is not None, "no card behind the activity log"
+    assert (log_card.x(), log_card.y(),
+            log_card.width(), log_card.height()) == g["p6_log_card"]
+    header = panel._labels.get("p6_log_header")
+    assert header is not None and header.y() < log_card.y(), (
+        "the LOG AKTIVITAS header is not above the log it names")
 
 
 # ── 5. the four switches still work, and still refuse what they cannot do ────

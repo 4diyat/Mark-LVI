@@ -48,7 +48,7 @@ KIND_INFO, KIND_WARN, KIND_RISKY = "info", "warn", "risky"
 KINDS = (KIND_INFO, KIND_WARN, KIND_RISKY)
 
 # The accent rule down the card's left edge — `toast(x, y, w, ..., accent=CYAN)`
-# in build.py. Risky is amber for the same reason board 25's confirmation is:
+# in build.py. Risky is amber for the same reason board 14a's confirmation is:
 # a dangerous toast and a friendly one must not look alike at a glance.
 ACCENTS = {
     KIND_INFO: "#4FD8F0",

@@ -8,9 +8,10 @@ semua komputer. Hasil uji lokal tidak otomatis menjadi hasil CI atau rilis.
 > ## BACA DULU: banyak baris di bawah sudah tidak berlaku
 >
 > Build ini **menghapus** seluruh permukaan yang tidak digambar mockup
-> (`docs/mockups/jarvis-design-system.html`, 12 papan). Yang tersisa hanya:
-> orb, toast, command bar, panel baki, konfirmasi risiko, face bubble, dan
-> `AmbientShell`. Catatan lengkap beserta cara mengembalikannya ada di
+> (`docs/mockups/jarvis-design-system.html`, **22 papan, bernomor 1–22**).
+> Yang tersisa hanya: orb, toast, command bar, panel baki, konfirmasi risiko,
+> face bubble, dan `AmbientShell` — 8 papan punya permukaan di `ui/`, 13 belum,
+> 1 (board 14) baru separuh. Daftar keduanya ada di
 > **`docs/mockups/NOT-IN-MOCKUP.md`**.
 >
 > Baris matriks berikut menjelaskan fitur yang **tidak ada lagi** di build ini,
@@ -568,10 +569,12 @@ membaca kode.
 
 ### Visual sesuai lembar desain
 
-Buka `docs/mockups/jarvis_design_system` / `jarvis-desktop-spec.html`
-berdampingan dengan aplikasi, lalu periksa enam permukaan ini.
+Buka `docs/mockups/jarvis-design-system.html` berdampingan dengan aplikasi, lalu
+periksa enam permukaan ini. `jarvis-desktop-spec.html` menggambar jendela yang
+sudah dihapus dan **bukan** acuan visual. Nomor di bawah adalah nomor artboard
+pada lembar itu; `14a` berarti keadaan yang digambar di bawah board 14.
 
-- [ ] **Board 25, dialog konfirmasi.** Latar biru-gelap `#0C1B26`, **border
+- [ ] **Board 14a, dialog konfirmasi.** Latar biru-gelap `#0C1B26`, **border
       amber**, sudut membulat 16 px, dan **garis amber 3 px di tepi kiri**.
       Tombol "Konfirmasi" harus **berisi amber** dengan teks gelap, bukan
       transparan. Dialog **520 px** lebar. Tidak boleh ada huruf monospace.
@@ -581,9 +584,13 @@ berdampingan dengan aplikasi, lalu periksa enam permukaan ini.
 - [ ] **Board 6, overlay suara.** Glow tepi, garis bingkai, label
       "MENDENGARKAN", dan orb semuanya cyan `#4FD8F0` — warnanya harus identik
       dengan orb di board 1.
-- [ ] **Board 5 / 23 / 27 / 28, panel baki.** Latar `#0A1722`, kartu `#081520`,
-      aksen cyan, peringatan amber.
-- [ ] **Board 2, toast.** Kartu `#0C1B26` dengan border `#17323F`.
+- [ ] **Board 5 / 5a / 5b / 6 / 8 / 17, panel baki.** Latar `#0A1722`, kartu
+      `#081520`, aksen cyan, peringatan amber; `17` versi terang, `#F6F9FB`.
+- [ ] **Board 2, command bar.** Kotak `#0C1E29 → #081319`, garis cyan 2 px di
+      tepi atas, chip `Esc`, tiga baris dengan titik cyan/amber/redup. Titik
+      amber hanya pada baris yang memang **berisiko** — baris itu yang akan
+      minta konfirmasi.
+- [ ] **Board 1, toast.** Kartu `#0C1B26` dengan border `#17323F`.
 - [ ] Kalau ada permukaan yang warnanya beda dari yang lain, curigai
       `ui/theme.py` — modul itu menyimpan palet lama dan **tidak boleh** dibaca
       permukaan mana pun. `tests/test_visual_conformance.py` menegakkannya.

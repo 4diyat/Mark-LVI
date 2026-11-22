@@ -1,4 +1,4 @@
-"""Board 24 — Senyap: the orb shrinks to 18 px, and says so.
+"""Board 05b — Senyap: the orb shrinks to 18 px, and says so.
 
 WHY THESE TESTS EXIST
     The artboard states the rule in words and then draws the result:
@@ -220,7 +220,7 @@ def test_the_label_is_centred_on_the_ring(qt):
 
 
 def test_the_label_sits_below_the_ring_not_over_it():
-    """Board 24 draws it under the circle. A caption across the ring would
+    """Board 05b draws it under the circle. A caption across the ring would
     obscure the one thing it describes."""
     from ui.orb_paint import appearance, label_y
 

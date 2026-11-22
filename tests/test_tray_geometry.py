@@ -185,7 +185,7 @@ def test_every_geometry_entry_is_a_rectangle_inside_the_panel(geometry):
 def test_the_palettes_still_match_the_artboard_tokens():
     """The tray panel's two palettes against `build.py`'s own constants.
 
-    This is the test the theme work has needed since board 28: the light
+    This is the test the theme work has needed since board 17a: the light
     palette is a table copied by hand, and a hand-copied hex string is the
     quietest possible drift.
     """
