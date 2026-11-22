@@ -236,9 +236,14 @@ def stop_summon_hotkey(shell: "AmbientShell") -> None:
 
 def start_tray(shell: "AmbientShell") -> bool:
     """Create the notification-area icon. False if this desktop has none."""
+    from ui import tray_panel_wiring
     from ui.tray import TrayIcon
 
     tray = TrayIcon({
+        # A LEFT CLICK opens the panel (board 5). Wired here rather than inside
+        # `ui/tray.py` so the tray keeps knowing nothing about what the panel
+        # is — see that module's docstring, which is still true.
+        "panel": lambda: tray_panel_wiring.toggle_panel(shell),
         "show": lambda: summon(shell),
         "wake": lambda: request_wake(shell),
         "sleep": lambda: request_sleep(shell),
@@ -484,8 +489,9 @@ def quit_app(shell: "AmbientShell", code: int = 0) -> None:
     asked it to quit. An assistant that ignores Quit is one somebody ends with
     Task Manager, and then they stop trusting the tray.
     """
-    for attr, stop_name in (("_orb", "stop"), ("_bubble", "stop"),
-                            ("_tray", "stop"), ("_command_bar", "close")):
+    for attr, stop_name in (("_panel", "stop"), ("_orb", "stop"),
+                            ("_bubble", "stop"), ("_tray", "stop"),
+                            ("_command_bar", "close")):
         target = getattr(shell, attr, None)
         if target is None:
             continue

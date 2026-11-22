@@ -49,11 +49,25 @@ def test_ui_is_a_package_not_a_file():
 
 
 def test_the_package_has_exactly_the_mockup_modules():
-    """Sixty-four modules went; sixteen stayed. The list is the design."""
+    """Sixty-four modules went; the list is the design.
+
+    The three `tray_panel*` modules are boards 5, 23, 26, 27 and 28 arriving as
+    a panel: model (what is true), pages (geometry and the two palettes) and
+    wiring (which function is behind which control). They are three files
+    rather than one because each answers a different question, and because the
+    600-line ceiling is not decoration — the first draft of the panel crossed
+    it and the split is what the ceiling is FOR.
+    """
     expected = {
         "__init__.py", "ambient_shell.py", "command_bar.py", "confirm_banner.py",
         "face_bubble.py", "face_canvas.py", "lifecycle.py", "orb_overlay.py",
         "orb_paint.py", "shell.py", "theme.py", "toast_queue.py", "tray.py",
+        "tray_pages.py", "tray_paint.py", "tray_panel.py",
+        "tray_panel_model.py", "tray_panel_wiring.py", "tray_theme.py",
+        # Board 6: the voice overlay, split three ways for the same reason the
+        # tray panel is — model (what is true), hand (what the camera said),
+        # paint (every Qt call). The first draft was one 790-line file.
+        "voice_hand.py", "voice_overlay.py", "voice_paint.py",
     }
     present = {p.name for p in _modules()}
     assert present == expected, (

@@ -276,6 +276,28 @@ def test_a_left_click_summons_and_a_right_click_does_not(tray_module):
     assert calls == ["show"], "a right click must not also summon a window"
 
 
+def test_a_left_click_opens_the_panel_when_one_is_wired(tray_module):
+    """Board 5: the fastest gesture the user has must not be spent on "show".
+
+    With a `panel` handler the left click goes there; without one it keeps the
+    old behaviour, so an older host is not broken by the newer tray.
+    """
+    calls = []
+    tray = tray_module.TrayIcon({"show": lambda: calls.append("show"),
+                                 "panel": lambda: calls.append("panel")})
+    assert tray.start() is True
+    icon = _Tray.created[-1]
+    icon.activated.emit(3)                        # Trigger
+    assert calls == ["panel"]
+    icon.activated.emit(2)                        # Context — Qt opens the menu
+    assert calls == ["panel"], "a right click must not also open the panel"
+
+    legacy = tray_module.TrayIcon({"show": lambda: calls.append("legacy-show")})
+    assert legacy.start() is True
+    _Tray.created[-1].activated.emit(3)
+    assert calls[-1] == "legacy-show"
+
+
 def test_the_autostart_item_is_a_switch_that_shows_the_real_state(tray_module):
     """The tick is only worth drawing if it is read from disk, not remembered.
 

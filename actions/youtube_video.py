@@ -300,6 +300,7 @@ def _handle_play(parameters: dict, player) -> str:
     if video_url:
         print(f"[YouTube] ▶️ Opening: {video_url}")
         _open_url(video_url)
+        _register_undo(video_url, query)
         return f"Playing: {query}"
 
     print("[YouTube] ⚠️ Scrape failed, opening filtered search page")
@@ -443,6 +444,47 @@ def youtube_video(
     except Exception as e:
         print(f"[YouTube] ❌ Error in {action}: {e}")
         return f"YouTube {action} failed, sir: {e}"
+
+
+def _register_undo(video_url: str, query: str) -> None:
+    """Offer to put the user's browser back where it was before this opened.
+
+    WHY THIS IS NOT "CLOSE THE TAB"
+        `_open_url` opens a browser tab in the user's OWN browser, and this
+        process does not own that tab: closing a tab it did not create is a
+        change to somebody else's window, and a wrong guess closes whatever the
+        user had there. Going BACK is the reversal the user would perform, and
+        it is the one the browser itself can answer honestly.
+
+    WHAT IT CANNOT DO, AND DOES NOT CLAIM
+        If the browser cannot be driven (`pyautogui` missing, no window focused,
+        a browser that ignores the shortcut), the undo says so instead of
+        reporting success. And going back is not "the video stopped": a video
+        that is already playing in a tab somewhere is not a thing this module
+        can reach. The sentence names what it did — "went back" — never what it
+        hoped the user would infer.
+    """
+    try:
+        from core.undo import push_undo
+
+        def _undo() -> str:
+            try:
+                from core.lazyimport import installed
+
+                if not installed("pyautogui")():
+                    return ("opened the video in your browser; going back needs "
+                            "pyautogui, which is not installed")
+                import pyautogui
+
+                hotkey = ("command", "Left") if sys.platform == "darwin" else ("alt", "Left")
+                pyautogui.hotkey(*hotkey)
+                return f"went back — the tab for {query[:40]} is behind the page you came from."
+            except Exception as exc:                # noqa: BLE001
+                return f"could not go back: {type(exc).__name__}: {exc}"
+
+        push_undo(f"played {query[:60]}", _undo)
+    except Exception as exc:                        # noqa: BLE001
+        print(f"[YouTube] undo not registered: {type(exc).__name__}: {exc}")
 
 
 # ── Tool declaration (auto-discovered by core/action_loader.py) ──────────────

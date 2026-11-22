@@ -1096,8 +1096,54 @@ def browser_control(
         return "The internal browser requires the JARVIS desktop interface."
     if not enabled:
         return "Enable the workspace_browser plugin in Plugin Manager first."
+    # WHAT THE UNDO CAN AND CANNOT REVERSIBLY DO, decided from the CALL rather
+    # than from the page: the dispatch hands a URL to the internal browser and
+    # returns immediately, so there is no "previous URL" to read back here — the
+    # window owns that. So the undo asks the window to go back, which is exactly
+    # what the user would press, and reports what the window says.
+    _register_undo(player, callback, url, action)
     callback({"kind": "workspace_browser", "url": url})
     return "Requested the internal browser. Check the window for loading status."
+
+
+def _register_undo(player, callback, url: str, action: str) -> None:
+    """Offer to walk the internal browser back to where it was.
+
+    WHY THE UNDO IS "BACK" AND NOT "CLOSE THE TAB"
+        `new_tab` opens a tab; `go_to` and `search` navigate the CURRENT one.
+        Closing a tab after a `go_to` would take the user's whole tab with it,
+        history and all — a larger change than the one being reversed, which is
+        the one thing an undo must never be. Going back is the same reversal
+        the user would perform and it leaves the tab they had.
+
+    WHAT IT CANNOT PROMISE, SAID HERE RATHER THAN DISCOVERED BY THE USER
+        The internal browser is a widget this process does not own from here.
+        The undo asks it to go back and reports its answer; if the widget is
+        gone, or the page had no history, the answer is "nothing to undo" — not
+        a claim that the navigation was reversed. And the time is untouched:
+        going back does not un-read a page, and it is not advertised as if it
+        did.
+    """
+    try:
+        from core.undo import push_undo
+
+        def _undo() -> str:
+            ask = getattr(player, "browser_back", None) if player else None
+            if not callable(ask):
+                return ("the internal browser cannot be asked to go back in this "
+                        "build — close the tab yourself if you want it gone")
+            try:
+                ok = ask()
+            except Exception as exc:                # noqa: BLE001
+                return f"could not go back: {type(exc).__name__}: {exc}"
+            if ok:
+                verb = "opened a tab at" if action == "new_tab" else "navigated to"
+                return f"went back — {verb} {url} is off screen."
+            return "there was no page to go back to — nothing to undo."
+
+        push_undo(f"{action} {url[:60]}", _undo)
+    except Exception as exc:                        # noqa: BLE001
+        print(f"[Browser] undo not registered: {type(exc).__name__}: {exc}")
 
 
 def _log(player, text: str):

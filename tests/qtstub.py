@@ -66,6 +66,10 @@ class _Object:
         self._parent = a[0] if a and isinstance(a[0], _Object) else k.get("parent")
         self._layout = None
         self._text = ""
+        # A positional string first argument is a widget's LABEL, as Qt reads
+        # it (`QPushButton("Kirim", page)`, `QLabel("IZIN", page)`).
+        if a and isinstance(a[0], str):
+            self._text = a[0]
         self._style = ""
         self._enabled = True
         # Window flags are a bitmask in Qt and every floating surface ORs three
@@ -180,6 +184,13 @@ class _Object:
     # the rest, as no-ops that record what was asked
     def setText(self, t):
         self._text = t
+        # `QPushButton("label", parent)` takes its text from the CONSTRUCTOR,
+        # which Qt stores the same way `setText` does. The stub kept only the
+        # argument-less case, so a panel built with `QPushButton(name, page)`
+        # had every button reading back "". Real Qt does not behave that way
+        # and a test that asserts button text must not pass on a stub quirk.
+        if "text" in self.__dict__:
+            self.__dict__.pop("text", None)
 
     def text(self):
         return self._text
@@ -224,14 +235,32 @@ class _Object:
         # block limit on it.
         return _Object()
 
-    def setCheckable(self, _on):
-        pass
+    # Checked / enabled are STATE, like visibility: a panel that draws a switch
+    # reads both back, and a stub that always answered False made every toggle
+    # look broken while the code was right. Same reason as `_visible`.
+    def setCheckable(self, on):
+        self._checkable = bool(on)
 
     def isChecked(self):
-        return False
+        return bool(self.__dict__.get("_checked", False))
 
-    def setChecked(self, _on):
-        pass
+    def setChecked(self, on):
+        self._checked = bool(on)
+
+    def setEnabled(self, on):
+        self._enabled = bool(on)
+
+    def isEnabled(self):
+        return bool(self.__dict__.get("_enabled", True))
+
+    def setPlaceholderText(self, text):
+        self._placeholder_text = text
+
+    def clear(self):
+        self._text = ""
+
+    def setFocus(self):
+        self._focused = True
 
     def __getattr__(self, name):
         # A PRIVATE name is always real state, never a Qt convenience. Returning
@@ -566,13 +595,34 @@ def _install_qt() -> dict[str, types.ModuleType]:
         def __bool__(self):
             return True
 
+        # A KEY is an identity, not a flag: `event.key() == Qt.Key.Key_Escape`
+        # is the only comparison in the app that must be TRUE, and the one
+        # below this (`== False`) made every key press look like "not Esc" —
+        # which silently skipped each branch in `_on_key`. Key names answer
+        # with themselves so a handler can be driven at all.
         def __eq__(self, _other):
-            return False
+            body = self.__dict__.get("_path", ())
+            other = getattr(_other, "_path", None)
+            return bool(body) and bool(other) and body == other
 
         def __hash__(self):
             return 0
 
+    class _PathEnum(_Enum):
+        """`Qt.Key.Key_Escape` — an enum whose attributes remember their path."""
+
+        def __init__(self, path=()):
+            self._path = path
+
+        def __getattr__(self, name):
+            if name.startswith("__"):
+                raise AttributeError(name)
+            return _PathEnum(self._path + (name,))
+
+    _KEY_ROOTS = ("Key", "KeyboardModifier")
     core.Qt = _Enum()
+    for _root in _KEY_ROOTS:
+        setattr(core.Qt, _root, _PathEnum((_root,)))
     core.QDir = type("QDir", (), {"Filter": _Enum()})
     core.QTimer = type("QTimer", (_Object,), {"start": lambda s, *a: None,
                                              "stop": lambda s, *a: None,
@@ -650,6 +700,16 @@ def _install_qt() -> dict[str, types.ModuleType]:
     widgets.QTreeView = _TreeView
 
     class _Geometry(_Object):
+        # A QRect answers x() and y() as well as width() and height(), and a
+        # panel anchored to a corner needs all four: without x()/y() the stub
+        # made `panel_position` raise, so a test that only ever asked for the
+        # size would have "proved" the panel could not be placed at all.
+        def x(self):
+            return 0
+
+        def y(self):
+            return 0
+
         def width(self):
             return 1920
 

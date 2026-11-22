@@ -30,6 +30,18 @@ semua komputer. Hasil uji lokal tidak otomatis menjadi hasil CI atau rilis.
 > Yang **masih** berlaku dan masih diuji: mikrofon, briefing, bibir/jadwal audio,
 > transkrip, prompt, reconnect, provider, plugin, integrasi OS, Obsidian,
 > riwayat percakapan, dan seluruh permukaan ambient.
+>
+> **Panel baki (papan 5, 23, 26, 27, 28) sekarang ada**, termasuk saklar tema
+> tiga keadaan di header (papan 28). `auto` membaca `ui_os_theme` dari
+> `config/api_keys.json`, bukan kueri desktop langsung — deteksi tema berjalan
+> adalah urusan pemilik QApplication. Bila kunci itu tidak ada, `auto` = gelap. Empat hal yang
+> digambar tetapi belum sepenuhnya didukung, dan mengatakannya di layar:
+> *Susun jendela* (tidak ada kode window-snapping di pohon ini), *Mode tamu*
+> (belum ada yang berhenti membaca memori), *Dikte* (tahan enam detik lewat
+> timer, bukan tekan-tahan), dan *Cari berkas* (membuka command bar dengan
+> awalan, bukan mencari sendiri). Tiga chord di baris aksi cepat adalah milik
+> artboard dan **tidak** terdaftar sebagai hotkey; hanya summon dan command bar
+> yang benar-benar terikat. Rinciannya di `docs/mockups/NOT-IN-MOCKUP.md`.
 
 ## Matriks verifikasi
 
@@ -155,12 +167,31 @@ Empat tool lama (`check_desktop_qt.py`, `capture_desktop_qt.py`,
 `check_rotation_*.py`) mengimpor `ui/window.py` dan modul permukaan yang sudah
 dihapus, sehingga ikut dihapus; riwayatnya ada di commit `376909f1`.
 
+**Board 6 (overlay suara + kamera gestur) menambah tiga hal yang diuji tanpa
+layar.** `ui/voice_overlay.py` memisahkan tiga janji catatan kaki artboard
+menjadi fungsi yang mengembalikan angka atau bool — glow nol saat nonaktif, Esc
+menutup, Ctrl+Alt+G menjeda tanpa menghapus transkrip — dan
+`tests/test_voice_overlay.py` memeriksa keduanya: nilai yang dikembalikan DAN
+panggilan yang benar-benar sampai ke painter, lewat `tests/fakepainter.py` yang
+mencatat setiap `drawText`/`fillRect`/`drawRect`. Di mesin ini `QtGui` tidak
+dapat diimpor (`libxkbcommon.so.0` tidak ada), jadi yang diuji adalah kode di
+`ui/voice_paint.py`, dengan tipe Qt pengganti yang memiliki tanda tangan sama.
+Satu mutasi yang lolos: menggambar tepi di `x = 0` alih-alih `x = 1` membuat
+separuh garis 2 px berada di luar jendela — terlihat, dan sekarang gagal.
+
 **Yang hanya dapat dibuktikan di Windows.** Klik-tembus
 (`WindowTransparentForInput`), fokus kembali setelah Esc, transparansi jendela
 frameless dan DPAPI memerlukan desktop Windows nyata dengan compositor.
 `QT_QPA_PLATFORM=offscreen` tidak punya window manager sama sekali, jadi
 `check_ambient_qt.py` hanya membuktikan bahwa jendela dan flag-nya DIBUAT, bukan
 bahwa window manager menerimanya. Klaim-klaim itu tetap belum terbukti.
+
+Untuk board 6 ada satu klaim tambahan yang TIDAK dibuat, dan itu disengaja:
+overlay ini tidak memakai `WindowTransparentForInput`. Klik-tembus akan membuat
+jendela tidak bisa menerima Esc — padahal catatan kaki artboard menjanjikan Esc
+menutup overlay. `test_the_window_flags_are_the_three_that_matter_and_not_click_through`
+menjaga ketiadaan itu. Di Windows, apakah fokus kembali ke aplikasi di bawahnya
+setelah Esc belum diuji dan tetap dicatat sebagai belum terbukti.
 
 Jangan menafsirkan kegagalan import karena library OS yang tidak terpasang
 sebagai bukti bahwa fitur gagal di semua perangkat.

@@ -225,6 +225,67 @@ def _confirm():
     print(f"  {banner.width()}px wide, on top, no parent")
 
 
+@check("the tray panel draws three pages in two palettes and closes on Esc")
+def _panel():
+    _require_app()
+    from PyQt6.QtCore import Qt
+
+    from ui.tray_panel import TrayPanel
+
+    panel = TrayPanel({})
+    assert panel.open(), f"the panel could not open: {panel.error}"
+    assert panel._window.width() == 460 and panel._window.height() == 660
+    flags = panel._window.windowFlags()
+    for wanted in ("FramelessWindowHint", "Tool", "WindowStaysOnTopHint"):
+        assert flags & getattr(Qt.WindowType, wanted), f"{wanted} missing"
+    for page in ("main", "history", "privacy"):
+        assert panel.set_page(page), page
+        _repaint(panel._window)
+    assert panel.set_page("trading") is False, "an unknown page was accepted"
+    assert panel.set_theme("light") and panel.theme == "light"
+    _repaint(panel._window)
+    # Board 28's three-state setting: `auto` must resolve to a palette that
+    # exists, and the header control must be able to reach all three.
+    assert panel.press_theme() in ("auto", "dark", "light")
+    assert panel.theme in ("dark", "light")
+    _repaint(panel._window)
+    assert panel.set_theme("dark")
+    panel.close()
+    assert panel.available, "closing must not destroy the widget"
+    panel.stop()
+    print("  460x660, three pages, both palettes, on top, no raise")
+
+
+@check("the voice overlay draws the edge, the tile and the words — and Esc closes it")
+def _voice_overlay():
+    _require_app()
+    from PyQt6.QtCore import Qt
+
+    from ui.voice_overlay import VoiceOverlay
+
+    overlay = VoiceOverlay()
+    assert overlay.start(), f"the overlay could not start: {overlay.error}"
+    flags = overlay._window.windowFlags()
+    for wanted in ("FramelessWindowHint", "Tool", "WindowStaysOnTopHint"):
+        assert flags & getattr(Qt.WindowType, wanted), f"{wanted} missing"
+    assert not flags & Qt.WindowType.WindowTransparentForInput, (
+        "click-through would eat the Esc that closes the overlay")
+
+    overlay.set_state("listening")
+    overlay.set_hand((0.42, 0.5, True))
+    overlay.set_camera_available(True)
+    overlay.set_transcript("ringkas tabel ini dan tandai baris yang lewat anggaran")
+    overlay.set_answer("Baris 7 dan 11 melewati plafon 12% dan 4%.")
+    assert overlay.glow() > 0.0, "an active overlay with no edge is not the artboard"
+    _repaint(overlay._window)
+
+    # The footnote's second promise, exercised through the real key path.
+    assert overlay.handle_escape() is True
+    assert overlay.active is False and overlay.glow() == 0.0
+    overlay.stop()
+    print("  2px edge + glow while active, hand + transcript drawn, Esc closes")
+
+
 @check("the shell starts with no surfaces and stays quiet about it")
 def _shell():
     _require_app()

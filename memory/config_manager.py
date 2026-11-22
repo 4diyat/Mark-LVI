@@ -866,6 +866,56 @@ def save_providers(mode: str = None, pipeline: dict = None, creds: dict = None,
     update_config(_apply)
 
 
+# ── Theme ────────────────────────────────────────────────────────────────────
+# Board 28 is the tray panel in light colours; board 5 is the same panel in
+# dark. The palette lives in `ui/tray_pages.PALETTES`, and this is the key that
+# decides which one is used — one key, two values, no third state.
+#
+# WHY IT IS VALIDATED HERE
+#     Same rule as `ui_language` above: config_manager is the only module
+#     allowed to decide what a stored value MEANS. A hand-edited
+#     `"ui_theme": "neon"` must become the default here, at the boundary,
+#     rather than reaching a palette lookup in `ui/` and turning a widget's
+#     colours into a KeyError on the one screen the user has.
+
+# `auto` follows the operating system. It is the default because a light-theme
+# user should not have to tell us twice, and because the mockup draws both.
+THEMES = ("auto", "dark", "light")
+
+
+def get_ui_theme() -> str:
+    """The configured panel theme: 'auto', 'dark' or 'light'."""
+    value = str(load_api_keys().get("ui_theme", "auto") or "auto").strip().lower()
+    return value if value in THEMES else "auto"
+
+
+def save_ui_theme(theme: str) -> None:
+    """Persist the panel theme, collapsing anything unknown to 'auto'.
+
+    Collapsing rather than rejecting, for the same reason `save_ui_language`
+    does: a file written by a newer build has to degrade to a working default,
+    not leave the user with a panel that cannot be painted.
+    """
+    value = (theme or "auto").strip().lower()
+    set_config_values(ui_theme=value if value in THEMES else "auto")
+
+
+def system_prefers_light() -> bool:
+    """Whether the OS says its UI is light — the answer `auto` needs.
+
+    READ FROM THE CONFIG FILE, not from Qt. `config_manager` must not import
+    PyQt6 (it is imported by tests and by the audio thread), and the value it
+    needs is already on disk on every platform this ships to. Where the key is
+    absent — a Linux desktop with no portal, a server — the answer is False,
+    which is the same default the palette has had since board 5.
+    """
+    try:
+        preference = str(load_api_keys().get("ui_os_theme", "") or "").strip().lower()
+    except Exception:                               # noqa: BLE001
+        return False
+    return preference == "light"
+
+
 # ── Language ─────────────────────────────────────────────────────────────────
 # A setting with three states and one rule: "auto" means "ask the operating
 # system", which is what a user who has already set their language in one place

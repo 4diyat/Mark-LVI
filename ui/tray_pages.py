@@ -1,0 +1,230 @@
+"""The three pages of the tray panel, and the two palettes they are drawn in.
+
+WHY THIS IS A SECOND MODULE
+    Boards 5, 23, 26, 27 and 28 are five artboards of ONE 460x660 panel. The
+    widget that owns it (`ui/tray_panel.py`) is about lifecycle, dispatch and
+    truth; the widgets below are about geometry — a dozen fixed coordinates per
+    page, transcribed from the artboard and nowhere else. Splitting them is not
+    tidiness: the module ceiling for `ui/` is 600 lines and the panel crossed
+    it, which is the rule doing its job.
+
+    It is also the split that makes the palette honest. Board 28 is the SAME
+    panel in light colours, so the colours are a table here and the pages read
+    it by name. A second widget for the light theme — the obvious way to build
+    it — would be two panels to keep in step forever.
+
+WHAT IS IN HERE
+    `PALETTES`          dark (boards 5/23/27) and light (board 28), taken from
+                        `docs/mockups/build.py` rather than retyped by eye.
+    `build_main()`      boards 5 and 23: four quick actions, the quota line,
+                        three switches and the command field. The segments and
+                        the hold strip live on the panel itself, because both
+                        are shared with the other pages' header.
+    `build_history()`   board 26: four undoable rows, the audit tail, and the
+                        two buttons at the bottom.
+    `build_privacy()`   board 27: three indicators, four explicit switches,
+                        guest mode, the erase button.
+
+    Every function takes `(panel, page)` and fills `panel._labels` and
+    `panel._buttons`. They are functions rather than methods because they hold
+    no state of their own — if one of them ever needs some, that is a sign the
+    value belongs on the panel.
+"""
+from __future__ import annotations
+
+from ui.tray_panel_model import PERMISSIONS, QUICK_ACTIONS, _t
+
+# The artboard size. Defined here because this is the module that owns
+# geometry; the panel imports it so the two cannot disagree.
+PANEL_W, PANEL_H = 460, 660
+
+# Which page the panel is showing. Board 26 and 27 are pages, not other
+# windows: a tray panel that spawns three windows is three things to close.
+PAGE_MAIN, PAGE_HISTORY, PAGE_PRIVACY = "main", "history", "privacy"
+PAGES = (PAGE_MAIN, PAGE_HISTORY, PAGE_PRIVACY)
+
+
+# Boards 5/23/27 (dark) and 28 (light), transcribed from `docs/mockups/build.py`
+# so the two cannot disagree without a test failing. The keys are what the
+# stylesheet below reads, not what Qt calls them.
+PALETTES = {
+    "dark": {
+        "base": "#04080D", "panel": "#0A1722", "card": "#081520",
+        "line": "#17323F", "line_accent": "#2A6477",
+        "text": "#E6F4F8", "muted": "#8FA9B5",
+        "accent": "#4FD8F0", "amber": "#F5A524", "on_accent": "#04080D",
+    },
+    "light": {
+        "base": "#F6F9FB", "panel": "#FFFFFF", "card": "#FFFFFF",
+        "line": "#D8E3E9", "line_accent": "#0A7A93",
+        "text": "#0B1A24", "muted": "#5B7480",
+        "accent": "#0A7A93", "amber": "#9A5B00", "on_accent": "#FFFFFF",
+    },
+}
+
+
+def panel_position(screen, size=(PANEL_W, PANEL_H), point=None) -> tuple[int, int]:
+    """Where the panel goes, given the screen's available rectangle.
+
+    Pure, and that is the point: the interesting part of a tray panel is not
+    its paint, it is that it opens INSIDE the screen no matter where the
+    taskbar is. A panel that opens off the bottom edge is the classic tray bug,
+    and it is a two-line bug that a screenshot review never catches.
+
+    `point` is the tray icon's position when the platform reports one. Without
+    it the panel goes bottom-right, which is where a Windows tray lives; the
+    clamp below is what keeps it on screen when it does not.
+    """
+    left, top = int(screen.x()), int(screen.y())
+    width, height = int(screen.width()), int(screen.height())
+    w, h = int(size[0]), int(size[1])
+
+    if point is None:
+        x = left + width - w - 12
+        y = top + height - h - 12
+    else:
+        px, py = int(point[0]), int(point[1])
+        # Above the icon and right-aligned to it, which is where a tray menu
+        # opens on Windows and macOS alike.
+        x = px - w + 24
+        y = py - h - 8
+    x = max(left, min(x, left + width - w))
+    y = max(top, min(y, top + height - h))
+    return x, y
+
+
+def build_main(panel, page) -> None:
+    from PyQt6.QtWidgets import QLabel, QLineEdit, QPushButton
+    panel._pages = {PAGE_MAIN: page}
+
+    panel._labels["quick_header"] = _at(
+        page, QLabel, 24, 140, 200, 16, _t("ui.panel.section.quick"))
+    for index, (key, name, chord) in enumerate(QUICK_ACTIONS):
+        y = 154 + index * 48
+        button = QPushButton(f"{_t(name)}\t{chord}", page)
+        button.setGeometry(24, y, 412, 40)
+        button.clicked.connect(lambda _checked=False, k=key: panel.press_quick(k))
+        panel._buttons[f"quick:{key}"] = button
+
+    panel._labels["suggestion_header"] = _at(
+        page, QLabel, 24, 366, 200, 16, _t("ui.panel.section.suggestion"))
+    panel._labels["suggestion"] = _at(page, QLabel, 44, 396, 372, 20, "")
+    panel._labels["quota"] = _at(page, QLabel, 44, 416, 372, 18, "")
+
+    panel._labels["perm_header"] = _at(
+        page, QLabel, 24, 452, 200, 16, _t("ui.panel.section.permissions"))
+    for index, (key, name, _sub) in enumerate(PERMISSIONS[:3]):
+        y = 474 + index * 30
+        button = QPushButton(_t(name), page)
+        button.setCheckable(True)
+        button.setGeometry(24, y, 412, 26)
+        button.clicked.connect(
+            lambda checked=False, k=key: panel.press_permission(k, checked))
+        panel._buttons[f"perm:{key}"] = button
+
+    field = QLineEdit(page)
+    field.setPlaceholderText(_t("ui.panel.command.placeholder"))
+    field.setGeometry(24, 596, 340, 40)
+    field.returnPressed.connect(panel.submit_command)
+    panel._field = field
+    send = QPushButton(_t("ui.panel.command.send"), page)
+    send.setGeometry(386, 596, 50, 40)
+    send.clicked.connect(panel.submit_command)
+    panel._buttons["send"] = send
+
+
+def build_history(panel, page) -> None:
+    from PyQt6.QtWidgets import QLabel, QPushButton
+    page.hide()
+    panel._pages[PAGE_HISTORY] = page
+
+    panel._labels["history_count"] = _at(page, QLabel, 24, 46, 412, 20, "")
+    # Four rows at board 26's pitch, each with its own label and its own
+    # Urungkan button. Four, not a scroll area: the panel is a glance, and
+    # a scroll inside a 660 px popup is a scroll nobody performs.
+    for index in range(4):
+        y = 80 + index * 96
+        panel._labels[f"history:{index}"] = _at(page, QLabel, 60, y + 12, 240, 22, "")
+        panel._labels[f"history_meta:{index}"] = _at(
+            page, QLabel, 60, y + 40, 240, 18, "")
+        button = QPushButton(_t("ui.panel.undo"), page)
+        button.setGeometry(300, y + 48, 120, 26)
+        button.clicked.connect(panel.press_undo)
+        button.hide()
+        panel._buttons[f"undo:{index}"] = button
+
+    panel._labels["audit_header"] = _at(
+        page, QLabel, 24, 486, 200, 16, _t("ui.panel.section.audit"))
+    panel._labels["audit"] = _at(page, QLabel, 40, 506, 396, 84, "")
+
+    export = QPushButton(_t("ui.panel.history.export"), page)
+    export.setGeometry(24, 612, 200, 36)
+    export.clicked.connect(lambda: panel._call("history_export"))
+    panel._buttons["export"] = export
+    clear = QPushButton(_t("ui.panel.history.clear"), page)
+    clear.setGeometry(236, 612, 200, 36)
+    clear.clicked.connect(lambda: panel._call("history_clear"))
+    panel._buttons["clear"] = clear
+
+
+def build_privacy(panel, page) -> None:
+    from PyQt6.QtWidgets import QLabel, QPushButton
+    page.hide()
+    panel._pages[PAGE_PRIVACY] = page
+
+    panel._labels["indicator_header"] = _at(
+        page, QLabel, 24, 78, 240, 16, _t("ui.panel.section.indicators"))
+    for index, (key, name, _sub) in enumerate(PERMISSIONS[:3]):
+        x = 24 + index * 140
+        panel._labels[f"indicator:{key}"] = _at(
+            page, QLabel, x + 12, 108, 110, 18, _t(name))
+        panel._labels[f"indicator_state:{key}"] = _at(
+            page, QLabel, x + 12, 138, 110, 18, "")
+
+    panel._labels["permx_header"] = _at(
+        page, QLabel, 24, 184, 240, 16, _t("ui.panel.section.explicit"))
+    for index, (key, name, sub) in enumerate(PERMISSIONS):
+        y = 208 + index * 66
+        panel._labels[f"permx:{key}"] = _at(
+            page, QLabel, 44, y + 10, 300, 20, _t(name))
+        panel._labels[f"permx_sub:{key}"] = _at(
+            page, QLabel, 44, y + 30, 300, 18, _t(sub))
+        button = QPushButton("", page)
+        button.setCheckable(True)
+        button.setGeometry(378, y + 17, 42, 22)
+        button.clicked.connect(
+            lambda checked=False, k=key: panel.press_permission(k, checked))
+        panel._buttons[f"permx:{key}"] = button
+
+    panel._labels["guest_header"] = _at(
+        page, QLabel, 24, 472, 240, 16, _t("ui.panel.section.guest"))
+    panel._labels["guest"] = _at(
+        page, QLabel, 44, 496, 300, 20, _t("ui.panel.guest.title"))
+    panel._labels["guest_sub"] = _at(
+        page, QLabel, 44, 516, 300, 18, _t("ui.panel.guest.sub"))
+    guest = QPushButton("", page)
+    guest.setCheckable(True)
+    guest.setGeometry(378, 500, 42, 22)
+    guest.clicked.connect(lambda checked=False: panel._call("guest", checked))
+    panel._buttons["guest"] = guest
+
+    panel._labels["camera_note"] = _at(
+        page, QLabel, 24, 566, 412, 18, _t("ui.panel.camera.note"))
+    erase = QPushButton(_t("ui.panel.erase"), page)
+    erase.setGeometry(24, 590, 412, 38)
+    erase.clicked.connect(lambda: panel._call("erase"))
+    panel._buttons["erase"] = erase
+
+
+def _at(parent, cls, x: int, y: int, w: int, h: int, text: str):
+    """One positioned label. Six arguments, six copies of `setGeometry` saved."""
+    label = cls(parent)
+    label.setGeometry(x, y, w, h)
+    label.setText(text)
+    return label
+
+
+__all__ = [
+    "PAGE_HISTORY", "PAGE_MAIN", "PAGE_PRIVACY", "PAGES", "PALETTES",
+    "PANEL_H", "PANEL_W", "build_history", "build_main", "build_privacy",
+]

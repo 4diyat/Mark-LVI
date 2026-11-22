@@ -224,6 +224,17 @@ def apply_presence_mode(shell: "JarvisUI", mode: str) -> bool:
     orb = getattr(shell, "_orb", None)
     if orb is not None:
         orb.set_mode(presence_mode.current())
+    # The 460 px panel shows the same three modes as segments. Refreshed here,
+    # not only when the panel is opened, because the mode can change from the
+    # tray menu and from a chord while the panel is on screen — and a panel
+    # with the previous segment lit is the one bug a user reads as "it did not
+    # take". Cheap: `refresh()` is a handful of reads and a repaint.
+    panel = getattr(shell, "_panel", None)
+    if panel is not None:
+        try:
+            panel.refresh()
+        except Exception as e:                      # noqa: BLE001
+            _note(shell, f"panel not refreshed — {type(e).__name__}: {e}")
     return True
 
 

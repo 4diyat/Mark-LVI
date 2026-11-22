@@ -1,0 +1,280 @@
+"""What the tray panel SHOWS, decided without Qt.
+
+WHY THIS IS SEPARATE FROM THE WIDGET
+    Boards 5, 23, 26, 27 and 28 draw one panel in five states. Five states of
+    one surface means the risk is not in drawing it, it is in the panel and the
+    rest of the program disagreeing about what is true: the panel saying "Fokus
+    aktif" after the mode was changed from elsewhere, a count of held toasts
+    that stops at 3 because it was captured when the widget was built, an Undo
+    button for something already undone.
+
+    So every value the panel renders is computed HERE, from the modules that
+    already own it (`core.presence_mode`, `core.suggestion_quota`, `core.undo`,
+    `core.audit_log`, `core.mic_status`), by a function that takes no widget.
+    The widget's only job is to paint the result. That is also what makes the
+    panel testable on a machine with no display, which is every CI runner.
+
+WHAT IT DELIBERATELY DOES NOT DO
+    It never mutates. `snapshot()` reads; the `act()` map on the shell writes.
+    A panel that both decided and applied would be a second place where the
+    presence mode lives, and the first thing to drift.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+# The three modes, in the order the segmented control draws them (board 5).
+MODE_ORDER = ("active", "focus", "quiet")
+
+# The segment labels are catalogue keys, not text: the panel is the one place
+# where three words sit side by side and a truncated translation is obvious.
+MODE_LABELS = {"active": "Aktif", "focus": "Fokus", "quiet": "Senyap"}
+
+
+def _t(key: str, **fields) -> str:
+    """`core.i18n.label`, falling back to the key itself.
+
+    A panel that raises because a catalogue is missing is a tray icon that opens
+    nothing. The fallback is the marker i18n itself uses for a missing key, so a
+    broken locale is still visible rather than silently English.
+    """
+    try:
+        from core.i18n import label
+
+        return str(label(key, **fields))
+    except Exception:                                # noqa: BLE001
+        return f"⟪{key}⟫"
+
+# The sentence under the title, per mode. Board 5 draws the Aktif one; board 23
+# draws the Fokus one, which is the only mode with something to say beyond its
+# own name — notifications are HELD, not dropped, and a panel that stays silent
+# about that is a panel whose toast count later looks like a bug.
+MODE_SUBTITLES = {
+    "active": "ui.panel.subtitle.active",
+    "focus": "ui.panel.subtitle.focus",
+    "quiet": "ui.panel.subtitle.quiet",
+}
+
+# Board 5's four quick actions. The chord is part of the row, not a tooltip,
+# because a quick action whose chord is invisible is one the user retypes.
+#
+# THE CHORDS ARE THE ARTBOARD'S, AND TWO OF THEM ARE NOT BOUND IN THIS BUILD.
+# That is stated rather than quietly relabelled: "Susun jendela" has no snap
+# behaviour behind it on any platform this project has run on, and "Cari
+# berkas" has a search function but no chord. The panel still lists them —
+# they are what the mockup asks for and they do something useful when pressed —
+# but `docs/mockups/NOT-IN-MOCKUP.md` does not claim the chords exist, and a
+# chord printed on a row is not a promise that the OS owns it.
+# (key, label-key, chord). The label is a catalogue key — see `PERMISSIONS`.
+QUICK_ACTIONS = (
+    ("screenshot", "ui.panel.quick.screenshot", "Ctrl+Shift+S"),
+    ("dictate", "ui.panel.quick.dictate", "Ctrl+Win"),
+    ("find_file", "ui.panel.quick.find_file", "Ctrl+Shift+F"),
+    ("tidy_windows", "ui.panel.quick.tidy_windows", "Ctrl+Shift+J"),
+)
+
+# Board 27's explicit list. `key` is what `act()` receives; `label` and `sub` are
+# what the user reads. Kept here rather than in the widget so the test asserts
+# the same four rows the artboard draws.
+PERMISSIONS = (
+    ("screen", "ui.panel.permission.screen", "ui.panel.permission.screen.sub"),
+    ("microphone", "ui.panel.permission.microphone",
+     "ui.panel.permission.microphone.sub"),
+    ("files", "ui.panel.permission.files", "ui.panel.permission.files.sub"),
+    ("apps", "ui.panel.permission.apps", "ui.panel.permission.apps.sub"),
+)
+
+
+@dataclass(frozen=True)
+class Snapshot:
+    """Everything the panel draws in one state. Immutable on purpose.
+
+    A frozen dataclass because the panel is rebuilt from this on every open and
+    on every change: a mutable one invites a widget to keep a reference and
+    paint yesterday's truth, which is the class of bug this module exists to
+    prevent.
+    """
+
+    mode: str = "active"
+    held: int = 0
+    quota_used: int = 0
+    quota_limit: int = 3
+    suggestion: str = ""
+    undo_label: str = ""
+    can_undo: bool = False
+    can_hear: bool = True
+    permissions: dict = field(default_factory=dict)
+    history: tuple = ()
+    audit: tuple = ()
+
+    @property
+    def mode_index(self) -> int:
+        """Which segment is lit. -1 for a mode this build does not know."""
+        try:
+            return MODE_ORDER.index(self.mode)
+        except ValueError:
+            return -1
+
+    @property
+    def title(self) -> str:
+        return _t("ui.panel.title")
+
+    @property
+    def subtitle(self) -> str:
+        return _t(MODE_SUBTITLES.get(self.mode, MODE_SUBTITLES["active"]))
+
+    @property
+    def held_line(self) -> str:
+        """Board 23's count, spelled out. Never hidden when it is zero —
+        "0 tertahan" is a fact, a missing line is a question."""
+        return _t("ui.panel.focus.held_count", count=self.held)
+
+    @property
+    def quota_line(self) -> str:
+        return _t("ui.panel.quota", used=self.quota_used, limit=self.quota_limit)
+
+    @property
+    def history_subtitle(self) -> str:
+        undoable = sum(1 for row in self.history if row.get("undoable"))
+        return _t("ui.panel.history.subtitle", count=undoable)
+
+
+def _safe(call, default):
+    """Call `call`, or return `default`. Never raises.
+
+    Each of these reads a module that owns its own state; a panel that dies
+    because one of them is mid-write is a tray icon that opens nothing, which
+    is worse than a panel with one stale line.
+    """
+    try:
+        return call()
+    except Exception:                                # noqa: BLE001
+        return default
+
+
+def _mode() -> str:
+    from core import presence_mode
+
+    mode = str(_safe(presence_mode.current, "active") or "active").strip().lower()
+    return mode if mode in MODE_ORDER else "active"
+
+
+def _permissions() -> dict:
+    """The four switches of board 27, from the only place each is decided.
+
+    TWO KINDS OF SWITCH, AND THE PANEL MUST NOT PRETEND THEY ARE ONE.
+
+      * `microphone` is a FACT ABOUT THE MACHINE — a device exists or it does
+        not (`core.audio_devices.input_available`). Drawing it as a switch the
+        user can turn on would be a promise no click can keep, so it renders
+        `fixed` and says why.
+      * `files` and `apps` are PLUGIN ENABLEMENT. They are real toggles because
+        turning one off is what stops the tool from being offered to the model.
+      * `screen` is neither: screenshots are a built-in action, not a plugin, so
+        the honest answer is "always on when asked" rather than a switch that
+        would have nothing behind it.
+    """
+    from core import audio_devices
+    from memory import config_manager
+
+    can_hear = bool(_safe(lambda: audio_devices.input_available(), True))
+    return {
+        "screen": {"on": True, "fixed": True, "note": ""},
+        "microphone": {"on": can_hear, "fixed": not can_hear,
+                       "note": ""},
+        "files": {"on": bool(_safe(
+            lambda: config_manager.get_plugin_enabled("file_controller", False), False)),
+                  "fixed": False, "note": ""},
+        "apps": {"on": bool(_safe(
+            lambda: config_manager.get_plugin_enabled("computer_control", False), False)),
+                 "fixed": False, "note": ""},
+    }
+
+
+def _history() -> tuple:
+    """The undoable work, newest first, in board 26's shape.
+
+    `core.undo.history()` is already newest-first — it returns
+    `reversed(_stack)` — so this must not reverse it again. (Reversing twice is
+    the harmless-looking bug that puts the row the user just created at the
+    bottom of a list they scroll from the top.)
+    """
+    from core import undo
+
+    return tuple({"label": str(label), "undoable": True}
+                 for label in (_safe(undo.history, []) or []))
+
+
+def _audit() -> tuple:
+    """The last three audit lines, oldest first, as board 26 draws them.
+
+    `entries()` returns dicts, newest last. The board puts the newest at the
+    TOP of its little table, so the order is reversed here once, deliberately.
+    """
+    from core import audit_log
+
+    entries = _safe(lambda: audit_log.shared().entries(3), ()) or ()
+    lines = []
+    for item in entries:
+        when = str(item.get("at") or item.get("time") or "")[11:19]
+        tool = str(item.get("tool") or "?")
+        outcome = str(item.get("outcome") or "")
+        detail = str(item.get("detail") or "")
+        text = " · ".join(part for part in (tool, outcome, detail) if part)
+        lines.append(f"{when}  {text}".strip())
+    return tuple(reversed(lines))
+
+
+def _quota() -> tuple[int, int]:
+    from core import suggestion_quota
+
+    quota = _safe(suggestion_quota.shared, None)
+    if quota is None:
+        return 0, 3
+    return int(_safe(quota.used, 0)), int(_safe(quota.limit, 3))
+
+
+def _suggestion() -> str:
+    """The one line under SARAN HARI INI, or "" when there is nothing today.
+
+    Board 5 draws a real suggestion with an amber rule on it. The section is
+    drawn either way — an empty section that says so keeps the panel from
+    changing height between opens, which is the one thing a tray panel must not
+    do, because it is anchored to the taskbar.
+
+    There is no suggestion engine in this build yet: `core.suggestion_quota`
+    counts what was offered, it does not produce one. Saying nothing is correct;
+    inventing a line to fill the artboard would be worse than an empty row.
+    """
+    return ""
+
+
+def snapshot() -> Snapshot:
+    """Read every value the panel needs, in one pass.
+
+    Called on open and after every action, so it has to be cheap: these are
+    dictionary reads and one small file read, not a scan.
+    """
+    from core import presence_mode, undo
+
+    used, limit = _quota()
+    perms = _permissions()
+    return Snapshot(
+        mode=_mode(),
+        held=int(_safe(presence_mode.held_count, 0)),
+        quota_used=used,
+        quota_limit=limit,
+        suggestion=_suggestion(),
+        undo_label=str(_safe(undo.peek, "") or ""),
+        can_undo=bool(_safe(undo.can_undo, False)),
+        can_hear=bool(perms["microphone"]["on"]),
+        permissions=perms,
+        history=_history(),
+        audit=_audit(),
+    )
+
+
+__all__ = [
+    "MODE_LABELS", "MODE_ORDER", "MODE_SUBTITLES", "PERMISSIONS", "QUICK_ACTIONS",
+    "Snapshot", "snapshot",
+]

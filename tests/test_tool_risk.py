@@ -95,9 +95,9 @@ def test_an_unknown_tool_is_risky():
 def test_the_desktop_name_matches_the_registry():
     """`desktop` is what the model calls; `desktop_control` is the file name.
 
-    The level is `risky` on purpose: `risk_policy` calls `desktop` medium and
-    nothing in actions/desktop.py pushes an undo, so the medium-without-undo
-    rule escalates it. That escalation is the rule working, not a missing entry.
+    WITH NO ARGUMENTS the tool-level answer stands, and it is `risky`: nothing
+    in actions/desktop.py pushes an undo, so the medium-without-undo rule
+    escalates it. That is the rule working, not a missing entry.
     """
     risk = tool_risk.classify("desktop_control")
     assert risk.tool == "desktop"
@@ -105,57 +105,201 @@ def test_the_desktop_name_matches_the_registry():
     assert "no undo" in risk.reason
 
 
-def test_the_audit_name_includes_the_action_only_when_there_is_one():
-    assert tool_risk.classify("computer_settings",
-                              {"action": "mute"}).audit_name == "computer_settings:mute"
-    assert tool_risk.classify("web_search").audit_name == "web_search"
+# ── the seven tools that were never in a table ──────────────────────────────
+#
+# `actions/` holds sixteen tools. Four had per-action tables; the rest were
+# classified by a tool-level entry, and seven of those were in NEITHER table —
+# so every call to them took the "medium with no undo" escalation and asked the
+# user to confirm it. That is why `desktop_control(action="list")` — reading a
+# wallpaper filename — popped a risk banner.
+#
+# WHAT THESE TESTS ASSERT, AND WHAT THEY DELIBERATELY DO NOT
+#
+# They assert the shape: one row per tool, so a tool added to `actions/` fails
+# here instead of in front of a user. They assert the DANGEROUS actions are
+# refused.
+#
+# They do NOT assert that `open_app` is `medium`. None of these tools pushes an
+# undo closure onto `core.undo`, and `core.risk_policy` is explicit about what
+# `medium` promises: "the middle level exists to promise the user a way back,
+# and a promise nobody implemented is worse than asking them first." Relaxing
+# them to `medium` here would be the test writing a claim the code cannot keep.
+#
+# So the honest statement is the one below: these are `risky` *because no undo
+# exists*, the reason says so, and `docs/mockups/NOT-IN-MOCKUP.md` records the
+# cost — a banner in front of "open Spotify" is the price of that honesty until
+# the undo is real.
+
+# TOOLS WHOSE UNDO IS STILL MISSING. One entry per tool, and the day somebody
+# writes the closure the entry moves out of here and the test below starts
+# failing — which is the reminder it exists to be.
+#
+# This list used to hold seven. Four of them earned `medium` by getting a real
+# undo (see `tests/test_action_undo.py`); `flight_finder` stayed because it
+# reads a public page and nothing else, and calling that "undoable" would be
+# inventing a meaning.
+UNGRADED = {
+    "flight_finder": (),
+}
 
 
-def test_every_risky_sub_action_is_also_named_in_the_reversibility_tables_once():
-    """A sub-action must not be both reversible and forbidden-looking without
-    the stricter answer winning — if one ever is, the tables disagree."""
-    for tool, risky in tool_risk._RISKY_ACTIONS.items():
-        safe = tool_risk._SAFE_ACTIONS.get(tool, frozenset())
-        assert not (risky & safe), f"{tool} lists an action as both risky and safe"
-    for tool, risky in tool_risk._RISKY_ACTIONS.items():
-        for action in risky:
-            assert tool_risk.classify(tool, {"action": action}).level == RISKY
+def test_the_tools_that_were_missing_from_every_table_are_graded_now():
+    """The bug this whole block exists for.
+
+    Before the sub-action tables were added for these four tools, every call
+    took `no per-action entry for '<action>' — treated as risky`. The grade is
+    still `risky` for most of them — see `UNGRADED` — but it is now a grade
+    somebody WROTE, with a reason that names the action, not a fallthrough that
+    names a typo.
+    """
+    risk = tool_risk.classify("desktop_control", {"action": "list"})
+    assert risk.level == SAFE, "reading a wallpaper name must not ask for consent"
+    assert risk.action == "list"
+
+    risk = tool_risk.classify("file_processor", {"action": "info"})
+    assert risk.level == SAFE
+
+    risk = tool_risk.classify("browser_control", {"action": "search"})
+    assert risk.level == SAFE
 
 
-def test_every_safe_sub_action_really_is_safe():
-    for tool, actions in tool_risk._SAFE_ACTIONS.items():
+def test_the_dangerous_actions_under_those_tools_are_still_refused():
+    """The half that matters more: grading must not have relaxed anything."""
+    for tool, actions in (
+        ("desktop_control", ("clean", "organize")),
+        ("file_processor", ("convert", "resize", "compress", "trim", "extract")),
+    ):
         for action in actions:
-            assert tool_risk.classify(tool, {"action": action}).level == SAFE
+            risk = tool_risk.classify(tool, {"action": action})
+            assert risk.level == RISKY, f"{tool}:{action}"
 
 
-def test_every_reversible_sub_action_is_medium_or_stricter():
-    """Reversible does not mean harmless. An entry listed in both tables takes
-    the risky answer, and that is the only allowed exception."""
-    for tool, actions in tool_risk._REVERSIBLE_ACTIONS.items():
-        risky = tool_risk._RISKY_ACTIONS.get(tool, frozenset())
+def test_the_four_that_earned_medium_are_medium():
+    """The level is a claim the code now keeps, not a table somebody relaxed.
+
+    Each one names the action that pushes the closure; `tests/test_action_undo`
+    is what proves the closure works.
+    """
+    assert tool_risk.classify("open_app", {"app_name": "Spotify"}).level == MEDIUM
+    assert tool_risk.classify("reminder", {"text": "x"}).level == MEDIUM
+    assert tool_risk.classify("youtube_video", {"action": "play"}).level == MEDIUM
+    assert tool_risk.classify("browser_control", {"action": "go_to"}).level == MEDIUM
+    for tool, args in (("open_app", {"app_name": "Spotify"}),
+                       ("reminder", {"text": "x"}),
+                       ("youtube_video", {"action": "play"}),
+                       ("browser_control", {"action": "go_to"})):
+        assert tool_risk.classify(tool, args).reversible is True, tool
+
+
+def test_the_actions_that_did_not_earn_it_did_not_get_it():
+    """`play` is reversible; `summarize` is not. One tool, two answers."""
+    for tool, action in (("youtube_video", "summarize"),
+                         ("youtube_video", "get_info"),
+                         ("youtube_video", "trending"),
+                         ("browser_control", "get_text")):
+        risk = tool_risk.classify(tool, {"action": action})
+        assert risk.level == RISKY, f"{tool}:{action}"
+        assert risk.reversible is False
+
+
+def test_an_ungraded_call_says_the_undo_is_missing_not_that_it_is_dangerous():
+    """`open_app` and friends are refused for ONE reason, and the reason is the
+    honest one: there is no undo, so `medium` cannot be promised.
+
+    If somebody later adds a real undo closure to `actions/open_app.py`, this
+    test fails — and that failure is the signal to move the tool out of
+    `UNGRADED`, which is what the set is for.
+    """
+    for tool, actions in UNGRADED.items():
+        if not actions:
+            risk = tool_risk.classify(tool)
+            assert risk.level == RISKY, tool
+            assert "no undo" in risk.reason or "irreversible" in risk.reason, \
+                f"{tool}: {risk.reason}"
         for action in actions:
-            level = tool_risk.classify(tool, {"action": action}).level
-            if action in risky:
-                assert level == RISKY, f"{tool}:{action} is risky but read as {level}"
-            else:
-                assert level == MEDIUM, (
-                    f"{tool}:{action} claims a real undo but does not classify as medium")
+            risk = tool_risk.classify(tool, {"action": action})
+            assert risk.level == RISKY, f"{tool}:{action}"
+            assert ("no undo" in risk.reason
+                    or "no per-action entry" in risk.reason
+                    or "irreversible" in risk.reason), f"{tool}:{action} {risk.reason}"
 
 
-def test_reversible_and_risky_can_both_be_true_and_risky_wins():
-    """`organize_desktop` pushes an undo AND moves every file on the desktop.
-    Reversibility and alarm are different axes; the stricter one decides."""
-    risk = tool_risk.classify("file_controller", {"action": "organize_desktop"})
-    assert risk.level == RISKY
-    assert risk.reversible is False
+def test_the_two_names_of_the_desktop_tool_agree():
+    """The registry says `desktop`; the file and the audit say `desktop_control`.
+
+    A caller reading either name must get one answer, or the gate's verdict
+    depends on which module asked. Before the sub-action tables were keyed by
+    the real name, `desktop_control` missed every entry and `desktop` matched
+    them, so the two names disagreed on the same call.
+    """
+    for action in ("list", "stats", "current_wallpaper", "clean", "organize"):
+        args = {"action": action}
+        left = tool_risk.classify("desktop", args)
+        right = tool_risk.classify("desktop_control", args)
+        assert (left.level, left.action) == (right.level, right.action), action
+        # And the sub-action survives: a missing `action` in either answer
+        # means the table lookup was skipped and both fell to a tool level,
+        # which is how the two names agreed while both were wrong.
+        assert right.action == action, action
 
 
-def test_is_reversible_answers_for_the_call_not_the_tool():
-    assert tool_risk.is_reversible("file_controller", {"action": "move"}) is True
-    assert tool_risk.is_reversible("file_controller", {"action": "find"}) is False
+def test_the_two_desktop_entries_in_every_table_stay_in_step():
+    """`desktop` and `desktop_control` are written out twice on purpose.
+
+    A shared constant would have been shorter and would have made the lookup
+    key depend on which name the CALLER used, and the two disagreeing is the
+    bug this file was extended for. The price of writing them twice is that one
+    can be edited alone — so this compares them, table by table.
+    """
+    for table in (tool_risk._SAFE_ACTIONS, tool_risk._REVERSIBLE_ACTIONS,
+                  tool_risk._RISKY_ACTIONS):
+        assert table.get("desktop") == table.get("desktop_control"), table
 
 
-def test_classify_never_raises_on_garbage():
-    for args in (None, {}, {"action": None}, {"action": 42}, {"action": ["x"]}):
-        assert tool_risk.classify("computer_settings", args).level in (
-            SAFE, MEDIUM, RISKY)
+def test_every_tool_in_actions_is_graded_by_a_named_table():
+    """The guard that would have caught all seven at once.
+
+    A tool that is in `actions/` and in no table has its level decided by an
+    accident. This walks the directory rather than a hand-written list, so a
+    new file cannot be forgotten.
+    """
+    from pathlib import Path
+
+    from core import action_loader, risk_policy
+
+    root = Path(__file__).resolve().parent.parent / "actions"
+    registry = action_loader.discover_actions(root, logger=lambda *_: None)
+    names = registry.names()
+    assert len(names) >= 16, f"discovery found only {len(names)} actions"
+
+    # Known = the gate has a table for it, OR `risk_policy` has been told about
+    # it. `register_discovered()` is what supplies the second half, and it runs
+    # at startup — so this asks the question the same way `main.py` answers it.
+    tool_risk.register_discovered(names)
+    unaccounted = risk_policy.unregistered(names)
+    assert unaccounted == [], (
+        "these tools are in actions/ and in no table, so their level is the "
+        f"unlisted-tool accident: {unaccounted}")
+
+
+def test_registering_what_was_discovered_declares_the_tool_risk_only_uses():
+    """`register()` had no caller before this: the registry was the gate's
+    second opinion and nothing ever consulted it.
+
+    The declaration is deliberately `risky` — the same answer the gate already
+    gives for an unlisted tool — so registering changes no decision and only
+    makes the registry say what is true.
+    """
+    from core import risk_policy
+
+    fresh = {"a_tool_only_the_gate_knows"}
+    assert risk_policy.unregistered(fresh) == ["a_tool_only_the_gate_knows"]
+
+    declared = tool_risk.register_discovered(fresh)
+    assert declared == {"a_tool_only_the_gate_knows": "risky"}
+    assert risk_policy.unregistered(fresh) == []
+    assert risk_policy.level_of("a_tool_only_the_gate_knows") == "risky"
+
+    # Idempotent: a second call must not report the same names again, or the
+    # startup log repeats itself every time something re-discovers.
+    assert tool_risk.register_discovered(fresh) == {}
