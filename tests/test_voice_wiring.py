@@ -68,6 +68,13 @@ class FakeOverlay:
     def set_camera_available(self, available):
         self.camera = available
 
+    def handle_toggle_gestures(self):
+        """The surface's own toggle, so the fake goes through the real rule."""
+        self.gestures_paused = not self.gestures_paused
+        if self.gestures_paused:
+            self.hand = None
+        return self.gestures_paused
+
 
 class FakeShell:
     """A shell-shaped object: a state word, an overlay, and a sleep switch."""
@@ -588,3 +595,101 @@ def test_the_shells_write_log_is_what_feeds_the_overlay():
                      if isinstance(node, ast.FunctionDef) and node.name == "write_log")
     names = [ast.unparse(c) for c in ast.walk(write_log) if isinstance(c, ast.Call)]
     assert any("voice_wiring.show_exchange" in n for n in names), names
+
+
+# ── Ctrl+Alt+G ──────────────────────────────────────────────────────────────
+
+def test_the_chord_is_the_one_the_footnote_prints():
+    """`n06()` says "Ctrl+Alt+G menjeda gestur". Not Ctrl+G — that is a common
+    browser and editor shortcut, and a pause key that also does something in
+    the window behind the overlay is worse than no key."""
+    assert voice_wiring.PAUSE_CHORD == ("ctrl", "alt", "g")
+    from core.hotkey import chord_label
+
+    assert chord_label(voice_wiring.PAUSE_CHORD) == "Ctrl+Alt+G"
+
+
+def test_g_exists_in_every_platform_table_or_the_chord_binds_on_one_and_not_others():
+    """Three key-code tables plus the Qt fallback. A letter missing from one of
+    them binds on Windows and falls back to a window-scoped hook elsewhere —
+    silently, and only for some users."""
+    from core import hotkey
+
+    for name in ("_VK", "_X11_KEYSYM", "_MAC_KEYCODE", "_QT_NAME"):
+        table = getattr(hotkey, name)
+        assert "g" in table, f"'g' is missing from {name}"
+
+
+def test_pressing_it_toggles_the_pause_and_says_which():
+    shell = FakeShell()
+    overlay = FakeOverlay()
+    shell._voice_overlay = overlay
+
+    assert voice_wiring.toggle_gestures(shell) is True
+    assert overlay.handle_toggle_gestures() is False, "the second press resumes"
+
+
+def test_the_pause_survives_a_window_that_will_not_toggle():
+    """The pointer is stopped by the gesture controller's own poll of the same
+    chord. This binding only decides what the user is TOLD, so its failure must
+    not be the thing that keeps the hand driving the screen."""
+    shell = FakeShell()
+
+    class Frozen(FakeOverlay):
+        def handle_toggle_gestures(self):
+            raise RuntimeError("the window is gone")
+
+    shell._voice_overlay = Frozen()
+    assert voice_wiring.toggle_gestures(shell) is False
+
+
+def test_pressing_it_with_no_overlay_does_nothing_and_does_not_raise():
+    assert voice_wiring.toggle_gestures(FakeShell()) is False
+
+
+def test_a_hotkey_that_cannot_bind_reports_the_scope_and_carries_on():
+    import core.hotkey as hotkey
+
+    class Refusing(hotkey.HotkeyTap):
+        def start(self):
+            raise OSError("no global hook on this desktop")
+
+    shell = FakeShell()
+    original = hotkey.HotkeyTap
+    hotkey.HotkeyTap = lambda on_press, chord=None: Refusing(on_press, chord)
+    try:
+        assert voice_wiring.start_pause_hotkey(shell) == "window"
+    finally:
+        hotkey.HotkeyTap = original
+
+
+def test_the_chord_is_bound_with_the_surface_and_released_with_it():
+    shell = FakeShell()
+    bound = {}
+
+    import core.hotkey as hotkey
+
+    class Recorder(hotkey.HotkeyTap):
+        def start(self):
+            bound["chord"] = self._chord
+            bound["tap"] = self
+            return "global"
+
+        def stop(self):
+            bound["stopped"] = True
+
+    original = hotkey.HotkeyTap
+    hotkey.HotkeyTap = lambda on_press, chord=None: Recorder(on_press, chord)
+    try:
+        assert voice_wiring.start_pause_hotkey(shell) == "global"
+        assert bound["chord"] == voice_wiring.PAUSE_CHORD
+        voice_wiring.stop_voice_overlay(shell)
+    finally:
+        hotkey.HotkeyTap = original
+    assert bound.get("stopped") is True, "a chord left bound outlives the surface"
+
+
+def test_stopping_the_pause_hotkey_twice_is_safe():
+    shell = FakeShell()
+    voice_wiring.stop_pause_hotkey(shell)
+    voice_wiring.stop_pause_hotkey(shell)

@@ -59,12 +59,16 @@ _VK = {
     "ctrl": 0x11, "shift": 0x10, "alt": 0x12,
     "space": 0x20, "f8": 0x77, "f9": 0x78, "f10": 0x79,
     "capslock": 0x14, "insert": 0x2D,
+    # `g` exists for exactly one chord: the gesture pause on board 6
+    # (`Ctrl+Alt+G`, printed in the artboard's footnote). It is the ASCII code,
+    # which is also the virtual-key code on Windows.
+    "g": 0x47,
 }
 
 _X11_KEYSYM = {
     "ctrl": "Control_L", "shift": "Shift_L", "alt": "Alt_L",
     "space": "space", "f8": "F8", "f9": "F9", "f10": "F10",
-    "capslock": "Caps_Lock", "insert": "Insert",
+    "capslock": "Caps_Lock", "insert": "Insert", "g": "g",
 }
 
 # kVK_* from <HIToolbox/Events.h>. The right-hand modifiers are deliberately not
@@ -74,12 +78,14 @@ _MAC_KEYCODE = {
     "ctrl": 0x3B, "shift": 0x38, "alt": 0x3A,
     "space": 0x31, "f8": 0x64, "f9": 0x65, "f10": 0x67,
     "capslock": 0x39, "insert": 0x72,
+    # kVK_ANSI_G. Board 6's pause chord, and the one letter this table needs.
+    "g": 0x05,
 }
 
 # Qt key sequence text for the same chord, used by the windowed fallback.
 _QT_NAME = {"ctrl": "Ctrl", "shift": "Shift", "alt": "Alt", "space": "Space",
             "f8": "F8", "f9": "F9", "f10": "F10",
-            "capslock": "CapsLock", "insert": "Ins"}
+            "capslock": "CapsLock", "insert": "Ins", "g": "G"}
 
 _POLL_HZ = 30.0
 # A key has to be down this long before we call it speech. It stops a stray

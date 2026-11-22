@@ -338,6 +338,21 @@ Esc goes through `voice_wiring._on_close` → `shell.request_sleep()`, the same
 path the tray's Sleep control uses. "Esc keluar" has to mean the microphone
 closed, not only the picture — the close handler is tested for exactly that.
 
+**Ctrl+Alt+G is now a chord the program can actually bind.** The footnote
+prints it, and until this point nothing listened for it: `core/hotkey`'s three
+key-code tables carried `ctrl`, `shift`, `alt`, `space`, `f8`–`f10`, CapsLock and
+Insert, and no `g`. A letter missing from one of those tables binds on Windows
+and falls back to a window-scoped hook elsewhere — silently, and only for some
+users — so `g` was added to all four (VK, X11 keysym, macOS kVK, Qt name) and a
+test pins it in each.
+
+The binding does **not** stop the pointer itself. `core.hand_gesture` polls the
+same chord as its own emergency stop, precisely so that stop does not depend on
+this program's event loop. What the binding adds is the half a controller cannot
+know: telling the overlay to show "GESTUR DIPENGGU", and sending no further
+samples while it is up. A machine where the chord cannot bind globally still has
+the kill switch; it only loses the word on the tile.
+
 **The hand on the tile comes from the camera that already drives the OS
 pointer.** `ui/voice_wiring.HandFeed` owns one `WorkspaceHandController`, polls
 it on the overlay's own 12 fps timer, and puts the **first** hand of the newest
