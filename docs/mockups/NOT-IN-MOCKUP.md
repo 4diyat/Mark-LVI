@@ -458,3 +458,44 @@ holds the seam: the painter may CALL `status_word`, never DEFINE it.
 - **Untested on Windows.** Frameless transparency, click-through
   (`WindowTransparentForInput`), focus return after Esc and DPAPI can only be
   proven on a real Windows desktop. CI runs Linux.
+
+## The camera watcher, and why it has no switch on screen
+
+`core/security_camera.py` and `plugins/security_camera.py` shipped from a branch
+cut before the controls drawer was removed. That branch drew a **SECURITY
+CAMERA** row in the drawer, next to **FULL FILE ACCESS**; the drawer is not in
+any mockup, so it is gone, and the row went with it.
+
+The watcher itself is unchanged and still obeys its three rules — off by
+default, the camera is never opened while off, it never speaks first, nothing is
+recorded or uploaded. What changed is only how a person reaches it: the
+`security_camera.enabled` key in `config/api_keys.json`, and nothing else.
+
+- **A fifth row was not added to board 27.** It would be a control the artboard
+  does not draw — the same reason the drawer was deleted — and two rows is how
+  the permissions page stops being the four things the mockup shows. Between a
+  setting that lives in a config file and a surface that contradicts the
+  mockup, the config file wins.
+- **`tests/test_security_camera.py` was rewritten where it touched the row.**
+  Forcing the switch on and off now goes through the same config file a person
+  would edit, so the test still fails if the watcher becomes unreachable — it
+  just no longer fails because a drawer is missing.
+- **The plugin declares `level: safe`.** It reads an in-memory record, takes no
+  picture, and cannot enable the watcher; the manifest says so.
+
+### `core/file_access.py` was exempt from the coverage map for the wrong reason
+
+It was listed as "its prompt was a widget; there is no window to ask with".
+The PROMPT was a widget. The module is a policy plus a path check, it is still
+consulted by `actions/file_controller.py` on every file operation, and it never
+needed a window — so the exemption described a caller that had died, not a
+module that could not run. It now has `tests/test_file_access.py`, and writing
+that test found a real bug:
+
+- **Turning the feature ON took the home folder away.** `effective_roots()`
+  returned only the granted roots on the ON branch, so granting one extra folder
+  silently revoked access to everything the assistant could already reach.
+  `describe()` had been telling the user the opposite all along ("nothing
+  *outside* your home folder is reachable"), which is how the disagreement was
+  caught: the sentence and the check could not both be true. Home is now always
+  one of the effective roots.

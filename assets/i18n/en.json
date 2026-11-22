@@ -753,5 +753,8 @@
   "ui.confirm.origin.voice": "Spoken command",
   "ui.confirm.origin.typed": "Typed command",
   "ui.confirm.origin.unknown": "Unknown",
-  "ui.confirm.logged": "recorded in the audit log"
+  "ui.confirm.logged": "recorded in the audit log",
+  "ui.camera.off": "🎥  SECURITY CAMERA: OFF",
+  "ui.camera.on": "🎥  SECURITY CAMERA: ON",
+  "ui.camera.hint": "Off, the camera is never opened — the device light stays off. On, one look every 20s: frames are compared in memory, a one-line result is logged, nothing is recorded and nothing is uploaded unless you ask."
 }

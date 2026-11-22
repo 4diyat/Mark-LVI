@@ -327,3 +327,29 @@ def test_no_module_reads_a_secret_field_without_the_config_manager():
         "these read the Gemini key straight out of api_keys.json; use "
         "core.gemini.api_key() or memory.config_manager.get_gemini_key() "
         "instead:\n" + "\n".join(offenders))
+
+
+def test_a_write_goes_to_the_file_that_is_patched_into_config_manager(tmp_path, monkeypatch):
+    """The patched-file contract, asserted rather than assumed.
+
+    Every test that touches a setting points `config_manager.CONFIG_FILE` at a
+    throw-away path. That only works if `update_config` reads the attribute at
+    CALL time — a `path = CONFIG_FILE` captured anywhere would send the write
+    to the user's real config, and the test would pass while writing to the one
+    file in this repository that must never be touched by a test. This was
+    found by exactly that: a full-suite run left `security_camera` in
+    `config/api_keys.json`.
+    """
+    from memory import config_manager
+
+    fake = tmp_path / "api_keys.json"
+    monkeypatch.setattr(config_manager, "CONFIG_FILE", fake)
+    monkeypatch.setattr(config_manager, "_LAST_GOOD", {})
+    real = Path(config_manager.__file__).resolve().parent.parent / "config" / "api_keys.json"
+    before = real.read_text(encoding="utf-8") if real.exists() else None
+
+    assert config_manager.set_config_values(probe=True) is True
+
+    assert json.loads(fake.read_text(encoding="utf-8"))["probe"] is True
+    after = real.read_text(encoding="utf-8") if real.exists() else None
+    assert after == before, "a test wrote to the repository's real config"

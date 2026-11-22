@@ -138,13 +138,29 @@ class Policy:
     def effective_roots(self) -> tuple[Path, ...]:
         """The folders in force right now.
 
-        Off means home only — the behaviour that is already shipped, not an
-        empty list, because an empty list would silently break every existing
-        file operation the moment this module was wired in.
+        HOME IS ALWAYS ONE OF THEM, WHETHER OR NOT THE FEATURE IS ON. This was
+        wrong on the ON branch: it returned only the granted roots, so the
+        moment somebody turned full file access on with a single extra folder,
+        every existing file operation inside the home directory started being
+        refused. `describe()` already told the user the opposite ("ON but no
+        folder granted, so nothing outside your home folder is reachable"),
+        which is how the bug was found: the sentence and the check disagreed,
+        and the sentence was right.
+
+        Turning a feature ON must not take away access that was already there.
+        An empty granted list is likewise home-only rather than nothing, because
+        an empty list would silently break every existing file operation.
         """
+        home = self.home or Path.home()
         if not self.enabled:
-            return (self.home or Path.home(),)
-        return self.roots
+            return (home,)
+        # Home first, then deduplicated grants; a grant that IS home must not
+        # appear twice.
+        ordered = [home]
+        for root in self.roots:
+            if root != home:
+                ordered.append(root)
+        return tuple(ordered)
 
     def check(self, target) -> Path:
         """Return the resolved path, or raise `Denied` with the reason.
