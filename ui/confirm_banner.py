@@ -57,7 +57,7 @@ class ConfirmBanner(_HudOverlay):
     answered = pyqtSignal(bool)
     _OW = 430
 
-    def __init__(self, title: str, detail: str, parent=None):
+    def __init__(self, title: str = "", detail: str = "", parent=None):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(f"""
@@ -84,6 +84,7 @@ class ConfirmBanner(_HudOverlay):
         ttl.setFont(QFont("Courier New", 10, QFont.Weight.Bold))
         ttl.setStyleSheet(f"color: {C.TEXT}; background: transparent;")
         lay.addWidget(ttl)
+        self._title_label = ttl
 
         if detail:
             dtl = QLabel(detail)
@@ -92,6 +93,7 @@ class ConfirmBanner(_HudOverlay):
             dtl.setFont(QFont("Courier New", 8))
             dtl.setStyleSheet(f"color: {C.TEXT_MED}; background: transparent;")
             lay.addWidget(dtl)
+        self._detail_label = dtl if detail else None
 
         row = QHBoxLayout(); row.setSpacing(8)
 
@@ -124,3 +126,70 @@ class ConfirmBanner(_HudOverlay):
         # safe answer wins.
         no.setDefault(True)
         no.setFocus()
+
+    def set_title(self, title: str, detail: str = "") -> None:
+        """Reuse this banner for a second question.
+
+        A new window per question would flicker `hide` then `show` on a desktop
+        with nothing else on it, which reads as a glitch rather than as a new
+        question. Reusing one widget also means the focus rule (CANCEL first)
+        is only written once.
+        """
+        self._title_label.setText(str(title or ""))
+        detail_label = self._detail_label
+        if detail_label is None:
+            return
+        detail_label.setText(str(detail or ""))
+        detail_label.setVisible(bool(detail))
+        self.adjustSize()
+
+
+def build_confirm_window(parent=None) -> "ConfirmBanner":
+    """A `ConfirmBanner` that is its own always-on-top window.
+
+    WHY NOT A CHILD OF THE ORB
+        The orb is 28-56 px. A 430 px banner parented to it is clipped to the
+        orb's own geometry, so the user is told to confirm something that is not
+        on screen — and `core/confirm` refuses the action 90 seconds later with
+        nothing to explain why. Artboard 25 draws this banner bottom-centre over
+        whatever the user is doing, which is a window, not a child widget.
+
+    Tool + WindowStaysOnTop + Frameless is the same trio the face bubble uses
+    (`ui/face_bubble.window_flags`), so the two floating surfaces cannot drift
+    apart in how they ask the window manager for the same thing.
+    """
+    from PyQt6.QtCore import Qt
+
+    banner = ConfirmBanner("", "", parent)
+    banner.setWindowFlags(banner.windowFlags()
+                          | Qt.WindowType.Tool
+                          | Qt.WindowType.FramelessWindowHint
+                          | Qt.WindowType.WindowStaysOnTopHint)
+    banner.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, False)
+    _place_bottom_centre(banner)
+    return banner
+
+
+def _place_bottom_centre(banner) -> None:
+    """Put the banner where artboard 25 puts it, on whichever screen has focus.
+
+    Not the primary screen: a user with two monitors confirms on the one they
+    are looking at. A missing screen (headless, or before the first window) is
+    not an error — Qt will place the window itself.
+    """
+    try:
+        from PyQt6.QtGui import QCursor, QGuiApplication
+
+        screen = QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
+        if screen is None:
+            return
+        area = screen.availableGeometry()
+        banner.adjustSize()
+        width, height = banner.width(), banner.height()
+        banner.move(area.x() + (area.width() - width) // 2,
+                    area.y() + area.height() - height - 64)
+    except Exception as e:                          # noqa: BLE001
+        # Placement is cosmetic; the banner is still on top and still modal in
+        # the only sense that matters (it holds the answer). `show_confirm`
+        # reports failures to show, so nothing is lost here.
+        print(f"[JARVIS] Confirm: placement skipped — {type(e).__name__}: {e}")

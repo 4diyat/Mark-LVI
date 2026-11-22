@@ -14,11 +14,12 @@ WHY THE FOCUS LEDGER IS THE THING UNDER TEST
 """
 from __future__ import annotations
 
-import importlib.util
 import sys
 from pathlib import Path
 
 import pytest
+
+from tests import qtstub
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -26,13 +27,10 @@ ROOT = Path(__file__).resolve().parent.parent
 @pytest.fixture()
 def bar(monkeypatch):
     """`ui.command_bar` loaded over the repo's Qt stub."""
-    spec = importlib.util.spec_from_file_location(
-        "smoke_for_bar", ROOT / "tests" / "test_window_smoke.py")
-    smoke = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(smoke)
+    stubs = qtstub.install_qt()
     saved = {k: v for k, v in sys.modules.items()
              if k == "PyQt6" or k.startswith("PyQt6.") or k == "ui" or k.startswith("ui.")}
-    sys.modules.update(smoke._install_qt())
+    sys.modules.update(stubs)
     for name in [k for k in sys.modules if k == "ui" or k.startswith("ui.")]:
         sys.modules.pop(name, None)
     try:

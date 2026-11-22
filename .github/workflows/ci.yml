@@ -192,8 +192,8 @@ jobs:
           import importlib
           import traceback
 
-          for name in ("ui.desktop_workspace", "ui.image_editor", "ui.creative",
-                       "ui.trading_terminal", "ui.mt5_trade", "ui.video_controls"):
+          for name in ("ui.orb_overlay", "ui.orb_paint", "ui.command_bar",
+                       "ui.toast_queue", "ui.face_bubble", "ui.confirm_banner"):
               try:
                   importlib.import_module(name)
               except Exception:
@@ -201,78 +201,17 @@ jobs:
                   print(f"::error title=Desktop import failed::{details}", flush=True)
                   raise
               print(f"{name}: imported")
-      - name: Exercise desktop with real Qt offscreen
+      # THE WINDOW'S SMOKE TESTS WENT WITH THE WINDOW.
+      # `check_desktop_qt`, `capture_desktop_qt`, `check_browser_qt`,
+      # `check_ssh_qt` and `check_security_qt` all imported `ui.window` (or a
+      # surface that only existed inside it) and drove it with real Qt. There is
+      # no window to drive. `tools/check_ambient_qt.py` is what replaced them:
+      # it builds the surfaces that DO exist against real Qt offscreen.
+      - name: Exercise the ambient surfaces with real Qt offscreen
         if: runner.os == 'Linux'
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python tools/run_qt_smoke.py tools/check_desktop_qt.py
-      - name: Test isolated rotated Qt widget input
-        if: runner.os == 'Linux'
-        env:
-          QT_QPA_PLATFORM: offscreen
-        run: python tools/run_qt_smoke.py tools/check_rotation_qt.py
-      - name: Test isolated rotated JARVIS editors
-        if: runner.os == 'Linux'
-        env:
-          QT_QPA_PLATFORM: offscreen
-        run: python tools/run_qt_smoke.py tools/check_rotation_editors_qt.py
-      - name: Test isolated rotated popups and confirmations
-        if: runner.os == 'Linux'
-        env:
-          QT_QPA_PLATFORM: offscreen
-        run: python tools/run_qt_smoke.py tools/check_rotation_popups_qt.py
-      - name: Capture synthetic desktop for visual review
-        if: runner.os == 'Linux'
-        env:
-          QT_QPA_PLATFORM: offscreen
-        run: python tools/capture_desktop_qt.py
-      - name: Capture synthetic visual content for review
-        if: runner.os == 'Linux'
-        env:
-          QT_QPA_PLATFORM: offscreen
-          PYTHONPATH: .
-        run: python tools/capture_desktop_qt.py --visual-content
-      - name: Capture synthetic bar chart for review
-        if: runner.os == 'Linux'
-        env:
-          QT_QPA_PLATFORM: offscreen
-          PYTHONPATH: .
-        run: python tools/capture_desktop_qt.py --visual-content --bar-chart
-      - name: Capture synthetic explanatory content for review
-        if: runner.os == 'Linux'
-        env:
-          QT_QPA_PLATFORM: offscreen
-          PYTHONPATH: .
-        run: |
-          python tools/capture_desktop_qt.py --narrative-content cards
-          python tools/capture_desktop_qt.py --narrative-content steps
-          python tools/capture_desktop_qt.py --narrative-content timeline
-      - name: Capture synthetic image editor for visual review
-        if: runner.os == 'Linux'
-        env:
-          QT_QPA_PLATFORM: offscreen
-        run: python tools/capture_desktop_qt.py --image-editor
-      - name: Capture synthetic browser chrome for visual review
-        if: runner.os == 'Linux'
-        env:
-          QT_QPA_PLATFORM: offscreen
-        run: python tools/capture_browser_qt.py
-      - name: Exercise browser tabs with real Qt offscreen
-        if: always() && runner.os == 'Linux'
-        env:
-          QT_QPA_PLATFORM: offscreen
-        run: python tools/run_qt_smoke.py tools/check_browser_qt.py
-      - name: Exercise SSH tabs with real Qt offscreen
-        if: always() && (runner.os == 'Linux' || runner.os == 'Windows')
-        env:
-          QT_QPA_PLATFORM: offscreen
-        run: python tools/run_qt_smoke.py tools/check_ssh_qt.py
-      - name: Exercise security controls with real Qt offscreen
-        if: runner.os == 'Linux' || runner.os == 'Windows'
-        env:
-          QT_QPA_PLATFORM: offscreen
-          PYTHONUTF8: "1"
-        run: python tools/run_qt_smoke.py tools/check_security_qt.py
+        run: python tools/run_qt_smoke.py tools/check_ambient_qt.py
       - name: Load every action the way main.py does
         # actions/*.py self-describe through a TOOL dict and are discovered at
         # startup. A rejection does not stop the app — the loader is built to
@@ -459,6 +398,7 @@ jobs:
       # exit code on disk; the bash step prints the transcript, converts FAIL
       # lines into annotations, and exits with the recorded code.
       - name: Providers self-test (runs offline; owns its own mocks)
+        id: providers
         shell: python
         # encoding= is not optional here. On Windows the child writes its
         # output in the console's code page, and decoding it as UTF-8 with the
@@ -501,7 +441,13 @@ jobs:
           print(f"self-test exit code: {proc.returncode}")
 
       - name: Report the self-test (annotations + status)
-        if: always()
+        # ONLY WHEN THE SUITE STEP RAN. With `always()` this step also ran when
+        # an EARLIER step failed — and then exited 1 with "the self-test step
+        # left no transcript", which reads as a second, unrelated failure. On a
+        # run where the ambient Qt smoke aborted, the annotation that mattered
+        # was buried under one about a transcript that was never meant to exist.
+        if: always() && steps.providers.outcome != 'skipped'
+        id: report
         shell: bash
         run: |
           if [ -f providers-test.txt ]; then

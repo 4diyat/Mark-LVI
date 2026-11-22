@@ -4,6 +4,33 @@ Dokumen ini memisahkan **cakupan pengujian**, **persyaratan**, dan hal yang
 **belum diverifikasi**. “Lulus tes” tidak berarti bebas bug atau berfungsi di
 semua komputer. Hasil uji lokal tidak otomatis menjadi hasil CI atau rilis.
 
+
+> ## BACA DULU: banyak baris di bawah sudah tidak berlaku
+>
+> Build ini **menghapus** seluruh permukaan yang tidak digambar mockup
+> (`docs/mockups/jarvis-design-system.html`, 12 papan). Yang tersisa hanya:
+> orb, toast, command bar, panel baki, konfirmasi risiko, face bubble, dan
+> `AmbientShell`. Catatan lengkap beserta cara mengembalikannya ada di
+> **`docs/mockups/NOT-IN-MOCKUP.md`**.
+>
+> Baris matriks berikut menjelaskan fitur yang **tidak ada lagi** di build ini,
+> dan sengaja tidak dihapus supaya riwayat klaimnya tetap terbaca:
+>
+> | Baris | Keadaan sekarang |
+> |---|---|
+> | Workspace desktop & navigasi | dihapus — `ui/window.py`, `ui/desktop_workspace.py` |
+> | Kontrol tangan workspace | dihapus — papan 6 masih usulan |
+> | Order MT5 / ORB | dihapus — `ui/mt5_trade.py`, `ui/trading_terminal.py` |
+> | Editor kode/gambar, penampil OBJ | dihapus |
+> | Remote HTTP/HTTPS (dashboard) | model tetap; tidak ada UI |
+> | Widget mengambang, Layer Dashboard, Dokumen mengambang | dihapus |
+> | Cincin pointer desktop, Tangan → OS | dihapus — `core/` tetap, tanpa pemanggil |
+> | Akses file penuh | model tetap; prompt-nya widget, jadi tidak ada yang bertanya |
+>
+> Yang **masih** berlaku dan masih diuji: mikrofon, briefing, bibir/jadwal audio,
+> transkrip, prompt, reconnect, provider, plugin, integrasi OS, Obsidian,
+> riwayat percakapan, dan seluruh permukaan ambient.
+
 ## Matriks verifikasi
 
 | Area | Cakupan otomatis saat ini | Masih perlu diuji pada perangkat/layanan nyata |
@@ -68,10 +95,16 @@ mengatur pemisahan pada canvas model dengan beberapa komponen. Ini bukan
 kontrol 3D dua tangan.
 Memilih file menghentikan kontrol tangan sebelum dialog sistem terbuka.
 
-`tests/test_workspace_transform.py` menguji geometri dengan sampel sintetis;
-`tools/check_desktop_qt.py` memiliki smoke dua tangan di Qt offscreen untuk CI.
-Keduanya bukan pengujian dengan webcam. Rotasi bebas jendela yang tetap
-interaktif belum tersedia.
+`tests/test_workspace_transform.py` masih menguji geometri dengan sampel
+sintetis, dan `tests/test_gesture_os.py` menguji aturan pointer/klik/scroll.
+
+**Yang hilang dari bagian ini:** seluruh lapisan UI gestur
+(`ui/hand_gesture.py`, `ui/gesture_os_bridge.py`, `ui/desktop_ring.py`) DIHAPUS
+bersama jendela — lihat `docs/mockups/NOT-IN-MOCKUP.md`. Papan 6 pada mockup
+menggambar tile kamera gestur, tetapi tile itu masih **usulan**, bukan desain
+yang sudah dikirim. Jadi bagian ini TIDAK dapat diverifikasi pada build ini:
+tidak ada permukaan yang menggerakkan pointer, dan `core/gesture_os.py`
+sekarang tidak punya pemanggil.
 
 ### Pembaruan visual desktop
 
@@ -107,23 +140,27 @@ python -m pytest -q
 ruff check .
 ```
 
-CI juga menjalankan `tools/check_desktop_qt.py` pada Linux dan
-`tools/check_security_qt.py` pada Linux dan Windows menggunakan Qt offscreen
-dengan dependensi aplikasi. Jalankan manual hanya setelah dependensi Qt dan
-library OS terpasang; tidak ada server, akun atau webcam nyata yang diperlukan.
-Untuk Linux/macOS, contoh:
+CI juga menjalankan `tools/check_ambient_qt.py` pada Linux menggunakan Qt
+offscreen dengan dependensi aplikasi. Skrip itu MEMBANGUN setiap permukaan yang
+masih ada — orb pada tiga mode, command bar, antrean toast, face bubble, dialog
+konfirmasi — dengan `QApplication` sungguhan, lalu memaksa satu siklus cat
+lewat `render()`, bukan `update()`.
 
 ```sh
-QT_QPA_PLATFORM=offscreen PYTHONPATH=. python tools/check_security_qt.py
+QT_QPA_PLATFORM=offscreen PYTHONPATH=. python tools/check_ambient_qt.py
 ```
 
-Untuk PowerShell:
+Empat tool lama (`check_desktop_qt.py`, `capture_desktop_qt.py`,
+`check_browser_qt.py`, `check_ssh_qt.py`, `check_security_qt.py`,
+`check_rotation_*.py`) mengimpor `ui/window.py` dan modul permukaan yang sudah
+dihapus, sehingga ikut dihapus; riwayatnya ada di commit `376909f1`.
 
-```powershell
-$env:QT_QPA_PLATFORM='offscreen'
-$env:PYTHONPATH='.'
-python tools/check_security_qt.py
-```
+**Yang hanya dapat dibuktikan di Windows.** Klik-tembus
+(`WindowTransparentForInput`), fokus kembali setelah Esc, transparansi jendela
+frameless dan DPAPI memerlukan desktop Windows nyata dengan compositor.
+`QT_QPA_PLATFORM=offscreen` tidak punya window manager sama sekali, jadi
+`check_ambient_qt.py` hanya membuktikan bahwa jendela dan flag-nya DIBUAT, bukan
+bahwa window manager menerimanya. Klaim-klaim itu tetap belum terbukti.
 
 Jangan menafsirkan kegagalan import karena library OS yang tidak terpasang
 sebagai bukti bahwa fitur gagal di semua perangkat.
@@ -460,13 +497,11 @@ perilaku shell yang sebenarnya, dan itu tidak dapat disimulasikan.
 
 `tests/test_workspace_browser.py`, `tests/test_browser_autofill.py`,
 `tests/test_browser_ui_logic.py`, `tests/test_ssh_manager.py`, and
-`tests/test_ssh_tabs.py` cover vault/origin handling, isolated autofill logic,
+`tests/test_ssh_manager.py` cover vault/origin handling, isolated autofill logic,
 tab lifecycle, and fake SSH transports. `tests/test_ssh_protocol.py` exercises
 Paramiko over a local socketpair with a generated host key, including rejection
-of an unknown key; no external server is involved. CI also runs
-`tools/check_browser_qt.py` (Linux) and `tools/check_ssh_qt.py` (Linux and
-Windows) with real Qt offscreen; SSH uses a fake transport and the browser test
-does not contact a site. These checks do not establish visual fidelity, real
+of an unknown key; no external server is involved. Kedua tool Qt itu **dihapus** bersama `ui/browser_read.py` dan
+`ui/ssh_manager.py`; lihat `docs/mockups/NOT-IN-MOCKUP.md`. These checks do not establish visual fidelity, real
 keychain availability, SSH interoperability, Windows camera behavior, or
 security against a malicious same-origin page. Exercise those separately on the
 target machine. Selected visual references are `design/proposed-graphite-desktop.png`,
@@ -696,6 +731,7 @@ tetap tersimpan ketika beralih ke mode seleksi.
 
 ### Fondasi rotasi jendela (belum terintegrasi)
 
+*(Tool di bagian ini sudah dihapus bersama jendela; teksnya disimpan sebagai riwayat.)*
 Eksperimen terisolasi `tools/check_rotation_qt.py` menguji widget Qt biasa
 di `QGraphicsProxyWidget` pada beberapa sudut: pemetaan koordinat, klik,
 checkbox, fokus, pengetikan dan scroll via keyboard. Perhitungan selisih sudut
@@ -831,7 +867,7 @@ persetujuan yang belum kedaluwarsa. Banner dan jawaban membawa ID permintaan
 acak; jawaban, tampilan, atau penutupan yang terlambat tidak dapat menyetujui
 atau menutup banner baru. Judul/detail yang melampaui batas tampilan ditolak,
 bukan dipotong diam-diam. `tests/test_confirm.py` menguji konkurensi, identitas,
-kedaluwarsa dan kegagalan callback; `tools/check_desktop_qt.py` menguji antrean
+kedaluwarsa dan kegagalan callback; `tools/check_ambient_qt.py` menguji antrean
 sinyal dan tombol dengan Qt offscreen. Ini bukan audit semua jalur persetujuan,
 sandbox plugin, atau validasi interaksi pada perangkat nyata; gerbang MT5 dan
 SSH memiliki mekanisme dan pengujiannya sendiri.
@@ -858,7 +894,7 @@ mengirim otomatis. Data dibungkus sebagai tak tepercaya; ini bukan jaminan
 terhadap prompt injection. Pengguna meninjau dan mengirim draf sendiri.
 
 Tes `tests/test_visual_content.py` mencakup validasi dan perhitungan posisi;
-`tools/check_desktop_qt.py` menguji jalur worker, pemilihan, tabel, lokalisasi,
+`tools/check_ambient_qt.py` menguji jalur worker, pemilihan, tabel, lokalisasi,
 dan draf dengan Qt offscreen. CI mengambil gambar contoh sintetis untuk review.
 Diagram lain, penyimpanan/bagikan, pengambilan data otomatis, dan kesesuaian
 visual/DPI serta interaksi pada perangkat nyata belum diverifikasi atau belum

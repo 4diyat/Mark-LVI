@@ -1,5 +1,4 @@
 """Editor contracts without real credentials, display, or network."""
-import ast
 from pathlib import Path
 
 import pytest
@@ -23,7 +22,7 @@ def test_editor_only_opens_the_desktop_and_does_not_run(monkeypatch):
     player = Player()
     assert "Opening" in code_editor.run({"code": "print('hi')", "path": "/tmp/no.py"}, player)
     assert player.jobs[-1] == {"kind": "creative_workspace", "tab": "editor", "code": "print('hi')"}
-    assert "desktop" in code_editor.run({}, None)
+    assert "no interface in this build" in code_editor.run({}, None)
 
 
 def test_plugin_manifests_and_default_consent(isolated_config):
@@ -72,18 +71,24 @@ def test_editor_refuses_unsupported_types_and_oversized_files(tmp_path):
         _creative.read_code(str(path))
 
 
-def test_workspace_guards_each_capability_and_wires_codejob_on_qt_thread():
-    path = ROOT / "ui" / "creative.py"
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "CreativeWorkspace")
-    for name, permission in (("_run_file", "code_editor"), ("_save_file", "code_editor"),
-                             ("_open_file", "code_editor")):
-        method = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == name)
-        assert f"self._require('{permission}')" in ast.unparse(method)
-    assert "QMessageBox.question" in ast.unparse(cls)
-    window = (ROOT / "ui" / "window.py").read_text(encoding="utf-8")
-    assert '"creative_workspace", "trading_terminal"' in window
-    assert 'self._codejob_sig.connect(self._show_code_job)' in window
+def test_the_creative_workspace_is_gone_and_its_plugins_say_so():
+    """`ui/creative.py` was a guarded editor pane; the pane went with the window.
+
+    The guards it enforced (`code_editor` permission around run/save/open) are
+    only meaningful where a file is opened. What must NOT happen is a plugin
+    that keeps claiming it needs "the desktop interface" — a sentence that
+    describes a bug rather than a build. Each one now says the window was
+    removed, so a user is told the truth and the model cannot retry forever.
+    """
+    assert not (ROOT / "ui" / "creative.py").exists()
+    assert not (ROOT / "ui" / "window.py").exists()
+
+    for name in ("code_editor.py", "trading_terminal.py", "image_editor.py"):
+        text = (ROOT / "plugins" / name).read_text(encoding="utf-8")
+        assert "needs the desktop interface" not in text, (
+            f"plugins/{name} still describes a missing window as a fault")
+        assert "no interface in this build" in text, (
+            f"plugins/{name} does not explain why it cannot run")
 
 
 def test_removed_ai_canvas_has_no_plugin_or_workspace_target():

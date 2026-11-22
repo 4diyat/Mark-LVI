@@ -1,38 +1,38 @@
 """Launch, summon, dismiss — what the interface IS, as opposed to what it draws.
 
-WHY THIS IS NOT ON `JarvisUI`
-    It was, for about 200 lines, and `tests/test_ui_split.py` refused it:
-    `ui/window.py` has a ceiling because it was already 7,504 lines once and the
-    split exists to stop that happening again. Raising the ceiling for new code
-    is the one thing the rule is there to prevent, so the ceiling stayed and the
-    code moved.
+WHAT CHANGED, AND WHY THIS FILE IS SHORTER THAN IT WAS
+    This module used to move a WINDOW between "on screen" and "in the tray".
+    That is gone with `ui/window.py`: the mockup draws no window, and a
+    full-screen HUD next to an ambient orb is two different products sharing a
+    process. Summon now means "bring every ambient surface forward" — the orb
+    and the face — and dismiss means "let them settle back".
 
-    These functions take the `JarvisUI` instance (called `shell` here) and use
-    only four things from it: `_win`, `_tray`, `_ambient`, `_app`. That is not a
-    coincidence — it is the whole surface this concern has, which is why it can
-    live in a file of its own and be read without the other 4,000 lines.
+    The functions that only existed to serve a window went with it:
+    `set_interface_mode` (switching into `hud`), `raise_window` (showing a
+    window), and `window_needs_attention` (opening one when something was
+    wrong). A surface that does not exist cannot be shown, and a fallback to
+    "show the window" in a build with no window is not a fallback.
 
-WHAT LIVES HERE
-    Starting in one of the two modes, and moving between them afterwards:
-    summon, dismiss, the toggle a shortcut drives, and the five things the tray
-    menu can ask for. `JarvisUI` keeps thin methods that delegate here, so every
-    caller — `main.py`, plugins, `ui/__init__` — is unaffected.
-
-THE ONE RULE THAT MATTERS
-    An interface the user cannot reach is worse than a window. Every function
+THE ONE RULE THAT SURVIVES ALL OF IT
+    An interface the user cannot reach is worse than no interface. Everything
     here that could hide something first checks that there is somewhere else to
-    get back from, and says so rather than pretending when there is not.
+    get back from, and says so rather than pretending when there is not. With
+    the tray gone there is no way back, so the tray is not allowed to go: that
+    is checked at creation, not at use.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
+import threading
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:                                   # pragma: no cover
-    from ui.window import JarvisUI
+    from ui.shell import AmbientShell
 
 
-def watch_for_another_launch(shell: "JarvisUI", interval_ms: int = 800) -> None:
-    """Summon the window when a SECOND copy of the app was started and exited.
+def watch_for_another_launch(shell: "AmbientShell", interval_ms: int = 800) -> None:
+    """Answer a SECOND launch by bringing the surfaces forward.
 
     `core/single_instance.py` makes a second launch a request — "come to the
     front" — written to a small file, rather than a second assistant holding
@@ -41,11 +41,7 @@ def watch_for_another_launch(shell: "JarvisUI", interval_ms: int = 800) -> None:
 
     A timer rather than a socket for the reason given in that module: the
     asking process may be anything, on any of three platforms, and may already
-    be gone. Polling a file costs one `exists()` every 800 ms and cannot fail
-    in a way that keeps a request from being answered.
-
-    Nothing here is started in HUD mode — the window is already on screen, and
-    a request to bring it forward has nothing to do.
+    be gone. Polling a file costs one `exists()` every 800 ms.
     """
     try:
         from PyQt6.QtCore import QTimer
@@ -53,7 +49,7 @@ def watch_for_another_launch(shell: "JarvisUI", interval_ms: int = 800) -> None:
     except Exception:                               # noqa: BLE001
         return
 
-    timer = QTimer(shell._win)
+    timer = QTimer()
     timer.setInterval(interval_ms)
 
     def _check() -> None:
@@ -67,7 +63,7 @@ def watch_for_another_launch(shell: "JarvisUI", interval_ms: int = 800) -> None:
                 # The link said something. Delivered through the same door as a
                 # typed message — `run_deeplink` owns that, and reusing it keeps
                 # one place where "say this" is defined.
-                _deliver_text(shell, text)
+                deliver_text(shell, text)
         except Exception as e:                      # noqa: BLE001
             # A poll that raises would stop the timer's usefulness silently.
             # Reported once, then the timer is left to try again.
@@ -82,7 +78,7 @@ def watch_for_another_launch(shell: "JarvisUI", interval_ms: int = 800) -> None:
     shell._launch_watch = timer
 
 
-def _deliver_text(shell: "JarvisUI", text: str) -> bool:
+def deliver_text(shell: "AmbientShell", text: str) -> bool:
     """Say something into the session, on a thread. False when there is none.
 
     One function, because there are now two ways to arrive here — a link at
@@ -94,7 +90,6 @@ def _deliver_text(shell: "JarvisUI", text: str) -> bool:
         note(shell, "A link tried to send a message before the session was ready.")
         return False
     try:
-        import threading
         # On a thread, exactly as a typed message is: the caller is a Qt slot
         # and the send blocks on the session.
         threading.Thread(target=send, args=(text,), daemon=True).start()
@@ -104,12 +99,8 @@ def _deliver_text(shell: "JarvisUI", text: str) -> bool:
         return False
 
 
-def run_deeplink(shell: "JarvisUI") -> bool:
+def run_deeplink(shell: "AmbientShell") -> bool:
     """Act on the `jarvis://` link this launch was started with, if any.
-
-    Called once, after the interface exists. Returns whether a link was
-    delivered — which is what lets a launch that was started BY a link exit
-    with a status somebody can read (a shell alias, a script, a launcher).
 
     THE THREE HANDLERS ARE THE POINT
         `summon` and `hide` are the tray's own two actions, so a link can do
@@ -135,7 +126,7 @@ def run_deeplink(shell: "JarvisUI") -> bool:
     try:
         delivered = deeplink.dispatch(link, summon=lambda: summon(shell),
                                       hide=lambda: dismiss(shell),
-                                      ask=lambda text: _deliver_text(shell, text))
+                                      ask=lambda text: deliver_text(shell, text))
     except Exception as e:                          # noqa: BLE001
         note(shell, f"a link failed — {type(e).__name__}: {e}")
         return False
@@ -143,11 +134,10 @@ def run_deeplink(shell: "JarvisUI") -> bool:
     return delivered
 
 
-# ── the ambient shell, moved out of this file ────────────────────────────────
-# Re-exported, not reimplemented: `main.py`, `ui/window.py` and the tests all
-# call these through `lifecycle`, and the module moved only because this file
-# hit the 1,000-line ceiling `tests/test_ui_split.py` enforces. One import line
-# is the whole cost of the move on every caller's side.
+# ── the ambient shell, re-exported ───────────────────────────────────────────
+# `main.py` and the tests call these through `lifecycle`, and the surface code
+# lives in a module of its own so this file stays readable. One import line is
+# the whole cost of the split on every caller's side.
 from ui.ambient_shell import (                      # noqa: F401
     BAR_CHORD, apply_presence_mode, current_presence, cycle_presence_mode,
     open_command_bar,
@@ -156,114 +146,74 @@ from ui.ambient_shell import (                      # noqa: F401
 )
 
 
-def start_interface(shell: "JarvisUI") -> None:
-    """Pick a mode, then either fill the screen or go to the tray.
+def start_interface(shell: "AmbientShell") -> None:
+    """Bring up every surface this machine can hold, and say what it could not.
 
-    A FAILED TRAY IS NOT AN ERROR STATE, IT IS A REASON TO SHOW THE WINDOW.
-        Ambient mode with no notification area would leave an assistant the
-        user cannot see, reach or quit — a process to be hunted down in Task
-        Manager. If the icon cannot be created, the window is shown instead and
-        the reason is logged. The mode degrades; it never becomes a ghost.
+    THE ORDER IS THE PRIORITY ORDER, most capable last.
+        The tray is the only surface that can always get the user back, so it
+        is created first and its failure is the one that matters. The face is
+        next (it is the most information-dense). The orb is last because a
+        machine that cannot draw a 96 px window can still hold an icon.
+
+    A FAILED SURFACE IS NOT AN ERROR STATE.
+        Each one degrades on its own and reports why. An assistant with a
+        tray and nothing else is a working ambient install — that is what
+        phase 1 shipped. What must never happen is a build where NOTHING came
+        up: that is a process the user has to find in Task Manager.
     """
-    mode = "hud"
-    try:
-        from memory.config_manager import get_ui_mode
-        mode = get_ui_mode()
-    except Exception:                               # noqa: BLE001
-        mode = "hud"
-
-    # WHAT THE LAUNCH ITSELF ASKED FOR, and why it can outrank the saved mode
-    # only in one direction.
-    #
-    #     `--hidden` is the login entry talking: start in the tray, whatever the
-    #     user's saved mode is. That is a DOWNGRADE of visibility and it is safe
-    #     in every case the mode already handles, because everything below
-    #     (first run, no tray) still refuses to leave the user with no surface.
-    #
-    #     `--show` is a shortcut meaning "come and talk to me", which is an
-    #     upgrade and is therefore just the ordinary path — it cannot ask for
-    #     anything the mode does not already give.
-    launch = getattr(shell, "_launch", None)
-    if getattr(launch, "hidden", False):
-        mode = "ambient"
-
-    # FIRST RUN OUTRANKS THE MODE.
-    #
-    # The setup screen (API key) is an overlay INSIDE the window. In ambient
-    # mode the window is not shown, so that overlay would be invisible, the key
-    # could never be entered, and `main.py`'s `wait_for_api_key` loop would wait
-    # forever behind a tray icon. Nothing about that is recoverable by the user
-    # — they would see a tray icon and an assistant that never answers.
-    #
-    # So a configuration that cannot start a session always gets the window,
-    # whatever `ui_mode` says. The mode takes effect from the next launch, once
-    # there is something to run headlessly.
     # A LINK IS AN INSTRUCTION TO THE RUNNING APP, so it is answered before the
-    # mode is chosen: `jarvis://hide` on an ambient install must not be turned
-    # into a window just because the saved mode is hud.
+    # surfaces exist: `jarvis://hide` on an install with no orb must not be
+    # turned into a summon by the order of these calls.
     if getattr(getattr(shell, "_launch", None), "link", None) is not None:
         run_deeplink(shell)
 
-    if mode == "hud" or not getattr(shell._win, "_ready", False):
-        shell._win.showFullScreen()
-        # `--show` on a HUD install: the window is up, and asking for it to be
-        # in front is the same call the tray makes when the user clicks Show.
-        if getattr(launch, "force_window", False):
-            raise_window(shell)
-        return
-
-    # Ambient (or bubble): the window may be hidden, so a second launch is
-    # answered here. Started BEFORE the tray falls back to the window, because
-    # the fallback still leaves the app running as the one instance.
     watch_for_another_launch(shell)
 
-    if not start_tray(shell):
-        # No notification area: there is nowhere else to be. See the docstring.
-        shell._win.showFullScreen()
-        return
+    started = []
+    if start_tray(shell):
+        started.append("tray")
+    if start_bubble(shell):
+        started.append("face")
+    if start_orb(shell):
+        started.append("orb")
+    if start_command_bar(shell):
+        started.append("bar")
 
-    shell._ambient = True
+    # `--hidden` MEANS "START, BUT DO NOT APPEAR ON SOMEONE'S SCREEN" — a login
+    # entry runs while the user is working, and a face that pops up on the first
+    # frame is the thing the flag exists to prevent. The face is still BUILT:
+    # nothing built means nothing to summon, and the chord would bring up
+    # nothing at all.
+    if getattr(getattr(shell, "_launch", None), "hidden", False):
+        _set_bubble_visible(shell, False)
+
+    # THE WAY BACK. With no window, the summon chord is the only global key
+    # this program owns: without it the tray is the sole way to reach the
+    # assistant, and on a desktop with no notification area there is none. It
+    # is bound after the tray because the notice about a window-scoped chord
+    # goes through the tray's own log.
     start_summon_hotkey(shell)
-    if mode == "bubble":
-        # A face that will not draw is not a reason to lose the mode — the tray
-        # alone is a working ambient install, which is what phase 1 shipped.
-        # DEGRADE TO LESS, NEVER TO A WINDOW: the user asked for no window.
-        if not start_bubble(shell):
-            shell._win._log_sig.emit(
-                "SYS: Face bubble unavailable; staying in the tray.")
 
-    # The orb and the command bar are ambient-only and independent of the
-    # bubble: the orb says "the assistant is here", the bar is how you reach it
-    # without the window. Both degrade to the tray on their own, so neither can
-    # take the mode down with it.
-    start_orb(shell)
-    start_command_bar(shell)
+    if not started:
+        # Nothing came up. This is the one outcome worth shouting about: the
+        # assistant is running, holding the microphone, and invisible.
+        note(shell, "No ambient surface could be created on this desktop. "
+                    "JARVIS is running and listening but cannot show itself; "
+                    "use the tray icon if one appears, or quit and check the "
+                    "log for the reason each surface gave.")
+    shell._ambient = True
 
 
-# The summon chord. Ctrl+Shift+J is what does this INSIDE the window; the
-# global version is the same shape so there is one thing to remember.
+# The summon chord. Ctrl+Shift+J is what does this; the global version is the
+# same shape so there is one thing to remember.
 SUMMON_CHORD = ("ctrl", "shift", "j")
 
 
-def start_summon_hotkey(shell: "JarvisUI") -> str:
-    """Bind the global summon chord. Returns the scope actually achieved.
-
-    WHY THIS IS NOT PART OF THE TRAY
-        The tray icon is the way back to the interface, and on some desktops it
-        is not there at all — a Wayland session without a StatusNotifier host, a
-        GNOME install with the extension disabled, a Windows session where the
-        notification area is hidden. Until now that user had NO way to summon
-        the window: the in-window shortcut needs a focused window, which by
-        definition they do not have. That is a one-way door, and this is the
-        other handle.
-
-    A 'window' scope is reported, not hidden: on Wayland there is genuinely no
-    global hook available without a portal, and saying so is better than
-    installing a chord that silently does nothing.
-    """
+def start_summon_hotkey(shell: "AmbientShell") -> str:
+    """Bind Ctrl+Shift+J to `summon`. Returns the scope actually achieved."""
     from core.hotkey import HotkeyTap
 
-    tap = HotkeyTap(lambda: toggle_interface(shell), chord=SUMMON_CHORD)
+    tap = HotkeyTap(lambda: summon(shell), chord=SUMMON_CHORD)
     try:
         scope = tap.start()
     except Exception as e:                          # noqa: BLE001
@@ -271,12 +221,12 @@ def start_summon_hotkey(shell: "JarvisUI") -> str:
         return "window"
     shell._summon_hotkey = tap
     if scope != "global":
-        note(shell, "the summon shortcut only works while the interface is "
-                    "focused — this desktop offers no global key hook.")
+        note(shell, "the summon shortcut only works while a JARVIS surface has "
+                    "focus — this desktop offers no global key hook.")
     return scope
 
 
-def stop_summon_hotkey(shell: "JarvisUI") -> None:
+def stop_summon_hotkey(shell: "AmbientShell") -> None:
     tap = getattr(shell, "_summon_hotkey", None)
     if tap is None:
         return
@@ -284,19 +234,9 @@ def stop_summon_hotkey(shell: "JarvisUI") -> None:
     shell._summon_hotkey = None
 
 
-def start_tray(shell: "JarvisUI") -> bool:
+def start_tray(shell: "AmbientShell") -> bool:
     """Create the notification-area icon. False if this desktop has none."""
-    from ui.tray import TrayIcon, icon_path
-
-    try:
-        from ui.icons import build_jarvis_icon
-        ico = icon_path()
-        if not ico.exists():
-            build_jarvis_icon(ico)
-    except Exception:                               # noqa: BLE001
-        # The icon is drawn on demand; a machine without Pillow gets Qt's
-        # default instead. Not a reason to give up the tray.
-        ico = None
+    from ui.tray import TrayIcon
 
     tray = TrayIcon({
         "show": lambda: summon(shell),
@@ -313,13 +253,13 @@ def start_tray(shell: "JarvisUI") -> bool:
     if not tray.start():
         # Reported, not swallowed: "the mode you asked for could not be given"
         # is exactly the kind of thing a log is for.
-        note(shell, f"Ambient mode unavailable ({tray.error}); showing the window.")
+        note(shell, f"Tray unavailable ({tray.error}).")
         return False
     shell._tray = tray
     return True
 
 
-def start_bubble(shell: "JarvisUI") -> bool:
+def start_bubble(shell: "AmbientShell") -> bool:
     """Create the always-on-top face. False if this desktop will not have it."""
     from ui.face_bubble import FaceBubble
 
@@ -341,171 +281,61 @@ def start_bubble(shell: "JarvisUI") -> bool:
     return True
 
 
-def summon(shell: "JarvisUI") -> None:
-    """Bring the interface up — from the tray, a shortcut, or the caller.
+def summon(shell: "AmbientShell") -> None:
+    """Bring every surface forward — from the tray, a shortcut, or a caller.
 
-    Maximised rather than full screen. The old launch filled the screen, which
-    is right for the full-screen HUD but wrong for a window you asked for on
-    purpose: full screen hides the desktop the user was working on and takes an
-    extra gesture to get out of. F11 still switches to full screen for anyone
-    who wants it — see `MainWindow._toggle_fullscreen`.
+    WITH NO WINDOW, "FORWARD" MEANS THREE SMALL THINGS
+        the face shown if it was hidden, the orb shown, and the tray menu's
+        Show item doing the same. There is no window to raise and no
+        full-screen mode to enter, which is exactly why this function is now
+        shorter than its docstring used to be.
     """
-    if shell._win.isFullScreen():
-        shell._win.showFullScreen()
-    else:
-        shell._win.showMaximized()
-    # THE FACE STEPS ASIDE WHILE THE WINDOW IS UP.
-    #
-    # Both are always-on-top, and two copies of the same avatar — one in the
-    # window's centre, one floating over it — reads as a rendering fault rather
-    # than as two surfaces. Hidden rather than stopped: the animation state is
-    # kept, so it picks up mid-motion when the window goes away again, which is
-    # the same rule the window's own canvas follows (`_on_screen`).
     bubble = getattr(shell, "_bubble", None)
-    if bubble is not None and bubble.available:
-        _hide_bubble(bubble)
-    try:
-        shell._win.raise_()
-        shell._win.activateWindow()
-    except Exception as e:                          # noqa: BLE001
-        # Some window managers refuse these. The window is already shown, which
-        # is the part that matters — but a summon that came up BEHIND another
-        # window looks like nothing happened, so it is worth a line.
-        note(shell, f"could not raise the window — {type(e).__name__}: {e}")
-    shell._ambient = False
-
-
-def dismiss(shell: "JarvisUI") -> None:
-    """Send the interface back to the tray, if the tray can hold it.
-
-    Refuses when there is no tray: hiding the only surface would leave the
-    process unreachable. A user who wants the window gone in that situation
-    closes it, which ends the program.
-    """
-    if getattr(shell, "_tray", None) is None:
-        return
-    shell._win.hide()
+    if bubble is not None and getattr(bubble, "available", False):
+        _set_bubble_visible(shell, True)
+    orb = getattr(shell, "_orb", None)
+    if orb is not None:
+        try:
+            orb.show()
+        except Exception as e:                      # noqa: BLE001
+            note(shell, f"could not show the orb — {type(e).__name__}: {e}")
     shell._ambient = True
+
+
+def dismiss(shell: "AmbientShell") -> None:
+    """Settle the surfaces back — the face hides, the orb stays.
+
+    THE ORB IS NEVER HIDDEN BY A PLAIN DISMISS. It is the one mark that says
+    the assistant is there, and hiding it from a menu item would leave the user
+    with a process they cannot see. "Senyap" is how the user asks for a quieter
+    orb, and it dims rather than disappears.
+    """
     bubble = getattr(shell, "_bubble", None)
-    if bubble is not None and bubble.available:
-        _show_bubble(bubble)
+    if bubble is not None and getattr(bubble, "available", False):
+        _set_bubble_visible(shell, False)
 
 
-def toggle_interface(shell: "JarvisUI") -> None:
-    """What the in-window shortcut calls."""
-    if shell._win.isVisible():
+def toggle_interface(shell: "AmbientShell") -> None:
+    """What the shortcut calls: the face up if it is down, down if it is up."""
+    bubble = getattr(shell, "_bubble", None)
+    if bubble is None or not getattr(bubble, "available", False):
+        summon(shell)
+        return
+    if getattr(bubble, "visible", False):
         dismiss(shell)
     else:
         summon(shell)
 
 
-def set_interface_mode(shell: "JarvisUI", mode: str) -> bool:
-    """Switch between the full-screen HUD and ambient mode.
-
-    Returns False when the requested mode is not something this machine can
-    actually deliver — no notification area, or an ordinary window that cannot
-    hold itself open. Reported rather than accepted-and-ignored, because a saved
-    setting that quietly does nothing is a setting the user will re-toggle
-    forever.
-    """
-    from memory.config_manager import save_ui_mode
-
-    mode = str(mode or "").strip().lower()
-    if mode == "hud":
-        _stop_bubble(shell)
-        _stop_orb(shell)
-        stop_summon_hotkey(shell)
-        # The bar's chord goes with the orb: in HUD mode the window is the way
-        # in, and a Ctrl+Space that still opened a floating line would be a
-        # second, unexplained surface over a full-screen interface.
-        stop_bar_hotkey(shell)
-        if getattr(shell, "_tray", None) is not None:
-            shell._tray.stop()
-            shell._tray = None
-        shell._win.showFullScreen()
-        shell._ambient = False
-        save_ui_mode("hud")
-        return True
-    if mode not in ("ambient", "bubble"):
-        return False
-
-    # The tray comes first in every ambient variant: it is the only surface
-    # that can always get the user back, so a mode that cannot create one is a
-    # mode this machine cannot have.
-    if getattr(shell, "_tray", None) is None and not start_tray(shell):
-        return False
-
-    start_orb(shell)
-    start_command_bar(shell)
-
-    if mode == "bubble":
-        if getattr(shell, "_bubble", None) is None and not start_bubble(shell):
-            # Refused rather than saved-and-ignored: the user picked this mode,
-            # and a stored value that does nothing is a setting they will
-            # re-toggle forever. The tray mode is still offered, one click away.
-            return False
-        if getattr(shell, "_bubble", None) is not None:
-            _show_bubble(shell._bubble)
-    else:
-        _stop_bubble(shell)
-
-    shell._win.hide()
-    shell._ambient = True
-    save_ui_mode(mode)
-    return True
-
-
-def _hide_bubble(bubble) -> None:
-    try:
-        bubble._window.hide()
-    except Exception as e:                          # noqa: BLE001
-        note_quiet(f"could not hide the face — {type(e).__name__}: {e}")
-
-
-def _show_bubble(bubble) -> None:
-    try:
-        bubble._window.show()
-    except Exception as e:                          # noqa: BLE001
-        note_quiet(f"could not show the face — {type(e).__name__}: {e}")
-
-
-def raise_window(shell: "JarvisUI") -> None:
-    """Bring the window up without touching the mode.
-
-    Raises BEFORE `raise_()` on purpose: `summon` also sets `_ambient` and hides
-    the bubble, and `raise_` is the one call a window manager may refuse. Doing
-    the mode change first would leave the shell believing it had summoned a
-    window that is not on screen.
-    """
-    try:
-        shell._win.showMaximized()
-    except Exception:                          # noqa: BLE001
-        raise                                  # the caller reports it
+def _set_bubble_visible(shell: "AmbientShell", visible: bool) -> None:
     bubble = getattr(shell, "_bubble", None)
-    if bubble is not None and bubble.available:
-        _hide_bubble(bubble)
-    shell._ambient = False
+    window = getattr(bubble, "_window", None)
+    if window is None:
+        return
     try:
-        shell._win.raise_()
-        shell._win.activateWindow()
+        window.setVisible(visible)
     except Exception as e:                          # noqa: BLE001
-        note(shell, f"could not raise the window — {type(e).__name__}: {e}")
-
-
-def _stop_orb(shell) -> None:
-    orb = getattr(shell, "_orb", None)
-    if orb is None:
-        return
-    orb.stop()
-    shell._orb = None
-
-
-def _stop_bubble(shell) -> None:
-    bubble = getattr(shell, "_bubble", None)
-    if bubble is None:
-        return
-    bubble.stop()
-    shell._bubble = None
+        note(shell, f"could not show or hide the face — {type(e).__name__}: {e}")
 
 
 def note_quiet(text: str) -> None:
@@ -515,53 +345,66 @@ def note_quiet(text: str) -> None:
     so silence is the one response that would be wrong — stdout costs nothing
     and shows up in the log file main.py opens at startup.
     """
-    print(f"[JARVIS] {text}")
+    print(f"[JARVIS] {text}", flush=True)
 
 
-# ── what the tray menu asks for ───────────────────────────────────────────
+def program_path(shell: "AmbientShell") -> str:
+    """The command line to register for autostart. `main.py` is the only source.
 
-def program_path(shell: "JarvisUI") -> str:
-    """The file that auto-start should launch. The one that is actually running.
-
-    NOT derived from `__file__`. The old toggle did that from inside
-    `ui/window.py`, which produced `ui/main.py` — a path that has never
-    existed — on all three platforms, and the failure only showed up at the
-    next login. `main.py` records its own path on the shell at startup; this
-    asks for it and refuses to guess.
+    IT REFUSES RATHER THAN GUESSING, and the difference is a login entry that
+    works versus one that silently does not. Deriving the path from `__file__`
+    inside `ui/` produced `ui/main.py` — a path that has never existed,
+    registered on every platform and failing at the next login. Falling back to
+    `sys.executable` is no better: it launches a bare interpreter, which is
+    more confusing than nothing at all. A caller that has not been told has
+    nothing honest to register.
     """
-    path = getattr(shell, "_program_path", "")
-    if not path:
-        raise RuntimeError("the program path was never recorded by main.py")
-    return path
+    override = getattr(shell, "_program_path", "") or ""
+    if override:
+        return override
+    raise RuntimeError(
+        "autostart needs the path main.py was run from; nothing has set it")
 
 
 def autostart_state() -> dict:
-    """`{"enabled", "script", "broken"}` — read from disk, never remembered."""
-    from core import autostart
+    """Whether JARVIS starts with the machine, as the tray checkbox needs it.
+
+    THREE STATES, NOT TWO. "Registered" and "will actually start" are different
+    facts: an entry can survive the file it points at, which is what the old
+    toggle could not see. Reporting only `enabled` leaves a tick that promises a
+    launch that cannot happen.
+    """
     try:
-        return autostart.status()
+        from core import autostart
+        status = autostart.status()
     except Exception as e:                          # noqa: BLE001
-        return {"enabled": False, "script": "",
-                "broken": False, "error": f"{type(e).__name__}: {e}"}
+        not_quiet = f"autostart state unavailable — {type(e).__name__}: {e}"
+        note_quiet(not_quiet)
+        return {"enabled": False, "broken": False, "script": ""}
+    script = str(status.get("script") or "")
+    enabled = bool(status.get("enabled"))
+    broken = bool(enabled and script and not Path(script).is_file())
+    return {"enabled": enabled and not broken, "broken": broken, "script": script}
 
 
-def toggle_autostart(shell: "JarvisUI") -> bool:
+def toggle_autostart(shell: "AmbientShell") -> bool:
     """Turn auto-start on or off, and SAY what happened.
 
     Returns the new state, which is what the tray's tick is set to — a
     checkable menu item that flips itself regardless of the outcome is a switch
     that lies. Every failure is written to the log rather than raised: this runs
     from a menu, and a menu item that throws looks like a menu item that worked.
+
+    THE THIRD STATE is the one the old toggle could not see: registered but
+    pointing at a file that is gone. Treating it as "on" leaves a switch that
+    promises a launch that cannot happen; treating it as "off" and calling
+    `enable` fails on the same missing file. So it is removed, and said out
+    loud. A stale entry is not something anybody keeps.
     """
     from core import autostart
 
     before = autostart_state()
-    # Three states, not two, and the third is the one the old toggle could not
-    # see: registered but pointing at a file that is gone. Treating that as
-    # "on" leaves a switch that promises a launch that cannot happen; treating
-    # it as "off" and calling `enable` fails on the same missing file. So it is
-    # removed, and said out loud. A stale entry is not something anybody keeps.
-    if before["enabled"] and before["broken"]:
+    if before["broken"]:
         try:
             autostart.disable()
             note(shell, "Auto-start removed — it pointed at a file that is no "
@@ -570,9 +413,8 @@ def toggle_autostart(shell: "JarvisUI") -> bool:
             note(shell, f"Auto-start failed — {type(e).__name__}: {e}")
         return False
 
-    was_on = bool(before["enabled"])
     try:
-        if was_on:
+        if before["enabled"]:
             autostart.disable()
             note(shell, "Auto-start disabled.")
         else:
@@ -583,16 +425,13 @@ def toggle_autostart(shell: "JarvisUI") -> bool:
         note(shell, f"Auto-start failed — {type(e).__name__}: {e}")
 
     after = autostart_state()
-    # The state that gets reported is the state READ BACK. "Enabled" is only
-    # true if an entry exists AND the file it points at exists, which is the
-    # pair of facts the old toggle never checked.
     if after["broken"]:
         note(shell, f"Auto-start points at a file that is not there: {after['script']}")
-    return bool(after["enabled"]) and not after["broken"]
+    return bool(after["enabled"])
 
 
 def _icon_or_none():
-    """The tray icon file, if it exists. A missing icon is not an error."""
+    """The tray icon file, if this install has one. A missing icon is not an error."""
     try:
         from ui.tray import icon_path
         path = icon_path()
@@ -601,248 +440,90 @@ def _icon_or_none():
         return None
 
 
-def request_wake(shell: "JarvisUI") -> None:
-    """Tray menu: wake the assistant without a word."""
-    cb = getattr(shell._win, "on_wake_manual", None)
-    if cb is None:
+def request_wake(shell: "AmbientShell") -> None:
+    """Ask the session to wake. The interface does not decide this."""
+    handler = getattr(shell, "on_wake_manual", None)
+    if not callable(handler):
+        note(shell, "Wake is not available yet: the session is not running.")
         return
     try:
-        cb()
+        handler()
     except Exception as e:                          # noqa: BLE001
-        note(shell, f"wake failed — {type(e).__name__}: {e}")
+        note(shell, f"could not wake — {type(e).__name__}: {e}")
 
 
-def request_sleep(shell: "JarvisUI") -> None:
-    """Tray menu: stand the assistant down.
-
-    `on_wake_manual` is a toggle in the window, so this only acts when it would
-    move the state in the direction the menu item promises. A "Go to sleep" that
-    sometimes wakes it up would be worse than no item at all.
-    """
-    # `wake_state()["awake"]` is the state main.py actually gates the mic on, so
-    # asking it directly is exact. An earlier draft read the wake BUTTON, which
-    # only agrees with this when the last repaint happened to be right.
-    getter = getattr(shell._win, "_wake_state", None)
-    try:
-        awake = bool(getter()["awake"]) if getter is not None else None
-    except Exception:                               # noqa: BLE001
-        awake = None
-    if awake is False:
-        return
-    cb = getattr(shell._win, "on_wake_manual", None)
-    if cb is None:
+def request_sleep(shell: "AmbientShell") -> None:
+    """Ask the session to sleep."""
+    handler = getattr(shell, "on_wake_toggle", None)
+    if not callable(handler):
+        note(shell, "Sleep is not available yet: the session is not running.")
         return
     try:
-        cb()
+        handler(False)
     except Exception as e:                          # noqa: BLE001
-        note(shell, f"sleep failed — {type(e).__name__}: {e}")
+        note(shell, f"could not sleep — {type(e).__name__}: {e}")
 
 
-def summon_settings(shell: "JarvisUI") -> None:
-    """Tray menu: show the interface with the SETTINGS drawer open."""
-    summon(shell)
-    # The drawer opens by checking its own button, so that is what is driven —
-    # the same path a click takes. Calling the handler directly would leave the
-    # button unchecked, and the next click would then close a drawer the button
-    # believed was already shut.
-    btn = getattr(shell._win, "_drawer_btn", None)
-    if btn is None:
-        return
-    try:
-        if not btn.isChecked():
-            btn.setChecked(True)
-            shell._win._toggle_drawer(True)
-    except Exception as e:                          # noqa: BLE001
-        note(shell, f"could not open settings — {type(e).__name__}: {e}")
+def summon_settings(shell: "AmbientShell") -> None:
+    """There is no settings window. Say what the setting IS instead.
 
-
-def quit_app(shell: "JarvisUI") -> None:
-    """Tray menu: end the program.
-
-    `close()` on the window runs its `closeEvent`, which asks about unsaved
-    documents — the same guard as clicking the X. Quitting from the tray must
-    not be a way around that.
+    The tray keeps a Settings item because a menu with a hole in it reads as
+    broken, and an item that does nothing is worse than one that tells you
+    where the setting lives. The values it used to edit (voice, accent, audio
+    device) are all in `config/api_keys.json` and are read at startup.
     """
-    try:
-        shell._win.close()
-    finally:
-        tray = getattr(shell, "_tray", None)
-        if tray is not None:
-            tray.stop()
-            shell._tray = None
+    note(shell, "Settings are in config/api_keys.json — there is no settings "
+                "screen in this build. Edit the file and restart JARVIS.")
 
 
-def needs_attention(shell: "JarvisUI", why: str) -> bool:
-    """Bring the window out because something is WAITING for the user.
+def quit_app(shell: "AmbientShell", code: int = 0) -> None:
+    """Stop every surface, then quit the application.
 
-    THE RULE THIS ENFORCES: a surface that blocks must be visible.
-        Ambient mode hides the window, and two things inside it are not
-        decoration — they are the only way to finish what the assistant started:
-
-          * the confirmation banner, for shutdown, restart and anything else
-            irreversible. `core/confirm` holds the action open for 90 seconds
-            and then REFUSES it. Hidden, that is silent: the user is told to
-            confirm something they cannot see, and 90 seconds later nothing has
-            happened for no stated reason.
-          * the setup screen, shown when the API key is rejected. `main.py`
-            waits in `while not self._win._ready` — that is an unbounded wait,
-            so the assistant simply stops answering, forever, with no visible
-            cause.
-
-        Both are worse than the window this mode was supposed to replace. So
-        the mode yields: the window is shown, the banner is on it, and putting
-        it away again is one keystroke or one tray click.
-
-    Returns whether the window was actually raised, so the caller can log the
-    difference between "shown" and "should have been".
+    `os._exit` is the last resort and it is here on purpose: a surface that
+    fails to stop must not be able to keep the process alive after the user
+    asked it to quit. An assistant that ignores Quit is one somebody ends with
+    Task Manager, and then they stop trusting the tray.
     """
-    # Already on screen: in hud mode the banner simply appears, and raising a
-    # window the user is looking at would move it (showMaximized on a windowed
-    # HUD would also change the mode they were in). Nothing to do.
-    try:
-        if shell._win.isVisible():
-            return True
-    except Exception as e:                          # noqa: BLE001
-        note(shell, f"could not check visibility — {type(e).__name__}: {e}")
-    try:
-        raise_window(shell)
-    except Exception as e:                          # noqa: BLE001
-        note(shell, f"could not show the interface for {why} — "
-                    f"{type(e).__name__}: {e}")
-        return False
-    try:
-        visible = bool(shell._win.isVisible())
-    except Exception as e:                          # noqa: BLE001
-        note(shell, f"could not show the interface for {why} — "
-                    f"{type(e).__name__}: {e}")
-        return False
-    if visible:
-        note(shell, f"The interface opened because {why}. "
-                    "Press Ctrl+Shift+J or use the tray to put it away again.")
-    return visible
-
-
-def apply_state_everywhere(shell: "JarvisUI", state: str) -> None:
-    """Mirror one state word onto every surface that shows it.
-
-    THE TOOLTIP IS THE ONLY STATUS READOUT IN AMBIENT MODE.
-        With no window, "is it listening?" has exactly one answer the user can
-        see without summoning the interface. Cheap: one string assignment and
-        one setToolTip per transition, and this runs on state changes, not per
-        frame.
-
-    THE BUBBLE IS THE SECOND. In bubble mode it is the only surface on screen,
-    and a face that keeps breathing while the assistant is asleep is a lie told
-    in the most visible place.
-
-    `getattr` rather than `shell._tray`: the facade is built piecemeal in tests
-    and by plugins, and a status update must never be the thing that raises
-    because an attribute was not there. These are extra surfaces, not
-    preconditions.
-    """
-    # EACH SURFACE IS UPDATED INDEPENDENTLY, and a failure in one must not
-    # skip the others. They are separate windows on separate desktops; the orb
-    # raising because it has no paint device is exactly the case where the
-    # TOOLTIP is the only readout left, so "update the tray, then the bubble,
-    # then the orb, unguarded" gets the order wrong in the worst way.
-    for attr, method in (("_tray", "set_state"),
-                         ("_bubble", "set_state"),
-                         ("_orb", "set_state")):
+    for attr, stop_name in (("_orb", "stop"), ("_bubble", "stop"),
+                            ("_tray", "stop"), ("_command_bar", "close")):
         target = getattr(shell, attr, None)
-        callback = getattr(target, method, None)
-        if callback is None:
+        if target is None:
             continue
         try:
-            callback(state)
+            getattr(target, stop_name)()
         except Exception as e:                      # noqa: BLE001
-            print(f"[JARVIS] {attr} could not show '{state}' — "
-                  f"{type(e).__name__}: {e}")
-    # Desktop-notification policy for an answer that arrived while nobody was
-    # watching. Same reason it is not in window.py: it is a decision, and
-    # decisions belong with the rest of them.
-    announce_if_finished(shell, state)
-
-
-def announce_if_finished(shell: "JarvisUI", state: str) -> None:
-    """Desktop notification for an answer that arrived while nobody watched.
-
-    `shell._pending_state` is the status `JarvisUI.set_state` just forwarded;
-    the rest is `core/notify.py`'s policy. Three conditions, all of them
-    "no" by default, because a notification nobody asked for is the fastest way
-    to get the feature switched off for good:
-
-      * the mode is ambient — in the full-screen HUD the answer is already on
-        the screen being read;
-      * the user has not turned it off (config, default on only for ambient);
-      * the policy agrees this is a completed turn, not a status cycle.
-    """
-    if not getattr(shell, "_ambient", False) or not state:
-        return
-    from core.notify import Notifier
-    from memory.config_manager import get_desktop_notifications
-
-    if not get_desktop_notifications():
-        return
-    notifier = getattr(shell, "_notifier", None)
-    if notifier is None:
-        notifier = Notifier(visible=lambda: bool(shell._win.isVisible()))
-        shell._notifier = notifier
-    log = getattr(shell._win, "_log", None)
-    text = getattr(log, "last_answer", "") if log is not None else ""
+            note_quiet(f"could not stop {attr} — {type(e).__name__}: {e}")
+    stop_summon_hotkey(shell)
+    stop_bar_hotkey(shell)
     try:
-        notifier.observe(state, text)
+        shell._app.quit()
     except Exception as e:                          # noqa: BLE001
-        # A status update must never be the thing that raises. Said rather than
-        # swallowed, because "notifications never appear" is otherwise
-        # unanswerable.
-        print(f"[JARVIS] Notifier: {type(e).__name__}: {e}")
+        note_quiet(f"could not quit cleanly — {type(e).__name__}: {e}")
+    import os
+    os._exit(code)
 
 
-def window_needs_attention(window, why: str) -> None:
-    """Called by a widget inside the window that is about to BLOCK the user.
-
-    THE SHORT VERSION OF THE RULE, AND WHY IT LIVES HERE
-        Ambient mode hides the window. Anything inside it that waits for the
-        user — the confirmation banner (90 s, then refuses) and the setup screen
-        (unbounded, `while not self._win._ready`) — would then wait invisibly.
-        Both callers want the identical three lines, and `ui/window.py` is at
-        4,245 of a 4,250-line ceiling, so they share this instead of each
-        spelling it out: the ceiling said "extract", and it was right.
-
-    `window` is a `MainWindow`; it reaches its shell through `_shell`. A window
-    built without one (the widget tests do exactly that) is left alone — it is
-    already on screen in those cases by construction.
-    """
-    shell = getattr(window, "_shell", None)
-    if shell is None or window.isVisible():
-        return
-    try:
-        needs_attention(shell, why)
-    except Exception as e:                          # noqa: BLE001
+def note(shell: "AmbientShell", text: str) -> None:
+    """A line the user may need to read, on whatever surface exists."""
+    write = getattr(shell, "write_log", None)
+    if callable(write):
         try:
-            window.write_log(f"ERR: could not show the interface for {why} — "
-                             f"{type(e).__name__}: {e}")
-        except Exception:                           # noqa: BLE001
-            note_quiet(f"could not show the interface for {why} — {e}")
+            write(f"SYS: {text}")
+            return
+        except Exception as e:                      # noqa: BLE001
+            # The shell's own log path failed. Fall through to stdout rather
+            # than lose the sentence — this function exists to report failures.
+            print(f"[JARVIS] log failed ({type(e).__name__}: {e}); {text}", flush=True)
+            return
+    print(f"[JARVIS] {text}", flush=True)
 
 
-def note(shell: "JarvisUI", text: str) -> None:
-    """Record a survived failure where somebody can see it.
+def needs_attention(shell: "AmbientShell", why: str) -> bool:
+    """Tell the user something needs them. Always returns True now.
 
-    The tray is the surface for a windowless app, so a menu item that silently
-    did nothing looks exactly like one that worked.
+    It used to return whether it could OPEN A WINDOW to say so. There is no
+    window, so the answer is the toast — and a toast is not something the
+    caller has to wait to be seen.
     """
-    line = f"SYS: {text}"
-    try:
-        shell._win.write_log(line)
-        return
-    except Exception as e:                          # noqa: BLE001
-        first = f"{type(e).__name__}: {e}"
-    try:
-        shell._win._log_sig.emit(line)
-    except Exception as e:                          # noqa: BLE001
-        # Both routes are gone; stdout is the last one. The first failure is
-        # included because "write_log raised" is itself the interesting part
-        # when the log is what is broken.
-        print(f"[JARVIS] {line} (log unavailable — {first}; "
-              f"signal unavailable — {type(e).__name__}: {e})")
+    note(shell, f"{why} — this needs you.")
+    return True

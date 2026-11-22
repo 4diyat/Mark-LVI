@@ -1,4 +1,12 @@
 {
     "ui_mode": "hud",
-    "presence_mode": "quiet"
+    "presence_mode": "quiet",
+    "providers": {
+        "creds": {
+            "openai_compat@ollama": {
+                "base_url": "",
+                "model": ""
+            }
+        }
+    }
 }

@@ -377,9 +377,10 @@ def _main_ast():
 def test_main_claims_the_lock_before_building_anything():
     """Order is the whole assertion.
 
-    A claim made after `JarvisUI(...)` would mean the second copy pays for a
-    QApplication, a window and a tray icon before discovering it is redundant —
-    and on a slow machine it would briefly SHOW a second window.
+    A claim made after `_make_application(...)` would mean the second copy pays
+    for a QApplication, a tray icon and an orb before discovering it is
+    redundant — and on a slow machine it would briefly SHOW a second orb on
+    somebody's desktop.
     """
     import ast
 
@@ -390,9 +391,9 @@ def test_main_claims_the_lock_before_building_anything():
              if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)]
     order = {name: line for line, name in calls}
     assert "_claim_single_instance" in order, "main() no longer claims the lock"
-    assert "JarvisUI" in order
-    assert order["_claim_single_instance"] < order["JarvisUI"], (
-        "the single-instance claim must happen before the window is built")
+    assert "_make_application" in order, "main() no longer builds the application"
+    assert order["_claim_single_instance"] < order["_make_application"], (
+        "the single-instance claim must happen before Qt is paid for")
 
 
 def test_a_second_launch_asks_the_running_copy_and_then_exits(tmp_path, monkeypatch,
@@ -459,9 +460,15 @@ def test_a_second_launch_says_where_the_lock_is_when_it_cannot_ask(tmp_path,
     assert "instance.lock" in out
 
 
-def test_the_window_summons_itself_when_another_launch_is_requested(tmp_path,
-                                                                   monkeypatch):
-    """The other half: the file the second copy wrote must actually be noticed."""
+def test_the_app_summons_itself_when_another_launch_is_requested(tmp_path,
+                                                                 monkeypatch):
+    """The other half: the file the second copy wrote must actually be noticed.
+
+    `summon` now raises the orb and the face rather than a window; what is
+    asserted is the WIRING, because a request file nobody polls is a second
+    launch that silently does nothing — which is how a user concludes the app
+    is not running.
+    """
     from types import SimpleNamespace
 
     lifecycle = _load_module("ui/lifecycle.py", "lifecycle_si_under_test")
@@ -511,16 +518,17 @@ def test_the_window_summons_itself_when_another_launch_is_requested(tmp_path,
     monkeypatch.setitem(sys.modules, "PyQt6",
                         SimpleNamespace(QtCore=SimpleNamespace(QTimer=_Timer)))
     monkeypatch.setitem(sys.modules, "PyQt6.QtCore",
-                        SimpleNamespace(QTimer=_Timer))
+                        SimpleNamespace(QtCore=SimpleNamespace(QTimer=_Timer),
+                                       QTimer=_Timer))
 
-    shell = SimpleNamespace(_win=SimpleNamespace(), _log_sig=None)
+    shell = SimpleNamespace(_log_sig=None)
     lifecycle.watch_for_another_launch(shell)
 
     assert timers and timers[0].started is True
     assert shell._launch_watch is timers[0], "the timer is kept, or it is collected"
 
     timers[0].fire()                     # what Qt does on the interval
-    assert summoned == [shell], "a second launch must bring the window forward"
+    assert summoned == [shell], "a second launch must bring the surfaces forward"
 
     timers[0].fire()                     # the request was consumed already
     assert summoned == [shell], "one request, one summon"

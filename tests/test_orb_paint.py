@@ -18,11 +18,12 @@ WHAT CANNOT BE TESTED HERE
 """
 from __future__ import annotations
 
-import importlib.util
 import sys
 from pathlib import Path
 
 import pytest
+
+from tests import qtstub
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -34,13 +35,10 @@ def qt(monkeypatch):
     Reused rather than rewritten: a second hand-written stub drifts, and the
     one thing that must not drift is the surface a painter calls into.
     """
-    spec = importlib.util.spec_from_file_location(
-        "smoke_for_orb_paint", ROOT / "tests" / "test_window_smoke.py")
-    smoke = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(smoke)
+    stubs = qtstub.install_qt()
     saved = {k: v for k, v in sys.modules.items()
              if k == "PyQt6" or k.startswith("PyQt6.") or k == "ui" or k.startswith("ui.")}
-    sys.modules.update(smoke._install_qt())
+    sys.modules.update(stubs)
     for name in [k for k in sys.modules if k == "ui" or k.startswith("ui.")]:
         sys.modules.pop(name, None)
     try:
@@ -105,57 +103,57 @@ def test_an_unknown_state_falls_back_to_idle_rather_than_raising(qt):
 
 # ── one painter, both surfaces ────────────────────────────────────────────
 
-def test_the_hud_window_draws_through_the_shared_painter(qt):
-    """THE BUG: the HUD called `ui.desktop_orb`, which knew nothing of modes.
+def test_the_face_canvas_draws_through_the_shared_painter(qt, monkeypatch):
+    """THE BUG: the face had a painter of its own and drifted from the ring.
 
-    Asserted by wiring, not by reading a comment: the canvas' paint path is
-    driven and the shared painter is watched. A `paintEvent` that exists but
-    calls something else is exactly what shipped last time.
+    `ui/face_canvas.py` draws the avatar when it has one and the shared ring
+    when it does not — the fallback is a REAL surface, not a placeholder, which
+    is why the wiring is asserted here rather than described in a comment. A
+    `paintEvent` that exists but calls something else is exactly what shipped
+    last time.
     """
-    from ui import hud_canvas
+    import ui.face_canvas as face_canvas
+    import ui.orb_paint as orb_paint
 
     seen = {}
 
     def fake_paint_ring(painter, cx, cy, radius, **kwargs):
         seen.update(kwargs, cx=cx, cy=cy, radius=radius)
 
-    import ui.orb_paint as orb_paint
-    from PyQt6.QtGui import QPainter
+    monkeypatch.setattr(orb_paint, "paint_ring", fake_paint_ring)
+    canvas = face_canvas.build_face_canvas(None)
+    canvas._avatar = None                 # the no-mesh machine, which is real
+    canvas.speaking = True
+    canvas._amp_disp = 0.7
+    canvas.width = lambda: 260
+    canvas.height = lambda: 260
 
-    # The stub answers `None` to every call, and `paintEvent` correctly refuses
-    # to draw when the painter is not active ("device not ready", which happens
-    # during layout). So the device is declared ready for this one test; leaving
-    # it out would make the test pass for the wrong reason in reverse — it would
-    # prove only that the guard works.
-    QPainter.isActive = lambda self: True
-    hud = hud_canvas.HudCanvas(None)
-    hud.hud_style = "orb"
-    hud.state = "LISTENING"
-    hud._amp_disp = 0.7
-    hud.width = lambda: 400
-    hud.height = lambda: 300
-    orb_paint.paint_ring = fake_paint_ring
+    class _Painter:
+        def setRenderHint(self, *_a):      # noqa: N802 — Qt's name
+            return None
 
-    hud.paintEvent(None)
+        def end(self):
+            return None
 
-    assert seen, "the HUD orb drew nothing at all"
-    assert seen["state"] == "listening", "the HUD's state never reached the painter"
-    assert seen["radius"] > 8, "the ring was not sized from the window"
+    canvas._paint(_Painter())
+    assert seen, "the face canvas drew nothing at all"
+    assert seen["state"] == "speaking", "the state never reached the painter"
+    assert seen["radius"] > 8, "the ring was not sized from the widget"
     assert seen["level"] == pytest.approx(0.7), "the audio level never reached the ring"
 
 
-def test_the_desktop_overlay_draws_through_the_same_painter(qt):
-    """Both surfaces, one function. Two painters is how they drifted apart."""
-    from ui import orb_overlay
-
+def test_every_surface_draws_through_the_same_painter(qt):
+    """Two painters is how the orb, the face and the tray drifted apart."""
+    source = (ROOT / "ui" / "face_canvas.py").read_text(encoding="utf-8")
+    assert "paint_ring(" in source
     assert "paint_ring(" in (ROOT / "ui" / "orb_overlay.py").read_text(encoding="utf-8")
-    assert "paint_ring(" in (ROOT / "ui" / "hud_canvas.py").read_text(encoding="utf-8")
     # and the old, mode-blind painter is gone rather than merely unused
     assert not (ROOT / "ui" / "desktop_orb.py").exists(), (
         "ui/desktop_orb.py is back: it draws the orb without knowing the "
         "presence modes, which is the split this file exists to prevent"
     )
-    assert orb_overlay.appearance("focus").radius < orb_overlay.RADIUS
+    from ui import orb_paint
+    assert orb_paint.appearance("focus").radius < orb_paint.RADIUS
 
 
 def test_the_painter_never_fills_a_rectangle(qt):

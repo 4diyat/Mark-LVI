@@ -14,12 +14,13 @@ WHY THE ARITHMETIC IS TESTED AND THE PAINTING IS NOT
 """
 from __future__ import annotations
 
-import importlib.util
 import sys
 import types
 from pathlib import Path
 
 import pytest
+
+from tests import qtstub
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -62,13 +63,10 @@ def orb(monkeypatch):
     second, hand-written stub would drift from the one the rest of the suite
     trusts.
     """
-    spec = importlib.util.spec_from_file_location(
-        "smoke_for_orb", ROOT / "tests" / "test_window_smoke.py")
-    smoke = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(smoke)
+    stubs = qtstub.install_qt()
     saved = {k: v for k, v in sys.modules.items()
              if k == "PyQt6" or k.startswith("PyQt6.") or k == "ui" or k.startswith("ui.")}
-    sys.modules.update(smoke._install_qt())
+    sys.modules.update(stubs)
     for name in [k for k in sys.modules if k == "ui" or k.startswith("ui.")]:
         sys.modules.pop(name, None)
     try:

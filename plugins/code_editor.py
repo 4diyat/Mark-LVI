@@ -33,7 +33,8 @@ def run(parameters: dict, player=None, session_memory=None) -> str:
         if action == 'open':
             callback = getattr(player, 'show_code_job', None) if player is not None else None
             if not callable(callback):
-                return 'The code editor needs the desktop interface.'
+                return ('The code editor has no interface in this build — its window was removed. '
+                 'No file was opened.')
             callback({"kind": "creative_workspace", "tab": "editor", "code": code})
             return 'Opening the code editor. Saving and running require your action in the editor.'
         command = validate(action, params.get('target', ''), code, params.get('base_revision', ''))

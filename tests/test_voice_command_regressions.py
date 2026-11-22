@@ -111,13 +111,24 @@ def test_mic_start_failure_waits_before_retry_and_does_not_claim_listening():
     asyncio.run(check())
 
 
-def test_wake_word_can_be_disabled_when_model_is_missing():
+def test_wake_word_buttons_are_gone_and_the_setting_survives():
+    """The two buttons lived in the settings drawer; the drawer went with the window.
+
+    What must not go with them is the RULE they enforced: a wake word whose
+    model never loaded must not be left enabled, or the app listens for a phrase
+    it can never hear and the user waits for a response that cannot come.
+    `main.py` enforces it on the path that actually matters — the toggle the
+    session calls — so that is where it is asserted now.
+    """
     window = SOURCE.parent / "ui" / "window.py"
-    tree = ast.parse(window.read_text(encoding="utf-8"))
-    cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "MainWindow")
-    for name in ("_toggle_wake_word", "_refresh_wake_btns"):
-        node = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == name)
-        assert 'not st[\'ready\'] and (not st[\'enabled\'])' in ast.unparse(node)
+    assert not window.exists()
+
+    main_src = (SOURCE.parent / "main.py").read_text(encoding="utf-8")
+    assert "_ui_wake_toggle" in main_src
+    assert "wake_is_ready" in main_src, (
+        "the readiness check left with the buttons; the model can now be "
+        "enabled and never fire")
+    assert "need_download" in main_src
 
 
 def test_wake_word_not_enabled_when_model_fails_to_start():
@@ -129,15 +140,26 @@ def test_wake_word_not_enabled_when_model_fails_to_start():
     assert obj._wake_enabled is False and saves == []
 
 
-def test_restored_window_scoped_ptt_is_wired_to_gui_thread():
+def test_push_to_talk_says_when_it_is_window_scoped_instead_of_pretending():
+    """PTT used to hand a bool to the window through a Qt signal.
+
+    There is no window, so the signal is gone — and the honest thing that
+    replaces it is a log line saying the desktop offers no global key hook. The
+    failure this guards against is the loud one being deleted along with the
+    widget: a shortcut that silently only works when something has focus is a
+    shortcut the user reports as broken.
+    """
     source = SOURCE.read_text(encoding="utf-8")
     tree = ast.parse(source)
     cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "JarvisLive")
     init = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == "__init__")
-    assert '_ptt_shortcut_sig.emit(scope != \'global\')' in ast.unparse(init)
-    ui = (SOURCE.parent / "ui" / "window.py").read_text(encoding="utf-8")
-    assert '_ptt_shortcut_sig = pyqtSignal(bool)' in ui
-    assert 'self._ptt_shortcut_sig.connect(self._apply_ptt_shortcut)' in ui
+    body = ast.unparse(init)
+
+    assert "_ptt_shortcut_sig" not in body, (
+        "a Qt signal to a window that no longer exists")
+    assert "Push-to-talk only works while" in body, (
+        "a window-scoped PTT chord is now silent")
+    assert "self.ui.write_log" in body
 
 
 def test_open_mic_forwards_captured_pcm_to_queue():

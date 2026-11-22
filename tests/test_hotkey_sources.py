@@ -325,9 +325,13 @@ def test_stopping_the_summon_hotkey_closes_its_source():
 
 # ── wiring: the summon chord follows the mode ─────────────────────────────
 
-def test_the_summon_hotkey_runs_only_while_there_is_no_window():
-    """It is the way BACK to the interface, so it exists exactly when the
-    interface is not on screen — and stops when the window comes back for good.
+def test_the_summon_hotkey_is_bound_for_the_life_of_the_process():
+    """It is the way BACK, and with no window it is the only global key there is.
+
+    It used to be bound only in ambient mode and released when the HUD came
+    back, because the HUD was itself a door. There is no HUD, so the chord is
+    bound at launch — after the tray, so the notice about a window-scoped chord
+    has somewhere to go — and released only when the app quits.
 
     Read from the source: this asserts the wiring, not a keyboard.
     """
@@ -339,7 +343,8 @@ def test_the_summon_hotkey_runs_only_while_there_is_no_window():
     assert "start_summon_hotkey(shell)" in ambient, (
         "ambient mode must bind the global summon chord; without it the tray is "
         "the only way back in, and on some desktops there is no tray")
-    hud = src[src.index("def set_interface_mode"):]
-    hud = hud[:hud.index("def request_wake")]
-    assert "stop_summon_hotkey(shell)" in hud, (
-        "returning to the full-screen HUD must release the global chord")
+    quit_block = src[src.index("def quit_app(shell"):]
+    quit_block = quit_block[:quit_block.index("def needs_attention")]
+    assert "stop_summon_hotkey(shell)" in quit_block, (
+        "the chord outlives the process, so Ctrl+Shift+J stays grabbed after exit")
+    assert "def set_interface_mode" not in src

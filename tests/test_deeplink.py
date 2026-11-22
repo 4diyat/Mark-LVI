@@ -535,37 +535,32 @@ def test_the_windows_registration_marks_the_key_as_a_protocol(tmp_path, monkeypa
     assert written[(key, "")] == "URL:jarvis protocol"
 
 
-def test_the_setup_drawer_offers_the_scheme_and_reads_it_back():
-    """The button is the only way a user turns this on.
+def test_the_scheme_has_no_button_and_is_driven_by_the_command_line():
+    """The settings drawer that could register `jarvis://` went with the window.
 
-    Two things must hold: it exists in the SETUP drawer next to auto-start, and
-    its label comes from `deeplink.registered()` — a fact on disk — not from a
-    flag the app remembers. A remembered flag would say ON after the OS entry
-    was deleted by hand, which is exactly the failure auto-start had.
+    Two things used to be asserted: that the button existed, and that its label
+    came from `deeplink.registered()` — a fact on disk — rather than a flag the
+    app remembered. The first half is gone; the second still matters, and it is
+    asserted where the fact now lives: `core/deeplink.py` answers from the OS,
+    and nothing in `ui/` caches it.
+
+    Registering the scheme is now a command, and saying WHICH command is the
+    whole remaining obligation — a feature with no button and no documented way
+    in is a feature that does not exist.
     """
-    import ast
+    from core import deeplink
+
+    assert callable(deeplink.registered)
+    assert callable(deeplink.register)
 
     from pathlib import Path
-    # Read, do not import: `ui/window.py` needs PyQt6, which is absent here.
-    # Explicit encoding: Windows defaults to cp1252 and `ui/window.py` is
-    # full of glyphs, which is exactly how this test first went red in CI.
-    src = (Path(__file__).resolve().parent.parent / "ui" / "window.py").read_text(
-        encoding="utf-8")
-    tree = ast.parse(src)
-    names = {n.name: n for n in ast.walk(tree)
-             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
-    assert "_toggle_deeplink" in names and "_update_link_btn" in names
 
-    toggle = ast.get_source_segment(src, names["_toggle_deeplink"])
-    assert "registered()" in toggle
-    assert "unregister()" in toggle
-    assert "register(" in toggle
-    # The running program's path, never a path derived from __file__.
-    assert "program_path(" in toggle
-    assert "__file__" not in toggle
+    root = Path(__file__).resolve().parent.parent
+    note = (root / "docs" / "mockups" / "NOT-IN-MOCKUP.md").read_text(encoding="utf-8")
+    assert "jarvis://" in note, "the scheme lost its only entry point and its note"
 
-    upd = ast.get_source_segment(src, names["_update_link_btn"])
-    assert "registered()" in upd
-
-    # Wired: the button is created and connected somewhere.
-    assert "_link_btn.clicked.connect(self._toggle_deeplink)" in src
+    # And nothing in `ui/` remembers the state: the surface would have to ask
+    # the OS every time it is drawn, which is why the drawer asked too.
+    for path in sorted((root / "ui").glob("*.py")):
+        text = path.read_text(encoding="utf-8")
+        assert "_link_btn" not in text, f"{path.name} still owns the link button"

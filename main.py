@@ -48,7 +48,7 @@ import sounddevice as sd
 import numpy as np
 from google import genai
 from google.genai import types
-from ui import JarvisUI
+from ui import AmbientShell
 from core.history import keep_turn
 from memory.memory_manager import (
     load_memory, update_memory, format_memory_for_prompt,
@@ -615,7 +615,7 @@ def _queue_audio_end(queue) -> None:
 
 
 class JarvisLive:
-    def __init__(self, ui: JarvisUI):
+    def __init__(self, ui: AmbientShell):
         # Platform limits are announced once per run, not once per
         # reconnect: a dropped connection is not news about Wayland.
         self._platform_notes_shown = False
@@ -680,7 +680,7 @@ class JarvisLive:
         self.ui.on_interrupt      = self.interrupt
         self.ui.on_voice_change   = self._on_voice_change     # voice picker → rebuild session
         self.ui.on_audio_device_change = self._on_audio_device_change
-        self.ui._win.on_plugins_changed = lambda: self.request_reconnect(
+        self.ui.on_plugins_changed = lambda: self.request_reconnect(
             keep_context=False, reason="plugin permissions changed")
         # True while there is no working microphone. Read by _build_config so
         # the model is TOLD it cannot hear (see _describe_limits) instead of
@@ -768,7 +768,9 @@ class JarvisLive:
         if get_push_to_talk_enabled():
             try:
                 scope = self.set_push_to_talk(True)
-                self.ui._win._ptt_shortcut_sig.emit(scope != "global")
+                if scope != "global":
+                    self.ui.write_log("SYS: Push-to-talk only works while JARVIS "
+                                      "has focus — this desktop offers no global key hook.")
             except Exception as e:
                 # Respect the saved privacy choice: keep the mic gated until
                 # the user explicitly switches push-to-talk off.
@@ -2974,7 +2976,7 @@ class JarvisLive:
                 if verdict.kind == _session_policy.NEEDS_KEY:
                     self.ui.set_state("SLEEPING")
                     self.ui.prompt_reconfig()
-                    while not self.ui._win._ready:
+                    while not self.ui._ready:
                         await asyncio.sleep(1)
                     print("[JARVIS] New API key saved — reconnecting...")
                     self._conn_backoff = verdict.delay
@@ -3094,6 +3096,50 @@ def _parse_args(argv: list[str] | None = None) -> tuple[LaunchOptions, list[str]
     return options, keep
 
 
+def _face_path() -> str:
+    """Where the floating face image lives, or "" when this install has none.
+
+    `ui.shell.default_face_path` answers the same question; this wraps it so
+    `main()` reads as a list of the things it needs rather than of the modules
+    it reaches into.
+    """
+    from ui.shell import default_face_path
+    return default_face_path() or "face.png"
+
+
+def _make_application(argv=None):
+    """Build the one QApplication, after telling the OS who this program is.
+
+    THE ORDER IS NOT COSMETIC ON WINDOWS. The taskbar group is decided when the
+    window is created, and the AppUserModelID has to be set before the first
+    window exists — set it afterwards and the button stays in `python.exe`'s
+    group with Python's icon. `AA_ShareOpenGLContexts` has the same property:
+    it must be set on the attribute BEFORE the application is constructed or
+    Qt ignores it with a warning nobody reads.
+    """
+    from PyQt6.QtCore import Qt
+    from PyQt6.QtWidgets import QApplication
+
+    if QApplication.instance() is None:
+        from core import app_identity
+        app_identity.apply_os()
+        QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
+        app = QApplication(list(sys.argv if argv is None else argv))
+        app.setStyle("Fusion")
+        app_identity.apply_qt(app)
+        return app
+    return QApplication.instance()
+
+
+def _run_event_loop(app) -> None:
+    """Hand the main thread to Qt until the user quits.
+
+    `exec()` and not `exec_()`: PyQt6 renamed it, and the old spelling is what
+    a port from PyQt5 gets wrong in a way that only fails at runtime.
+    """
+    app.exec()
+
+
 def _claim_single_instance(link=None):
     """One JARVIS per user, and a second launch means "come to the front".
 
@@ -3153,7 +3199,9 @@ def main():
     # Before anything is built: a second copy must not open a microphone, a
     # window, or a Gemini session on its way to finding out it is redundant.
     _instance = _claim_single_instance(options.link)   # noqa: F841 — held for the process
-    ui = JarvisUI("face.png", launch=options, argv=qt_argv)
+    shell = _make_application(qt_argv)
+    ui = AmbientShell(face_path=_face_path(), app=shell)
+    ui._launch = options
     # The file to launch at login, recorded here because this is the only place
     # that knows it. `ui/window.py` used to derive it from `__file__` and got
     # `ui/main.py` — a path that has never existed, registered silently by the
@@ -3169,7 +3217,7 @@ def main():
             print("\n🔴 Shutting down...")
 
     threading.Thread(target=runner, daemon=True).start()
-    ui.root.mainloop()
+    _run_event_loop(shell)
 
 if __name__ == "__main__":
     main()

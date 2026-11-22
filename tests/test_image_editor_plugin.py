@@ -22,7 +22,7 @@ def test_editor_suggestion_is_only_a_draft():
     assert "no image was changed" in image_editor.run(
         {"suggestion": "add_text", "text": "a\nb"}, SimpleNamespace(show_code_job=calls.append))
     assert "no image was changed" in image_editor.run({"suggestion": "delete"}).lower()
-    assert "desktop" in image_editor.run({}, None)
+    assert "no interface in this build" in image_editor.run({}, None)
 
 
 def test_image_plugin_requires_opt_in(isolated_config):

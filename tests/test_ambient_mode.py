@@ -34,6 +34,8 @@ from pathlib import Path
 
 import pytest
 
+from tests import qtstub
+
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -342,57 +344,68 @@ def test_stopping_twice_is_harmless(tray_module):
     assert tray.available is False
 
 
-# ── the window and the mode ───────────────────────────────────────────────
+# ── the launch path, read from the source ─────────────────────────────────
 
-# Launch/summon/dismiss live here, not in ui/window.py — see the module docstring
-# of ui/lifecycle.py for why (window.py has a ceiling and it was not raised).
+# Launch/summon/dismiss live in `ui/lifecycle.py`, which is now the whole
+# application: there is no window for `ui/window.py` to hold.
 LIFECYCLE = ROOT / "ui" / "lifecycle.py"
 
 
-def test_ambient_mode_does_not_show_the_window_at_launch():
-    """THE POINT OF THE FEATURE. Read from the source, because constructing the
-    window needs a display and the decision under test is which call is made.
-
-    `ui/lifecycle.py`, not `ui/window.py`: the decision lives there now, because
-    putting it in `window.py` pushed that file past the ceiling that
-    `tests/test_ui_split.py` enforces. A test that kept looking in `window.py`
-    would start failing for the wrong reason on the day the ceiling did its job.
-    """
+def _launch_body() -> str:
     source = LIFECYCLE.read_text(encoding="utf-8")
     start = source.index("def start_interface(shell")
-    body = source[start:source.index("def start_tray(shell")]
-    assert 'mode == "hud"' in body, "the launch path must branch on the mode"
-    assert "_win.showFullScreen()" in body, "hud mode must still fill the screen"
-    assert "start_tray(shell)" in body, "ambient mode must go to the tray"
-    # And the fallback, in the same function: no tray means show the window.
-    assert body.count("shell._win.showFullScreen()") == 2, (
-        "there must be a second showFullScreen() as the no-tray fallback, "
-        "otherwise ambient mode on a desktop without a notification area "
-        "starts an assistant nobody can see or quit")
+    return source[start:source.index("def start_summon_hotkey(shell")]
 
 
-def test_an_unconfigured_install_gets_the_window_even_in_ambient_mode():
-    """First run: the setup screen lives INSIDE the window.
+def test_the_launch_path_has_no_window_to_show():
+    """THE POINT OF THE CUT. The launch path cannot fall back to a window.
 
-    Ambient mode would hide it, the API key could never be typed, and main.py's
-    `wait_for_api_key()` loop would wait behind a tray icon forever. The user
-    would see an assistant that never answers and have no way to tell why.
+    `ui/lifecycle.py` used to branch on `mode == "hud"` and call
+    `showFullScreen()` twice — once for the mode, once as the no-tray fallback.
+    Both branches existed because the window was the thing that could always be
+    shown. Now nothing can, so the fallback that replaced it has to be a
+    DIFFERENT surface plus a spoken reason, not a silently smaller app.
     """
-    source = LIFECYCLE.read_text(encoding="utf-8")
-    start = source.index("def start_interface(shell")
-    body = source[start:source.index("def start_tray(shell")]
-    guard = 'if mode == "hud" or not getattr(shell._win, "_ready", False):'
-    assert guard in body, (
-        "ambient mode must not engage on an install that still needs setup")
-    assert body.index(guard) < body.index("start_tray(shell)"), (
-        "the setup check must come before the tray is built")
+    body = _launch_body()
+    assert "showFullScreen" not in body, "a fullscreen fallback survived the cut"
+    assert "_win" not in body, "the launch path still reaches for a window"
+
+
+def test_the_tray_is_attempted_first_and_its_failure_is_named():
+    """On a desktop with no notification area, silence is the failure mode.
+
+    The tray is the only surface that can always get the user back to the app,
+    so it goes first — and when it is missing, `start_interface` says so on
+    stdout instead of leaving a process nobody can see or quit.
+    """
+    body = _launch_body()
+    assert body.index("start_tray(shell)") < body.index("start_orb(shell)")
+    assert body.index("start_tray(shell)") < body.index("start_bubble(shell)")
+    assert "No ambient surface" in body, (
+        "a launch with nothing on screen must not be silent")
+
+
+def test_an_unconfigured_install_is_never_left_headless():
+    """First run: no API key and nothing on screen is an app that never answers.
+
+    `main.py` blocks in `wait_for_api_key()`, so the only thing that can say
+    what is wrong is a surface. `AmbientShell.wait_for_api_key` notifies via the
+    tray — this asserts that the surface exists and that the wait says
+    something, because the window that used to carry the setup screen is gone.
+    """
+    shell_src = (ROOT / "ui" / "shell.py").read_text(encoding="utf-8")
+    start = shell_src.index("def wait_for_api_key")
+    body = shell_src[start:start + 2000]
+    assert "notify" in body, "the key prompt must reach a surface, not only stdout"
+    assert "API key" in body
 
 
 def test_ambient_is_opt_in_and_defaults_to_the_hud():
-    """An upgrade must not remove the window somebody used yesterday."""
+    """An upgrade must not remove the interface somebody used yesterday."""
     from memory import config_manager as cm
-    # Three values now — "bubble" was added in phase 2, which is exactly why
-    # ui_mode is a string and not a bool (phase 1 said so and was right).
+    # Three values — "bubble" was added in phase 2, which is exactly why ui_mode
+    # is a string and not a bool (phase 1 said so and was right). All three are
+    # ambient variants now; "hud" keeps its name because it is on disk.
     assert cm.UI_MODES == ("hud", "ambient", "bubble")
     import inspect
     src = inspect.getsource(cm.get_ui_mode)
@@ -406,89 +419,70 @@ def test_saving_an_unknown_mode_is_refused(isolated_config):
     assert isolated_config.get_ui_mode() == "ambient", "a bad value must not clobber a good one"
 
 
-def test_a_hidden_window_ignores_fullscreen():
-    """F11 belongs to whatever the user is actually looking at."""
-    source = (ROOT / "ui" / "window.py").read_text(encoding="utf-8")
-    start = source.index("def _toggle_fullscreen(self):")
-    body = source[start:source.index("def resizeEvent", start)]
-    guard = body.index("if not self.isVisible():")
-    # The CALL, not the word: the comment above the guard names the method it is
-    # refusing to call, and a plain `index("showFullScreen()")` finds that
-    # mention first and fails on a body that is in fact correct.
-    call = body.index("self.showFullScreen()")
-    assert guard < call, (
-        "the visibility guard must come before the showFullScreen() call")
-
-
 # ── the behaviour, driven rather than read ────────────────────────────────
-
-class _Event:
-    def __init__(self):
-        self.outcome = []
-
-    def ignore(self):
-        self.outcome.append("ignored")
-
-    def accept(self):
-        self.outcome.append("accepted")
-
 
 @pytest.fixture()
 def shell(monkeypatch):
-    """A real `JarvisUI` over the repo's own Qt stub.
+    """A real `AmbientShell` over the repo's own Qt stub.
 
-    `tests/test_window_smoke.py` already carries a narrow PyQt stand-in built
-    from the `.pyi` files, and constructing the window against it is the pattern
-    that caught three shipped bugs this project had. Reusing it means these
-    tests exercise the actual `JarvisUI.__init__` and `MainWindow.closeEvent`
-    rather than a hand-written stand-in that agrees with the bug.
+    `tests/qtstub.py` carries a narrow PyQt stand-in built from the `.pyi`
+    files, and constructing the real object against it is the pattern that
+    caught three shipped bugs in this project. The surfaces themselves are
+    replaced by recorders: this file is about the MODE, and a real tray icon
+    needs a notification area that CI does not have.
     """
-    import importlib.util
-    spec = importlib.util.spec_from_file_location(
-        "smoke_for_ambient", ROOT / "tests" / "test_window_smoke.py")
-    smoke = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(smoke)
+    stubs = qtstub.install_qt()
     saved = {k: v for k, v in sys.modules.items()
              if k == "PyQt6" or k.startswith("PyQt6.") or k == "ui" or k.startswith("ui.")}
-    sys.modules.update(smoke._install_qt())
+    sys.modules.update(stubs)
     for name in [k for k in sys.modules if k == "ui" or k.startswith("ui.")]:
         sys.modules.pop(name, None)
     try:
+        import importlib
         import ui
-        import ui.tray
+        import ui.face_bubble
+        from ui import lifecycle
         from memory import config_manager as cm
 
-        state = {"visible": False, "shown": 0, "hidden": 0, "maxed": 0, "full": 0,
-                 "tray_ok": True, "mode": "ambient", "ready": True}
-        monkeypatch.setattr(ui.MainWindow, "showFullScreen",
-                            lambda self: state.__setitem__("full", state["full"] + 1))
-        monkeypatch.setattr(ui.MainWindow, "showMaximized",
-                            lambda self: (state.__setitem__("maxed", state["maxed"] + 1),
-                                          state.__setitem__("visible", True)))
-        monkeypatch.setattr(ui.MainWindow, "hide",
-                            lambda self: (state.__setitem__("hidden", state["hidden"] + 1),
-                                          state.__setitem__("visible", False)))
-        monkeypatch.setattr(ui.MainWindow, "isVisible", lambda self: state["visible"])
-        monkeypatch.setattr(ui.MainWindow, "isFullScreen", lambda self: False)
-        monkeypatch.setattr(ui.MainWindow, "raise_", lambda self: None)
-        monkeypatch.setattr(ui.MainWindow, "activateWindow", lambda self: None)
-        # The REAL closeEvent must run — patching it here would have made the
-        # two close tests below pass against a branch that never executed, which
-        # is exactly the mistake this file is written to avoid. Only its
-        # `super()` target is given a no-op, because the Qt stub has no
-        # QMainWindow.closeEvent to call.
-        for base in ui.MainWindow.__mro__[1:]:
-            if not hasattr(base, "closeEvent"):
-                monkeypatch.setattr(base, "closeEvent", lambda self, event: None,
-                                    raising=False)
-                break
+        state = {"tray_ok": True, "mode": "ambient", "bubble_shown": True,
+                 "orb_started": 0, "bar_started": 0, "notices": 0}
+        tray_mod = importlib.import_module("ui.tray")
+        monkeypatch.setattr(tray_mod.TrayIcon, "start",
+                            lambda self: state["tray_ok"])
+        monkeypatch.setattr(tray_mod.TrayIcon, "available",
+                            property(lambda self: state["tray_ok"]))
+        class _FaceWindow:
+            """Records show/hide so `visible` means something."""
+
+            def __init__(self):
+                self.shown = True
+
+            def setVisible(self, visible):        # noqa: N802 — Qt's name
+                self.shown = bool(visible)
+
+            def isVisible(self):                  # noqa: N802 — Qt's name
+                return self.shown
+
+        def _start_face(self):
+            self._window = _FaceWindow()
+            return True
+
+        monkeypatch.setattr(ui.face_bubble.FaceBubble, "start", _start_face)
+        monkeypatch.setattr(ui.face_bubble.FaceBubble, "available",
+                            property(lambda self: True))
+        monkeypatch.setattr(lifecycle, "start_orb",
+                            lambda s: state.__setitem__(
+                                "orb_started", state["orb_started"] + 1) or True)
+        monkeypatch.setattr(lifecycle, "start_command_bar",
+                            lambda s: state.__setitem__(
+                                "bar_started", state["bar_started"] + 1) or True)
         monkeypatch.setattr(cm, "get_ui_mode", lambda: state["mode"])
         monkeypatch.setattr(cm, "save_ui_mode", lambda m: True)
-        monkeypatch.setattr(ui.MainWindow, "_check_config", lambda self: state["ready"])
-        monkeypatch.setattr(ui.tray.TrayIcon, "start", lambda self: state["tray_ok"])
-        monkeypatch.setattr(ui.tray.TrayIcon, "available",
-                            property(lambda self: state["tray_ok"]))
-        shell = ui.JarvisUI("face.png")
+        monkeypatch.setattr(ui.AmbientShell, "notify",
+                            lambda self, text, *a, **k: state.__setitem__(
+                                "notices", state["notices"] + 1))
+        shell = ui.AmbientShell("face.png", "JARVIS")
+        lifecycle.start_interface(shell)
         yield shell, state
     finally:
         for name in list(sys.modules):
@@ -503,108 +497,61 @@ def shell(monkeypatch):
 def test_ambient_with_a_tray_leaves_the_screen_alone(shell):
     instance, state = shell
     assert instance.ambient is True
-    assert state["full"] == 0, "ambient mode must not fill the screen"
     assert instance.tray_available is True
+    assert state["orb_started"] == 1 and state["bar_started"] == 1
 
 
-def test_ambient_without_a_tray_falls_back_to_the_window(monkeypatch, shell):
-    """Already covered structurally — driven here because this is the case that
-    decides whether the user has a usable app or an invisible process."""
-    instance, state = shell
-    assert instance.ambient is True
-    # Now the same install, told the tray is unavailable.
-    state["tray_ok"] = False
-    assert instance.set_interface_mode("hud") is True
-    assert instance.ambient is False
-    assert state["full"] >= 1, "hud mode must show the window"
+def test_ambient_without_a_tray_still_has_a_surface(monkeypatch):
+    """The case that decides whether the user has a usable app or a process."""
+    # The tray is rebuilt under a machine that refuses it.
+    stubs = qtstub.install_qt()
+    saved = {k: v for k, v in sys.modules.items()
+             if k == "PyQt6" or k.startswith("PyQt6.") or k == "ui" or k.startswith("ui.")}
+    sys.modules.update(stubs)
+    for name in [k for k in sys.modules if k == "ui" or k.startswith("ui.")]:
+        sys.modules.pop(name, None)
+    try:
+        import importlib
+        import ui
+        import ui.face_bubble
+        from ui import lifecycle
 
-
-def test_an_unconfigured_install_is_never_left_headless(monkeypatch):
-    """The first-run case, driven: no API key means the window, whatever the mode."""
-    source = LIFECYCLE.read_text(encoding="utf-8")
-    assert 'not getattr(shell._win, "_ready", False)' in source
-    # And the guard is in front of the tray, so `_start_tray` cannot win a race
-    # against a window that would never be shown.
-    start = source.index("def start_interface(shell")
-    body = source[start:source.index("def start_tray(shell")]
-    assert body.index("_ready") < body.index("start_tray(shell)")
+        tray_mod = importlib.import_module("ui.tray")
+        started = {"orb": 0, "bar": 0, "bubble": 0, "notice": 0}
+        monkeypatch.setattr(tray_mod.TrayIcon, "start", lambda self: False)
+        monkeypatch.setattr(tray_mod.TrayIcon, "available",
+                            property(lambda self: False))
+        monkeypatch.setattr(ui.face_bubble.FaceBubble, "start",
+                            lambda self: started.__setitem__("bubble", 1) or True)
+        monkeypatch.setattr(lifecycle, "start_orb",
+                            lambda s: started.__setitem__("orb", 1) or True)
+        monkeypatch.setattr(lifecycle, "start_command_bar",
+                            lambda s: started.__setitem__("bar", 1) or True)
+        monkeypatch.setattr(ui.AmbientShell, "notify",
+                            lambda self, *a, **k: started.__setitem__("notice", 1))
+        shell = ui.AmbientShell("face.png", "JARVIS")
+        lifecycle.start_interface(shell)
+        assert shell._tray is None
+        assert started["orb"] == 1, "no tray, and no orb either"
+        assert started["bar"] == 1, "the command bar is the fallback, not a window"
+        assert started["bubble"] == 1, "the face is the other fallback"
+    finally:
+        for name in list(sys.modules):
+            if name == "ui" or name.startswith("ui."):
+                sys.modules.pop(name, None)
+        for name in [k for k in list(sys.modules) if k.startswith("PyQt6")]:
+            if name not in saved:
+                sys.modules.pop(name, None)
+        sys.modules.update(saved)
 
 
 def test_summon_and_dismiss_round_trip(shell):
-    instance, state = shell
-    instance.summon()
-    assert state["visible"] is True and instance.ambient is False
-    instance.dismiss()
-    assert state["visible"] is False and instance.ambient is True
-    instance.toggle_interface()
-    assert state["visible"] is True, "the toggle must bring it back"
-    instance.toggle_interface()
-    assert state["visible"] is False, "and put it away again"
-
-
-def test_dismiss_refuses_when_no_tray_could_hold_the_window(shell):
-    """Hiding the only surface leaves a process nobody can reach."""
-    instance, state = shell
-    instance._tray = None
-    state["visible"] = True
-    before = state["hidden"]
-    instance.dismiss()
-    assert state["hidden"] == before, "dismissed with nowhere to come back from"
-    assert state["visible"] is True
-
-
-def test_closing_a_summoned_window_puts_it_away_instead_of_quitting(shell, monkeypatch):
-    """The one behaviour change a user meets by accident."""
-    import ui.desktop_workspace as dw
-    monkeypatch.setattr(dw, "confirm_shutdown", lambda _w: True)
-    instance, state = shell
-    instance.summon()
-    assert state["visible"] is True
-
-    event = _Event()
-    instance._win.closeEvent(event)
-    assert event.outcome == ["ignored"], (
-        "the default close ran, which ends the session — in ambient mode it "
-        "must only put the window away")
-    assert state["visible"] is False, "the window was not hidden"
+    """One surface at a time, and the orb never leaves."""
+    instance, _state = shell
+    bubble = instance._bubble
     assert instance.ambient is True
-
-
-def test_closing_still_quits_when_there_is_no_tray(shell, monkeypatch):
-    """No tray means no way back, so the old behaviour has to stand."""
-    import ui.desktop_workspace as dw
-    monkeypatch.setattr(dw, "confirm_shutdown", lambda _w: True)
-    instance, _state = shell
-    instance._tray.stop()
-    instance._tray = None
-
-    # What matters is which branch ran. With no tray the ambient early-return
-    # must be skipped, so the default close is reached — and the stub's
-    # QMainWindow.closeEvent (a no-op, see the fixture) records that it did.
-    event = _Event()
-    instance._win.closeEvent(event)
-    assert event.outcome == [], (
-        "the close was ignored and the window put away even though there is no "
-        "tray to bring it back")
-    assert instance.tray_available is False
-
-
-def test_a_cancelled_close_never_hides_the_window(shell, monkeypatch):
-    """Unsaved documents still win: the same guard as clicking the X."""
-    import ui.desktop_workspace as dw
-    monkeypatch.setattr(dw, "confirm_shutdown", lambda _w: False)
-    instance, state = shell
+    instance.dismiss()
+    assert bubble.visible is False
     instance.summon()
-    event = _Event()
-    instance._win.closeEvent(event)
-    assert event.outcome == ["ignored"]
-    assert state["visible"] is True, "a cancelled close put the window away anyway"
-
-
-def test_the_tray_tooltip_is_updated_by_set_state(shell):
-    instance, _state = shell
-    seen = []
-    instance._tray = types.SimpleNamespace(set_state=seen.append,
-                                           available=True, stop=lambda: None)
-    instance.set_state("LISTENING")
-    assert seen == ["LISTENING"], "the only status readout in ambient mode was not updated"
+    assert bubble.visible is True
+    assert instance.ambient is True, "summon must not end ambient mode"

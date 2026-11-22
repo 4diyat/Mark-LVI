@@ -2,7 +2,7 @@
 
 WHY THIS IS A MODULE OF ITS OWN
     `ui/lifecycle.py` reached 1,009 lines, and `tests/test_ui_split.py` refuses
-    any `ui/` module over 1,000 — a ceiling that exists because this project has
+    any `ui/` module over 600 — a ceiling that exists because this project has
     already had one 7,500-line `ui.py`. The split is not cosmetic. Everything
     here is the ambient SHELL: the ring on the desktop, the one line you type
     into, and the mode that decides how loudly the assistant may interrupt.
@@ -10,17 +10,17 @@ WHY THIS IS A MODULE OF ITS OWN
     what the rest of `lifecycle.py` does.
 
 WHY THE IMPORT GOES ONE WAY
-    `lifecycle` re-exports every name below, so the window's start-up path keeps
-    calling `lifecycle.start_orb` and nothing outside this file has to know the
-    module moved. The direction is ambient → lifecycle → window, never back, so
-    there is no import cycle and no second definition of "summon".
+    `lifecycle` re-exports every name below, so the start-up path keeps calling
+    `lifecycle.start_orb` and nothing outside this file has to know the module
+    moved. The direction is ambient → lifecycle → shell, never back, so there is
+    no import cycle and no second definition of "summon".
 """
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:                                    # pragma: no cover
-    from ui.window import JarvisUI
+    from ui.shell import AmbientShell as JarvisUI
 
 
 def _note(shell, text: str) -> None:
@@ -125,28 +125,42 @@ def open_command_bar(shell: "JarvisUI") -> bool:
 
     `previous` is the window the assistant can see, not the one the user is
     typing in — Qt cannot see another application's window, and pretending
-    otherwise would make Esc restore focus to the wrong program. On a desktop
-    where the assistant has no window of its own, the ledger honestly records
-    "nothing to restore".
+    otherwise would make Esc restore focus to the wrong program.
+
+    THERE IS NO `previous` IN THIS BUILD. The surface that used to be restorable
+    was JARVIS's own window; the mockup has none, so the bar always opens over
+    whatever the user was doing and Esc simply closes it. That is recorded
+    honestly rather than faked, and `ui.command_bar` already accepts None.
     """
     bar = getattr(shell, "_command_bar", None)
     if bar is None:
         from ui.command_bar import CommandBar
         bar = CommandBar(on_submit=lambda text: submit_from_bar(shell, text))
         shell._command_bar = bar
-    previous = getattr(shell, "_win", None)
-    if previous is not None and not previous.isVisible():
-        previous = None
-    if not bar.open(previous):
+    if not bar.open(None):
         _note(shell, f"Command bar unavailable ({bar.error}).")
         return False
     return True
 
 
 def submit_from_bar(shell: "JarvisUI", text: str) -> None:
-    """Hand one line to the assistant, the same way typing into the HUD does."""
+    """Hand one line to the assistant, exactly as a typed message arrives.
+
+    `on_text_command` is what main.py assigns for that (`_on_text_command`), and
+    it is the same entry point the deeplink `ask` verb uses — so the bar cannot
+    drift into being a second door into the session.
+
+    It runs on a thread because the bar's own signal is emitted on the Qt
+    thread and the send blocks on the session: doing it inline would freeze the
+    bar the user is typing into until the model answered.
+    """
+    send = getattr(shell, "on_text_command", None)
+    if not callable(send):
+        _note(shell, "the command bar cannot send yet: the session is not ready")
+        return
     try:
-        shell._win._submit_text(text)
+        import threading
+        threading.Thread(target=send, args=(text,), daemon=True).start()
     except Exception as e:                          # noqa: BLE001
         _note(shell, f"the command bar could not send: {type(e).__name__}: {e}")
 
@@ -176,7 +190,6 @@ def current_presence() -> str:
     to build the menu label, and a cross-module call to a private name is the
     kind of thing that gets "cleaned up" by the next reader.
     """
-    """The mode in force, from the one place that holds it."""
     from core import presence_mode
 
     return presence_mode.current()

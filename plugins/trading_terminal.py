@@ -25,7 +25,8 @@ PLUGIN_SETTINGS = {
 
 def run(parameters: dict, player=None, session_memory=None) -> str:
     if player is None or not callable(getattr(player, "show_code_job", None)):
-        return "The MT5 trading terminal needs the desktop interface."
+        return ("The MT5 trading terminal has no interface in this build — its window "
+                "was removed. No trade was placed.")
     symbol = str((parameters or {}).get("symbol") or "").strip()
     if len(symbol) > 80 or any(ord(c) < 32 for c in symbol):
         return "Please provide a valid Market Watch symbol."

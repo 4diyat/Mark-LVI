@@ -15,8 +15,10 @@ from __future__ import annotations
 
 import colorsys
 
-from PyQt6.QtGui import QColor
-from PyQt6.QtWidgets import QApplication
+# Imported at the call site in `qcol`, so `ui.theme` — and therefore every
+# module that reads the palette — is importable on a machine with no PyQt6.
+# The contrast tests and the structural tests both need the COLOURS, not a
+# paint device.
 
 
 class C:
@@ -155,6 +157,8 @@ def retheme_all_widgets(old: dict[str, str], new: dict[str, str]) -> None:
                for k in old if old[k].lower() != new.get(k, old[k]).lower()}
     if not mapping:
         return
+    from PyQt6.QtWidgets import QApplication
+
     app = QApplication.instance()
     if app is None:
         return
@@ -176,7 +180,9 @@ def retheme_all_widgets(old: dict[str, str], new: dict[str, str]) -> None:
             retheme_log(f"theme: {type(w).__name__} refused the new sheet: {e}")
 
 
-def qcol(h: str, a: int = 255) -> QColor:
+def qcol(h: str, a: int = 255):
+    """A `QColor` from a hex string, with an alpha byte. Needs Qt at CALL time."""
+    from PyQt6.QtGui import QColor
     c = QColor(h); c.setAlpha(a); return c
 
 
