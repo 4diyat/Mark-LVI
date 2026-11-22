@@ -154,6 +154,7 @@ stack-neutral dan berlaku apa adanya untuk implementasi Python.
 | Board 23: strip Fokus tanpa tenggat, tiga baris aksi sendiri, jeda penjadwalan yang tersimpan | `ui/tray_paint.py`, `ui/tray_panel_model.py`, `actions/proactive.py`, `ui/tray_panel_wiring.py` | `tests/test_focus_board23.py` |
 | Startup: setiap permukaan benar-benar dibangun saat aplikasi dijalankan | `main.py`, `ui/lifecycle.py` | `tests/test_startup_board7.py` |
 | Board 27: MODE TAMU dihapus, tombol hapus jujur, judul per halaman, kartu artboard | `ui/tray_pages.py`, `ui/tray_panel_model.py`, `ui/tray_panel_wiring.py` | `tests/test_privacy_board27.py` |
+| Board 24: orb Senyap 18 px, bertitik, dan menulis namanya di bawah cincin | `ui/orb_paint.py`, `ui/orb_canvas.py` | `tests/test_quiet_board24.py` |
 | Command bar Ctrl+Space, Esc mengembalikan fokus | `ui/command_bar.py` | `tests/test_command_bar.py` |
 | Sambungan mode → orb, chord, dan baki | `ui/lifecycle.py`, `memory/config_manager.py` | `tests/test_presence_wiring.py` |
 
@@ -323,3 +324,34 @@ salinan yang berbeda perilaku.
   angka. Itu persis kelas kesalahan yang sudah ditulis di docstring `_RectF`:
   tes tidak bisa membedakan kartu di (24, 208) dari kartu di (0, 0). Itu sebabnya
   kartu yang tidak pernah dibuat pun bisa "lulus" pemeriksaan geometri.
+
+### Board 24 — Senyap
+
+- **Senyap digambar 18 px, bukan 14.** Artboard menulis sendiri "Orb menyusut
+  28 → 18 px", dan 14 adalah angka yang masuk akal yang ditulis dari ingatan
+  tentang artboard, bukan dari artboard. Itu kelas bug yang sama dengan "Fokus
+  aktif sampai 17.00": angka ajaib yang tidak dibandingkan dengan gambarnya oleh
+  satu tes pun.
+- **Fokus menjadi 22 px, dan itu diturunkan, bukan dikarang.** Board 24 hanya
+  mematok Senyap (18) dan tidak memberi ukuran untuk Fokus. Sebelum ini Fokus
+  18. Membiarkan keduanya 18 membuat dua mode berbeda identik ukurannya, dan tes
+  lama menuntut urutannya dengan alasan yang benar: "two states must not be
+  distinguishable by hue alone". 22 berada di antara 28 dan 18, jadi ketiga
+  ukuran terbaca sebagai urutan, bukan dua nilai dengan satu duplikat. Alpha
+  juga menjaga urutan: 255 → 165 → 110.
+- **Orb menulis namanya di bawah cincin.** Alasan board 24 sendiri adalah
+  "status harus terbaca tanpa warna": meredupkan cincin, menghapus glow dan
+  membuatnya bertitik adalah tiga perbedaan di kanal yang SAMA — kecerahan —
+  dan di desktop gelap sebuah tangkapan layar tidak bisa membedakan orb Senyap
+  dari orb Aktif. Kata bisa. Kosakata yang dipakai `ui.panel.mode.*`, kunci yang
+  sudah ada di kedua katalog dan sudah dipakai kontrol segmen di baki — bukan
+  kosakata kedua untuk tiga mode yang sama.
+- **Label itu opt-in lewat tinggi yang tersedia.** `paint_ring` dipakai overlay
+  desktop DAN HUD. Overlay selalu punya ruang (cincin 28 px menyisakan 45 px di
+  dalam jendela 146 px; cincin 18 px menyisakan 55). HUD yang menggambar caption
+  10 px di atas isinya sendiri adalah caption yang menghalangi, jadi labelnya
+  hanya muncul saat pemanggil menyatakan ada ruang.
+- **Caption tidak boleh menjatuhkan orb.** `draw_label` mengembalikan bool dan
+  berhenti pada painter yang tidak punya `setFont`/`drawText`. Orb yang hilang
+  karena captionnya tidak bisa digayakan adalah kegagalan yang lebih buruk
+  daripada caption tanpa tracking.

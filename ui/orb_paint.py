@@ -39,6 +39,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ui.tray_panel_model import _t
+
 # The drawn ring's outer radius in CSS pixels, at 1x scale. 28 px reads at arm's
 # length without competing with a window title bar; the window is the ring's
 # bounding box plus the glow, and its own size is what the hit test uses.
@@ -76,6 +78,9 @@ CYAN = "#4FD8F0"
 CORE = "#BFF6FF"
 DEEP = "#0B4A5C"
 AMBER = "#F5A524"
+# Board 24's caption colour, from the token table in `docs/mockups/build.py`.
+# The orb module had no MUTED because until board 24 it never drew a word.
+MUTED = "#8FA9B5"
 
 # HUD states are shouted and about the machine ("NO MIC"); the painter's are
 # quiet and about the user ("listening"). Mapping rather than renaming the HUD:
@@ -109,8 +114,20 @@ class Appearance:
 # the thing Quiet asked to stop.
 _APPEARANCE = {
     "active": Appearance(RADIUS, glow=True, dotted=False, alpha=255),
-    "focus": Appearance(18, glow=False, dotted=False, alpha=165),
-    "quiet": Appearance(14, glow=False, dotted=True, alpha=110),
+    # FOKUS STAYS AT 22, AND THAT IS DERIVED RATHER THAN INVENTED.
+    #
+    # Board 24 fixes Senyap at 18 ("Orb menyusut 28 -> 18 px"). It gives no
+    # size for Fokus — only that Fokus is dimmed — and 18 was Fokus's size
+    # before Senyap moved to the artboard's number. Leaving both at 18 would
+    # make two different modes identical in size, and the old overlay test
+    # asserted the ordering on purpose: "two states must not be distinguishable
+    # by hue alone".
+    #
+    # 22 is between the full 28 and Senyap's 18, so the three sizes read as a
+    # sequence rather than two values with a duplicate. Alpha keeps the
+    # ordering too: 255 -> 165 -> 110.
+    "focus": Appearance(22, glow=False, dotted=False, alpha=165),
+    "quiet": Appearance(18, glow=False, dotted=True, alpha=110),
 }
 
 
@@ -122,6 +139,29 @@ def appearance(mode: str) -> Appearance:
     indistinguishable from a crashed app.
     """
     return _APPEARANCE.get(str(mode or "").strip().lower(), _APPEARANCE["active"])
+
+
+def label_for(mode: str) -> str:
+    """The mode's name, for the line the artboard draws under the ring.
+
+    WHY THE ORB NEEDS WORDS AT ALL. Board 24's own reason is "status harus
+    terbaca tanpa warna". Dimming to alpha 110, dropping the glow and going
+    dotted are three differences that all live in the same channel — how bright
+    the ring is — and on a dark desktop a screenshot cannot tell a quiet orb
+    from an active one at a glance. A word can.
+
+    The vocabulary is `ui.panel.mode.*`, already in both catalogues and already
+    what the tray's segmented control says. A second set of words for the same
+    three modes is how one surface ends up calling it "Senyap" and another
+    "Diam".
+    """
+    key = str(mode or "").strip().lower()
+    if key not in _APPEARANCE:
+        # Same fallback as `appearance()`: an unreadable mode draws as active,
+        # so it must also be LABELLED active. An orb painted Aktif under the
+        # word "Senyap" is worse than either one alone.
+        key = "active"
+    return _t("ui.panel.mode." + key)
 
 
 def hud_state(word: str) -> str:
@@ -159,7 +199,7 @@ def paint_overlay_box(painter, cx: float, cy: float, half: float,
 def paint_ring(painter, cx: float, cy: float, radius: float,
                mode: str = "active", state: str = "idle",
                level: float = 0.0, alert: bool = False,
-               phase: float = 0.0) -> None:
+               phase: float = 0.0, label_room: float = 0.0) -> None:
     """Draw one frame of the orb, centred on (cx, cy), at `radius` pixels.
 
     `level` is the live audio level 0..1 and only widens the glow while
@@ -267,3 +307,75 @@ def paint_ring(painter, cx: float, cy: float, radius: float,
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawArc(_Rect(cx - arc_r, cy - arc_r, arc_r * 2, arc_r * 2),
                         start * 16, 100 * 16)
+
+    # BOARD 24'S WORD UNDER THE RING. `paint_ring` serves the desktop overlay
+    # AND the HUD, so the label is drawn only when the caller says there is
+    # room for it — a HUD that draws a 10 px caption over its own content is a
+    # caption in the way. The overlay always has the room: a 28 px ring leaves
+    # 45 px below it inside a 146 px window, an 18 px ring leaves 55.
+    if label_room:
+        draw_label(painter, cx, cy, r, mode, label_room)
+
+
+def label_y(cy: float, radius: float) -> float:
+    """Where the caption's baseline sits: 10 px under the ring's edge.
+
+    That is the artboard's gap between `circle cy=602 r=28` and the sentence at
+    `txt y=662`, once the glow ring around the drawing is accounted for.
+    """
+    return float(cy) + float(radius) + 10.0
+
+
+def draw_label(painter, cx: float, cy: float, radius: float, mode: str,
+               room: float) -> bool:
+    """Board 24: the mode's name, centred under the ring.
+
+    DRAWN, NOT MERELY AVAILABLE. Board 24's reason is "status harus terbaca
+    tanpa warna": dimming the ring, dropping the glow and going dotted are
+    three differences in the SAME channel — brightness — and on a dark desktop
+    a screenshot cannot tell a quiet orb from an active one. A word can.
+
+    `room` is the height the caller has below the ring. The label is skipped
+    when it does not fit rather than drawn over whatever is there.
+    """
+    from PyQt6.QtCore import QRectF, Qt
+    from PyQt6.QtGui import QColor, QFont, QPen
+
+    if float(room) < 12.0:
+        return False
+    text = label_for(mode)
+    if not text:
+        return False
+    # THE CAPTION IS DECORATION ON TOP OF A WORKING ORB, so nothing about it may
+    # take the orb down. A painter is not guaranteed to answer `font()` or
+    # `setFont()` — an older binding, a platform backend, a test double — and
+    # board 24's own reason for existing is that the orb must stay readable.
+    # An orb that vanished because its caption could not be styled would be a
+    # strictly worse failure than a caption without tracking.
+    if not (hasattr(painter, "setFont") and hasattr(painter, "drawText")):
+        return False
+    try:
+        font = QFont(painter.font())
+    except (AttributeError, TypeError):
+        font = QFont()
+    font.setPixelSize(10)
+    font.setWeight(QFont.Weight.Medium)
+    # Tracking, as the artboard writes `track="1.6"`. Qt spells it letter
+    # spacing, and it is DECORATION: the caption is the information and the
+    # spacing is how it looks. Both halves are guarded, because a `QFont` that
+    # does not carry the API (an older Qt, a stub) must cost the tracking and
+    # never the word.
+    spacing = getattr(QFont, "SpacingType", None)
+    if spacing is not None and hasattr(font, "setLetterSpacing"):
+        font.setLetterSpacing(spacing.AbsoluteSpacing, 1.0)
+    painter.setFont(font)
+    colour = QColor(MUTED)
+    colour.setAlphaF(0.85)
+    painter.setPen(QPen(colour))
+    box = QRectF(cx - 60.0, label_y(cy, radius) - 11.0, 120.0, 14.0)
+    # The flag object is passed AS IS. `int(Qt.AlignmentFlag...)` raises
+    # TypeError in Qt6 and in the repo's stub — a Qt6 port that wraps flags in
+    # int() is the mistake `docs/` already records once.
+    painter.drawText(box, Qt.AlignmentFlag.AlignHCenter
+                     | Qt.AlignmentFlag.AlignTop, text)
+    return True

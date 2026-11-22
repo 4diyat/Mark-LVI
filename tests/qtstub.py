@@ -759,6 +759,51 @@ def _install_qt() -> dict[str, types.ModuleType]:
     gui.QColor.Weight = None
     gui.QFont.Weight = _Enum()
     gui.QPainter.RenderHint = _Enum()
+
+    def _painter_font(self):
+        if getattr(self, "_font", None) is None:
+            self._font = gui.QFont()
+        return self._font
+
+    def _painter_set_font(self, font):
+        self._font = font
+
+    gui.QPainter.font = _painter_font
+    gui.QPainter.setFont = _painter_set_font
+
+    # A REAL PAINTER ANSWERS `font()`, and the orb's board 24 caption asks for
+    # it to inherit the window's typeface. A stub without it made `draw_label`
+    # raise on every mode, which surfaced as "the painter runs in every mode"
+    # failing in a file that has nothing to do with labels.
+    class _QFont(_Object):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            self._px = 0
+            self._spacing = None
+
+        def setPixelSize(self, px):
+            self._px = int(px)
+
+        def pixelSize(self):
+            return self._px
+
+        def setWeight(self, weight):
+            self._weight = weight
+
+        def setLetterSpacing(self, kind, value):
+            self._spacing = (kind, value)
+
+        def letterSpacing(self):
+            return self._spacing
+
+    gui.QFont = _QFont
+    gui.QFont.Weight = _Enum()
+
+    class _SpacingType(_Enum):
+        AbsoluteSpacing = "AbsoluteSpacing"
+        PercentageSpacing = "PercentageSpacing"
+
+    gui.QFont.SpacingType = _SpacingType()
     gui.QDragEnterEvent = gui.QDropEvent = type("_Event", (_Object,), {})
 
     widgets = types.ModuleType("PyQt6.QtWidgets")
