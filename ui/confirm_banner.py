@@ -22,6 +22,47 @@ from PyQt6.QtWidgets import (
 from core.i18n import label as _t
 from ui.theme import C
 
+# ── board 25's two constants ────────────────────────────────────────────────
+#
+# BOTH ARE FIXED TEXT RATHER THAN CATALOGUE KEYS, AND THAT IS DELIBERATE.
+#
+# `CANNOT_UNDO` is a statement about THIS dialog: the action behind it cannot be
+# taken back, which is the entire reason the dialog exists. A translation that
+# softened it would be a translation that changed a safety fact.
+#
+# `KEYS_HINT` is a keyboard legend. "Enter" and "Esc" are the names printed on
+# every keyboard that has them; translating them produces a legend for keys the
+# user does not own. The artboard writes them in a monospace face for the same
+# reason: they are key names, not prose.
+CANNOT_UNDO = "Tindakan ini tidak bisa diurungkan."
+KEYS_HINT = "Enter · Esc"
+
+# WHERE THE COMMAND CAME FROM LIVES IN `core/input_source`, not here.
+#
+# The two callers are in `main.py`'s audio loop and its text handler, and this
+# module imports PyQt6 at module level — an import that needs a display has no
+# business running inside an audio callback on a machine with no Qt. The store
+# therefore lives in a module that imports nothing, and this module only
+# FORMATS what it recorded.
+
+def origin_text(source: str | None = None) -> str:
+    """The origin line's first half — spoken, typed, or honestly unknown.
+
+    Unknown is a real answer, not a failure: a plugin, a timer, or a deeplink
+    can start an action with no human input in the last minute. Saying "spoken
+    command" for those is how the caption becomes untrustworthy everywhere.
+    """
+    if source is None:
+        from core import input_source
+
+        source = input_source.current()
+    key = str(source or "").strip().lower()
+    if key == "voice":
+        return _t("ui.confirm.origin.voice")
+    if key == "typed":
+        return _t("ui.confirm.origin.typed")
+    return _t("ui.confirm.origin.unknown")
+
 
 class _HudOverlay(QWidget):
     """Base for the floating panels placed by hand over the HUD.
@@ -86,14 +127,49 @@ class ConfirmBanner(_HudOverlay):
         lay.addWidget(ttl)
         self._title_label = ttl
 
-        if detail:
-            dtl = QLabel(detail)
-            dtl.setTextFormat(Qt.TextFormat.PlainText)
-            dtl.setWordWrap(True)
-            dtl.setFont(QFont("Courier New", 8))
-            dtl.setStyleSheet(f"color: {C.TEXT_MED}; background: transparent;")
-            lay.addWidget(dtl)
-        self._detail_label = dtl if detail else None
+        # "Tindakan ini tidak bisa diurungkan." — artboard 25 prints it under
+        # the title as a standing sentence, so the user reads WHY they are being
+        # asked before they read what they are being asked about.
+        never = QLabel(CANNOT_UNDO)
+        never.setTextFormat(Qt.TextFormat.PlainText)
+        never.setWordWrap(True)
+        never.setFont(QFont("Courier New", 8))
+        never.setStyleSheet(f"color: {C.TEXT_MED}; background: transparent;")
+        lay.addWidget(never)
+        self._never_label = never
+
+        # ALWAYS BUILT, HIDDEN WHILE EMPTY. Building it only when the
+        # constructor was handed a detail made the artboard's line impossible to
+        # reach: `build_confirm_window()` passes "" and the real detail arrives
+        # later through `set_title`, so on the live path this label never
+        # existed and "Lampiran: anggaran.xlsx · 3 penerima" could never appear.
+        dtl = QLabel(detail)
+        dtl.setTextFormat(Qt.TextFormat.PlainText)
+        dtl.setWordWrap(True)
+        dtl.setFont(QFont("Courier New", 8))
+        dtl.setStyleSheet(f"color: {C.TEXT_MED}; background: transparent;")
+        dtl.setVisible(bool(detail))
+        lay.addWidget(dtl)
+        self._detail_label = dtl
+
+        # ── ASAL PERMINTAAN ─────────────────────────────────────────────
+        # Artboard 25 has this field and the banner did not. It answers the
+        # question a user actually has in front of an irreversible action:
+        # "who asked for this?" — not "what is JARVIS about to do", which the
+        # title already says.
+        self._origin_header = QLabel(_t("ui.confirm.origin").upper())
+        self._origin_header.setFont(QFont("Courier New", 8, QFont.Weight.Bold))
+        self._origin_header.setStyleSheet(
+            f"color: {C.TEXT_MED}; background: transparent;")
+        lay.addWidget(self._origin_header)
+
+        self._origin_label = QLabel("")
+        self._origin_label.setTextFormat(Qt.TextFormat.PlainText)
+        self._origin_label.setWordWrap(True)
+        self._origin_label.setFont(QFont("Courier New", 8))
+        self._origin_label.setStyleSheet(
+            f"color: {C.TEXT}; background: transparent;")
+        lay.addWidget(self._origin_label)
 
         row = QHBoxLayout(); row.setSpacing(8)
 
@@ -120,12 +196,72 @@ class ConfirmBanner(_HudOverlay):
         """)
         no.clicked.connect(lambda: self.answered.emit(False))
         row.addWidget(no)
+        self._confirm_button = yes
+        self._cancel_button = no
         lay.addLayout(row)
+
+        # ── "Enter · Esc" ───────────────────────────────────────────────────
+        # In the artboard's corner, right-aligned, monospace — a keyboard
+        # legend rather than prose. `setAlignment` on a label inside a vertical
+        # layout is enough: no second row of buttons to hang it off.
+        self._keys_label = QLabel(KEYS_HINT)
+        self._keys_label.setFont(QFont("Courier New", 8))
+        self._keys_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self._keys_label.setStyleSheet(
+            f"color: {C.TEXT_MED}; background: transparent;")
+        lay.addWidget(self._keys_label)
 
         # Default focus on CANCEL: if someone hits Enter without reading, the
         # safe answer wins.
         no.setDefault(True)
         no.setFocus()
+
+    # ── the two keys the artboard names ─────────────────────────────────────
+    #
+    # THE OWNER'S RULING REVERSED THE OLD ONE. `test_cancel_has_the_focus_so_a
+    # _stray_enter_is_safe` pinned CANCEL as default so an unread Enter could
+    # never confirm. Board 25 writes "Enter · Esc" in the corner, so the dialog
+    # answers to both — AND THE INITIAL FOCUS STILL STARTS ON CANCEL, which is
+    # what keeps the old safety property: Enter pressed without touching
+    # anything confirms nothing, because the focused widget swallows it. Enter
+    # confirms once the user has moved to Konfirmasi.
+    def keyPressEvent(self, event):                 # noqa: N802 — Qt's name
+        from PyQt6.QtCore import Qt as _Qt
+
+        key = event.key()
+        if key == _Qt.Key.Key_Escape:
+            self.answered.emit(False)
+            event.accept()
+            return
+        if key in (_Qt.Key.Key_Return, _Qt.Key.Key_Enter):
+            self.answered.emit(True)
+            event.accept()
+            return
+        # Every other key belongs to whatever has focus — including the Tab
+        # that moves focus to Konfirmasi. Guarded because the base class may not
+        # have the method at all (a widget built on a stub, or a future base
+        # that is not a QWidget): an unhandled key must not raise out of a
+        # dialog that is waiting for an answer.
+        handler = getattr(super(), "keyPressEvent", None)
+        if callable(handler):
+            handler(event)
+        else:
+            event.ignore()
+
+    def set_origin(self, when: str = "", source: str | None = None) -> None:
+        """The caption under "ASAL PERMINTAAN": who asked, when, and whether it
+        is on the record.
+
+        THREE FACTS, AND EACH ONE IS TRUE. The source comes from what the entry
+        points recorded, the time from the request itself, and "tercatat di
+        audit log" from `core/confirm._audit`, which writes every decision. A
+        line that guessed any of the three would be worse than no line.
+        """
+        parts = [origin_text(source)]
+        if when:
+            parts.append(str(when))
+        parts.append(_t("ui.confirm.logged"))
+        self._origin_label.setText(" · ".join(parts))
 
     def set_title(self, title: str, detail: str = "") -> None:
         """Reuse this banner for a second question.
@@ -137,10 +273,20 @@ class ConfirmBanner(_HudOverlay):
         """
         self._title_label.setText(str(title or ""))
         detail_label = self._detail_label
-        if detail_label is None:
-            return
-        detail_label.setText(str(detail or ""))
-        detail_label.setVisible(bool(detail))
+        if detail_label is not None:
+            detail_label.setText(str(detail or ""))
+            detail_label.setVisible(bool(detail))
+        # NOT AN EARLY RETURN when there is no detail. The banner with no detail
+        # line is the common case, and the first version returned here — so a
+        # reused banner kept the PREVIOUS question's origin and time, which is
+        # the one line on this dialog that is a lie when it is stale.
+        # A reused banner must not keep the previous question's origin — that
+        # is the one line on this dialog that would then be a lie. The TIME is
+        # refreshed too, and this first version refreshed only the source: the
+        # test that reuses the banner went from "14:31" to no time at all.
+        from datetime import datetime
+
+        self.set_origin(when=datetime.now().strftime("%H:%M"))
         self.adjustSize()
 
 

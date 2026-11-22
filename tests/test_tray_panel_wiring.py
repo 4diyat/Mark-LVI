@@ -251,10 +251,16 @@ def test_a_switch_with_nothing_behind_it_is_refused_by_name(wiring):
     assert any("bukan pengaturan" in line for line in shell.lines)
 
 
-def test_guest_mode_reports_itself_unbuilt_rather_than_pretending(wiring):
-    shell = FakeShell()
-    assert wiring.set_guest(shell, True) is False
-    assert any("Mode tamu belum ada" in line for line in shell.lines)
+def test_guest_mode_is_gone_rather_than_pretending(wiring):
+    """BOARD 27, THE OWNER'S RULING. This used to assert that `set_guest`
+    returned False and said "mode tamu belum ada" — an honest sentence attached
+    to a switch that still invited a click. The switch is now not drawn and the
+    function is deleted; the honest answer is that there is nothing to call.
+
+    A disabled switch was rejected too: it still promises the feature exists.
+    """
+    assert not hasattr(wiring, "set_guest")
+    assert "guest" not in wiring.actions_for(FakeShell())
 
 
 # ── the field, and the map itself ─────────────────────────────────────────
@@ -284,15 +290,15 @@ def test_every_key_the_panel_can_press_has_a_handler(wiring):
         actions = wiring.actions_for(FakeShell())
         assert set(actions) == {
             "presence_set", "quick", "permission", "undo", "history_export",
-            "history_clear", "guest", "erase", "command", "theme"}
+            "history_clear", "erase", "command", "theme"}
 
         panel = TrayPanel(actions)
         assert panel.open() is True
         pressed = {key.split(":", 1)[0] for key in panel._buttons}
         assert pressed <= {"mode", "quick", "perm", "permx", "undo", "export",
-                           "clear", "guest", "erase", "send", "theme"}
+                           "clear", "erase", "send", "theme"}
         assert {"mode", "quick", "perm", "permx", "undo", "export", "clear",
-                "guest", "erase", "send"} <= pressed
+                "erase", "send"} <= pressed
     finally:
         restore_ui(saved)
 

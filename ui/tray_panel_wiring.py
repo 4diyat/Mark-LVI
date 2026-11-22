@@ -424,18 +424,6 @@ def set_theme(shell: "AmbientShell", name: str) -> bool:
     return saved == str(name or "").strip().lower()
 
 
-def set_guest(shell: "AmbientShell", on: bool) -> bool:
-    """Board 27's MODE TAMU, which this build cannot honour yet.
-
-    Guest mode needs every surface to stop reading memory and history, and
-    nothing in the tree does that today. The switch says so instead of setting a
-    flag that no code reads — a setting that silently does nothing is the exact
-    failure this project has spent its whole history removing.
-    """
-    _say(shell, "Mode tamu belum ada di build ini — tidak ada yang diubah.")
-    return False
-
-
 # ── the field ────────────────────────────────────────────────────────────────
 
 def send_command(shell: "AmbientShell", text: str) -> bool:
@@ -466,7 +454,6 @@ def actions_for(shell: "AmbientShell") -> dict:
         "undo": lambda: undo_last(shell),
         "history_export": lambda: export_history(shell),
         "history_clear": lambda: clear_history(shell),
-        "guest": lambda on: set_guest(shell, on),
         "erase": lambda: erase_local(shell),
         "theme": lambda name: set_theme(shell, name),
         "command": lambda text: send_command(shell, text),
@@ -510,6 +497,6 @@ def toggle_panel(shell: "AmbientShell", point=None) -> bool:
 __all__ = [
     "actions_for", "clear_history", "dictate", "erase_local", "export_history",
     "find_file", "open_panel", "quick_action", "screenshot", "send_command",
-    "set_guest", "set_permission", "set_presence", "set_theme", "tidy_windows",
+    "set_permission", "set_presence", "set_theme", "tidy_windows",
     "toggle_panel", "undo_last",
 ]

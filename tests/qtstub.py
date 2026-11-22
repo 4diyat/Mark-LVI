@@ -242,11 +242,41 @@ class _Object:
     def sizeHint(self):
         return self
 
+    def setGeometry(self, *a, **k):
+        """Remember the rectangle, the way Qt's widget does.
+
+        WHY THIS IS STATE, AND WHY THE DEFAULT STAYED. `_RectF` above already
+        carries the lesson: a geometry that answers through `__getattr__` is a
+        lambda, not a number, and a test cannot tell a card at (24, 208) from
+        one at (0, 0). That is exactly how board 27's cards could be MISSING
+        from the page while a test "checked" their geometry.
+
+        Accepts `setGeometry(x, y, w, h)` and `setGeometry(QRect)`/`QRectF`.
+        Until a widget is given one, `width()`/`height()` keep the 980x700 that
+        other tests build against (`test_face_bubble` measures a window).
+        """
+        if len(a) == 1 and hasattr(a[0], "x"):
+            rect = a[0]
+            self._geom = (float(rect.x()), float(rect.y()),
+                          float(rect.width()), float(rect.height()))
+        else:
+            x, y, w, h = (tuple(a) + (0, 0, 0, 0))[:4]
+            self._geom = (float(x), float(y), float(w), float(h))
+
+    def geometry(self):
+        return self
+
+    def x(self):
+        return self._geom[0] if getattr(self, "_geom", None) else 0.0
+
+    def y(self):
+        return self._geom[1] if getattr(self, "_geom", None) else 0.0
+
     def width(self):
-        return 980
+        return self._geom[2] if getattr(self, "_geom", None) else 980
 
     def height(self):
-        return 700
+        return self._geom[3] if getattr(self, "_geom", None) else 700
 
     def document(self):
         # `QTextEdit.document()` returns a real object; the log viewer sets a
@@ -290,6 +320,24 @@ class _Object:
 
     def setFocus(self):
         self._focused = True
+
+    def hasFocus(self):
+        return bool(getattr(self, "_focused", False))
+
+    def setDefault(self, on=True):
+        """Remember the default-button state, as QPushButton does.
+
+        WHY THIS IS STATE. The confirmation banner's safety rule is "the CANCEL
+        button owns the default answer", and that rule lives entirely in
+        `setDefault(True)` on one widget and nothing on the other. A stub that
+        answered None made the test read as a failure of the rule; a stub that
+        answered a lambda would have made it pass for the wrong reason. Same
+        lesson as `setGeometry` two boards ago.
+        """
+        self._is_default = bool(on)
+
+    def isDefault(self):
+        return bool(getattr(self, "_is_default", False))
 
     def __getattr__(self, name):
         # A PRIVATE name is always real state, never a Qt convenience. Returning
@@ -341,6 +389,7 @@ class _Layout(_Object):
         # parent immediately and that calls `_set_owner`.
         self._owner = None
         self._pending = []
+        self._items = []
         super().__init__(*a, **k)
         owner = a[0] if a and isinstance(a[0], _Object) else k.get("parent")
         if owner is not None:
@@ -364,10 +413,24 @@ class _Layout(_Object):
         self._pending = []
 
     def addWidget(self, w, *a, **k):
+        # EVERYTHING IS KEPT, not only the pending ones. `count()`/`itemAt()`
+        # exist so a test can ask "is this widget actually ON the dialog?" —
+        # the difference a mutation walked straight through: a label built with
+        # the right text and never added has text, no parent, and is invisible.
+        self._items.append(w)
         if self._owner is None:
             self._pending.append(w)
         else:
             _reparent(w, self._owner)
+
+    def count(self):
+        return len(self._items)
+
+    def itemAt(self, index):
+        if 0 <= index < len(self._items):
+            item = self._items[index]
+            return type("Item", (), {"widget": staticmethod(lambda w=item: w)})()
+        return None
 
     def addLayout(self, lay, *a, **k):
         if self._owner is None:
@@ -729,6 +792,51 @@ def _install_qt() -> dict[str, types.ModuleType]:
     gui.QColor.Weight = None
     gui.QFont.Weight = _Enum()
     gui.QPainter.RenderHint = _Enum()
+
+    def _painter_font(self):
+        if getattr(self, "_font", None) is None:
+            self._font = gui.QFont()
+        return self._font
+
+    def _painter_set_font(self, font):
+        self._font = font
+
+    gui.QPainter.font = _painter_font
+    gui.QPainter.setFont = _painter_set_font
+
+    # A REAL PAINTER ANSWERS `font()`, and the orb's board 24 caption asks for
+    # it to inherit the window's typeface. A stub without it made `draw_label`
+    # raise on every mode, which surfaced as "the painter runs in every mode"
+    # failing in a file that has nothing to do with labels.
+    class _QFont(_Object):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            self._px = 0
+            self._spacing = None
+
+        def setPixelSize(self, px):
+            self._px = int(px)
+
+        def pixelSize(self):
+            return self._px
+
+        def setWeight(self, weight):
+            self._weight = weight
+
+        def setLetterSpacing(self, kind, value):
+            self._spacing = (kind, value)
+
+        def letterSpacing(self):
+            return self._spacing
+
+    gui.QFont = _QFont
+    gui.QFont.Weight = _Enum()
+
+    class _SpacingType(_Enum):
+        AbsoluteSpacing = "AbsoluteSpacing"
+        PercentageSpacing = "PercentageSpacing"
+
+    gui.QFont.SpacingType = _SpacingType()
     gui.QDragEnterEvent = gui.QDropEvent = type("_Event", (_Object,), {})
 
     widgets = types.ModuleType("PyQt6.QtWidgets")

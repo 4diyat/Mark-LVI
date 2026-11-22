@@ -22,7 +22,7 @@ WHAT EACH BOARD BECOMES, IN ORDER
       * board 26 — the history page: undoable rows with their own button, the
         last three audit lines, and the two buttons at the bottom.
       * board 27 — the privacy page: three indicators, four explicit switches,
-        guest mode, and the erase button.
+        and the erase button.
       * board 28 — the same widget with the light palette. The palette is a
         table in `ui/tray_pages.py`, not a second widget: one panel that can be
         either colour is the only version of this that cannot drift.
@@ -75,7 +75,6 @@ class TrayPanel:
         undo()               board 26's Urungkan
         history_export()     board 26's Ekspor log
         history_clear()      board 26's Hapus riwayat
-        guest(on)             board 27's mode tamu
         erase()              board 27's Hapus semua data lokal
         command(text)        the field at the bottom of board 5
 

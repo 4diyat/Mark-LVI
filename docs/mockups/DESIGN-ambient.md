@@ -152,6 +152,9 @@ stack-neutral dan berlaku apa adanya untuk implementasi Python.
 | Orb overlay 146 px (board 1), hanya cincin yang bisa diklik; meredup di Fokus/Senyap | `ui/orb_overlay.py`, `ui/orb_place.py`, `ui/orb_canvas.py` | `tests/test_orb_overlay_board1.py`, `tests/test_orb_place.py` |
 | Board 4: klik kiri → panel, klik kanan → menu cepat, drag menempel ke tepi | `ui/ambient_shell.py`, `ui/orb_snap.py` | `tests/test_orb_board4.py` |
 | Board 23: strip Fokus tanpa tenggat, tiga baris aksi sendiri, jeda penjadwalan yang tersimpan | `ui/tray_paint.py`, `ui/tray_panel_model.py`, `actions/proactive.py`, `ui/tray_panel_wiring.py` | `tests/test_focus_board23.py` |
+| Startup: setiap permukaan benar-benar dibangun saat aplikasi dijalankan | `main.py`, `ui/lifecycle.py` | `tests/test_startup_board7.py` |
+| Board 27: MODE TAMU dihapus, tombol hapus jujur, judul per halaman, kartu artboard | `ui/tray_pages.py`, `ui/tray_panel_model.py`, `ui/tray_panel_wiring.py` | `tests/test_privacy_board27.py` |
+| Board 24: orb Senyap 18 px, bertitik, dan menulis namanya di bawah cincin | `ui/orb_paint.py`, `ui/orb_canvas.py` | `tests/test_quiet_board24.py` |
 | Command bar Ctrl+Space, Esc mengembalikan fokus | `ui/command_bar.py` | `tests/test_command_bar.py` |
 | Sambungan mode → orb, chord, dan baki | `ui/lifecycle.py`, `memory/config_manager.py` | `tests/test_presence_wiring.py` |
 
@@ -254,3 +257,145 @@ salinan yang berbeda perilaku.
   bawah** kartu saran, bukan di dalamnya: kartu board 5 dipatok 62 px oleh
   `tests/test_tray_geometry.py`, dan baris ketiga tidak muat tanpa mengubah kotak
   yang diukur board lain.
+
+### Startup — kenapa JARVIS tidak muncul sama sekali
+
+- **`main()` tidak pernah memanggil `ui.lifecycle.start_interface`.** Fungsi itu
+  membangun baki, face bubble, orb, command bar, overlay suara, dan hotkey
+  summon — semuanya. Pemanggilnya hanya tes. Jadi `python main.py` membuat satu
+  `QApplication` tanpa jendela, menjalankan `app.exec()` di atas aplikasi kosong,
+  dan menunggu mikrofon: proses yang hidup, mendengarkan, dan tidak bisa dilihat
+  maupun ditutup selain lewat Task Manager. Satu-satunya jendela yang mungkin
+  muncul adalah layar setup API key, karena `wait_for_api_key()` membukanya dari
+  thread runner; setelah kunci disimpan, layar itu ditutup dan tidak ada apa pun
+  yang menggantikannya.
+- **Kenapa 2.344 tes hijau selama itu.** Setiap tes memanggil
+  `lifecycle.start_interface(shell)` langsung. Tidak satu pun bertanya apakah
+  aplikasi memanggilnya. Permukaan yang dibangun lalu tidak pernah ditampilkan
+  dan permukaan yang tidak pernah dibangun sama-sama tidak terlihat dari dalam
+  tes. Ini kelas yang sama dengan `_ready` yang tidak pernah menjadi `True` dan
+  clamp mati di `snap_to_edge`: tes tidak bisa gagal karena tidak ada yang diuji.
+- **Pemanggilan itu duduk di thread Qt, setelah `_launch` terpasang, sebelum
+  `exec()`.** Sebelum `exec()` karena permukaan yang dibuat setelahnya tidak
+  pernah sempat dilukis. Di thread Qt karena QWidget dibuat di thread yang
+  menjalankan event loop. Setelah `_launch` karena `--hidden` dan tautan
+  `jarvis://` dibaca oleh permukaan yang dibangun di dalamnya.
+- **`--hidden` akhirnya berarti sesuatu, dan artinya dijaga.** Sebelumnya flag
+  itu tidak berpengaruh karena tidak ada yang tampil. Sekarang ia menyembunyikan
+  **wajah**, bukan orb: orb adalah satu-satunya permukaan yang membuka panel
+  dengan klik (board 4), jadi menyembunyikannya akan membuat `--hidden` berarti
+  "mulai tanpa cara mouse apa pun".
+- **Satu permukaan yang gagal tidak boleh menjatuhkan yang lain.** Memindahkan
+  pemanggilan ke `main()` menciptakan jalan baru untuk mati: exception yang lolos
+  dari `start_interface` sekarang membunuh proses sebelum `exec()`. Tiga dari
+  `start_*` tidak menangkap exception sendiri, dan mereka membuat objek Qt.
+  Setiap permukaan sekarang punya pengamannya sendiri, dan kegagalannya dicatat
+  dengan nama permukaannya.
+
+### Board 27 — Izin & Privasi
+
+- **MODE TAMU tidak digambar, dan itu keputusan, bukan kelalaian.** Artboard
+  menggambar switch "Sembunyikan memori & riwayat" yang bisa diklik; `set_guest`
+  hanya menulis "mode tamu belum ada" lalu mengembalikan False, dan paint
+  berikutnya mengembalikan switch ke posisi semula. Pemilik memilih **menghapus
+  section itu**, bukan menonaktifkannya: switch nonaktif tetap berjanji bahwa
+  fiturnya ada dan pengguna belum diizinkan. Itu berbeda dari `screen` dan
+  `microphone`, yang memang kemampuan nyata dan mesin yang memutuskan — dua itu
+  tetap digambar, nonaktif, dengan alasannya. Fungsi `set_guest` dihapus, bukan
+  dibiarkan sebagai no-op, dan ketiga kunci i18n-nya dihapus dari kedua bahasa.
+- **"Hapus semua data lokal" menjadi "Hapus audit log lokal".** Tombol itu selalu
+  hanya menghapus audit log: tidak menyentuh berkas riwayat percakapan, tidak
+  menyentuh API key, dan tidak bisa menjangkau apa pun yang sudah terkirim ke
+  model. Docstring-nya jujur sejak awal; labelnya tidak. Yang berubah labelnya —
+  perilakunya sudah benar, dan tesnya membuktikan keduanya.
+- **Setiap halaman punya dua barisnya sendiri.** Sebelumnya ketiga halaman
+  menulis "JARVIS / Panel baki · mengikuti posisi taskbar", yaitu identitas
+  APLIKASI, bukan halaman. `ui.panel.privacy.title` sudah ada di katalog dalam
+  dua bahasa dan **tidak dipanggil oleh apa pun**. Judul dibaca dari snapshot,
+  dan `paint()` menyesuaikannya dengan halaman yang sedang tampil — kalau tidak,
+  judulnya basi pada klik Riwayat pertama.
+- **Kartu artboard digambar.** `rect(24, 208, 412, 56)` di belakang tiap baris
+  izin dan `rect(x, 102, 132, 62)` di belakang tiap indikator. Tanpa keduanya,
+  empat baris izin terbaca sebagai satu paragraf, bukan empat keputusan terpisah.
+  Kuncinya diberi awalan sendiri (`permx_*`, `indicator_*`) karena `GEOMETRY`
+  yang lama adalah halaman utama board 5 dan dipatok `tests/test_tray_geometry.py`.
+- **Stub Qt sekarang merekam geometri.** `setGeometry` dulu tidak menyimpan
+  apa pun, jadi `card.x()` menjawab lewat `__getattr__` — sebuah lambda, bukan
+  angka. Itu persis kelas kesalahan yang sudah ditulis di docstring `_RectF`:
+  tes tidak bisa membedakan kartu di (24, 208) dari kartu di (0, 0). Itu sebabnya
+  kartu yang tidak pernah dibuat pun bisa "lulus" pemeriksaan geometri.
+
+### Board 24 — Senyap
+
+- **Senyap digambar 18 px, bukan 14.** Artboard menulis sendiri "Orb menyusut
+  28 → 18 px", dan 14 adalah angka yang masuk akal yang ditulis dari ingatan
+  tentang artboard, bukan dari artboard. Itu kelas bug yang sama dengan "Fokus
+  aktif sampai 17.00": angka ajaib yang tidak dibandingkan dengan gambarnya oleh
+  satu tes pun.
+- **Fokus menjadi 22 px, dan itu diturunkan, bukan dikarang.** Board 24 hanya
+  mematok Senyap (18) dan tidak memberi ukuran untuk Fokus. Sebelum ini Fokus
+  18. Membiarkan keduanya 18 membuat dua mode berbeda identik ukurannya, dan tes
+  lama menuntut urutannya dengan alasan yang benar: "two states must not be
+  distinguishable by hue alone". 22 berada di antara 28 dan 18, jadi ketiga
+  ukuran terbaca sebagai urutan, bukan dua nilai dengan satu duplikat. Alpha
+  juga menjaga urutan: 255 → 165 → 110.
+- **Orb menulis namanya di bawah cincin.** Alasan board 24 sendiri adalah
+  "status harus terbaca tanpa warna": meredupkan cincin, menghapus glow dan
+  membuatnya bertitik adalah tiga perbedaan di kanal yang SAMA — kecerahan —
+  dan di desktop gelap sebuah tangkapan layar tidak bisa membedakan orb Senyap
+  dari orb Aktif. Kata bisa. Kosakata yang dipakai `ui.panel.mode.*`, kunci yang
+  sudah ada di kedua katalog dan sudah dipakai kontrol segmen di baki — bukan
+  kosakata kedua untuk tiga mode yang sama.
+- **Label itu opt-in lewat tinggi yang tersedia.** `paint_ring` dipakai overlay
+  desktop DAN HUD. Overlay selalu punya ruang (cincin 28 px menyisakan 45 px di
+  dalam jendela 146 px; cincin 18 px menyisakan 55). HUD yang menggambar caption
+  10 px di atas isinya sendiri adalah caption yang menghalangi, jadi labelnya
+  hanya muncul saat pemanggil menyatakan ada ruang.
+- **Caption tidak boleh menjatuhkan orb.** `draw_label` mengembalikan bool dan
+  berhenti pada painter yang tidak punya `setFont`/`drawText`. Orb yang hilang
+  karena captionnya tidak bisa digayakan adalah kegagalan yang lebih buruk
+  daripada caption tanpa tracking.
+
+### Board 25 — Risiko: konfirmasi
+
+- **Judulnya BERISIKO, bukan "⚠  KONFIRMASI".** Dua kesalahannya berbeda kelas.
+  Yang lama menuliskan keadaan dialognya ("ini konfirmasi" — sudah jelas dari dua
+  tombol di bawahnya) alih-alih tingkat risikonya, dan menyisipkan glif yang
+  tidak ada di artboard. Artboard menaruh kata itu di kiri atas dengan tracking
+  2, warna amber, 10 pt: satu kata yang menjawab "seberapa berbahaya ini?"
+  sebelum mata membaca judulnya.
+- **"Tindakan ini tidak bisa diurungkan." adalah kalimat keselamatan, bukan
+  hiasan.** Ia satu-satunya teks di dialog yang menyatakan AKIBAT, bukan isi
+  permintaan. Ia tidak diterjemahkan lewat katalog karena ia harus ada bahkan
+  ketika katalognya rusak — persis alasan `KEYS_HINT` juga konstanta. Artboard
+  menulis "diurangkan" (salah ketik); yang dirilis "diurungkan".
+- **Enter mengonfirmasi, Esc membatalkan — dan fokus awal tetap di Batal.**
+  Artboard mencetak "Enter · Esc" di sudut, jadi diam-diam membuat Enter tidak
+  melakukan apa-apa berarti tombolnya berbohong. Yang menjaga properti lama
+  ("Enter nyasar tidak boleh mengeksekusi") bukan lagi tidak adanya handler,
+  melainkan FOKUS AWAL: Enter tanpa menyentuh apa pun diserap tombol Batal.
+- **ASAL PERMINTAAN harus benar, bukan tebakan.** Satu-satunya kalimat di dialog
+  ini yang bisa menjadi dusta adalah yang menyebut siapa yang meminta. Karena
+  itu sumbernya dicatat di pintunya masing-masing (`core/input_source`, dipanggil
+  dari `_on_text_command` dan dari transkripsi input), bukan disimpulkan di
+  dalam banner. Nota penting: penandaan suara menempel pada TRANSKRIPSI, bukan
+  pada chunk audio — setiap chunk audio juga berbunyi saat ada suara ruangan,
+  dan itu akan menulis "Perintah suara" untuk permintaan yang datang dari plugin.
+  Ketika tidak ada yang tercatat, dialog berkata "Tidak diketahui" dan itu
+  jawaban yang benar.
+- **Store-nya tidak boleh mengimpor apa pun.** `core/input_source` dipanggil dari
+  callback audio; `ui/confirm_banner` mengimpor PyQt6 di level modul. Menaruh
+  store di sana berarti mesin tanpa Qt melempar pengecualian di dalam mikrofon.
+- **Jamnya diambil saat pertanyaan ditampilkan, dan diperbarui saat banner
+  dipakai ulang.** Dua bug ditemukan tes, bukan ditulis: `set_title` dulu keluar
+  lebih awal ketika tidak ada detail (jalur yang paling umum), sehingga banner
+  yang dipakai ulang mempertahankan asal DAN jam pertanyaan sebelumnya — satu-
+  satunya baris di dialog ini yang menjadi dusta bila basi.
+- **Baris detail selalu dibangun, hanya disembunyikan.** Versi yang membangunnya
+  hanya bila konstruktor menerima detail membuat baris artboard
+  ("Lampiran: anggaran.xlsx · 3 penerima") mustahil tampil di jalur nyata:
+  `build_confirm_window()` memanggil konstruktor dengan `""` dan detailnya baru
+  datang lewat `set_title`.
+- **Yang belum terbukti:** dialog ini belum pernah dirender Qt sungguhan di sini.
+  Geometri, ukuran font, dan perilaku fokus yang sesungguhnya tetap belum diuji;
+  yang diuji adalah widget yang dibangun, teksnya, dan handler tombolnya.

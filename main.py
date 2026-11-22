@@ -1081,6 +1081,10 @@ class JarvisLive:
     def _on_text_command(self, text: str):
         if not self._loop or not self.session:
             return
+        # Board 25: the risk dialog says where the request came from. This is
+        # the typed door; the input transcription marks the spoken one.
+        from core import input_source
+        input_source.mark("typed")
         # Respect wake-word sleep: a typed command must not be answered while
         # asleep either (the sleep gate is not just for the mic). Wake first with
         # "Hey Jarvis" or the WAKE NOW button.
@@ -2042,6 +2046,14 @@ class JarvisLive:
                                 self._visemes.feed_text(txt)
 
                         if sc.input_transcription and sc.input_transcription.text:
+                            # Board 25's origin line. This event fires when the
+                            # USER'S SPEECH was transcribed — i.e. a spoken
+                            # command exists — rather than on every audio chunk,
+                            # which would also fire from a room's background
+                            # noise and would say "voice" for a request that
+                            # came from a plugin.
+                            from core import input_source
+                            input_source.mark("voice")
                             txt = _clean_transcript(sc.input_transcription.text)
                             if txt:
                                 in_buf.append(txt)
@@ -3233,6 +3245,23 @@ def main():
     # `ui/main.py` — a path that has never existed, registered silently by the
     # auto-start toggle on every platform and failing at the next login.
     ui._program_path = str(Path(__file__).resolve())
+
+    # BUILD EVERY SURFACE, AND DO IT FROM THE QT THREAD, BEFORE `exec()`.
+    #
+    # THIS LINE WAS MISSING, and nothing noticed for the life of the ambient
+    # shell: `ui/lifecycle.py` has held `start_interface` the whole time — the
+    # tray icon, the face bubble, the orb, the command bar, the voice overlay
+    # and the summon hotkey — and every path that reached it started at a test.
+    # A launch ran `app.exec()` over an empty application: no tray, no orb, no
+    # window, and no way to quit except the task manager.
+    #
+    # It has to be HERE and not inside the runner thread: QWidgets are created
+    # on the thread that runs the event loop, and a tray icon built on the
+    # Gemini thread is a crash waiting for the first paint. It is also after
+    # `_launch` is attached, because `--hidden` and `jarvis://` links are read
+    # by the surfaces this call builds.
+    from ui import lifecycle as _lifecycle
+    _lifecycle.start_interface(ui)
 
     def runner():
         ui.wait_for_api_key()

@@ -25,6 +25,8 @@ WHAT A CALLER MUST HAVE
 """
 from __future__ import annotations
 
+import dataclasses
+
 from ui.tray_pages import PALETTES
 from ui.tray_theme import _rgba
 from ui.tray_panel_model import (ALL_QUICK_KEYS, MODE_ORDER, PERMISSIONS,
@@ -39,6 +41,14 @@ def paint(panel, snap) -> None:
     """Put one snapshot on the widgets. Never raises."""
     labels = panel._labels
 
+    # THE PAGE DECIDES THE TWO LINES ABOVE EVERY PAGE, so the snapshot has to
+    # know which page it was taken for. Repainting from a snapshot taken at open
+    # time would put "JARVIS" back over the privacy page the first time the user
+    # clicked a switch — which is exactly how the title bug survived: nothing
+    # ever took a second snapshot.
+    title_page = getattr(panel, "_page", "main")
+    if getattr(snap, "page", "main") != title_page:
+        snap = dataclasses.replace(snap, page=title_page)
     labels["title"].setText(snap.title)
     labels["subtitle"].setText(snap.subtitle)
     labels["quota"].setText(snap.quota_line)
