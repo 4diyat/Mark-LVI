@@ -14,7 +14,7 @@ WHY THIS IS NOT `ui/face_bubble.py`
     as the bubble's — the flag names are the part that goes wrong, and the test
     checks them by name rather than by integer.
 
-WHY THE DIM RULE LIVES HERE
+WHERE THE DIM RULE LIVES NOW
     Focus and Quiet dim the orb. That is a product decision the owner made
     explicitly, and it is expressed as a table (`appearance`) rather than as
     numbers scattered through the paint code, because the paint code is the one
@@ -22,6 +22,10 @@ WHY THE DIM RULE LIVES HERE
     glow; `quiet` shrinks to 14 px and turns the ring into a dotted one. Shape
     changes as well as colour, so a colour-blind user reads the same difference
     a sighted one does.
+
+    The table and the drawing both moved to `ui/orb_paint.py`, because keeping
+    them here meant the HUD drew a second, older orb — see that module. This
+    file kept the window: 96 px, frameless, one click target.
 
 WHAT IT DOES NOT DO
     It does not talk to `JarvisLive` and it does not decide the presence mode. It
@@ -31,20 +35,16 @@ WHAT IT DOES NOT DO
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Callable
 
-# The drawn ring's outer radius in CSS pixels, at 1× scale. 28 px reads at arm's
-# length without competing with a window title bar; the window is the ring's
-# bounding box plus the glow, and its own size is what the hit test uses.
-RADIUS = 28
-GLOW = 20
-SIZE = (RADIUS + GLOW) * 2
-
-# The ring the user may click. Nine pixels outside the drawn circle: far enough
-# that a near miss still lands, close enough that the transparent corner of the
-# window does not swallow clicks meant for the desktop underneath.
-HIT_RING = RADIUS + 9
+# THE GEOMETRY AND THE MODE TABLE MOVED to `ui/orb_paint.py`, which now draws
+# the main window's orb as well as this one. Re-exported here because every
+# module that asks "how big is the ring" (`lifecycle`, the tray, the tests) has
+# always asked this file, and a move is not a rename.
+from ui.orb_paint import (                      # noqa: F401 — re-exported
+    _APPEARANCE, GLOW, HIT_RING, RADIUS, SIZE, Appearance, appearance,
+    paint_ring,
+)
 
 # Where the window's three flags are named. A missing name is a TypeError on the
 # user's desktop and nowhere else, so the list is pinned by a test.
@@ -54,37 +54,6 @@ _FLAGS = ("FramelessWindowHint", "Tool", "WindowStaysOnTopHint")
 # static except while speaking. A 30 fps timer on a 96 px window is a wake-up
 # 30 times a second to draw the same ellipse.
 FRAME_MS = 83
-
-
-@dataclass(frozen=True)
-class Appearance:
-    """How the orb is drawn in one mode. Frozen so a caller cannot edit it."""
-
-    radius: int
-    glow: bool
-    dotted: bool
-    alpha: int
-
-
-# Focus and Quiet dim the orb — see the module docstring. `quiet` also drops the
-# glow entirely rather than merely lowering its alpha: a glow that is merely
-# faint still reads as "lit up" in peripheral vision, which is the thing Quiet
-# asked to stop.
-_APPEARANCE = {
-    "active": Appearance(RADIUS, glow=True, dotted=False, alpha=255),
-    "focus": Appearance(18, glow=False, dotted=False, alpha=165),
-    "quiet": Appearance(14, glow=False, dotted=True, alpha=110),
-}
-
-
-def appearance(mode: str) -> Appearance:
-    """The look for one presence mode. Unknown modes get `active`.
-
-    Falling back to `active` rather than to `quiet` is deliberate: an unreadable
-    mode should leave the assistant visible, because a hidden orb is
-    indistinguishable from a crashed app.
-    """
-    return _APPEARANCE.get(str(mode or "").strip().lower(), _APPEARANCE["active"])
 
 
 def window_size(mode: str) -> tuple[int, int]:
@@ -436,46 +405,19 @@ def _build_canvas(parent, owner: "OrbOverlay"):
 
 
 def paint_orb(painter, size: int, mode: str, state: str, level: float = 0.0) -> None:
-    """Draw one frame. Qt-only, so it is called from the widget, never imported.
+    """Draw this window's orb. Delegates to `ui.orb_paint.paint_ring`.
 
-    Separate from `ui/desktop_orb.paint_orb` on purpose: that one fills its
-    rect with the workspace panel colour because it sits inside a stage. This
-    one must leave the background transparent, which is the entire difference
-    between a floating ring and a 96 px dark square on someone's desktop.
+    WHY THIS IS NOW THREE LINES
+        It used to be the only painter that knew about presence modes, and the
+        main window had a second one that did not. Two painters meant the design
+        work reached whichever surface was edited last — which was this one, so
+        the 56 px ring dimmed in Fokus while the HUD kept drawing the old orb.
+        The sizes stay here (the window is 96 px and its hit test depends on
+        that); the drawing lives in one module for every surface.
+
+    THE BACKGROUND IS NOT FILLED, and that is deliberate. Drawing happens on a
+    translucent frameless window, where a filled rect is an opaque square on
+    the user's wallpaper.
     """
-    from PyQt6.QtCore import QRectF, Qt
-    from PyQt6.QtGui import QColor, QPen, QRadialGradient
-
-    look = appearance(mode)
-    centre = size / 2.0
-    r = float(look.radius)
-
-    # Glow: only while lit up, and only in `active`. Radii from the answered
-    # product question — Focus and Quiet have no glow at all.
-    if look.glow:
-        glow = QRadialGradient(centre, centre, r * 1.7)
-        strength = 70 + int(max(0.0, min(1.0, level)) * 90)
-        glow.setColorAt(0.0, QColor(79, 216, 240, strength))
-        glow.setColorAt(0.55, QColor(79, 216, 240, strength // 3))
-        glow.setColorAt(1.0, QColor(79, 216, 240, 0))
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(glow)
-        painter.drawEllipse(QRectF(centre - r * 1.7, centre - r * 1.7,
-                                   r * 3.4, r * 3.4))
-
-    # The ring itself. Speaking thickens it; thinking makes it a broken arc,
-    # which is a shape difference rather than a colour one — two states must not
-    # be distinguishable by hue alone.
-    width = 3 if state == "speaking" else 2
-    pen = QPen(QColor(79, 216, 240, look.alpha), width)
-    if look.dotted:
-        pen.setStyle(Qt.PenStyle.DotLine)
-    painter.setPen(pen)
-    painter.setBrush(Qt.BrushStyle.NoBrush)
-    painter.drawEllipse(QRectF(centre - r, centre - r, r * 2, r * 2))
-
-    # The core: a filled dot whose size tracks whether anything is happening.
-    core = r * (0.42 if state in ("listening", "speaking") else 0.30)
-    painter.setPen(Qt.PenStyle.NoPen)
-    painter.setBrush(QColor(230, 244, 248, min(255, look.alpha + 20)))
-    painter.drawEllipse(QRectF(centre - core, centre - core, core * 2, core * 2))
+    paint_ring(painter, size / 2.0, size / 2.0, float(appearance(mode).radius),
+               mode=mode, state=state, level=level)

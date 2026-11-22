@@ -179,6 +179,29 @@ Tiga permukaan (tooltip, bubble, orb) diperbarui **independen**. Sebelumnya satu
 orb yang gagal mengecat bisa menjatuhkan pembaruan tray — dan justru di situ
 tooltip adalah satu-satunya bacaan yang tersisa.
 
+### Satu painter, dua permukaan
+
+Kegagalannya lebih halus daripada orb kosong: ada **dua** painter.
+`ui/desktop_orb.py` menggambar orb jendela utama dan tidak tahu apa-apa soal
+tiga mode kehadiran — ia membedakan keadaan hanya lewat kecerahan.
+`ui/orb_overlay.py` punya painter yang benar, dengan mode, glow, dan bentuk
+yang berbeda per keadaan. Pekerjaan desainnya masuk ke yang kecil, sementara
+jendela yang benar-benar dilihat orang tetap memakai gambar lama.
+
+Yang membuat ini bertahan lama: tidak ada tes yang gagal. Painter hanya salah
+**di dalam gambar**, dan tak ada tes yang membaca gambar.
+
+Sekarang `ui/orb_paint.py` memegang satu painter dengan kontrak *titik pusat
+dan radius*, bukan persegi panjang. Itu intinya: overlay meminta 28 px, HUD
+meminta sebanyak yang muat di jendelanya, dan permukaan ketiga tidak butuh
+salinan ketiga dari matematika elips. `ui/desktop_orb.py` dihapus, bukan
+dibiarkan menganggur — painter yang tidak dipakai akan dipakai lagi.
+
+Keadaan dibedakan lewat **bentuk**: mendengarkan adalah mahkota gerigi,
+bekerja adalah satu busur yang menyapu, bicara menebalkan cincin, dan Senyap
+menghapus cincinnya sama sekali. Amber hanya dipakai untuk satu hal — mikrofon
+mati — karena desain menyimpannya untuk peringatan.
+
 Label item baki menyebut **mode**, bukan aksinya ("Fokus — saran ditahan"),
 dan dibaca ulang setelah setiap klik: menu yang masih menampilkan mode lama
 adalah bug yang sama dengan centang yang basi, satu baris lebih bawah.

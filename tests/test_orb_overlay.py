@@ -279,6 +279,14 @@ def test_the_painter_runs_in_every_mode_without_a_real_qt(orb):
     calls = []
 
     class Painter:
+        """Every call the painter makes, recorded.
+
+        `drawLine` and `drawArc` are here because the states are told apart by
+        SHAPE: listening is a crown of spikes, thinking is a sweeping arc. A
+        fake painter without them would turn a real change into an
+        AttributeError that reads like a broken test.
+        """
+
         def setPen(self, *a):
             calls.append("pen")
 
@@ -287,6 +295,12 @@ def test_the_painter_runs_in_every_mode_without_a_real_qt(orb):
 
         def drawEllipse(self, *a):
             calls.append("ellipse")
+
+        def drawLine(self, *a):
+            calls.append("line")
+
+        def drawArc(self, *a):
+            calls.append("arc")
 
     for mode in ("active", "focus", "quiet"):
         for state in ("idle", "listening", "speaking", "thinking"):
