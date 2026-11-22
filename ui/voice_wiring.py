@@ -36,6 +36,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+# THE HAND MOVED TO `ui/hand_feed.py` when this file reached 600 lines. Re-exported
+# here because `lifecycle`, `tests/test_voice_wiring.py` and the overlay's own
+# starter all say `voice_wiring.HandFeed`, and a move is not a rename.
+from ui.hand_feed import (                      # noqa: F401 — re-exported
+    HandFeed, camera_state, gesture_bridge_enabled, gesture_context, poll_hand,
+    set_gesture_os,
+)
+
 if TYPE_CHECKING:                                    # pragma: no cover
     from ui.shell import AmbientShell
 
@@ -304,183 +312,10 @@ def stop_voice_overlay(shell: "AmbientShell") -> None:
 
 
 __all__ = [
-    "HandFeed", "PAUSE_CHORD", "SHOWN_STATES", "camera_state", "overlay_state",
-    "poll_hand", "set_answer", "set_camera_available", "set_hand",
+    "HandFeed", "PAUSE_CHORD", "SHOWN_STATES", "camera_state",
+    "gesture_bridge_enabled", "gesture_context", "overlay_state", "poll_hand",
+    "set_answer", "set_camera_available", "set_gesture_os", "set_hand",
     "set_transcript", "should_show", "show_exchange", "start_pause_hotkey",
     "start_voice_overlay", "stop_pause_hotkey", "stop_voice_overlay", "sync",
     "toggle_gestures",
 ]
-
-
-# ── the camera, when there is one ───────────────────────────────────────────
-
-def camera_state(controller) -> bool:
-    """Whether the tile's hand is backed by a camera that is actually feeding it.
-
-    `WorkspaceHandController.status` is one of `off` / `starting` / `active` /
-    `windows_only` / `error`. Only `active` means frames are arriving. The tile
-    says "KAMERA" for that one and "KAMERA NONAKTIF" for the rest — a tile that
-    looked the same in every case would be a picture of a feature rather than an
-    indicator of one.
-    """
-    try:
-        return str(getattr(controller, "status", "off")).strip().lower() == "active"
-    except Exception:                               # noqa: BLE001
-        return False
-
-
-def poll_hand(shell: "AmbientShell", controller) -> None:
-    """One tick: read the newest sample and put it on the tile.
-
-    WHY THE FIRST HAND AND NOT THE BEST ONE
-        `WorkspaceHandController.sample()` returns the hands it can see, newest
-        frame only, and it returns `()` for "nothing usable" — a lost hand, a
-        stale frame, or a closed hand that has not been deliberately re-opened.
-        The tile shows the first; the empty tuple means the hand is gone, and an
-        empty tile is the honest picture of that. It is also what makes the
-        pause visible: `core.gesture_os` releases a held button on the same
-        signal.
-
-    WHY IT IS A POLL AND NOT A CALLBACK
-        The camera worker publishes; this reads. A callback from that thread
-        would put a Qt widget's state change on a thread that does not own it.
-        The overlay's timer calls this, which is the Qt thread by construction.
-
-    NEVER RAISES. `status` is read every tick, so a controller that died mid-run
-    is reported as an unlit tile rather than as an exception inside a paint.
-    """
-    overlay = getattr(shell, "_voice_overlay", None)
-    if overlay is None:
-        return
-    try:
-        available = camera_state(controller)
-        overlay.set_camera_available(available)
-        if not available or overlay.gestures_paused:
-            overlay.set_hand(None)
-            return
-        hands = controller.sample()
-        first = hands[0] if hands else None
-        if first is None:
-            overlay.set_hand(None)
-            return
-        # `sample()` hands back `(x, y, pinch, scroll, …)` per hand; the tile
-        # needs the first three and `hand_from_sample` absorbs the rest.
-        overlay.set_hand(tuple(first[:3]))
-    except Exception as exc:                        # noqa: BLE001
-        _note(shell, f"hand not shown — {type(exc).__name__}: {exc}")
-
-
-# ── the controller's owner ──────────────────────────────────────────────────
-
-class HandFeed:
-    """Owns the camera worker and the one timer that puts it on the tile.
-
-    WHY THIS IS AN OBJECT AND NOT THREE FUNCTIONS
-        The worker has a lifetime: it is started when the overlay is built,
-        stopped when the program quits, and polled while it runs. Three separate
-        functions would need the controller passed between them and would make
-        "who stops the camera" a question with three answers.
-
-    WHAT IT REFUSES TO DO
-        It does not start a camera off Windows. `WorkspaceHandController.start()`
-        already refuses (`status = "windows_only"`) and mediapipe is a
-        Windows-only dependency in `requirements.txt`; asking anyway would open
-        a device on a platform where the detector cannot run. `start()` reports
-        that state rather than pretending, so the tile can say KAMERA NONAKTIF
-        for the right reason.
-
-    WHY THE TIMER IS CREATED LAZILY
-        `QTimer` needs a Qt application. Creating it in `__init__` would make
-        `HandFeed()` raise on a machine with no display, and this class is
-        constructed by `start_voice_overlay`, whose whole contract is that a
-        decoration cannot take the program down.
-    """
-
-    # 12 fps, the overlay's own rate: the tile cannot show more than the frame
-    # it is drawn on, and a faster poll would only burn wake-ups.
-    POLL_MS = 83
-
-    def __init__(self, shell, controller=None):
-        self._shell = shell
-        self._controller = controller
-        self._timer = None
-        self._started = False
-        self._error = ""
-
-    @property
-    def status(self) -> str:
-        """The controller's own word, or `off` when there is no controller."""
-        try:
-            return str(getattr(self._controller, "status", "off"))
-        except Exception:                           # noqa: BLE001
-            return "off"
-
-    @property
-    def error(self) -> str:
-        return self._error
-
-    def start(self) -> bool:
-        """Build the controller, start the camera, start the poll. Never raises.
-
-        Returns whether frames are expected. `False` is the normal answer on
-        Linux and macOS, and it is not a failure.
-        """
-        try:
-            if self._controller is None:
-                from core.workspace_gesture import WorkspaceHandController
-
-                self._controller = WorkspaceHandController()
-            self._started = bool(self._controller.start())
-            if not self._started:
-                return False
-            self._start_timer()
-            return True
-        except Exception as exc:                    # noqa: BLE001
-            self._error = f"{type(exc).__name__}: {exc}"
-            print(f"[JARVIS] hand feed not started: {self._error}")
-            return False
-
-    def poll(self) -> None:
-        """One tick. Public so a test can run it without a timer."""
-        poll_hand(self._shell, self._controller)
-
-    def stop(self) -> None:
-        """Stop the timer, then the camera. Order matters: stopping the camera
-        first would leave one tick reading from a controller that is closing."""
-        self._stop_timer()
-        controller = self._controller
-        if controller is None or not self._started:
-            return
-        try:
-            controller.stop()
-        except Exception as exc:                    # noqa: BLE001
-            print(f"[JARVIS] hand feed would not stop — "
-                  f"{type(exc).__name__}: {exc}")
-        finally:
-            self._started = False
-
-    def _start_timer(self) -> None:
-        if self._timer is not None:
-            return
-        try:
-            from PyQt6.QtCore import QTimer
-
-            timer = QTimer()
-            timer.setInterval(self.POLL_MS)
-            timer.timeout.connect(self.poll)
-            timer.start()
-            self._timer = timer
-        except Exception as exc:                    # noqa: BLE001
-            # The camera still runs and the OS pointer still follows the hand;
-            # only the tile stops moving, which is a smaller loss than a crash.
-            print(f"[JARVIS] hand feed has no timer — {type(exc).__name__}: {exc}")
-
-    def _stop_timer(self) -> None:
-        timer, self._timer = self._timer, None
-        if timer is None:
-            return
-        try:
-            timer.stop()
-        except Exception as exc:                    # noqa: BLE001
-            print(f"[JARVIS] hand feed timer would not stop — "
-                  f"{type(exc).__name__}: {exc}")

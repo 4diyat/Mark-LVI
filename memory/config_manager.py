@@ -900,6 +900,40 @@ def save_ui_theme(theme: str) -> None:
     set_config_values(ui_theme=value if value in THEMES else "auto")
 
 
+def get_gesture_os_enabled() -> bool:
+    """Whether the bare hand may drive the operating system's pointer.
+
+    OFF BY DEFAULT, and that default is the whole safety story of this setting.
+    A webcam-read hand that moves somebody's cursor and clicks their screen is
+    the most dangerous surface this program has; `core/gesture_os.py` calls it
+    "a mis-read hand on the OS clicks somebody's payment form". So the feature
+    is opt-in, and until the user turns it on the pointer is not merely idle —
+    the pipeline is never built.
+
+    A MISSING OR UNREADABLE CONFIG MEANS OFF. `load_api_keys` already answers
+    `{}` rather than raising, and every value that is not a truthy string is
+    read as "no" here: a corrupt file must never be the reason a camera starts
+    clicking.
+    """
+    try:
+        value = load_api_keys().get("gesture_os_enabled", False)
+    except Exception:                               # noqa: BLE001
+        return False
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "yes", "on")
+    return bool(value)
+
+
+def save_gesture_os_enabled(enabled: bool) -> None:
+    """Persist the switch. Anything that is not truthy is stored as False.
+
+    Storing a real boolean rather than the caller's object matters: the value
+    is read back by a different process on the next start, and `"false"` is a
+    truthy string in most of the ways it could be misread.
+    """
+    set_config_values(gesture_os_enabled=bool(enabled))
+
+
 def system_prefers_light() -> bool:
     """Whether the OS says its UI is light — the answer `auto` needs.
 

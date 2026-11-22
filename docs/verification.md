@@ -186,6 +186,15 @@ frameless dan DPAPI memerlukan desktop Windows nyata dengan compositor.
 `check_ambient_qt.py` hanya membuktikan bahwa jendela dan flag-nya DIBUAT, bukan
 bahwa window manager menerimanya. Klaim-klaim itu tetap belum terbukti.
 
+**Tangan yang menggerakkan kursor tidak dapat dibuktikan di sini.** `core/gesture_bridge.py`
+memerlukan pyautogui, kamera, dan desktop sungguhan; ketiganya tidak ada di
+runner ini. Yang diuji adalah jahitannya: kebijakan menerima sampel yang benar,
+`disable()` melepas tombol yang sedang ditahan, fokus dan banner membekukan
+tangan, dan sampel yang hilang melepas tombol pada frame yang sama. Pengiriman
+diuji dengan mouse perekam, bukan dengan kursor nyata. Di Windows jalurnya
+dibatasi tiga nama yang sama dengan allowlist `OsPointer` — `moveTo`,
+`mouseDown`, `mouseUp`, `scroll` — dan sebuah tes gagal bila nama kelima muncul.
+
 Untuk board 6 ada satu klaim tambahan yang TIDAK dibuat, dan itu disengaja:
 overlay ini tidak memakai `WindowTransparentForInput`. Klik-tembus akan membuat
 jendela tidak bisa menerima Esc — padahal catatan kaki artboard menjanjikan Esc
