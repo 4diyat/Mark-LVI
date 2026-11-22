@@ -3503,6 +3503,13 @@ class JarvisUI:
         bubble = getattr(self, "_bubble", None)
         if bubble is not None:
             bubble.set_audio_level(level)
+        # The orb's glow follows the voice too, and in ambient mode the orb is
+        # the only thing on screen that can show it. `getattr` for the same
+        # reason as the two above: this facade is built piecemeal by tests and
+        # plugins, and a level update must never be what raises.
+        orb = getattr(self, "_orb", None)
+        if orb is not None:
+            orb.set_audio_level(level)
 
     def glance(self, dx: float, dy: float, hold: float = 1.1) -> None:
         """Ask the avatar to look somewhere for a moment (see HoloAvatar.glance)."""
@@ -3548,32 +3555,25 @@ class JarvisUI:
 
     def set_state(self, state: str):
         self._win._state_sig.emit(state)
-        # THE TOOLTIP IS THE ONLY STATUS READOUT IN AMBIENT MODE.
-        #
-        # With no window, "is it listening?" has exactly one answer the user can
-        # see without summoning the interface. Cheap: one string assignment and
-        # one setToolTip per transition, and `set_state` is called on state
-        # changes, not per frame.
-        # `getattr` rather than `self._tray`: this facade is built piecemeal in
-        # tests and by plugins, and a status update must never be the thing that
-        # raises because an attribute was not there. The tray is an extra
-        # surface, not a precondition.
-        tray = getattr(self, "_tray", None)
-        if tray is not None:
-            tray.set_state(state)
-        # The bubble is a SECOND place the state is visible, and it is the only
-        # one on screen in bubble mode — a face that keeps breathing while the
-        # assistant is asleep would be a lie told in the most visible place.
-        bubble = getattr(self, "_bubble", None)
-        if bubble is not None:
-            bubble.set_state(state)
-        # Kept on the shell because `announce_if_finished` needs it and taking
-        # it as an argument would push two more lines into a file that is 11
-        # under its ceiling.
-        # Mode check and notification policy both live in ui/lifecycle: this
-        # file is 2 lines under a ceiling that exists for a reason.
-        from ui.lifecycle import announce_if_finished
-        announce_if_finished(self, state)
+        # The tooltip AND the bubble AND the notification policy are wire-up:
+        # three surfaces that must agree about one word, none of which needs
+        # anything this file owns. They live in `ui.lifecycle` so that a change
+        # to what "listening" looks like cannot require editing a 3,800-line
+        # widget module — and because the alternative was keeping them here,
+        # 40 lines at a time, against a ceiling this file was already under.
+        from ui.lifecycle import apply_state_everywhere
+        apply_state_everywhere(self, state)
+
+    def apply_presence(self, mode: str) -> None:
+        """Show Aktif / Fokus / Senyap on the orb. Called at startup and by the tray.
+
+        Deliberately three lines: this file is a handful of lines under its
+        ceiling, and the work — validating the mode, saving it, deciding what it
+        does to the orb — belongs in `ui.lifecycle.apply_presence_mode`, which
+        owns the wiring. This is the facade the rest of the app already talks to.
+        """
+        from ui.lifecycle import apply_presence_mode
+        apply_presence_mode(self, mode)
 
     def speech_caption(self, event):
         self._win._speech_caption_sig.emit(event)

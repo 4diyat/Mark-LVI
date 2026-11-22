@@ -5,7 +5,7 @@ WHY THIS MOVED OUT OF ui/window.py
     `MainWindow` — and it is a `QWidget` that needs nothing from the window:
     checked, not assumed, by asking whether it ever calls `parent()` or names an
     attribute of `MainWindow`. It does neither. Everything it touches is Qt, the
-    palette, `desktop_orb.paint_orb` and `core.avatar`.
+    palette, `orb_paint.paint_ring` and `core.avatar`.
 
 THE AVATAR IMPORT IS DELIBERATELY SUPPRESSED
     `HoloAvatar` is imported under a bare `except Exception`, and that is the
@@ -33,6 +33,19 @@ except Exception:      # pragma: no cover — the HUD must never die over cosmet
     HoloAvatar = None
 
 from ui.theme import C, qcol
+
+
+def _presence() -> str:
+    """The presence mode, read through the one module that owns it.
+
+    Guarded because a canvas must never be the reason the assistant fails to
+    start — and a machine with no config file is a state this project supports.
+    """
+    try:
+        from core import presence_mode
+        return presence_mode.current()
+    except Exception:                               # noqa: BLE001
+        return "active"
 
 
 class HudCanvas(QWidget):
@@ -485,8 +498,28 @@ class HudCanvas(QWidget):
             return
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         if self.hud_style == "orb":
-            from ui.desktop_orb import paint_orb
-            paint_orb(p, self.width(), self.height(), self._amp_disp, self.muted)
+            # ONE PAINTER, TWO SURFACES. This used to call
+            # `ui/desktop_orb.paint_orb`, which was written before the design
+            # system existed: it knew nothing about the three presence modes and
+            # told states apart by brightness alone. The 56 px desktop ring got
+            # all of that and this window — the one people actually look at —
+            # kept the old picture, which is exactly how a design lands in the
+            # repo without landing on the screen.
+            #
+            # The background is filled here rather than by the painter: the
+            # painter must not fill a rect, because the same code draws on a
+            # translucent desktop window where a rect would be an opaque square.
+            from ui.orb_paint import hud_state, paint_ring
+
+            p.fillRect(self.rect(), qcol(C.BG))
+            radius = max(8.0, min(self.width(), self.height()) * 0.30)
+            paint_ring(p,
+                       self.width() / 2.0, self.height() / 2.0, radius,
+                       mode=_presence(),
+                       state=hud_state(self.state),
+                       level=self._amp_disp,
+                       alert=self.muted,
+                       phase=(time.time() * 0.35) % 1.0)
             p.end()
             return
         p.fillRect(self.rect(), qcol(C.BG))

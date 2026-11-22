@@ -80,6 +80,13 @@ PERMISSIONS = {
     "clipboard": "reads or writes the clipboard",
 }
 
+# The levels a manifest may claim, reusing the gate's vocabulary. Kept here as
+# literal strings rather than an import of `core.risk_policy`, because the
+# manifest is parsed before a plugin is imported and should stay readable with
+# nothing else loaded.
+LEVELS = ("safe", "medium", "risky")
+
+
 # The imports that imply each permission. Deliberately the same modules the
 # actions/ folder uses, because that is what a plugin author will copy.
 _IMPORT_HINTS = {
@@ -118,6 +125,11 @@ class Manifest:
     sha256: str = ""
     homepage: str = ""
     window: str = ""          # "float"/"docked": a wish, never an instruction
+    # The level this plugin claims for the risk gate. Empty means "not stated",
+    # which the gate treats as `risky` — see `level` below and the docstring of
+    # `core.action_gate`. A plugin that says nothing is asked about; the whole
+    # first-party set says `safe` in its manifest, and a test keeps them honest.
+    level: str = ""
     problems: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
@@ -132,6 +144,8 @@ class Manifest:
             bits.append(f"by {self.author}")
         if self.permissions:
             bits.append("needs " + ", ".join(self.permissions))
+        if self.level:
+            bits.append(f"risk {self.level}")
         return " — ".join(bits)
 
     @property
@@ -243,6 +257,12 @@ def read(py_file: Path, plugin_name: str = "") -> Manifest | None:
             "unknown permission(s) " + ", ".join(sorted(map(str, unknown)))
             + " — the list a user can consent to is: " + ", ".join(sorted(PERMISSIONS)))
 
+    level = str(raw.get("level") or "").strip().lower()
+    if level and level not in LEVELS:
+        problems.append(
+            f"unknown level {level!r} — a plugin may claim one of: "
+            + ", ".join(LEVELS))
+
     return Manifest(
         name=name or plugin_name or py_file.stem,
         version=str(raw.get("version") or ""),
@@ -252,6 +272,7 @@ def read(py_file: Path, plugin_name: str = "") -> Manifest | None:
         sha256=str(raw.get("sha256") or "").strip().lower(),
         homepage=str(raw.get("homepage") or ""),
         window=str(raw.get("window") or "").strip().lower(),
+        level=level if level in LEVELS else "",
         problems=problems,
     )
 

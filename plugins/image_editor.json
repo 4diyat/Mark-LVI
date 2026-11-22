@@ -6,5 +6,6 @@
   "permissions": [
     "files"
   ],
+  "level": "medium",
   "sha256": "6b019b22523c836b0a2f66c1ddeb4171491c0f92d299c9e7e3fc7a35e1644a4b"
 }

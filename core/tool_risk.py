@@ -135,6 +135,40 @@ def sub_action(tool: str, args: Mapping | None) -> str:
     return str(value or "").strip().lower()
 
 
+def classify_plugin(tool: str, declared: str) -> CallRisk:
+    """The level of a PLUGIN call, from the level its manifest claims.
+
+    WHY A PLUGIN IS NOT CLASSIFIED LIKE AN ACTION
+        An action lives in this repository and `classify` knows its name. A
+        plugin may come from anywhere, and `classify` has never heard of it —
+        so it would answer `risky` for every plugin, forever, and the honest
+        ones (`currency_rates`, `market_price`, the notes readers) would ask
+        the user for permission to read a public exchange rate. That is the
+        erosion path: a banner nobody needs is a banner nobody reads.
+
+    WHY AN UNSTATED LEVEL IS STILL `risky`
+        A plugin that does not say what it does is exactly the case the gate
+        exists for. Omission must not be an escape, so `declared` empty falls
+        through to `risky` with a reason that names the omission — the user can
+        then fix the plugin by adding one line to its manifest.
+
+    A plugin CANNOT claim better than `safe`, and `safe` is not taken on trust:
+    `core.plugin_manifest.verify` refuses a manifest whose declared permissions
+    disagree with what the source actually imports, so a plugin that claims
+    `safe` while importing `subprocess` never reaches this function.
+    """
+    name = str(tool or "").strip()
+    level = str(declared or "").strip().lower()
+    if level in (SAFE, MEDIUM):
+        return CallRisk(name, "", level,
+                        "the plugin's manifest declares it", reversible=False)
+    if level == RISKY:
+        return CallRisk(name, "", RISKY,
+                        "the plugin's manifest declares it risky", reversible=False)
+    return CallRisk(name, "", RISKY,
+                    "the plugin's manifest does not state a level", reversible=False)
+
+
 def classify(tool: str, args: Mapping | None = None) -> CallRisk:
     """The level of one call. Never raises; unknown input is `risky`.
 

@@ -7,6 +7,7 @@
   "permissions": [
     "network"
   ],
+  "level": "safe",
   "sha256": "340f5920b81a4fc563e6aa745ddc35159b373ffd8d56629a050f22e37aedf4f3",
   "homepage": "https://aladhan.com"
 }

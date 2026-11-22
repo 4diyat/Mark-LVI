@@ -6,5 +6,6 @@
   "permissions": [
     "network"
   ],
+  "level": "risky",
   "sha256": "918bdae10f38112de9e41c8077d7488d3aaf8827061fc7f21df9cbf462c841dd"
 }

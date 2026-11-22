@@ -96,6 +96,37 @@ sumber setiap aksi dan gagal kalau namanya ada di daftar tetapi aksinya tidak
 pernah memanggil `confirm.request`. Menambah nama di sana tanpa pagar sungguhan
 berarti melewati gate sepenuhnya.
 
+## Plugin dan tool stateless juga lewat gate
+
+Gate sudah terpasang di jalur **aksi** selama beberapa commit. Dua jalur lain
+masih menjalankan tool tanpa bertanya sama sekali:
+
+- **plugin** — jatuh ke `run_in_executor` kedua tanpa gate, sehingga ke-17
+  plugin berjalan dengan wewenang asisten dan tanpa banner, sementara
+  `core/action_gate` punya banyak tes hijau dan docstring yang menyebut dirinya
+  "tempat sebuah panggilan tool diizinkan";
+- **tool stateless** (`undo`, `manage_monitor`) — keduanya berlevel `risky` dan
+  berjalan tanpa banner maupun baris audit.
+
+Masalahnya, plugin tidak bisa diklasifikasi seperti aksi: `tool_risk.classify`
+tidak pernah mendengar nama plugin, jadi jawabannya selalu `risky`. Itu aman
+dan tetap gagal — banner untuk membaca kurs publik adalah cara pengguna belajar
+menutup banner tanpa membaca, termasuk banner yang penting.
+
+Jadi plugin **menyatakan sendiri** tingkatnya di manifest (`"level": "safe" |
+"medium" | "risky"`), dan **tidak menyatakan** berarti `risky` dengan alasan
+yang menyebut kelalaiannya — supaya bisa diperbaiki dengan satu baris. Yang
+tidak berubah: setelah klasifikasi, jalurnya sama persis (baris audit, banner,
+tidak-dijalankan), karena jalur kedua adalah jalur yang menyimpang.
+
+Satu tes menangkap kesalahan saya sendiri: `mt5_orb` saya tandai `safe`, padahal
+permintaan grafik menyimpan PNG dan bisa membuka terminal — perubahan yang tidak
+bisa dibatalkan asisten. Sekarang `medium`.
+
+`manage_monitor` juga harus dipindah ke executor: `core.confirm.request`
+menjalankan aksi setelah pengguna menekan tombol, dan menjalankannya langsung di
+thread event loop akan menghentikan loop tempat ia antre.
+
 ## Konfirmasi tidak bisa dipalsukan model
 
 `core.action_gate.check()` tidak punya parameter `confirmed`, `force`, `yes`,
@@ -136,6 +167,76 @@ glow hilang, cincin jadi titik-titik) sekarang menjadi perilaku di
 `ui/orb_overlay.appearance()` dan diuji di `tests/test_orb_overlay.py` serta
 `tests/test_presence_wiring.py`.
 
+### Dari mana mode itu datang, dan ke mana perginya
+
+```
+baki: "Aktif / Fokus / Senyap"   (satu item, menelusuri tiga mode)
+        │  cycle_presence_mode()
+        ▼
+core.presence_mode.set_mode()  ──write──▶  config/api_keys.json
+        │                                      ("presence_mode")
+        ├─▶ ui.orb_overlay.set_mode()   orb meredup / menyala
+        └─▶ scheduler thread            offer() → show / hold / drop
+
+saat mulai: main.py  _presence_bound()
+        │  bind(read=get_presence_mode, write=save_presence_mode)
+        ▼
+   presence_mode.current()  ──▶  ui.apply_presence(mode)  ──▶  orb
+```
+
+Rantai ini sempat **putus dan semua tesnya hijau**: `apply_presence_mode` tidak
+pernah dipanggil, dan `presence_mode` tidak pernah di-`bind`, sehingga
+`current()` selalu menjawab `active`. Akibatnya pengaturan tersimpan, orb
+meredup sekali, lalu dilupakan saat restart. `tests/test_presence_chain.py`
+sekarang menguji rantainya, bukan potongannya — termasuk membaca `main.py`
+secara struktural untuk memastikan bind terjadi **sebelum** keputusan
+notifikasi pertama.
+
+### Desain yang terlihat, bukan hanya benar
+
+`paint_orb` sempat **tidak pernah dipanggil**: painter-nya objek biasa tanpa
+`paintEvent`, jadi jendela orb dibuat, ditampilkan, transparan — dan kosong.
+Geometri, tiga mode, dan hit region semuanya lulus tes, dan tak satu pun dari
+itu yang menaruh piksel di layar. Itu beda antara desain yang **diimplementasi**
+dan desain yang **terlihat**.
+
+Sekarang `_build_canvas()` membuat `QWidget` sungguhan dengan `paintEvent`, dan
+tesnya memeriksa hal struktural — "ada yang tersambung ke siklus paint" —
+bukan hanya aritmetika. Tingkat audio juga mengalir ke glow lewat
+`set_audio_level`, dengan nilai di-clamp: Qt menolak gradien dengan stop di
+luar 0..1, dan kegagalannya muncul sebagai cincin biasa tanpa penjelasan.
+
+Tiga permukaan (tooltip, bubble, orb) diperbarui **independen**. Sebelumnya satu
+orb yang gagal mengecat bisa menjatuhkan pembaruan tray — dan justru di situ
+tooltip adalah satu-satunya bacaan yang tersisa.
+
+### Satu painter, dua permukaan
+
+Kegagalannya lebih halus daripada orb kosong: ada **dua** painter.
+`ui/desktop_orb.py` menggambar orb jendela utama dan tidak tahu apa-apa soal
+tiga mode kehadiran — ia membedakan keadaan hanya lewat kecerahan.
+`ui/orb_overlay.py` punya painter yang benar, dengan mode, glow, dan bentuk
+yang berbeda per keadaan. Pekerjaan desainnya masuk ke yang kecil, sementara
+jendela yang benar-benar dilihat orang tetap memakai gambar lama.
+
+Yang membuat ini bertahan lama: tidak ada tes yang gagal. Painter hanya salah
+**di dalam gambar**, dan tak ada tes yang membaca gambar.
+
+Sekarang `ui/orb_paint.py` memegang satu painter dengan kontrak *titik pusat
+dan radius*, bukan persegi panjang. Itu intinya: overlay meminta 28 px, HUD
+meminta sebanyak yang muat di jendelanya, dan permukaan ketiga tidak butuh
+salinan ketiga dari matematika elips. `ui/desktop_orb.py` dihapus, bukan
+dibiarkan menganggur — painter yang tidak dipakai akan dipakai lagi.
+
+Keadaan dibedakan lewat **bentuk**: mendengarkan adalah mahkota gerigi,
+bekerja adalah satu busur yang menyapu, bicara menebalkan cincin, dan Senyap
+menghapus cincinnya sama sekali. Amber hanya dipakai untuk satu hal — mikrofon
+mati — karena desain menyimpannya untuk peringatan.
+
+Label item baki menyebut **mode**, bukan aksinya ("Fokus — saran ditahan"),
+dan dibaca ulang setelah setiap klik: menu yang masih menampilkan mode lama
+adalah bug yang sama dengan centang yang basi, satu baris lebih bawah.
+
 ---
 
 ## Anggaran harian saran
@@ -174,7 +275,7 @@ pribadi, dan hitungan saran hari ini tidak berarti apa pun setelah di-commit.
 | Modul | Status | Catatan |
 |---|---|---|
 | `ui/toast_queue.py` | **selesai** | antrean, kapasitas 3, hitungan yang dibuang; bebas Qt |
-| `ui/orb_overlay.py` | **selesai** | 96 px, meredup di Fokus/Senyap; klik di luar cincin diteruskan ke desktop |
+| `ui/orb_overlay.py` | **selesai** | 96 px, meredup di Fokus/Senyap; `paintEvent` sungguhan |
 | `ui/command_bar.py` | **selesai** | Ctrl+Space, riwayat 10 baris; fokus kembali dicatat, bukan diklaim |
 | `core/undo_journal.py` | **tidak perlu** | `core/undo.py` sudah melakukan ini |
 | `core/tool_registry.py` | belum | `risk_policy.register()` sudah jadi tempatnya |

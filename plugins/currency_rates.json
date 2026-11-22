@@ -7,6 +7,7 @@
   "permissions": [
     "network"
   ],
+  "level": "safe",
   "sha256": "e3b4609c1a09f6a26826d3d2583600bd8d1c4c5dfbd4aab99e2d58fcc7c22265",
   "homepage": "https://frankfurter.dev"
 }

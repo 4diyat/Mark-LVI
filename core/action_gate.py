@@ -74,7 +74,8 @@ def _audit(tool: str, level: str, outcome: str, detail: str = "") -> None:
 
 def check(tool: str, run: Callable[[], Any], args: Mapping | None = None,
           *, self_gated: bool = False, confirm_title: str = "",
-          confirm_detail: str = "", on_decline: Callable[[str], str] | None = None
+          confirm_detail: str = "", on_decline: Callable[[str], str] | None = None,
+          plugin_level: str | None = None
           ) -> Result:
     """Classify one call, record it, then run it or park it behind a human.
 
@@ -86,8 +87,16 @@ def check(tool: str, run: Callable[[], Any], args: Mapping | None = None,
     `args` is what makes the classification per-call: pass the tool's arguments
     and `computer_settings(action='shutdown')` is asked about while
     `computer_settings(action='volume_up')` is not.
+
+    `plugin_level` is the level a plugin's manifest claims, and it is the reason
+    this is a parameter rather than a second function. A plugin is CLASSIFIED
+    differently (see `tool_risk.classify_plugin`), but everything after that —
+    the audit line, the banner, the fact that it did not run — is identical, and
+    a second code path is the one that drifts. `None` means "not a plugin" and
+    leaves every existing call unchanged.
     """
-    risk = tool_risk.classify(tool, args)
+    risk = (tool_risk.classify(tool, args) if plugin_level is None
+            else tool_risk.classify_plugin(tool, plugin_level))
     name = risk.audit_name
     _audit(name, risk.level, REQUESTED, confirm_title or "")
 

@@ -114,6 +114,23 @@ SELF_GATED_ACTIONS = frozenset({"computer_settings", "code_helper", "dev_agent",
 def action_gate_self_gated(name: str) -> bool:
     """Whether this action is responsible for its own confirmation."""
     return name in SELF_GATED_ACTIONS
+
+
+def _presence_bound() -> str:
+    """Bind `core.presence_mode` to the config file and return the saved mode.
+
+    Small and module-level rather than inline in `run()`: the same four lines
+    are needed at startup and by the tray's menu, and a second copy is how the
+    read side and the write side start disagreeing.
+    """
+    from core import presence_mode
+    from memory.config_manager import get_presence_mode, save_presence_mode
+
+    try:
+        presence_mode.bind(read=get_presence_mode, write=save_presence_mode)
+    except Exception as e:                          # noqa: BLE001
+        print(f"[Presence] could not bind the saved mode: {type(e).__name__}: {e}")
+    return presence_mode.current()
 from core.echo                 import EchoGuard
 from core.viseme               import VisemeStream
 from core.wake_word            import (
@@ -1438,7 +1455,27 @@ class JarvisLive:
 
         try:
             if _dispatch.handles(name):
-                result = await _dispatch.dispatch(name, args)
+                # THE STATELESS TOOLS GO THROUGH THE GATE TOO, and they were the
+                # quietest hole: `undo` and `manage_monitor` are classified
+                # `risky` (a reversal that cannot be reversed, a display setting
+                # that cannot be put back) and ran here with no banner and no
+                # audit line at all. The other three are `safe`, so this costs
+                # them one executor hop and gains them an audit record.
+                #
+                # `asyncio.run` inside the executor thread, not on this one: the
+                # gate wants a plain callable and the tool is a coroutine. The
+                # executor thread has no loop of its own, which is what makes
+                # running one there legal — doing it here would raise.
+                from core import action_gate as _gate
+
+                def _run_dispatch():
+                    return asyncio.run(_dispatch.dispatch(name, args))
+
+                _verdict = await loop.run_in_executor(
+                    None, lambda: _gate.check(name, _run_dispatch, args))
+                result = _verdict.message or "Done."
+                if not _verdict.ran:
+                    result = ""
 
             elif name == "screen_process":
                 import time as _t_mod
@@ -1565,11 +1602,35 @@ class JarvisLive:
 
             else:
                 if self._plugin_registry.has(name):
-                    r = await loop.run_in_executor(
+                    # Imported HERE and not reused from the branch above: the
+                    # action path binds `_gate` inside its own `elif`, so it is
+                    # an unbound local on every other path. Cheap either way.
+                    from core import action_gate as _gate
+                    # A PLUGIN IS ASKED ABOUT BY ITS OWN MANIFEST, and through
+                    # the same gate as an action — not by a second copy of the
+                    # decision. `classify` would answer `risky` for every
+                    # plugin forever (it has never heard the name), which is
+                    # safe but teaches the user to dismiss banners: the honest
+                    # ones read public exchange rates.
+                    #
+                    # Omission is still risky. A plugin with no manifest, or one
+                    # whose manifest states no level, gets the banner and a
+                    # reason that says so.
+                    _verdict = await loop.run_in_executor(
                         None,
-                        lambda: self._plugin_registry.run(name, args, player=self.ui, session_memory=None)
-                    )
-                    result = r or "Done."
+                        lambda: _gate.check(
+                            name,
+                            lambda: self._plugin_registry.run(
+                                name, args, player=self.ui, session_memory=None),
+                            args,
+                            plugin_level=self._plugin_registry.declared_level(name),
+                        ))
+                    result = _verdict.message or "Done."
+                    if not _verdict.ran:
+                        # A parked call did not run, so there is nothing to
+                        # report as done. The banner is up; the model has the
+                        # sentence to say.
+                        result = ""
                 else:
                     result = f"Unknown tool: {name}"
 
@@ -2666,6 +2727,15 @@ class JarvisLive:
             log  = self.ui.write_log,
         )
         set_trim_notifier(self.ui.write_log)
+
+        # ── The presence mode, read from the file ────────────────────────────
+        # `core.presence_mode` holds Aktif / Fokus / Senyap for the scheduler
+        # thread, which has no widget to ask. Without this bind it answers
+        # "active" forever: the tray wrote the setting, the orb dimmed, and a
+        # restart silently forgot both. Bound here, next to the confirm gate and
+        # for the same reason — one wiring point, not one per caller.
+        _presence_bound()
+        self.ui.apply_presence(_presence_bound())
 
         # Tell the device picker the exact rates the streams open at, from the
         # constants that actually open them — so it can never list a device that
