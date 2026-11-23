@@ -14,7 +14,7 @@
 
 ## Teks
 
-Enam peran. Itu saja.
+Enam peran, lima ukuran. Itu saja.
 
 | Token | Ukuran | Peran | Asal (artboard) |
 |---|---|---|---|
@@ -23,7 +23,7 @@ Enam peran. Itu saja.
 | `BODY` | **13 px** | Isi percakapan, label baris, tombol | 20× 11.5 px + 12× 12 px |
 | `CARD_TITLE` | **16 px** | Judul kartu | 12.5–13 px → dinaikkan (aturan 4) |
 | `DISPLAY` | **26 px** | Angka besar, pertanyaan pembuka | 26 px (`Pilih cara JARVIS hadir`) |
-| `WORDMARK` | **13 px** | "JARVIS" di kepala panel | 13 px, bobot 700, tracking 1.4 |
+| `WORDMARK` | **13 px** | "JARVIS" di kepala panel | 13 px, bobot 700, tracking 1.4 — **sama dengan `BODY`**, beda peran bukan beda ukuran |
 
 ### Yang berubah, dan kenapa
 
@@ -175,10 +175,20 @@ adalah *aturan pemakaiannya*.
 | `LMUTED` | `#5B7480` | **4.94 : 1** | ✅ (margin tipis) |
 | `LACC` | `#0A7A93` | **4.98 : 1** | ✅ (margin tipis) |
 
-> **Catatan tentang margin tipis.** `LMUTED` dan `LACC` hanya 0.44 dan 0.48 di
-> atas ambang. Jangan digelapkan lebih lanjut, dan jangan diletakkan di atas
-> latar selain `#FFFFFF` — di atas `BASE` (`#F6F9FB`) kontrasnya turun di bawah
-> 4.5:1. Ini sebabnya kartu terang selalu putih penuh, tidak pernah abu muda.
+> **Catatan tentang margin tipis.** Palet terang hampir tidak punya ruang
+> gerak: `LMUTED` 4.94:1 di atas putih dan **4.67:1** di atas `BASE` terang
+> (`#F6F9FB`); `LACC` 4.98:1. Semuanya **lolos**, tetapi dengan margin ~0.4.
+>
+> **Koreksi.** Draf pertama dokumen ini mengklaim `LMUTED` *gagal* di atas base
+> terang, dan memakai itu untuk membenarkan aturan "kartu terang selalu putih".
+> Setelah diukur, klaim itu salah — 4.67 masih lolos. Aturannya tetap
+> dipertahankan, tetapi dengan alasan yang benar: kartu putih memberi ~0.27
+> margin ekstra yang berarti pada palet yang tinggal punya 0.4. `tests/test_tokens.py`
+> sekarang mengunci kedua angka itu, dan akan memberi tahu kalau suatu saat
+> ruang geraknya melebar sehingga alasannya boleh dilonggarkan.
+>
+> **Yang mengikat:** jangan menggelapkan `LMUTED` atau `LACC`, dan jangan
+> meletakkannya di atas latar terang selain `#FFFFFF` atau `#F6F9FB`.
 
 ### Aturan pemakaian
 

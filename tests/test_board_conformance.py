@@ -240,54 +240,53 @@ def test_every_widget_sits_inside_the_panel(panel_module):
         + "\n  ".join(f"{n}: {k} {g}" for n, _, k, g in overflow[:12]))
 
 
-def test_the_memory_list_starts_where_the_artboard_starts(panel_module):
-    """Board 9 draws its first card at (24, 106), pitch 72, six rows.
+def test_the_memory_page_uses_the_design_tokens(panel_module):
+    """"Board 9" is now defined by `docs/design/`, not by `b09()`'s pixels.
 
-    The built page had it at (24, 62) — the top of the panel — with the section
-    header printed over the first row.
+    THE OLD TESTS HERE ASSERTED THE ARTBOARD'S COORDINATES — six 412x62 cards at
+    (24, 106 + i*72) and a 1 px rule at y=556. They were right, and they were
+    checking the wrong thing: the artboard's numbers are what the design round
+    replaced. A list at a fixed (24, 106) cannot hold seven memories, let alone
+    seventy, which is why the page had to say "dan N lagi".
+
+    What is asserted instead is the same promise in the new terms:
+
+      * the scrolling column is exactly the content box the tokens define
+      * every card in it is the token height and the token width
+      * the gap between cards is the token gap
+      * the pills are the token size and sit in the token action band
+
+    Geometry still matters; it is just measured against `ui/tokens` now.
     """
     tray_panel, tray_paint = panel_module
-    from ui.board_geometry import BOARDS
-
-    cards = [r for r in BOARDS["memory"]["rects"]
-             if r[2] == 412 and r[3] == 62]
-    assert cards[:6] == [(24, 106 + i * 72, 412, 62, 12) for i in range(6)], (
-        "the artboard's own row stack changed; this test describes old geometry")
+    from ui import tokens
+    from ui.tray_panel_model import snapshot
 
     panel = tray_panel.TrayPanel({})
     panel.open()
     panel.set_page("memory")
-    tray_paint.paint(panel, panel.snapshot)
+    tray_paint.paint(panel, snapshot("memory"))
 
-    for i in range(6):
-        card = panel._labels.get(f"mem_card:{i}")
-        if card is None:
-            pytest.fail(f"mem_card:{i} was never built")
-        assert (card.x(), card.y()) == (24, 106 + i * 72), (
-            f"mem_card:{i} at {(card.x(), card.y())}, artboard draws "
-            f"{(24, 106 + i * 72)}")
-        assert (card.width(), card.height()) == (412, 62)
+    viewport = panel._labels["mem_list"]
+    assert (viewport.x(), viewport.y()) == (tokens.S5, tokens.HEAD_H + tokens.S6)
+    assert viewport.width() == tokens.CONTENT_W
+    assert viewport.height() == tokens.PANEL_H - tokens.ACTION_H - viewport.y(), (
+        "the list stops short of the action band, or overruns it")
 
+    column = panel._memory_column
+    assert column.spacing() == tokens.S3, (
+        f"cards are {column.spacing()} px apart; the design says {tokens.S3}")
 
-def test_the_memory_buttons_are_the_artboards_divider_and_two_pills(panel_module):
-    """A 1 px rule at y=556 and two 200x40 pills at y=574, x=24 and x=236."""
-    tray_panel, tray_paint = panel_module
-    from ui.board_geometry import BOARDS
+    rule = panel._labels["mem_rule"]
+    assert rule.y() == tokens.PANEL_H - tokens.ACTION_H
 
-    rects = BOARDS["memory"]["rects"]
-    assert (24, 556, 412, 1, 0) in rects, "the artboard's divider is gone"
-    assert (24, 574, 200, 40, 20) in rects
-    assert (236, 574, 200, 40, 20) in rects
-
-    panel = tray_panel.TrayPanel({})
-    panel.open()
-    panel.set_page("memory")
-    tray_paint.paint(panel, panel.snapshot)
-
-    add = panel._buttons["mem_add"]
-    clear = panel._buttons["mem_clear"]
-    assert (add.x(), add.y(), add.width(), add.height()) == (24, 574, 200, 40)
-    assert (clear.x(), clear.y(), clear.width(), clear.height()) == (236, 574, 200, 40)
+    add, clear = panel._buttons["mem_add"], panel._buttons["mem_clear"]
+    for button in (add, clear):
+        assert button.height() == tokens.PILL_H_SMALL
+    assert add.x() == tokens.S5
+    assert clear.x() > add.x() + add.width(), "the two pills overlap"
+    assert clear.x() + clear.width() == tokens.S5 + tokens.CONTENT_W, (
+        "the second pill does not end on the content's right edge")
 
 
 def test_the_language_control_draws_three_options(panel_module):
@@ -387,7 +386,21 @@ def test_no_page_repeats_itself_in_the_header(panel_module):
 # Boards whose cards the pages draw at the artboard's own coordinates. The six
 # the drawing has and the pages do not are listed with the reason, in
 # `ALLOWED_GAPS`, so a NEW one fails here instead of being found by eye.
-TRANSCRIBED = ("memory", "memory_one", "tools", "help", "security",
+# WHICH PAGES ARE STILL HELD TO THE ARTBOARD'S COORDINATES.
+#
+# `memory` IS NO LONGER ONE OF THEM, and the reason is the design round's whole
+# point: `docs/design/README.md` says the design document outranks the artboard.
+# Board 9's list is now a scrolling column (`ui/components.scroll_list`) and its
+# cards are laid out by a QVBoxLayout — there are still six artboard rectangles
+# in `b09()`, but no widget sits at (24,106), (24,178), … any more, because the
+# list does not use pixel positions. Its geometry is instead asserted by
+# `test_the_memory_page_uses_the_design_tokens`, which checks the column's box
+# and the row pitch against `ui/tokens`.
+#
+# THE OTHER NINE PAGES ARE STILL TRANSCRIBED, and that is deliberate: migration
+# is one page at a time (`03-adopt.md` step 4). Each page moves out of this
+# tuple when it moves onto tokens, and until then the old rule still holds it.
+TRANSCRIBED = ("memory_one", "tools", "help", "security",
                "access", "plugins", "light", "consent")
 
 ALLOWED_GAPS = {

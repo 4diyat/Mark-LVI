@@ -5,7 +5,7 @@ Spesifikasi desain untuk panel baki 460×660. Dibaca berurutan.
 | Dokumen | Isi |
 |---|---|
 | [`00-principles.md`](00-principles.md) | Lima aturan yang memutus sengketa, dan alasan ia ada |
-| [`01-tokens.md`](01-tokens.md) | Enam ukuran teks, delapan jarak, empat radius, palet — semuanya terukur |
+| [`01-tokens.md`](01-tokens.md) | Enam peran teks (lima ukuran), delapan jarak, empat radius, palet — semuanya terukur |
 | [`02-screens.md`](02-screens.md) | 13 halaman, satu tabel per halaman: tugas, susunan, keadaan kosong |
 | [`03-adopt.md`](03-adopt.md) | Urutan migrasi dan apa yang bisa ditegakkan test |
 

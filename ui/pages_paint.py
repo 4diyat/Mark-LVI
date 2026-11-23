@@ -28,45 +28,31 @@ def _labels(panel):
 
 
 def paint_memory(panel, snap) -> None:
-    """Board 9: the count, the rows that fit, and the remainder."""
+    """Memori: the section marker, the actions, and the rows the store holds.
+
+    WHAT THIS NO LONGER DOES
+        It used to draw exactly `pages_memory.LIST_ROWS` cards, hide the rest,
+        and put "dan N lagi" in the band above the divider. That was a truthful
+        workaround for a container that could not scroll — and a workaround
+        that gets worse as the store grows, because with twelve memories the
+        panel showed half and with twelve hundred it would say "dan 1.194 lagi".
+
+        The list is now a scrolling column (`components.scroll_list`) and every
+        entry gets a card. `populate_memory` rebuilds it on each paint, because
+        `entries()` re-sorts newest-first on every read and a rebuilt list is
+        the only version that cannot wire a cross to the wrong memory.
+
+    WHAT THIS STILL DOES
+        The section marker, the two pills' labels, and nothing else. The header
+        above already carries the count (`b09()` passes "12 hal yang JARVIS
+        ingat" to `panel_head`), formatted from the store at snapshot time —
+        one count, one place.
+    """
     from ui import pages_memory
 
     labels = _labels(panel)
-    rows = pages_memory.entries()
-    shown = pages_memory.LIST_ROWS
-
-    # THE COUNT IS THE HEADER'S, NOT THIS PAGE'S. `b09()` passes it to
-    # `panel_head()`, so it renders in the shared subtitle at (24,54) — the
-    # page's own second line was a duplicate of it 8 px lower.
     labels["mem_section"].setText(_t("ui.page.memory.section"))
-
-    # THE CARDS STAY ON SCREEN EVEN WHEN THE STORE IS EMPTY. `b09()` draws six
-    # of them and hiding every one left the page as a section header over blank
-    # space with the key/value labels still visible underneath — the cards were
-    # exactly where the artboard puts them and nobody could see them. An empty
-    # list is a fact; an empty PAGE is a bug. The first card carries the
-    # sentence that says there is nothing yet.
-    for index in range(shown):
-        row = rows[index] if index < len(rows) else None
-        if row is None:
-            labels[f"mem_card:{index}"].show()
-            labels[f"mem_key:{index}"].setText(
-                _t("ui.page.memory.empty_row") if index == 0 and not rows else "")
-            labels[f"mem_val:{index}"].setText("")
-            panel._buttons[f"mem_open:{index}"].hide()
-            continue
-        labels[f"mem_card:{index}"].show()
-        labels[f"mem_key:{index}"].setText(str(row.get("key") or ""))
-        labels[f"mem_val:{index}"].setText(str(row.get("value") or ""))
-        button = panel._buttons[f"mem_open:{index}"]
-        button.show()
-        button.setText(_t("ui.page.memory.open"))
-
-    # THE REMAINDER IS STATED, NOT HIDDEN. The header counts the store; the list
-    # counts the widgets. A page that showed eight of twelve and said nothing
-    # would be claiming the panel holds everything.
-    rest = max(0, len(rows) - shown)
-    labels["mem_more"].setText(_t("ui.page.memory.more", count=rest) if rest else "")
+    pages_memory.populate_memory(panel)
     panel._buttons["mem_add"].setText(_t("ui.page.memory.add"))
     panel._buttons["mem_clear"].setText(_t("ui.page.memory.clear"))
 

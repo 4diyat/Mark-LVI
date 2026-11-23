@@ -103,11 +103,26 @@ class _Object:
         # stub that ignored it would make `panel.layout()` None — which is the
         # same shape as the bug this file exists to catch, for a different
         # reason.
-        if a and isinstance(a[0], _Object):
+        #
+        # ONLY A LAYOUT INSTALLS ITSELF. This used to fire for EVERY `_Object`
+        # passed as the first argument, so `QWidget(card)` — a child widget of
+        # a card — called `card.setLayout(child)` and replaced the card's real
+        # layout with a plain widget. A page that built a two-column row then
+        # looked, to every test that walked the tree, like an empty box: the
+        # layout was there, its children were not, and `card.layout()` answered
+        # a QWidget. Real Qt installs a layout and only a layout.
+        if isinstance(self, _Layout) and a and isinstance(a[0], _Object):
             a[0].setLayout(self)
 
     # layout
     def setLayout(self, lay):
+        # A LAYOUT IS REAL STATE ON ANY WIDGET, not only on the ones that
+        # happened to be built as `_Layout` instances. The migrated board pages
+        # put a card's contents in a QHBoxLayout and its labels in a
+        # QVBoxLayout; when `setLayout` fell through `__getattr__` to a lambda,
+        # `card.layout()` answered a fresh lambda and every test that walks a
+        # card's children saw an empty tree. That is the same shape of bug the
+        # alignment and spacing setters had.
         self._layout = lay
         if isinstance(lay, _Layout):
             lay._set_owner(self)
@@ -127,6 +142,30 @@ class _Object:
 
     def addStretch(self, *a, **k):
         pass
+
+    # SPACING AND MARGINS ARE STATE, NOT A NO-OP. `setSpacing` used to fall
+    # through `_Object.__getattr__` to a lambda that discarded its argument, so
+    # `layout.spacing()` answered None. A page whose list lost its spacing draws
+    # every card touching the next one, and no test could see it. These four
+    # methods are the difference between "the list scrolls" and "the list
+    # scrolls and is readable".
+    def setSpacing(self, value):
+        self._spacing = int(value)
+
+    def spacing(self):
+        return self.__dict__.get("_spacing", 0)
+
+    def setContentsMargins(self, *values):
+        # Qt has two spellings: four ints, or one QMargins. Both land here.
+        if len(values) == 4:
+            self._margins = tuple(int(v) for v in values)
+        elif len(values) == 1:
+            box = values[0]
+            self._margins = tuple(int(getattr(box, side, 0))
+                                  for side in ("left", "top", "right", "bottom"))
+
+    def contentsMargins(self):
+        return self.__dict__.get("_margins", (0, 0, 0, 0))
 
     def parentWidget(self):
         return self._parent
@@ -284,6 +323,36 @@ class _Object:
 
     def sizeHint(self):
         return self
+
+    _fixed_size = None
+    _min_size = None
+
+    def setMinimumHeight(self, height):
+        """A card's height floor. STATE, because a card with no minimum
+        collapses to its text's size hint and the 64 px rhythm disappears."""
+        self._min_size = int(height)
+
+    def minimumHeight(self):
+        size = self._min_size
+        return size if size is not None else -1
+
+    def setFixedSize(self, width, height):
+        """A fixed size is STATE, and it is a useful discriminator.
+
+        Two things needed it. A test that walks a card's layout cannot tell a
+        QPushButton from the container widget by `hasattr(child, "clicked")` —
+        the stub's signal walk gives every widget one — so `_fixed_size` is what
+        says "this is a control the page sized on purpose". And a page that sets
+        a fixed size is stating a design decision, so it should be readable.
+
+        It also APPLIES the size, as Qt does: `setFixedSize` is `setGeometry`
+        with the position kept and both dimensions pinned.
+        """
+        self._fixed_size = (int(width), int(height))
+        self._size = (int(width), int(height))
+        if getattr(self, "_geo", None) is not None:
+            x, y, _w, _h = self._geo
+            self._geo = (x, y, int(width), int(height))
 
     def setGeometry(self, *a, **k):
         """Remember the rectangle, the way Qt's widget does.
@@ -475,6 +544,20 @@ class _Layout(_Object):
             item = self._items[index]
             return type("Item", (), {"widget": staticmethod(lambda w=item: w)})()
         return None
+
+    # `takeAt` REMOVES. It used to fall through `__getattr__` to a lambda that
+    # returned None and left `_items` untouched, so a list that cleared itself
+    # before repopulating (`while layout.count(): takeAt(0)`) never cleared —
+    # and the second paint drew every row twice. The stub would have hidden a
+    # real bug for as long as it existed.
+    def takeAt(self, index):
+        if not (0 <= index < len(self._items)):
+            return None
+        widget = self._items.pop(index)
+        item = type("Item", (), {
+            "widget": staticmethod(lambda w=widget: w if isinstance(w, _Object) else None),
+        })()
+        return item
 
     def addLayout(self, lay, *a, **k):
         if self._owner is None:
@@ -945,11 +1028,40 @@ def _install_qt() -> dict[str, types.ModuleType]:
             return action
     widgets.QMenu = _Menu
     class _ScrollArea(_Object):
+        """A viewport that REMEMBERS whether it was told to resize its widget.
+
+        `setWidgetResizable(True)` is the difference between a scrolling column
+        that lays its cards out at the viewport's width and one that keeps a
+        size hint and grows a horizontal scrollbar. The stub used to swallow the
+        setter and answer `None`, so a page could forget the call and no test
+        could tell — which is the same shape of bug as the alignment one.
+        """
+
+        _resizable = False
+        _frame = 0
+        _hpolicy = None
+
         def setWidget(self, widget):
             self._widget = widget
             _reparent(widget, self)
+
         def widget(self):
             return self._widget
+
+        def setWidgetResizable(self, on):
+            self._resizable = bool(on)
+
+        def widgetResizable(self):
+            return self._resizable
+
+        def setHorizontalScrollBarPolicy(self, policy):
+            self._hpolicy = policy
+
+        def horizontalScrollBarPolicy(self):
+            return self._hpolicy
+
+        def setFrameShape(self, shape):
+            self._frame = shape
     widgets.QScrollArea = _ScrollArea
     widgets.QLineEdit.EchoMode = _EchoMode
     widgets.QToolButton = _stub_class("QToolButton")

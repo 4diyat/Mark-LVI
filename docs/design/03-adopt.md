@@ -17,6 +17,69 @@ angka piksel untuk teks.
 
 ---
 
+## Status pelaksanaan
+
+| Langkah | Keadaan | Catatan |
+|---|---|---|
+| 1 · token | **selesai** | `ui/tokens.py` + `tests/test_tokens.py` (18 fungsi, 25 kasus) |
+| 2 · komponen | **selesai** | `ui/components.py` + `tests/test_components.py` (11 fungsi, 11 kasus) |
+| 3 · Memori | **selesai** | daftar bergulir; 6 kartu tampil dari N |
+| 4 · 12 halaman | belum | |
+| 5 · bersihkan | belum | |
+
+**Titik keputusan langkah 3 sudah lewat**, jadi langkah 4 menunggu penilaian Anda atas
+`docs/verification/list-memory.png`.
+
+### Apa yang berubah saat pelaksanaan, dan kenapa
+
+Tiga hal ditemukan saat mengerjakan, semuanya dicatat karena mengubah rencana:
+
+1. **Enam peran teks, LIMA ukuran.** `WORDMARK` dan `BODY` sama-sama 13 px.
+   Rencana awal menuntut enam angka berbeda; setelah dikerjakan itu salah —
+   wordmark butuh bobot dan tracking berbeda, bukan ukuran berbeda. Memaksa 12
+   atau 14 px hanya untuk mendapat angka keenam adalah kebiasaan lama yang
+   menciptakan 15 ukuran. Test sekarang menuntut **lima ukuran, enam peran**.
+
+2. **Klaim kontras di `01-tokens.md` salah dan sudah dikoreksi.** Dokumennya
+   menyebut `LMUTED` gagal di atas base terang. Diukur: **4.67:1**, masih lolos.
+   Alasannya ditulis ulang dengan benar (margin tinggal ~0.4, jadi tidak boleh
+   digelapkan lebih lanjut), dan test mengunci kedua angka.
+
+3. **`tray_panel.py` melewati 600 baris** saat `memory_open_id` ditambahkan.
+   Yang dipindahkan bukan "apa saja yang muat": empat method tema pindah ke
+   `ui/tray_theme.py` sebagai fungsi murni (`cycle`, `is_valid`, `resolve`),
+   karena itu kebijakan tentang satu setelan — bukan lifecycle panel.
+
+### Bug stub yang ditemukan, dan kenapa itu penting
+
+Test yang dimigrasikan langsung menangkap **empat** cara `tests/qtstub.py`
+menelan state, yang berarti empat kelas bug produksi tidak akan pernah terlihat:
+
+| Yang ditelan | Akibatnya kalau tidak diperbaiki |
+|---|---|
+| `setLayout` pada widget anak | `QWidget(card)` menimpa layout kartu; setiap baris tampak kosong |
+| `addStretch`/`takeAt` | daftar yang membersihkan diri tidak pernah bersih → baris berlipat tiap paint |
+| `setSpacing` | kartu berhimpit, dan tidak ada test yang bisa melihatnya |
+| `setMinimumHeight` | tinggi kartu hilang, irama 64 px lenyap |
+
+`setLayout` yang paling serius: `_Object.__init__` menjalankan `a[0].setLayout(self)`
+untuk **setiap** widget, bukan hanya layout. Jadi `QWidget(card)` — anak dari
+sebuah kartu — memasang dirinya sebagai layout kartu itu. Pohon widget halaman
+mana pun yang punya baris dua kolom terlihat kosong bagi test.
+
+### Alat render juga buta terhadap halaman bergulir
+
+`tools/render_board_overlay.py` hanya melihat widget yang menjadi anak langsung
+halaman. Setelah Memori pindah ke kolom gulir, kartunya menjadi cucu, dan alat
+itu mencetak **kartu contoh milik artboard** — persis jenis kebingungan yang
+pernah saya alami di board 16. Dua perbaikan:
+
+* overlay sekarang menelusuri rantai parent (`_inside`), bukan hanya satu tingkat;
+* `tools/render_list.py` mengukur kolom dari token dan menggambar kartunya,
+  karena widget yang di-layout tidak punya `setGeometry` untuk dibaca.
+
+---
+
 ## Langkah 1 — `ui/tokens.py` (1 sesi)
 
 Satu modul, tanpa Qt, tanpa impor dari `ui/` yang lain.

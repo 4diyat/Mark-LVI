@@ -149,6 +149,18 @@ def test_the_package_has_exactly_the_mockup_modules():
         # reading size, motion, gestures) rather than the machine, and it is the
         # only one that reads the gesture table.
         "pages_access.py",
+        # ── the design round ────────────────────────────────────────────
+        # `tokens` is the design's numbers in one place and `components` is the
+        # shapes built from them. They are separate from `page_kit` because
+        # `page_kit` holds the ARTBOARD's arithmetic (`text_box` converts a
+        # baseline) while these hold the DESIGN's — and the design outranks the
+        # artboard (docs/design/README.md).
+        #
+        # NEITHER IMPORTS THE OTHER'S WORLD. `tokens` imports nothing from `ui/`
+        # and no Qt at all, so a test can read the whole scale without a screen.
+        # `components` imports tokens and Qt (inside its functions), so a page
+        # gets its heights from one place.
+        "tokens.py", "components.py",
     }
     present = {p.name for p in _modules()}
     assert present == expected, (
