@@ -74,8 +74,8 @@ artboards were cited in prose and never parsed. The result, measured against
 the panel, board 15 had two language slots where the sheet draws three, board
 16's plugin rows had no cards, and every page drew its title twice.
 
-Three things now prevent that, and they are the reason the table above can be
-trusted:
+Four things now prevent that, and they are the reason the table above can be
+trusted — three that compare numbers, and one that compares words:
 
 1. **`ui/board_geometry.py` is generated, not written.** `tools/gen_board_geometry.py`
    calls each artboard function in `build.py` and stores the `<rect>` and
@@ -87,9 +87,47 @@ trusted:
    factor 0.72, which reproduces the values already pinned against board 5
    (`404 - 0.72 * 11.5 = 396`) rather than introducing a new convention.
 
-**The one thing this cannot prove is the rendered pixels.** Qt does not run in
-the test sandbox, so a widget at the right coordinates with the wrong stylesheet
-still passes. That check is by eye, in `docs/verification.md`.
+4. **`tools/render_board_overlay.py` rasterises the artboard and prints the
+   page's widgets on top of it, with their text.** The three checks above are
+   numeric and they were all green on pages that were still wrong, because a
+   number cannot see a word. This tool found four defects that every numeric
+   test had passed over:
+
+   * board 16 drew fifteen plugin rows where the artboard draws three, and the
+     fourth landed on the phone card at 360;
+   * the same rows printed raw manifest ids (`code_editor`) instead of names;
+   * the row's second line printed the literal template `{version} · {trust}`
+     and a `(bad-fields:…)` marker, because the call site passed two of the
+     template's three fields;
+   * board 15's language slots were drawn in `i18n.available()`'s order —
+     English, Indonesia — which is the reverse of the drawing's.
+
+   It has two modes, and they answer different questions:
+
+   ```bash
+   tools/render_board_overlay.py plugins            # boxes + text: is it PLACED right
+   tools/render_board_overlay.py plugins --text-only  # only text: does it SAY the right thing
+   tools/render_board_overlay.py plugins --no-widgets # the sheet alone
+   ```
+
+   The boxed mode fills each widget so the sheet's type cannot show through, and
+   the text-only mode leaves the sheet visible so a word in the wrong place is
+   obvious. **Do not read a boxed render as evidence of content** — the first
+   boxed render of board 16 showed the artboard's own `4 7 9 2 1 5` under an
+   empty widget, which reads as the page drawing a fake pairing code. Only the
+   text-only mode can tell you what the page says.
+
+   The tool is honest about the limits of its own picture: it centres text
+   vertically in its box and honours `setAlignment`, because Qt does, and an
+   earlier version that drew at the box's top-left corner made every
+   right-aligned cell look broken. Anything it cannot know (a stylesheet, a
+   font's exact metrics) it does not pretend to.
+
+**What is still not proven is the rendered pixels.** Qt does not run in the test
+sandbox, so a widget at the right coordinates with the wrong stylesheet passes,
+and the overlay is a reconstruction, not a screenshot. That last check is by eye
+on the real panel, and the renders in `docs/verification/board-*.png` are what
+make the review possible at all.
 
 **And the sheet had a bug of its own.** `panel_head(title, sub)` accepts a title
 and draws a literal "JARVIS" instead — so every `bNN` artboard's header reads

@@ -217,6 +217,11 @@ def paint_tools(panel, snap) -> None:
     for index in range(3):
         labels[f"tl_snap_thumb:{index}"].setText(
             _t(f"ui.page.tools.snap_thumb{index + 1}"))
+    # THE ABSENCE SITS WHERE THE ARTBOARD'S Thumbnails ARE, not on its caption.
+    # `b12()` draws three 114x62 layout thumbnails at y=452 and the shortcut
+    # line "Ctrl+Shift+J …" at 572 inside the same card. The first version of
+    # this page put its sentence at 524, where the thumbnails end and the
+    # caption begins, so the two lines overlapped.
     labels["tl_snap_absent"].setText(_t("ui.page.tools.snap_absent"))
 
 
@@ -319,10 +324,19 @@ def paint_access(panel, snap) -> None:
         f"background:{pal['panel']};border-radius:19px;"
         f"border:1px solid {pal['line']};")
     active = pages_admin.active_language()
-    for code in ("en", "id"):
+    from ui.pages_access import language_slots
+
+    # The same order the builder used. Two loops that disagree about
+    # left-to-right is how the slots got reversed in the first place.
+    for code in language_slots():
         button = panel._buttons.get(f"ac_lang:{code}")
         if button is not None:
-            button.setText(code.upper())
+            # THE NAME, NOT THE CODE. `b15()` draws "Indonesia" and "English" in
+            # the 137 px slots; "ID"/"EN" was a different word in the same
+            # place. The build pass already sets this and the paint pass used to
+            # overwrite it with the code — one of the two had to be wrong, and
+            # the drawing settles which.
+            button.setText(_t(f"ui.page.access.language.{code}"))
             button.setChecked(code == active)
     # THE THIRD SLOT IS DRAWN AND SAYS IT IS NOT AVAILABLE. `core.i18n` ships
     # two catalogues and there is no mixed mode; the artboard draws three
@@ -347,6 +361,11 @@ def paint_access(panel, snap) -> None:
     labels["ac_size_fill"].setStyleSheet(
         f"background:{PALETTES[panel._theme]['accent']};border-radius:1px;")
     labels["ac_size_fill"].setGeometry(24, 194, max(2, round(380 * fraction)), 3)
+    # The knob is a 7 px radius disc in the drawing, centred on the fill's end.
+    labels["ac_size_knob"].setStyleSheet(
+        f"background:{PALETTES[panel._theme]['accent']};border-radius:7px;")
+    labels["ac_size_knob"].setGeometry(
+        max(17, round(24 + 380 * fraction - 7)), 187, 14, 14)
     for index, value in enumerate(pages_admin.TEXT_SCALES):
         button = panel._buttons.get(f"ac_scale:{index}")
         if button is not None:
@@ -359,7 +378,17 @@ def paint_access(panel, snap) -> None:
         f"background:{PALETTES[panel._theme]['card']};border-radius:12px;")
     labels["ac_motion_name"].setText(_t("ui.page.access.motion.name"))
     labels["ac_motion_note"].setText(_t("ui.page.access.motion.note"))
-    panel._buttons["ac_motion"].setText(
+    # A TOGGLE IS A STATE, NOT A LABEL. `b15()` draws a bare 40x22 pill and the
+    # first version wrote "Motion on" inside it, which overflowed the pill and
+    # said in words what the switch already says in position. The text is now
+    # empty and the switch's checked state carries the answer; the accessible
+    # name lives in the tooltip, where a screen reader finds it and the eye
+    # does not.
+    motion = panel._buttons["ac_motion"]
+    motion.setText("")
+    motion.setCheckable(True)
+    motion.setChecked(pages_admin.reduced_motion())
+    motion.setToolTip(
         _t("ui.page.access.motion.off") if pages_admin.reduced_motion()
         else _t("ui.page.access.motion.on"))
     labels["ac_gestures_header"].setText(_t("ui.page.access.gestures"))
@@ -368,11 +397,23 @@ def paint_access(panel, snap) -> None:
     # are drawn from it and the third column says what is missing.
     from ui import pages_people
 
-    for index, (name_key, _note_key) in enumerate(pages_people.gesture_rows()[:3]):
+    for index, (name_key, note_key) in enumerate(pages_people.gesture_rows()[:3]):
         labels[f"ac_gest_card:{index}"].setStyleSheet(
             f"background:{PALETTES[panel._theme]['card']};border-radius:12px;")
         labels[f"ac_gest_name:{index}"].setText(_t(name_key))
-        labels[f"ac_gest_act:{index}"].setText(_t("ui.page.access.gestures_rebind_absent"))
+        # THE MIDDLE COLUMN IS THE ACTION, WHICH `b15()` DRAWS AS CYAN TEXT:
+        # "Telapak terbuka / Panggil antarmuka". The first version put "fixed"
+        # here — a statement about the third column in the second column's
+        # space, and it threw away the mapping the page already knows. The
+        # gesture's meaning is a fact; "there is no rebinding" is what the
+        # THIRD column says.
+        labels[f"ac_gest_act:{index}"].setText(_t(note_key))
+        # Right-aligned, as `b15()` draws its "ubah" at x=416 with anchor
+        # "end". Qt has no per-label anchor, so the cell ends where 416 is and
+        # the style does the rest.
+        edit = labels[f"ac_gest_edit:{index}"]
+        edit.setText(_t("ui.page.access.gestures_rebind_absent"))
+        edit.setStyleSheet(f"color:{pal['muted']};")
     labels["ac_footnote"].setText(_t("ui.page.access.footnote"))
 
 
@@ -382,21 +423,43 @@ def paint_plugins(panel, snap) -> None:
     labels = _labels(panel)
     rows = pages_admin.plugin_rows()
     labels["pl_section"].setText(_t("ui.page.plugins.section"))
+    # THREE ROWS, AS `b16()` DRAWS, and the rest are counted rather than
+    # crammed: the artboard's phone card sits at 360, so a fourth row would
+    # land on top of it. A page that drew fifteen rows would not fit the panel
+    # and a page that drew three without saying so would hide twelve plugins.
     drawn = 0
     for index, row in enumerate(rows):
         if f"pl_name:{index}" not in labels:
             continue
         drawn += 1
-        labels[f"pl_name:{index}"].setText(row["name"])
-        labels[f"pl_desc:{index}"].setText(row["description"])
+        name = _t(row["label"]) if row.get("label") else row["name"]
+        labels[f"pl_name:{index}"].setText(name)
+        # THE SECOND LINE IS "version · trust", which is what the artboard
+        # draws ("1.4.0 · resmi"). The description is a sentence, not a label,
+        # and it does not fit a 60 px card next to a name — the artboard shows
+        # it nowhere, so neither does the row.
+        # A MISSING LEVEL MUST NOT LEAVE A DANGLING SEPARATOR. "1.0.0 · " reads
+        # as a truncated string, so a manifest with an unreadable `level` gets
+        # the version alone rather than a bullet pointing at nothing.
+        version = row.get("version") or "—"
+        labels[f"pl_desc:{index}"].setText(
+            _t("ui.page.plugins.row", version=version, trust=_t(row["level"]))
+            if row.get("level") else
+            _t("ui.page.plugins.row.version_only", version=version))
         button = panel._buttons[f"pl_toggle:{index}"]
-        button.setText("ON" if row["on"] else "OFF")
+        button.setText("")
         button.setChecked(bool(row["on"]))
     pal = PALETTES[getattr(panel, "_theme", "dark")]
     for index, row in enumerate(rows[:3]):
         if f"pl_card:{index}" in labels:
             labels[f"pl_card:{index}"].setStyleSheet(
                 f"background:{pal['card']};border-radius:12px;")
+    # THE ROWS THE PANEL CANNOT SHOW ARE COUNTED, not dropped. b16 draws three
+    # and the build ships fifteen; the sentence in the band between the last
+    # card and the phone section says how many exist.
+    rest = max(0, len(rows) - drawn)
+    labels["pl_more"].setText(
+        _t("ui.page.plugins.more", count=rest) if rest else "")
     labels["pl_phone_header"].setText(_t("ui.page.plugins.phone"))
     labels["pl_phone_card"].setStyleSheet(
         f"background:{pal['card']};border-radius:12px;")
@@ -413,6 +476,9 @@ def paint_plugins(panel, snap) -> None:
         f"background:{pal['card']};border-radius:10px;"
         f"border:1px solid {pal['line']};")
     labels["pl_code_box"].setText(_t("ui.page.plugins.code_absent"))
+    labels["pl_code_box"].setStyleSheet(
+        f"background:{pal['card']};border-radius:10px;"
+        f"border:1px solid {pal['line']};padding-left:18px;color:{pal['muted']};")
     if drawn == 0:
         labels["pl_section"].setText(_t("ui.page.plugins.section") + " — 0")
 

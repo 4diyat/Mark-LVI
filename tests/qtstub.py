@@ -235,6 +235,27 @@ class _Object:
     def text(self):
         return self._text
 
+    # `setAlignment` IS A REAL QLABEL METHOD, not a test convenience. The stub
+    # did not have it, so `ui/pages_admin.py` could not right-align the gesture
+    # page's third column without the call vanishing into a no-op — and
+    # `tools/render_board_overlay.py` could not know where the words land. Real
+    # Qt ignores alignment on the widget types that have none; the stub accepts
+    # it everywhere, which is the harmless direction to be wrong in.
+    def setAlignment(self, flags):
+        # `AlignmentFlag.AlignRight` is an `enum.IntFlag`; the stub's own
+        # `_Enum` is not. `int()` on the stub's value raised, so a page that
+        # right-aligned one label failed to build the whole panel — the same
+        # "one exception aborts every page" shape as a bad store read.
+        try:
+            self._align = int(flags or 0)
+        except TypeError:
+            self._align = int(getattr(flags, "value", 0) or 0)
+
+    def alignment(self):
+        return self._align
+
+    _align = 0
+
     def setStyleSheet(self, s):
         self._style = s
 
@@ -477,6 +498,39 @@ class _EchoMode:
     NoEcho = 1
     Password = 2
     PasswordEchoOnEdit = 3
+
+
+# THE ONE FAMILY OF ENUMS WITH VALUES THAT MATTER. Everywhere else the stub
+# returns a singleton that compares to nothing, and that is fine — a test that
+# asserts `Qt.NoFrame` is a test of the stub. Alignment is different: the page
+# SETS it, and `tools/render_board_overlay.py` READS it to know where words
+# land. Real Qt values, so the arithmetic is Qt's arithmetic.
+_ALIGNMENT = {"AlignLeft": 1, "AlignRight": 2, "AlignHCenter": 4,
+              "AlignJustify": 8, "AlignTop": 32, "AlignBottom": 64,
+              "AlignVCenter": 128, "AlignCenter": 132}
+
+
+class _AlignFlag(int):
+    """An alignment flag that acts like the real `Qt.AlignmentFlag` value."""
+
+    def __or__(self, other):
+        return _AlignFlag(int(self) | int(other))
+
+    __ror__ = __or__
+
+    def __and__(self, other):
+        return _AlignFlag(int(self) & int(other))
+
+    __rand__ = __and__
+
+
+class _Alignment:
+    """The `Qt.AlignmentFlag` namespace, with Qt's real integers."""
+
+    def __getattr__(self, name):
+        if name in _ALIGNMENT:
+            return _AlignFlag(_ALIGNMENT[name])
+        return _AlignFlag(0)
 
 
 class _Enums:
@@ -756,6 +810,12 @@ def _install_qt() -> dict[str, types.ModuleType]:
     # could not have caught it.
     _KEY_ROOTS = ("Key", "KeyboardModifier", "MouseButton")
     core.Qt = _Enum()
+    # ALIGNMENT ANSWERS WITH ITS REAL INTEGER. `_Enum` returns itself for every
+    # name, which is fine for a flag nothing reads — but the gesture page
+    # right-aligns its third column and the overlay needs to know that. Values
+    # from `_ALIGNMENT`, combined with `|` and `&` as Qt combines them.
+    core.Qt.AlignmentFlag = _Alignment()
+    core.Qt.Alignment = _Alignment()
     for _root in _KEY_ROOTS:
         setattr(core.Qt, _root, _PathEnum((_root,)))
     core.QDir = type("QDir", (), {"Filter": _Enum()})

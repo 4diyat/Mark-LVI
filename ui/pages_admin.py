@@ -91,8 +91,20 @@ def text_scale() -> float:
     return float(_safe(read, 1.0))
 
 
-def set_text_scale(scale: float) -> bool:
-    """Store a text scale. Unknown values snap to the nearest offered one."""
+def set_text_scale(scale) -> bool:
+    """Store a text scale. Unknown values snap to the nearest offered one.
+
+    `"next"` CYCLES, because the artboard draws a SLIDER and this panel has no
+    drag handling: pressing the track is the one gesture available, and a
+    control that always set the same value would be a slider that only ever
+    slides one way. The knob and the "Sedang · 14 px" line show where it
+    landed, which is what a slider is for.
+    """
+    if str(scale).strip().lower() == "next":
+        current = text_scale()
+        index = min(range(len(TEXT_SCALES)),
+                    key=lambda i: abs(TEXT_SCALES[i] - current))
+        scale = TEXT_SCALES[(index + 1) % len(TEXT_SCALES)]
     nearest = min(TEXT_SCALES, key=lambda s: abs(s - float(scale)))
     return bool(_safe(lambda: _write({TEXT_SCALE_KEY: nearest}), False))
 
@@ -157,6 +169,17 @@ def set_language(code: str) -> str:
 
 # ── board 16: plugins ───────────────────────────────────────────────────────
 
+def _plugin_label(name: str) -> str:
+    """The catalogue key for a plugin id. See `ui/plugin_labels.py`.
+
+    The table moved out of this file when it took the page past its 600-line
+    ceiling — a lookup is not page logic.
+    """
+    from ui.plugin_labels import label_for
+
+    return label_for(name)
+
+
 def plugin_rows() -> list[dict]:
     """Every plugin with a manifest, its description, and its real on/off.
 
@@ -189,6 +212,30 @@ def plugin_rows() -> list[dict]:
             declared = bool(data.get("permissions"))
             rows.append({
                 "name": name,
+                # THE ROW SHOWS A NAME AND A VERSION PAIR, as board 16 does
+                # ("Penjadwal" over "1.4.0 · resmi"). A manifest carries the
+                # module id, the version and whether it declared permissions —
+                # NOT a display name and NOT whether it is "resmi". So the pair
+                # is built from those three facts: the catalogue's name for the
+                # id where one exists (and the id where it does not, so nothing
+                # is invented), the real version, and "resmi" only when the
+                # plugin declares no permissions — the loader's own distinction
+                # between a sandboxed plugin and one that asks for the machine.
+                "label": _plugin_label(name),
+                "version": str(data.get("version") or ""),
+                # THE SECOND LINE IS THE VERSION AND THE SECURITY LEVEL, both
+                # of which the manifest states. It is NOT "resmi · pihak
+                # ketiga": this build has no notion of an official plugin —
+                # all fifteen carry `author: MARK-LVI` and all fifteen declare
+                # permissions, so a rule of "official when it declares none"
+                # would print "third party" on every row, a claim about
+                # provenance the manifest cannot support. `level` (safe /
+                # medium / risky) is what `plugins/*.json` actually says about
+                # how much a plugin is trusted, and it is what the loader acts
+                # on. The artboard's layout holds; the word in it is real.
+                "level": ("ui.page.plugins.level." + str(data.get("level") or "medium")
+                          if str(data.get("level") or "medium")
+                          in ("safe", "medium", "risky") else ""),
                 "description": str(data.get("description") or ""),
                 "on": bool(get_plugin_enabled(name, default=not declared)),
                 "declared": declared,
@@ -310,79 +357,6 @@ def build_security(panel, page) -> None:
     panel._labels["sec_os_card"] = _at(page, QLabel, 24, 540, 412, 76, "")
 
 
-def build_access(panel, page) -> None:
-    """Board 15, transcribed from `b15()`: three languages, a slider, three cards.
-
-    THE LANGUAGE ROW DRAWS THREE AND THE STORE HAS TWO. `b15()` draws
-    Indonesia · English · Campur as one 412 px segmented control; `core.i18n`
-    ships en and id and has no mixed mode. The third slot is drawn because the
-    artboard's layout is the layout — and it says in place that mixed language
-    is not available, rather than being dropped (which would silently change the
-    design) or wired to nothing (which is a button that lies). That is the
-    owner's ruling for every artboard that draws data this build does not have.
-    """
-    from PyQt6.QtWidgets import QLabel, QPushButton
-
-    page.hide()
-    panel._pages["access"] = page
-    geo = BOARDS["access"]
-
-    # ── BAHASA UI at y=92, the 412x38 segmented control at 106 ─────────────
-    panel._labels["ac_lang_header"] = at(page, QLabel, text_box(24, 92, 10, width=240), "")
-    seg = [r for r in geo["rects"] if r[3] == 38 and r[2] == 412][0]   # (24,106,412,38)
-    # The track itself, so the control is a 412x38 pill at the artboard's
-    # coordinates even before the three slots are drawn on top of it.
-    panel._labels["ac_lang_track"] = _at(page, QLabel, seg[0], seg[1], seg[2], seg[3], "")
-    share = seg[2] / 3
-    for index, code in enumerate(languages()[:2]):
-        button = QPushButton(str(code).upper(), page)
-        button.setGeometry(round(seg[0] + index * share + 3), seg[1] + 3,
-                           round(share) - 6, seg[3] - 6)
-        button.clicked.connect(
-            lambda _checked=False, c=code: panel._call("language", c))
-        panel._buttons[f"ac_lang:{code}"] = button
-    # The third slot: present, disabled, and honest in its own label.
-    mixed = QPushButton("", page)
-    mixed.setGeometry(round(seg[0] + 2 * share + 3), seg[1] + 3,
-                      round(share) - 6, seg[3] - 6)
-    mixed.setEnabled(False)
-    panel._buttons["ac_lang:mixed"] = mixed
-
-    # ── UKURAN TEKS at 172, the 380 px slider at 194, the note at 222 ──────
-    panel._labels["ac_size_header"] = at(page, QLabel, text_box(24, 172, 10, width=240), "")
-    panel._labels["ac_size_track"] = _at(page, QLabel, 24, 194, 380, 3, "")
-    panel._labels["ac_size_fill"] = _at(page, QLabel, 24, 194, 190, 3, "")
-    panel._labels["ac_size_note"] = at(page, QLabel, text_box(24, 222, 10.5, width=412), "")
-    for index, scale in enumerate(TEXT_SCALES):
-        button = QPushButton("", page)
-        button.setGeometry(24 + index * 140, 240, 130, 30)
-        button.clicked.connect(
-            lambda _checked=False, s=scale: panel._call("text_scale", s))
-        panel._buttons[f"ac_scale:{index}"] = button
-
-    # ── KONTRAS at 264: the artboard draws Standar · Tinggi; only one exists.
-    panel._labels["ac_contrast_header"] = at(page, QLabel, text_box(24, 264, 10, width=240), "")
-    panel._labels["ac_contrast"] = _at(page, QLabel, 24, 278, 412, 38, "")
-
-    # ── GERAK at 344: the 412x64 card, the toggle at (378, 380) ────────────
-    panel._labels["ac_motion_header"] = at(page, QLabel, text_box(24, 344, 10, width=240), "")
-    panel._labels["ac_motion_card"] = _at(page, QLabel, 24, 358, 412, 64, "")
-    panel._labels["ac_motion_name"] = _at(page, QLabel, 44, 368, 300, 20, "")
-    panel._labels["ac_motion_note"] = _at(page, QLabel, 44, 390, 320, 18, "")
-    panel._buttons["ac_motion"] = QPushButton("", page)
-    panel._buttons["ac_motion"].setGeometry(378, 380, 40, 22)
-    panel._buttons["ac_motion"].clicked.connect(lambda: panel._call("motion_toggle"))
-
-    # ── GESTUR KUSTOM at 450: three 412x38 cards at pitch 46 ───────────────
-    panel._labels["ac_gestures_header"] = at(page, QLabel, text_box(24, 450, 10, width=240), "")
-    for index in range(3):
-        y = 464 + index * 46
-        panel._labels[f"ac_gest_card:{index}"] = _at(page, QLabel, 24, y, 412, 38, "")
-        panel._labels[f"ac_gest_name:{index}"] = _at(page, QLabel, 44, y + 9, 190, 20, "")
-        panel._labels[f"ac_gest_act:{index}"] = _at(page, QLabel, 240, y + 9, 160, 20, "")
-    panel._labels["ac_footnote"] = at(page, QLabel, text_box(24, 616, 10, width=412), "")
-
-
 def build_plugins(panel, page) -> None:
     """Board 16, transcribed from `b16()`.
 
@@ -403,11 +377,24 @@ def build_plugins(panel, page) -> None:
     panel._pages["plugins"] = page
 
     panel._labels["pl_section"] = at(page, QLabel, text_box(24, 92, 10, width=240), "")
+    # THREE ROWS, THE ARTBOARD'S NUMBER, and a sentence for the rest: b16 draws
+    # three cards at pitch 70 and puts the phone card at 360, so a fourth row
+    # would land on it. The header's count is of the STORE, not of these rows.
+    panel._labels["pl_more"] = at(page, QLabel, text_box(24, 316, 10, width=412), "")
     for index in range(3):
         y = 106 + index * 70
         panel._labels[f"pl_card:{index}"] = _at(page, QLabel, 24, y, 412, 60, "")
-        panel._labels[f"pl_name:{index}"] = _at(page, QLabel, 44, y + 12, 300, 20, "")
-        panel._labels[f"pl_desc:{index}"] = _at(page, QLabel, 44, y + 32, 300, 16, "")
+        # THE TWO BASELINES ARE `b16()`'s: the name at y+26 in 12.5 px and the
+        # version line at y+45 in 10 px. `text_box` converts baseline to a Qt
+        # top (baseline - 0.72*size) — the conversion every other page uses and
+        # `tests/test_tray_geometry.py` already pins for `n05`. The first
+        # version used hand-typed tops of y+12 and y+32, which sat the words 5
+        # and 6 px above the drawing: close enough to look right in a box
+        # overlay, and wrong.
+        panel._labels[f"pl_name:{index}"] = at(
+            page, QLabel, text_box(44, y + 26, 12.5, width=300), "")
+        panel._labels[f"pl_desc:{index}"] = at(
+            page, QLabel, text_box(44, y + 45, 10, width=300), "")
         button = QPushButton("", page)
         button.setGeometry(378, y + 19, 40, 22)
         button.clicked.connect(
@@ -428,6 +415,14 @@ def build_plugins(panel, page) -> None:
     rule.setStyleSheet(f"background:{PALETTES['dark']['line']};")
     panel._labels["pl_rule"] = rule
     panel._labels["pl_code_header"] = at(page, QLabel, text_box(24, 536, 10, width=300), "")
+    # THE BOX IS DRAWN AND THE CODE IS NOT. `b16()` prints "4 7 9 2 1 5" —
+    # characters at 30 px intervals across the whole strip — plus "berlaku 5
+    # menit" at x=300. No pairing backend exists, so that code is a number this
+    # program never issued: exactly the plausible fake the owner's ruling
+    # forbids. The box keeps the artboard's 412x46 rectangle and its size; its
+    # text starts at the SAME left edge as the digits and is the sentence
+    # instead. Drawing the six characters and the sentence together would put
+    # two strings in one 46 px strip.
     panel._labels["pl_code_box"] = _at(page, QLabel, 24, 550, 412, 46, "")
 
 
@@ -525,7 +520,7 @@ def build_installer(panel, page) -> None:
 
 __all__ = ["INSTALL_MODES", "LEVEL_KEYS", "MOTION_KEY", "TEXT_SCALES",
            "TEXT_SCALE_KEY",
-           "active_language", "apply_mode", "build_access", "build_brand",
+           "active_language", "apply_mode", "build_brand",
            "build_installer", "build_light", "build_plugins", "build_security",
            "languages", "level_counts", "levels", "modes", "orb_states",
            "palette_swatches", "plugin_rows", "reduced_motion", "set_language",

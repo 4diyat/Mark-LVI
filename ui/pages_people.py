@@ -285,7 +285,10 @@ def build_tools(panel, page) -> None:
     panel._labels["tl_snap_header"] = _at(page, QLabel, 42, 432, 300, 18, "")
     for index, x in enumerate((40, 166, 292)):
         panel._labels[f"tl_snap_thumb:{index}"] = _at(page, QLabel, x, 452, 114, 62, "")
-    panel._labels["tl_snap_absent"] = _at(page, QLabel, 40, 524, 380, 60, "")
+    # The sentence occupies the band the three thumbnails sit in (452..514),
+    # leaving b12's own caption at 572 alone — the two are different claims and
+    # stacking them overlapped one on the other.
+    panel._labels["tl_snap_absent"] = _at(page, QLabel, 40, 456, 380, 52, "")
 
 
 def build_gestures(panel, page) -> None:

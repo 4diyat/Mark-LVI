@@ -374,6 +374,28 @@ def test_board_15_language_switch_reports_what_took_effect(monkeypatch):
     _ = i18n
 
 
+def test_board_15_language_slots_are_in_the_artboards_order(panel_module):
+    """`b15()` draws Indonesia · English · Campur, left to right.
+
+    `i18n.available()` returns `["en", "id"]` — the order the FILES sort in.
+    Building the row by iterating it put English where the drawing has
+    Indonesia, and nothing failed: both slots said a real language, both
+    switched the locale, and the row looked plausible. The drawing is what
+    decides the order, and it is not the store's order.
+    """
+    from ui import pages_access
+
+    assert pages_access.LANGUAGE_ORDER == ("id", "en")
+    # And every slot drawn must be one the catalogues actually ship: drawing
+    # a button for a locale with no JSON file offers a language the panel
+    # cannot render.
+    from ui.pages_admin import languages
+
+    shipped = set(languages())
+    assert set(pages_access.language_slots()) <= shipped
+    assert pages_access.language_slots() == [c for c in ("id", "en") if c in shipped]
+
+
 def test_board_15_text_scale_snaps_to_an_offered_value(monkeypatch):
     """Three sizes are offered; a stored value of 1.9 must become 1.3.
 
@@ -446,6 +468,27 @@ def test_board_16_toggle_writes_the_loaders_store(monkeypatch):
     assert written == {"quick_notes": True}
 
 
+def test_board_16_rows_report_manifest_facts_not_provenance(panel_module):
+    """The row's second line is the version and the SECURITY LEVEL.
+
+    The first version printed `1.4.0 · third party`, deriving "official" from
+    "declares no permissions". Every manifest in this build carries
+    `author: MARK-LVI` and every one declares permissions, so the rule printed
+    "third party" on all fifteen rows — a provenance claim the data cannot
+    support, on a page whose whole job is to say what is true. `level` is in
+    the manifest and is what the loader acts on, so that is what the row says.
+    """
+    from ui import pages_admin
+
+    rows = pages_admin.plugin_rows()
+    assert rows, "no plugin manifests found"
+    for row in rows:
+        assert "trust" not in row, "the invented provenance field is back"
+        assert row["version"], f"{row['name']} has no version"
+        assert row["level"], f"{row['name']} has no security level"
+        assert row["level"].rsplit(".", 1)[1] in ("safe", "medium", "risky")
+
+
 # ── boards 18, 19, 21, 22, 13, 7: pages that must state an absence ──────────
 
 ABSENCE_PAGES = [
@@ -458,7 +501,12 @@ ABSENCE_PAGES = [
     ("help", "hp_preview", ("belum", "not", "nothing")),
     ("security", "sec_os", ("tidak", "no ", "not")),
     ("plugins", "pl_phone", ("belum", "no ", "not")),
-    ("access", "ac_gest_act:0", ("tetap", "fixed")),
+    # THE THIRD COLUMN, not the second. `b15()` draws the gesture's ACTION in
+    # the middle ("Panggil antarmuka" at x=250, cyan) and "ubah" at 416 on the
+    # right; the first version of this page wrote "fixed" into the middle
+    # column and dropped the action entirely — and this line asserted the bug.
+    # "fixed" belongs where "ubah" was, because there is no rebinding.
+    ("access", "ac_gest_edit:0", ("tetap", "fixed")),
 ]
 
 
