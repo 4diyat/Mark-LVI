@@ -75,26 +75,113 @@ PAGE_TITLES = {
 def _board_titles() -> dict:
     """`(title key, subtitle key)` for every board page.
 
-    THE SUBTITLE IS `None` FOR EVERY ONE OF THEM, and that is the artboard's
-    answer, not a shortcut: the board pages draw their own second line INSIDE
-    the page (board 9's count, board 16's "2 dari 5 plugin aktif"), and the
-    panel's shared subtitle sits above that. Two second lines, one above the
-    other, would be two sentences saying the same thing — which is how the
-    history page's subtitle ended up being the only one that carries a count.
+    THE SUBTITLE IS THE ARTBOARD'S OWN, and the first version of this table got
+    that wrong in the opposite direction: it put `None` under every board page,
+    on the reasoning that the page drew its own second line. The artboards put
+    the second line in the HEADER — `b09()` passes "12 hal yang JARVIS ingat" to
+    `panel_head`, and the panel artboards `n10`/`n11` draw it at (24, 54) under
+    the title. So the header is where it belongs, and a page that also drew its
+    own copy drew it twice.
+
+    A LINE THAT COUNTS IS FORMATTED IN `Snapshot.subtitle`, not here: a literal
+    "12 hal" is a lie the first time the user adds a memory.
     """
     try:
         from ui.page_registry import PAGES
     except Exception:                                    # noqa: BLE001
         return {}
-    # `more` is not in the registry's PAGES (it is the list itself), so its keys
-    # are named here.
-    out = {"more": ("ui.page.more.title", None)}
+    # `more` is not in the registry's PAGES (it is the list itself).
+    out = {"more": ("ui.page.more.title", "ui.page.more.subtitle")}
     for key, _label_key, title_key, _board in PAGES:
-        out[key] = (title_key, None)
+        out[key] = (title_key, SUBTITLE_KEYS.get(key))
     return out
 
 
+# The subtitle each artboard passes to `panel_head()`, or the sentence that
+# stands in its place where the artboard's line would be a claim about data this
+# build does not store.
+SUBTITLE_KEYS = {
+    "memory": "ui.page.memory.subtitle",          # "12 hal yang JARVIS ingat"
+    "routines": "ui.page.routines.subtitle",      # "3 rutinitas aktif"
+    "plugins": "ui.page.plugins.subtitle",        # "2 dari 5 plugin aktif"
+    "tools": "ui.page.tools.subtitle",
+    "access": "ui.page.access.subtitle",          # "Bahasa & gestur"
+    "security": "ui.page.security.subtitle",      # "Tiga tingkat risiko"
+    "light": "ui.page.light.subtitle",
+    "help": "ui.page.help.subtitle",
+    "consent": "ui.page.consent.subtitle",
+    "memory_one": "ui.page.memory_one.subtitle",
+    "gestures": "ui.page.gestures.subtitle",
+    "brand": "ui.page.brand.subtitle",
+    "installer": "ui.page.installer.subtitle",
+}
+
+
 PAGE_TITLES.update(_board_titles())
+
+
+def _memory_count() -> dict:
+    """Board 9's "N hal yang JARVIS ingat" — the store's count, not the rows'.
+
+    THROUGH THE PAGE'S OWN READER, not a second query against
+    `memory_manager`. Two paths to one store is two places for the header and
+    the list under it to disagree, and the page's reader is also the one that
+    answers `[]` instead of raising when the store is mid-write.
+    """
+    try:
+        from ui import pages_memory
+
+        return {"count": pages_memory.count()}
+    except Exception:                                    # noqa: BLE001
+        return {"count": 0}
+
+
+def _routine_count() -> dict:
+    """Board 11's "N rutinitas aktif" — the same list the page draws.
+
+    It goes through `pages_people.routines()` and not a second query, so the
+    header cannot count anything the list below it does not show. There is no
+    routine STORE in this build; that function returns the one real routine
+    (the proactive check) and the page states that the artboard's three are not
+    stored.
+    """
+    try:
+        from ui import pages_people
+
+        return {"count": len(pages_people.routines() or [])}
+    except Exception:                                    # noqa: BLE001
+        return {"count": 0}
+
+
+def _plugin_count() -> dict:
+    """Board 16's "N dari M plugin aktif", through the page's own manifest reader.
+
+    NOT `discover_plugins()`. That function IMPORTS every plugin module to
+    validate it — one of the forbidden things on this path, and the reason the
+    count read "0 of 0" while the page listed fifteen: the import blew up and
+    the bare `except` turned a real failure into a plausible zero. The page's
+    reader parses the manifests instead, and it is the same list the rows are
+    drawn from, so the header cannot count something the list does not show.
+    """
+    try:
+        from ui import pages_admin
+
+        rows = pages_admin.plugin_rows()
+        return {"on": sum(1 for r in rows if r["on"]), "total": len(rows)}
+    except Exception as e:                               # noqa: BLE001
+        print(f"[JARVIS] Plugin count tidak terbaca — {type(e).__name__}: {e}")
+        return {"on": 0, "total": 0}
+
+
+# A SUBTITLE WITH A NUMBER IN IT IS FORMATTED AT PAINT TIME. Written as a
+# literal it is wrong the moment the store changes, and board 9's header is the
+# most visible example: "12 hal" over a list of three is a page contradicting
+# itself in its first two lines.
+_COUNTED_SUBTITLES = {
+    "ui.page.memory.subtitle": _memory_count,
+    "ui.page.routines.subtitle": _routine_count,
+    "ui.page.plugins.subtitle": _plugin_count,
+}
 
 MODE_SUBTITLES = {
     "active": "ui.panel.subtitle.active",
@@ -217,6 +304,8 @@ class Snapshot:
         _title, sub = PAGE_TITLES.get(self.page, PAGE_TITLES["main"])
         if sub == "ui.panel.history.subtitle":
             return _t(sub, count=self.undoable)
+        if sub in _COUNTED_SUBTITLES:
+            return _t(sub, **_COUNTED_SUBTITLES[sub]())
         if sub is not None:
             return _t(sub)
         return _t(MODE_SUBTITLES.get(self.mode, MODE_SUBTITLES["active"]))

@@ -143,9 +143,16 @@ def test_board_9_counts_what_is_stored_not_what_fits(panel_module, monkeypatch):
     panel = tray_panel.TrayPanel({})
     panel.open()
     panel.set_page("memory")
-    tray_paint.paint(panel, panel.snapshot)
+    # A FRESH SNAPSHOT: `open()` captured one before the stub above ran, and
+    # the subtitle is formatted from the store at snapshot time. Painting the
+    # captured one would test the value from before the monkeypatch.
+    from ui.tray_panel_model import snapshot
 
-    header = panel._labels["mem_count"].text()
+    tray_paint.paint(panel, snapshot("memory"))
+
+    # THE COUNT IS THE SHARED HEADER'S SUBTITLE, because that is where `b09()`
+    # puts it: `panel_head("Memori personal", "12 hal yang JARVIS ingat")`.
+    header = panel._labels["subtitle"].text()
     assert "12" in header, f"the header does not state the store's count: {header!r}"
 
     drawn = [k for k in panel._labels if k.startswith("mem_key:")
@@ -199,10 +206,19 @@ def test_board_10_says_the_three_fields_it_cannot_show(panel_module, monkeypatch
     panel._buttons["mem_open:0"].clicked.emit()
     tray_paint.paint(panel, panel.snapshot)
 
-    absent = panel._labels["m1_absent"].text()
-    assert absent.strip(), "the detail page says nothing about the fields it lacks"
-    assert "keyakinan" in absent.lower() or "confidence" in absent.lower(), (
-        f"the absent-fields sentence does not name what is missing: {absent!r}")
+    # THREE BANDS, THREE SENTENCES. Board 10 draws SUMBER, MASA BERLAKU,
+    # KEYAKINAN and DIPAKAI OLEH as separate controls; the store has none of
+    # them, so each band says so in its own place rather than one blanket line
+    # standing in for four.
+    conf = panel._labels["m1_conf_note"].text()
+    assert conf.strip(), "the confidence band says nothing"
+    assert "keyakinan" in conf.lower() or "confidence" in conf.lower(), (
+        f"the confidence note does not name what is missing: {conf!r}")
+    for key in ("m1_source", "m1_life", "m1_used"):
+        assert panel._labels[key].text().strip(), f"{key} draws an empty band"
+        assert (panel._labels[key].text().strip().lower()
+                .startswith(("tidak", "not "))), (
+            f"{key} does not read as an absence: {panel._labels[key].text()!r}")
 
     # And no percentage anywhere on the page: a confidence score is the specific
     # thing the artboard draws and this store does not have.
@@ -436,10 +452,13 @@ ABSENCE_PAGES = [
     # (page, the label key that carries the sentence, a word it must contain)
     ("tools", "tl_snap_absent", ("belum", "not", "does not")),
     ("gestures", "gs_absent", ("klik", "click", "drawing", "gambar")),
-    ("help", "hp_form_absent", ("belum", "not", "does not")),
+    # Board 13's absence moved INTO the strip the artboard draws at 578 and
+    # into each of its three field rows: the page keeps b13's geometry and
+    # says in it that nothing is applied to a form.
+    ("help", "hp_preview", ("belum", "not", "nothing")),
     ("security", "sec_os", ("tidak", "no ", "not")),
     ("plugins", "pl_phone", ("belum", "no ", "not")),
-    ("access", "ac_gestures", ("bawaan", "built-in", "only")),
+    ("access", "ac_gest_act:0", ("tetap", "fixed")),
 ]
 
 
@@ -504,7 +523,10 @@ def test_board_7_says_the_flow_is_one_step_not_four(panel_module):
     panel.set_page("consent")
     tray_paint.paint(panel, panel.snapshot)
 
-    step = panel._labels["cn_step"].text()
+    # THE STEP LINE IS THE SHARED SUBTITLE. `b07()` passes "Langkah 2 dari 4"
+    # to `panel_head()`, so the page's step count belongs in the header's second
+    # line — the page having its own copy was the duplicate.
+    step = panel._labels["subtitle"].text()
     assert "4" not in step, f"the page claims a four-step flow: {step!r}"
     assert "1" in step, f"the page does not say how many steps there are: {step!r}"
 
@@ -514,9 +536,15 @@ def test_board_7_says_the_flow_is_one_step_not_four(panel_module):
     from ui import pages_paint
     from ui.tray_pages import GEOMETRY, PALETTES
 
-    real = i18n.label("ui.page.consent.step")
-    i18n._CATALOGUE_CACHE = {}
-    assert real == panel._labels["cn_step"].text(), (
+    # The header's subtitle for this page must BE the catalogue's step string,
+    # not a literal typed into the model: swap the catalogue entry and the
+    # subtitle has to follow it.
+    from ui.tray_panel_model import PAGE_TITLES
+
+    _title, sub_key = PAGE_TITLES["consent"]
+    assert sub_key == "ui.page.consent.subtitle", (
+        f"board 7's subtitle is {sub_key!r}, not the step sentence")
+    assert i18n.label(sub_key) == panel._labels["subtitle"].text(), (
         "the step line is not the catalogue's sentence")
     _ = (pages_paint, GEOMETRY, PALETTES)
 

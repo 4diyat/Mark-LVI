@@ -63,7 +63,14 @@ class _Object:
         # and collapsing that to a boolean is how a visibility assertion ends up
         # testing the stub instead of the code.
         self._visible = None
-        self._parent = a[0] if a and isinstance(a[0], _Object) else k.get("parent")
+        # THE PARENT IS NOT ALWAYS THE FIRST ARGUMENT. Qt's constructor is
+        # `QPushButton(text, parent)`, so `QPushButton("", page)` is a button
+        # with an empty label whose parent is the SECOND positional argument.
+        # Reading only `a[0]` gave every such button a parent of None, which
+        # made it permanently invisible to `isVisible()` — and that hid a real
+        # class of bug behind a stub artefact for as long as the stub existed.
+        self._parent = (next((x for x in a if isinstance(x, _Object)), None)
+                        or k.get("parent"))
         self._layout = None
         self._text = ""
         # A positional string first argument is a widget's LABEL, as Qt reads
@@ -406,7 +413,8 @@ class _Layout(_Object):
         self._pending = []
         self._items = []
         super().__init__(*a, **k)
-        owner = a[0] if a and isinstance(a[0], _Object) else k.get("parent")
+        owner = (next((x for x in a if isinstance(x, _Object)), None)
+                 or k.get("parent"))
         if owner is not None:
             self._set_owner(owner)
 

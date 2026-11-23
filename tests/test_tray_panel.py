@@ -219,6 +219,12 @@ def test_urungkan_is_offered_once_and_only_on_the_oldest_row(panel_module, clean
     undo.push_undo("dua", lambda: "ok")
     panel = tray_panel.TrayPanel({"undo": undo.undo_last})
     panel.open()
+    # THE HISTORY PAGE MUST BE THE OPEN ONE. These buttons are children of the
+    # history page, so while board 5 is on screen they are invisible for the
+    # right reason — and this test used to pass only because the Qt stub never
+    # recorded `QPushButton("", page)`'s parent, making everything invisible
+    # and `[i for i ...]` accidentally agree with a different bug.
+    panel.set_page("history")
 
     visible = [i for i in range(4) if panel._buttons[f"undo:{i}"].isVisible()]
     assert visible == [1], "exactly one row may carry the button — undo is a stack"

@@ -133,7 +133,7 @@ def test_the_package_has_exactly_the_mockup_modules():
         # The `people`/`admin` split is SUBJECT and not importance: one half is
         # about actions, the other about settings. It is what keeps both
         # modules under the ceiling without inventing a "misc" file.
-        "page_registry.py", "page_kit.py", "panel_target.py",
+        "page_registry.py", "page_kit.py", "panel_target.py", "board_geometry.py",
         "pages_build.py", "pages_paint.py", "pages_memory.py",
         "pages_people.py", "pages_admin.py", "pages_more.py", "pages_actions.py",
     }

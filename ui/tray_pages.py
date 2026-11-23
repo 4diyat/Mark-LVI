@@ -116,7 +116,6 @@ GEOMETRY = {
     # is the store's, and a page that merged them would have to choose which
     # one to keep when they disagree.
     "mem_head":    (24, 30, 412, 24),         # "Memori personal"
-    "mem_count":   (24, 54, 412, 18),         # "12 hal yang JARVIS ingat"
     "mem_section": (24, 86, 240, 16),         # "FAKTA TENTANG ANDA"
     "mem_more":    (24, 640, 412, 16),        # "dan 4 lagi"
     "mem_add":     (24, 600, 200, 36),
@@ -126,8 +125,6 @@ GEOMETRY = {
     # pitch is 74 and not 72. The artboard is tighter here on purpose: this page
     # shows ONE memory, and the detail is the point.
     "m1_head":   (24, 30, 412, 24),
-    "m1_sub":    (24, 54, 412, 18),
-    "m1_absent": (24, 470, 412, 40),          # the honest line about missing data
     "m1_back":   (24, 596, 130, 36),
     "m1_forget": (306, 596, 130, 36),
 
