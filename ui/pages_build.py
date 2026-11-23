@@ -25,7 +25,7 @@ def _builders() -> tuple:
     at module scope from a module `tray_panel` imports at ITS module scope would
     make `import ui.tray_panel` need Qt, and the headless tests import it.
     """
-    from ui import pages_admin, pages_memory, pages_more, pages_people
+    from ui import pages_access, pages_admin, pages_memory, pages_more, pages_people
 
     return (
         ("more", pages_more.build_more),
@@ -34,7 +34,7 @@ def _builders() -> tuple:
         ("routines", pages_people.build_routines),
         ("tools", pages_people.build_tools),
         ("security", pages_admin.build_security),
-        ("access", pages_admin.build_access),
+        ("access", pages_access.build_access),
         ("plugins", pages_admin.build_plugins),
         ("light", pages_admin.build_light),
         ("gestures", pages_people.build_gestures),

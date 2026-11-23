@@ -111,6 +111,21 @@ def test_the_two_locales_are_not_the_same_file():
         "ui.placeholder.key",       # "AIza…" — the shape of a Google key
         "ui.setup.placeholder",     # the same prefix, on the setup screen
         "dialog.title",             # "{name} — {page}"
+        # A SEPARATOR WITH NO WORDS IN IT. Board 16's row is the artboard's own
+        # "1.4.0 · resmi": every part is a substituted value (the plugin's name,
+        # its real version, and the catalogue's word for its trust level), so
+        # there is nothing in the template to translate. Identical on purpose,
+        # and the two substitutions inside it are NOT. Contrasted with
+        # `creative.output` ("OUTPUT") and `ui.audio.heading` ("♪  AUDIO"),
+        # which are English strings that happen to be acceptable in Indonesian
+        # and are the reason the tolerance below is 2 and not 0.
+        "ui.page.plugins.row",      # "{version} · {trust}" — see above
+        "ui.page.plugins.row.version_only",   # "{version}" — one substitution, no words
+        # Board 15's second language slot. `b15()` draws "English" — the word
+        # Indonesian uses for the language, and the same word English uses. The
+        # sibling slot is NOT identical: id says "Indonesia", en says
+        # "Indonesian", because those are what each catalogue calls it.
+        "ui.page.access.language.en",
         "ui.video.title",           # "▶  {title}"
         "ui.video.heading",         # "▶  VIDEO"
         "ui.setup.panel",           # "◈ SETUP"
@@ -182,6 +197,48 @@ def test_a_missing_key_falls_back_to_english_before_the_marker(monkeypatch):
     monkeypatch.setitem(i18n._loaded, "id", dict(data))
     i18n.set_locale("id")
     assert i18n.label("ui.broken_key") == "Only English has this"
+
+
+def test_every_call_site_passes_the_fields_its_template_asks_for():
+    """The overlay caught this, not a test: board 16 printed the literal
+    "… · {version} · {trust} (bad-fields:…)" in a 460 px panel because the
+    template asked for `{name}` and the call passed only version and trust.
+
+    `core/i18n.label` degrades to a marker instead of raising — the right
+    choice at paint time, and exactly why nothing failed. The mismatch has to
+    be caught statically, before the window is drawn.
+
+    This walks every `label`/`_t`/`resolve` call whose key is a literal and
+    compares the template's placeholders to the keyword arguments passed. It
+    is deliberately blind to keys built at runtime: those can only be checked
+    by running the page, which is what the Qt smoke tests do.
+    """
+    en = json.loads((ROOT / "assets" / "i18n" / "en.json").read_text(encoding="utf-8"))
+    fmt = string.Formatter()
+    missing = []
+    for path in sorted(ROOT.glob("ui/*.py")) + sorted(ROOT.glob("core/*.py")):
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError:                      # generated or deliberately odd
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not node.args:
+                continue
+            name = getattr(node.func, "id", None) or getattr(node.func, "attr", None)
+            if name not in ("label", "_t", "resolve"):
+                continue
+            first = node.args[0]
+            if not (isinstance(first, ast.Constant) and isinstance(first.value, str)):
+                continue                         # a runtime key: not decidable here
+            template = en.get(first.value)
+            if template is None:
+                continue                         # a missing key is the test above
+            needs = {f for _, f, _, _ in fmt.parse(template) if f}
+            has = {k.arg for k in node.keywords if k.arg}
+            if needs - has:
+                missing.append(f"{path.name}:{node.lineno} {first.value} "
+                               f"needs {sorted(needs - has)}")
+    assert missing == [], "call sites lose their template's fields: " + "; ".join(missing)
 
 
 @pytest.fixture()

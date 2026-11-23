@@ -133,9 +133,22 @@ def test_the_package_has_exactly_the_mockup_modules():
         # The `people`/`admin` split is SUBJECT and not importance: one half is
         # about actions, the other about settings. It is what keeps both
         # modules under the ceiling without inventing a "misc" file.
-        "page_registry.py", "page_kit.py", "panel_target.py",
+        "page_registry.py", "page_kit.py", "panel_target.py", "board_geometry.py",
         "pages_build.py", "pages_paint.py", "pages_memory.py",
         "pages_people.py", "pages_admin.py", "pages_more.py", "pages_actions.py",
+        # NOT A MOCKUP MODULE — a table that outgrew its page. Board 16 draws
+        # fifteen plugin names a person reads; the mapping from module id to
+        # catalogue key is fifteen lines of lookup, and putting it in
+        # `pages_admin` took that file to 612 against the 600-line ceiling. The
+        # ceiling is what caught it, and a lookup is not page logic. It is NOT a
+        # whitelist: an unknown id still lists, under its manifest name.
+        "plugin_labels.py",
+        # Board 15 alone, split off `pages_admin` when it crossed the ceiling for
+        # the third time in one round (608 against 600). The boundary is subject,
+        # not size: board 15 is the only admin page about the PERSON (language,
+        # reading size, motion, gestures) rather than the machine, and it is the
+        # only one that reads the gesture table.
+        "pages_access.py",
     }
     present = {p.name for p in _modules()}
     assert present == expected, (

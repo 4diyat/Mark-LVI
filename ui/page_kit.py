@@ -112,3 +112,44 @@ def at(parent, cls, rect, text: str = ""):
 __all__ = ["BODY_BOTTOM", "BODY_TOP", "CARD_H", "CONTENT_W", "MARGIN", "PANEL_H",
            "PANEL_W", "ROW_PITCH", "at", "card_rect", "fits", "row_ys",
            "section_ys", "visible_count"]
+
+
+# ── the conversion every page needs and none of them did ────────────────────
+#
+# THE ARTBOARD PLACES TEXT BY ITS BASELINE; Qt PLACES A LABEL BY ITS TOP EDGE.
+# The difference is about 0.7x the font size, and it is why thirteen pages sat
+# 7-9 px low even where their x and y matched the drawing. Ignoring it looks
+# like a 2 px disagreement in a table and reads as a whole row out of register
+# on screen.
+#
+# THE 0.72 IS CALIBRATED, NOT DERIVED. It is the factor that reproduces the
+# values already pinned against board 5 (`tests/test_tray_geometry.py`: the
+# artboard's 11.5 px baseline at 404 is the 20 px label box at 396, and
+# 404 - 0.72*11.5 = 395.7). Using anything else would move board 5, which is
+# measured and correct, to fix pages that were merely wrong.
+BASELINE_FACTOR = 0.72
+
+
+def text_box(x: float, baseline: float, size: float, *,
+             width: int = CONTENT_W, height: int | None = None) -> tuple[int, int, int, int]:
+    """A QLabel box whose text lands on the artboard's baseline.
+
+    `height` defaults to the artboard's own line box (1.45x the type size,
+    rounded), so two labels stacked 20 px apart do not overlap.
+    """
+    top = round(baseline - size * BASELINE_FACTOR)
+    box = height if height is not None else max(14, round(size * 1.45))
+    return (int(round(x)), int(top), int(width), int(box))
+
+
+# The header, from `docs/mockups/build.py: n05()` — the PANEL artboard, not the
+# board artboards. `panel_head()` is what the 460x640 boards call and it draws
+# the orb at x=38, pushing its text to x=62; the panel artboard draws the same
+# two lines at x=24 with no orb. The panel's existing header is at (24, 22) and
+# (24, 46), which is n05's (24, 34) and (24, 54) once the baseline is converted
+# — so the header was already right and the pages were drawing a second one.
+HEAD_TITLE = text_box(24, 34, 13, width=200)
+HEAD_SUBTITLE = text_box(24, 54, 10.5, width=CONTENT_W)
+
+
+__all__ += ["BASELINE_FACTOR", "HEAD_SUBTITLE", "HEAD_TITLE", "text_box"]

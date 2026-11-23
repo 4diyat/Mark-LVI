@@ -309,7 +309,8 @@ def test_every_key_the_panel_can_press_has_a_handler(wiring):
                            # prefixes — this set is what makes a NEW control
                            # fail here until someone says what it does
                            "mem_add", "mem_clear", "mem_open", "m1_back",
-                           "m1_forget", "rt_pause", "tl_clear", "tl_copy",
+                           "m1_forget", "m1_export", "rt_pause", "tl_clear", "tl_copy",
+                           "l18_clear", "l18_export", "cn_toggle", "hp_read",
                            "tl_safe", "cn_allow", "cn_deny", "ac_lang",
                            "ac_motion", "ac_scale", "pl_toggle", "in_pick",
                            "more", "more_back"}
