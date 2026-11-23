@@ -304,6 +304,9 @@ def paint_security(panel, snap) -> None:
     # sentence under the OS-control heading, and no widget carries the word.
     labels["sec_os_header"].setText(_t("ui.page.security.os"))
     labels["sec_os"].setText(_t("ui.page.security.os_and_guest_absent"))
+    labels["sec_os_card"].setStyleSheet(
+        f"background:{PALETTES[panel._theme]['panel']};border-radius:12px;"
+        f"border:1px solid {PALETTES[panel._theme]['amber']};")
 
 
 def paint_access(panel, snap) -> None:
@@ -311,6 +314,10 @@ def paint_access(panel, snap) -> None:
 
     labels = _labels(panel)
     labels["ac_lang_header"].setText(_t("ui.page.access.language"))
+    pal = PALETTES[getattr(panel, "_theme", "dark")]
+    labels["ac_lang_track"].setStyleSheet(
+        f"background:{pal['panel']};border-radius:19px;"
+        f"border:1px solid {pal['line']};")
     active = pages_admin.active_language()
     for code in ("en", "id"):
         button = panel._buttons.get(f"ac_lang:{code}")

@@ -63,6 +63,41 @@ the file the row names.
 | 21 | Brand & ikon | the app icon, tray icons, swatches, type scale | `ui/pages_admin.py` (`build_brand`) | **a specification sheet.** The swatches and the four tray states are read from the program's own palette, so the sheet cannot describe a colour the build does not use; nothing on it is clickable, and the page says that too |
 | 22 | Installer 1/4 | a first-install flow choosing presence mode | `ui/pages_admin.py` (`build_installer`) | **the mode choice, not the installer.** Choosing a mode goes through `presence_mode.set_mode`, the same call the panel's segment makes. There is no dependency-install UI and the artboard's later steps are not drawn |
 
+## How the pages are held to the drawing
+
+Every claim in the table above was true of the pages before they looked anything
+like their artboards. The first version of the thirteen board pages was checked
+for what it SAYS — the count matches the store, the absent data is stated, the
+button writes the right key — and not for where it PUTS things, because the
+artboards were cited in prose and never parsed. The result, measured against
+`build.py` itself: board 9's list started 44 px above the drawing and ran off
+the panel, board 15 had two language slots where the sheet draws three, board
+16's plugin rows had no cards, and every page drew its title twice.
+
+Three things now prevent that, and they are the reason the table above can be
+trusted:
+
+1. **`ui/board_geometry.py` is generated, not written.** `tools/gen_board_geometry.py`
+   calls each artboard function in `build.py` and stores the `<rect>` and
+   `<text>` elements it emits. There is no transcription to drift.
+2. **`tests/test_board_conformance.py` re-runs the extraction** on every run, so
+   a page cannot match a stale table, and then walks the artboard's own
+   rectangles requiring a visible widget at each coordinate.
+3. **`ui/page_kit.text_box()` converts a baseline to a label box** with the
+   factor 0.72, which reproduces the values already pinned against board 5
+   (`404 - 0.72 * 11.5 = 396`) rather than introducing a new convention.
+
+**The one thing this cannot prove is the rendered pixels.** Qt does not run in
+the test sandbox, so a widget at the right coordinates with the wrong stylesheet
+still passes. That check is by eye, in `docs/verification.md`.
+
+**And the sheet had a bug of its own.** `panel_head(title, sub)` accepts a title
+and draws a literal "JARVIS" instead — so every `bNN` artboard's header reads
+JARVIS, and a page that took its name from there drew a second title under the
+panel's shared one. The correct reference is `n05()`–`n12()`, the 460×660 panel
+artboards, which draw the header at (24,34) with the page's own name. The pages
+follow those.
+
 ## The three things no page claims
 
 Every row above names what its page cannot do, and the pages say it in the place

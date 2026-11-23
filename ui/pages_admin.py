@@ -304,6 +304,10 @@ def build_security(panel, page) -> None:
     # artboard draws under it becomes the sentence naming both absences.
     panel._labels["sec_os_header"] = at(page, QLabel, text_box(24, 176, 10, width=240), "")
     panel._labels["sec_os"] = _at(page, QLabel, 24, 190, 412, 66, "")
+    # The artboard's amber-bordered card at (24,540,412,76). It is the second
+    # of the two absences and it keeps the drawing's geometry: the card exists,
+    # the control it describes does not.
+    panel._labels["sec_os_card"] = _at(page, QLabel, 24, 540, 412, 76, "")
 
 
 def build_access(panel, page) -> None:
@@ -326,6 +330,9 @@ def build_access(panel, page) -> None:
     # ── BAHASA UI at y=92, the 412x38 segmented control at 106 ─────────────
     panel._labels["ac_lang_header"] = at(page, QLabel, text_box(24, 92, 10, width=240), "")
     seg = [r for r in geo["rects"] if r[3] == 38 and r[2] == 412][0]   # (24,106,412,38)
+    # The track itself, so the control is a 412x38 pill at the artboard's
+    # coordinates even before the three slots are drawn on top of it.
+    panel._labels["ac_lang_track"] = _at(page, QLabel, seg[0], seg[1], seg[2], seg[3], "")
     share = seg[2] / 3
     for index, code in enumerate(languages()[:2]):
         button = QPushButton(str(code).upper(), page)

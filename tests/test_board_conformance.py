@@ -380,3 +380,138 @@ def test_no_page_repeats_itself_in_the_header(panel_module):
     assert repeated == [], (
         "pages whose two header lines are the same sentence: "
         + "; ".join(f"{n}: {t!r} / {s!r}" for n, t, s in repeated))
+
+
+# ── the check that would have caught the whole round ───────────────────────
+
+# Boards whose cards the pages draw at the artboard's own coordinates. The six
+# the drawing has and the pages do not are listed with the reason, in
+# `ALLOWED_GAPS`, so a NEW one fails here instead of being found by eye.
+TRANSCRIBED = ("memory", "memory_one", "tools", "help", "security",
+               "access", "plugins", "light", "consent")
+
+ALLOWED_GAPS = {
+    ("routines", 180): "card 2 of 3 — no routine store, one sentence stands in its band",
+    ("routines", 276): "card 3 of 3 — the same absence, stated once for both",
+    ("tools", 276): "the search FIELD is a QLineEdit, not a label; it is at 276",
+    ("light", 0): "the page's own full-bleed background rect, 460x640",
+}
+
+
+def test_every_artboard_card_has_a_widget_at_its_coordinates(panel_module):
+    """The audit that should have existed from the start.
+
+    A PAGE CAN PASS EVERY TEXT TEST AND STILL BE IN THE WRONG PLACE. That is
+    what happened: board 9's count was honest and its list was 44 px high,
+    board 16's "0 of 15" was right and its rows had no cards at all. This walks
+    the artboard's own rectangles and requires a visible widget at each one,
+    because "matches the design" is a claim about positions.
+    """
+    tray_panel, tray_paint = panel_module
+
+    panel = tray_panel.TrayPanel({})
+    panel.open()
+
+    missing = []
+    for page in TRANSCRIBED:
+        panel.set_page(page)
+        tray_paint.paint(panel, panel.snapshot)
+        placed = [(w.x(), w.y(), w.width()) for bucket in (panel._labels, panel._buttons)
+                  for w in bucket.values()
+                  if w.isVisible() and w._parent is panel._pages.get(page)]
+        for x, y, w, h, _r in _boards()[page]["rects"]:
+            # Only the big furniture: cards, panels, tracks. The small dots and
+            # 3 px rules are drawn by the painter, not placed by the builder.
+            if w <= 200 or h <= 20:
+                continue
+            if (page, int(y)) in ALLOWED_GAPS:
+                continue
+            if not any(abs(x - px) <= 6 and abs(y - py) <= 6 and abs(w - pw) <= 8
+                       for px, py, pw in placed):
+                missing.append((page, int(x), int(y), int(w), int(h)))
+
+    assert missing == [], (
+        "artboard rectangles with no widget at their coordinates:\n  "
+        + "\n  ".join(f"{p}: ({x},{y}) {w}x{h}" for p, x, y, w, h in missing))
+
+
+def test_the_allowed_gaps_are_still_gaps(panel_module):
+    """A justified gap that no longer exists must be deleted from the list.
+
+    Otherwise the exemptions rot: the page gets fixed, the entry stays, and a
+    later regression at that coordinate passes because someone once had a
+    reason. Each entry is checked against the drawing so a stale one fails.
+    """
+    for (page, y), reason in ALLOWED_GAPS.items():
+        assert page in _boards(), f"{page} is not a board"
+        ys = [int(r[1]) for r in _boards()[page]["rects"] if r[2] > 200 and r[3] > 20]
+        assert y in ys, (
+            f"ALLOWED_GAPS has ({page}, {y}) but the artboard draws no card "
+            f"there (it draws {ys}) — delete the entry. It said: {reason}")
+
+
+def test_a_toggle_is_the_size_the_artboard_draws(panel_module):
+    """Board 16's switch is 40x22, not a 76 px ON/OFF rectangle.
+
+    A CARD AT THE RIGHT COORDINATE IS NOT ENOUGH. The first version of the
+    audit above checked the 412x60 card and passed while the control inside it
+    was a wide button reading "ON" — visually a menu item, not the switch the
+    artboard draws. These are the *switches*, so their size is the claim.
+    """
+    tray_panel, tray_paint = panel_module
+
+    # Every 40x22 dot the sheet draws, by board.
+    # TWO OF THE SHEET'S DOTS MUST NOT BE DRAWN, and both are rulings rather
+    # than omissions. Board 14's (378,216) is the guest-mode switch the owner
+    # DELETED — drawing it, even disabled, would say the feature exists.
+    # Board 11's two extra dots belong to routine cards 2 and 3, and there is
+    # no routine store to switch them with.
+    MUST_NOT_DRAW = {
+        ("security", 378, 216): "guest mode is deleted by ruling",
+        ("routines", 378, 210): "no routine store for cards 2 and 3",
+        ("routines", 378, 306): "no routine store for cards 2 and 3",
+    }
+    expected = {}
+    for key, geo in _boards().items():
+        dots = [(int(r[0]), int(r[1])) for r in geo["rects"]
+                if int(r[2]) == 40 and int(r[3]) == 22
+                and (key, int(r[0]), int(r[1])) not in MUST_NOT_DRAW]
+        if dots:
+            expected[key] = dots
+    assert expected, "the sheet no longer draws a single 40x22 toggle"
+
+    panel = tray_panel.TrayPanel({})
+    panel.open()
+
+    wrong = []
+    for page, dots in expected.items():
+        panel.set_page(page)
+        tray_paint.paint(panel, panel.snapshot)
+        live = [(w.x(), w.y(), w.width(), w.height())
+                for bucket in (panel._buttons, panel._labels)
+                for w in bucket.values()
+                if w.isVisible() and w._parent is panel._pages.get(page)]
+        for x, y in dots:
+            match = [g for g in live if abs(g[0] - x) <= 6 and abs(g[1] - y) <= 6]
+            if not match:
+                wrong.append((page, x, y, "no widget"))
+            elif not any(g[2] <= 48 and g[3] <= 30 for g in match):
+                wrong.append((page, x, y, f"a {match[0][2]:.0f}x{match[0][3]:.0f} control"))
+
+    # AND THE ONES THAT MUST NOT BE DRAWN REALLY ARE NOT. Without this the
+    # exemption above would silently cover a page that drew the guest switch
+    # again — the exact regression `tests/test_privacy_board27.py` exists to
+    # catch, checked here at the coordinate the artboard draws it.
+    for (page, x, y), reason in MUST_NOT_DRAW.items():
+        panel.set_page(page)
+        tray_paint.paint(panel, panel.snapshot)
+        present = [(w.x(), w.y()) for bucket in (panel._buttons, panel._labels)
+                   for w in bucket.values()
+                   if w.isVisible() and w._parent is panel._pages.get(page)
+                   and abs(w.x() - x) <= 6 and abs(w.y() - y) <= 6]
+        assert present == [], (
+            f"{page} draws a control at ({x},{y}) where {reason}")
+
+    assert wrong == [], (
+        "switches that are not the artboard's 40x22 dot:\n  "
+        + "\n  ".join(f"{p}: ({x},{y}) — {why}" for p, x, y, why in wrong))
