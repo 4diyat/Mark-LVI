@@ -296,3 +296,22 @@ policy so the rules are testable without a socket. Three rules:
   unpair buttons; the pairing-code box shows the live code (or the no-code
   sentence), never a fake literal. The panel holds the `PairingSession`; the
   painter reads it, so a button and the next repaint agree on state.
+
+## Installer planning (board 22)
+
+Board 22 installs the dependencies a config needs, but the *decision* is pure
+so the plan is testable without running pip. Three rules:
+
+- **The policy is pure.** `core/install_plan.py` reads the config (stt/tts
+  engine, platform) and the installer's own package tables, applies the
+  Windows version pins, deduplicates by pip name, and splits the result into
+  present vs. missing. Availability is an injected predicate, so tests drive
+  it with a fake and the real adapter supplies `core.installer._available`.
+- **The review gate applies.** Like form filling, an `InstallPlan` is inert
+  until `review()`; `apply_plan` refuses an unreviewed plan outright, so the
+  installer never runs on an unconfirmed plan.
+- **The adapter is the only transport.** `actions/installer_plan.py` maps the
+  policy's `Package` to `core.installer._pip`; the package tables themselves
+  live in `core/installer.py` so the policy and the installer cannot drift on
+  which packages exist. The UI's status strip reports the pending count or the
+  ready state, never a fake progress bar.

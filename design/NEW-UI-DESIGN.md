@@ -296,8 +296,13 @@ lengkap** permukaan UI. Berikut desain per layar, dengan status implementasi
 - **Apa yang ditampilkan:** layar pemasangan memilih mode presensi.
 - **Desain:** tiga pilihan mode presensi (desktop penuh / baki / headless)
   dengan penjelasan; setelah dipilih, masuk ke setup.
-- **Status:** ⚠️ **hanya pemilihan mode**, bukan installer penuh —
-  tidak ada UI instalasi dependensi.
+- **Status:** ✅ **installer dependensi terimplementasi** — policy murni
+  `core/install_plan.py` (tentukan package dari config via `core/installer`
+  tables, validasi availability via predikat injeksi, plan + gate review,
+  hasil per-package) + adapter `actions/installer_plan.py` (jalankan plan
+  via `core.installer._pip`). UI board 22: tombol "Instal dependensi" +
+  status strip (hitungan paket / siap). Pemilihan mode tetap via
+  `presence_mode`.
 
 ### Keadaan khusus (state)
 - **05a Fokus** — toast ditahan dan dihitung.

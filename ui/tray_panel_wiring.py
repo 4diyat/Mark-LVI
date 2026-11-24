@@ -517,6 +517,8 @@ def actions_for(shell: "AmbientShell") -> dict:
         "phone_make_code": lambda: pages_actions.phone_make_code(shell),
         "phone_pair": lambda: pages_actions.phone_pair(shell),
         "phone_unpair": lambda: pages_actions.phone_unpair(shell),
+        # Board 22's installer: build a reviewed dependency plan and run it.
+        "installer_run": lambda: pages_actions.installer_run(shell),
     }
 
 

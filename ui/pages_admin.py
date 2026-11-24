@@ -533,9 +533,15 @@ def build_brand(panel, page) -> None:
 
 
 def build_installer(panel, page) -> None:
-    """Board 22: three modes, one real choice."""
-    from PyQt6.QtWidgets import QLabel, QPushButton
+    """Board 22: three modes, one real choice, and a dependency installer.
 
+    Below the three mode rows sits the installer strip: a status label and an
+    "Install dependencies" button. The button builds an :class:`InstallPlan`
+    from the live config, reviews it, and drives the approved plan through the
+    real installer. The status label states how many packages are pending or
+    that everything is already present — never a fake progress bar.
+    """
+    from PyQt6.QtWidgets import QLabel, QPushButton
 
     page.hide()
     panel._pages["installer"] = page
@@ -554,6 +560,15 @@ def build_installer(panel, page) -> None:
         button.clicked.connect(
             lambda _checked=False, i=index: panel._call("install_mode", i))
         panel._buttons[f"in_pick:{index}"] = button
+
+    # THE INSTALLER STRIP, in the free band under the mode rows.
+    panel._labels["in_status_header"] = at(page, QLabel, text_box(24, 404, 10, width=240), "")
+    panel._labels["in_status"] = _at(page, QLabel, 24, 420, 412, 60, "")
+    install_button = QPushButton("", page)
+    install_button.setGeometry(24, 484, 200, 30)
+    install_button.setObjectName("in_install")
+    install_button.clicked.connect(lambda: panel._call("installer_run"))
+    panel._buttons["in_install"] = install_button
 
 
 __all__ = ["INSTALL_MODES", "LEVEL_KEYS", "MOTION_KEY", "TEXT_SCALES",

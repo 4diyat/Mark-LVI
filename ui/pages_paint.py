@@ -397,9 +397,9 @@ def paint_access(panel, snap) -> None:
     labels["ac_motion_name"].setText(_t("ui.page.access.motion.name"))
     labels["ac_motion_note"].setText(_t("ui.page.access.motion.note"))
     # A TOGGLE IS A STATE, NOT A LABEL: `b15()` draws a bare 40x22 pill, and
-    # writing "Motion on" inside it overflowed and repeated what the switch
-    # already says. The text is empty; the checked state carries the answer and
-    # the accessible name lives in the tooltip.
+    # writing "Motion on" inside overflowed and repeated the switch. Text is
+    # empty; the checked state carries the answer, the accessible name in the
+    # tooltip.
     motion = panel._buttons["ac_motion"]
     motion.setText("")
     motion.setCheckable(True)
@@ -409,8 +409,8 @@ def paint_access(panel, snap) -> None:
         else _t("ui.page.access.motion.on"))
     labels["ac_gestures_header"].setText(_t("ui.page.access.gestures"))
     # The artboard draws three gesture rows with a "ubah" affordance each;
-    # `core.gesture_os` knows the gestures but offers no rebinding, so the
-    # rows are drawn from it and the third column says what is missing.
+    # `core.gesture_os` knows the gestures but no rebinding, so the rows are
+    # drawn from it and the third column says what is missing.
     from ui import pages_people
 
     for index, (name_key, note_key) in enumerate(pages_people.gesture_rows()[:3]):
@@ -419,11 +419,10 @@ def paint_access(panel, snap) -> None:
         labels[f"ac_gest_name:{index}"].setText(_t(name_key))
         # THE MIDDLE COLUMN IS THE ACTION `b15()` DRAWS AS CYAN TEXT. The
         # first version put "fixed" here — a third-column statement in the
-        # second column's space — and threw away the mapping. "No rebinding"
-        # belongs to the THIRD column.
+        # second column's space. "No rebinding" belongs to the THIRD column.
         labels[f"ac_gest_act:{index}"].setText(_t(note_key))
         # Right-aligned as `b15()` draws its "ubah" at x=416; Qt has no
-        # per-label anchor, so the cell ends there and the style does the rest.
+        # per-label anchor, so the cell ends there and the style finishes it.
         edit = labels[f"ac_gest_edit:{index}"]
         edit.setText(_t("ui.page.access.gestures_rebind_absent"))
         edit.setStyleSheet(f"color:{pal['muted']};")
@@ -436,8 +435,8 @@ def paint_plugins(panel, snap) -> None:
     rows = pages_admin.plugin_rows()
     labels["pl_section"].setText(_t("ui.page.plugins.section"))
     # THREE ROWS AS `b16()` DRAWS, the rest counted not crammed: the phone
-    # card sits at 360, so a fourth row would land on it. Drawing fifteen
-    # would not fit; drawing three silently would hide twelve.
+    # card sits at 360, so a fourth row would land on it. Fifteen would not
+    # fit; three silently would hide twelve.
     drawn = 0
     for index, row in enumerate(rows):
         if f"pl_name:{index}" not in labels:
@@ -445,10 +444,9 @@ def paint_plugins(panel, snap) -> None:
         drawn += 1
         name = _t(row["label"]) if row.get("label") else row["name"]
         labels[f"pl_name:{index}"].setText(name)
-        # THE SECOND LINE IS "version · trust" as the artboard draws it. The
-        # description is a sentence that does not fit a 60 px card, so the row
-        # omits it. A missing level must not leave a dangling "1.0.0 · " — an
-        # unreadable `level` gets the version alone.
+        # THE SECOND LINE IS "version · trust" as the artboard draws it; the
+        # description does not fit a 60 px card, so the row omits it. A missing
+        # level must not leave a dangling "1.0.0 · " — unreadable gets version.
         version = row.get("version") or "—"
         labels[f"pl_desc:{index}"].setText(
             _t("ui.page.plugins.row", version=version, trust=_t(row["level"]))
@@ -462,9 +460,8 @@ def paint_plugins(panel, snap) -> None:
         if f"pl_card:{index}" in labels:
             labels[f"pl_card:{index}"].setStyleSheet(
                 f"background:{pal['card']};border-radius:12px;")
-    # THE ROWS THE PANEL CANNOT SHOW ARE COUNTED, not dropped. b16 draws three
-    # and the build ships fifteen; the sentence in the band between the last
-    # card and the phone section says how many exist.
+    # THE UNSHOWN ROWS ARE COUNTED, not dropped: b16 draws three, the build
+    # ships fifteen, and the band says how many exist.
     rest = max(0, len(rows) - drawn)
     labels["pl_more"].setText(
         _t("ui.page.plugins.more", count=rest) if rest else "")
@@ -524,9 +521,8 @@ def paint_light(panel, snap) -> None:
 
     labels = _labels(panel)
     labels["l18_perm_header"].setText(_t("ui.panel.section.access"))
-    # THE CARDS, THE DOT AND THE LOG BOX ARE COLOURED FROM THE LIVE PALETTE.
-    # `b18()` is board 6 in light tokens, so the page reads whichever palette
-    # is on screen and never carries a colour of its own.
+    # THE CARDS, DOT AND LOG BOX ARE COLOURED FROM THE LIVE PALETTE: `b18()`
+    # is board 6 in light tokens, reading the on-screen palette, never its own.
     pal = PALETTES[getattr(panel, "_theme", "dark")]
     for index in range(4):
         labels[f"l18_card:{index}"].setStyleSheet(
@@ -551,10 +547,8 @@ def paint_light(panel, snap) -> None:
     for index in range(3):
         when, what = lines[index] if index < len(lines) else ("", "")
         labels[f"l18_log:{index}"].setText(f"{when}  {what}".strip())
-    # WHICH PALETTE IS ON SCREEN IS A FACT WORTH STATING. Board 18 is the light
-    # permission page; opened while the dark theme is active it is the same
-    # content in dark, and a page that said nothing would let a reader believe
-    # they were looking at the light design.
+    # WHICH PALETTE IS ON SCREEN IS A FACT WORTH STATING: board 18 is the
+    # light page, but under the dark theme it is the same content in dark.
     palette_name = "light" if getattr(panel, "_theme", "dark") == "light" else "dark"
     labels["l18_note"].setText(
         _t("ui.page.light.drawn_light") if palette_name == "light"
@@ -584,3 +578,23 @@ def paint_installer(panel, snap) -> None:
         if button is not None:
             button.setChecked(mode == current)
             button.setText(_t("ui.page.installer.apply"))
+    install = panel._buttons.get("in_install")
+    if install is not None:
+        install.setText(_t("ui.page.installer.install"))
+    _paint_install_status(panel, labels)
+
+def _paint_install_status(panel, labels) -> None:
+    """Board 22's installer strip: the pending count, or the ready sentence."""
+    labels["in_status_header"].setText(_t("ui.page.installer.status"))
+    state = getattr(panel, "_install_state", None)
+    if state is None:
+        return
+    status = state.get("status")
+    if status == "installed":
+        labels["in_status"].setText(_t("ui.page.installer.installed"))
+    elif status == "running":
+        labels["in_status"].setText(
+            _t("ui.page.installer.installing", count=state.get("count", 0)))
+    else:
+        labels["in_status"].setText(
+            _t("ui.page.installer.needs_review", count=state.get("count", 0)))

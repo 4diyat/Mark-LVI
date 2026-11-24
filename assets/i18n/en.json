@@ -1022,5 +1022,12 @@
   "ui.page.plugins.phone_paired_ok": "Phone paired.",
   "ui.page.plugins.phone_unpaired": "Phone disconnected.",
   "ui.page.plugins.phone_pair_failed": "Pairing failed: {detail}",
-  "ui.page.plugins.phone_connected_short": "CONNECTED"
+  "ui.page.plugins.phone_connected_short": "CONNECTED",
+  "ui.page.installer.install": "Install dependencies",
+  "ui.page.installer.installed": "Dependencies ready.",
+  "ui.page.installer.installing": "Installing {count} package(s)…",
+  "ui.page.installer.all_present": "All dependencies already present.",
+  "ui.page.installer.review": "Review plan first",
+  "ui.page.installer.status": "Dependencies",
+  "ui.page.installer.needs_review": "{count} package(s) to install — review then install."
 }

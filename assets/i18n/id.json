@@ -1022,5 +1022,12 @@
   "ui.page.plugins.phone_paired_ok": "Ponsel terpasang.",
   "ui.page.plugins.phone_unpaired": "Ponsel diputus.",
   "ui.page.plugins.phone_pair_failed": "Pemasangan gagal: {detail}",
-  "ui.page.plugins.phone_connected_short": "TERSAMBUNG"
+  "ui.page.plugins.phone_connected_short": "TERSAMBUNG",
+  "ui.page.installer.install": "Instal dependensi",
+  "ui.page.installer.installed": "Dependensi siap.",
+  "ui.page.installer.installing": "Menginstal {count} paket…",
+  "ui.page.installer.all_present": "Semua dependensi sudah ada.",
+  "ui.page.installer.review": "Tinjau plan dulu",
+  "ui.page.installer.status": "Dependensi",
+  "ui.page.installer.needs_review": "{count} paket akan diinstal — tinjau lalu instal."
 }

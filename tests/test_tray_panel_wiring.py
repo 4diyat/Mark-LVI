@@ -311,7 +311,9 @@ def test_every_key_the_panel_can_press_has_a_handler(wiring):
                 "form_fill_apply",
                 # Board 16's phone pairing: mint a code, pair a device,
                 # disconnect the most recent one.
-                "phone_make_code", "phone_pair", "phone_unpair"}
+                "phone_make_code", "phone_pair", "phone_unpair",
+                # Board 22's installer: build a reviewed dependency plan and run it.
+                "installer_run"}
 
         panel = TrayPanel(actions)
         assert panel.open() is True
@@ -338,7 +340,9 @@ def test_every_key_the_panel_can_press_has_a_handler(wiring):
                            # board 13's form-fill apply button, by prefix
                            "hp_form_apply",
                            # board 16's phone pairing controls, by prefix
-                           "pl_phone_make", "pl_phone_pair", "pl_phone_unpair"}
+                           "pl_phone_make", "pl_phone_pair", "pl_phone_unpair",
+                           # board 22's install button, by prefix
+                           "in_install"}
         # `p6*` replaced `permx` when board 6 replaced 06a on the privacy page:
         # the four rows keep the `p6:` prefix, its two buttons are `p6_clear`
         # and `p6_export`, and the history page keeps its own `clear`/`export`.

@@ -639,6 +639,55 @@ def test_a_page_that_cannot_do_something_says_so_on_the_page(
         f"{page}.{label_key} does not read as an absence: {text!r}")
 
 
+def test_board_22_installer_builds_and_reviews_a_plan(monkeypatch):
+    """Board 22's install button drives the pure plan policy.
+
+    With every dependency present, the plan needs no install and the status is
+    "installed". The review gate is exercised: the plan is reviewed before the
+    adapter is ever called, and a missing-package plan reports the count.
+    """
+    from ui import pages_actions
+
+    monkeypatch.setattr(pages_actions, "_say", lambda shell, text: None)
+    # Every module available -> nothing missing.
+    monkeypatch.setattr("core.installer._available", lambda module: True)
+
+    class Panel:
+        def refresh(self):
+            pass
+
+    class Shell:
+        _panel = Panel()
+
+    assert pages_actions.installer_run(Shell()) is True
+    assert Shell._panel._install_state["status"] == "installed"
+    assert Shell._panel._install_state["count"] == 0
+
+
+def test_board_22_installer_reports_missing_count(monkeypatch):
+    """A config with missing packages reports the count and runs the adapter."""
+    from ui import pages_actions
+
+    monkeypatch.setattr(pages_actions, "_say", lambda shell, text: None)
+    monkeypatch.setattr("core.installer._available", lambda module: False)
+    monkeypatch.setattr(
+        "actions.installer_plan.run_install_plan",
+        lambda plan: [type("R", (), {"ok": True, "detail": "ok"})()
+                      for _ in plan.missing])
+
+    class Panel:
+        def refresh(self):
+            pass
+
+    class Shell:
+        _panel = Panel()
+
+    assert pages_actions.installer_run(Shell()) is True
+    state = Shell._panel._install_state
+    assert state["status"] == "installed"
+    assert state["count"] > 0
+
+
 def test_board_22_choosing_a_mode_is_the_presence_switch(monkeypatch):
     """Board 22 must not have its own idea of which mode is on."""
     from core import presence_mode

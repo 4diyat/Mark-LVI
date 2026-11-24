@@ -548,3 +548,53 @@ def phone_unpair(shell: "AmbientShell") -> bool:
     panel.refresh()
     _say(shell, _t("ui.page.plugins.phone_unpaired"))
     return True
+
+
+def installer_run(shell: "AmbientShell") -> bool:
+    """Board 22: build, review, and run the dependency install plan.
+
+    Reads the live config, builds an :class:`InstallPlan` with the pure policy
+    (availability via `core.installer._available`), reviews it, then drives the
+    approved plan through the adapter. The panel's status strip is updated from
+    the result — never a fake progress bar.
+    """
+    from actions.installer_plan import run_install_plan
+    from core.install_plan import InstallError, InstallPlan
+    from core.installer import _available
+    from memory.config_manager import load_api_keys
+
+    panel = getattr(shell, "_panel", None)
+    if panel is None:
+        return False
+    config = load_api_keys() or {}
+    try:
+        plan = InstallPlan.build(config, _available).review()
+    except InstallError as e:
+        panel._install_state = {"status": "failed", "count": 0, "detail": str(e)}
+        panel.refresh()
+        _say(shell, str(e))
+        return False
+
+    count = len(plan.missing)
+    panel._install_state = {
+        "status": "running" if plan.needs_install else "installed",
+        "count": count,
+    }
+    panel.refresh()
+    if not plan.needs_install:
+        _say(shell, _t("ui.page.installer.all_present"))
+        return True
+
+    results = run_install_plan(plan)
+    failed = [r for r in results if not r.ok]
+    panel._install_state = {
+        "status": "installed" if not failed else "failed",
+        "count": count,
+        "detail": "; ".join(r.detail for r in failed),
+    }
+    panel.refresh()
+    if failed:
+        _say(shell, f"Instal gagal: {panel._install_state['detail']}")
+        return False
+    _say(shell, _t("ui.page.installer.installed"))
+    return True
