@@ -122,9 +122,24 @@ def build_access(panel, page) -> None:
     button.clicked.connect(lambda: panel._call("text_scale", "next"))
     panel._buttons["ac_scale"] = button
 
-    # ── KONTRAS at 264: the artboard draws Standar · Tinggi; only one exists.
+    # ── KONTRAS at 264: a 412x38 segmented control, two slots (Standar/Tinggi).
+    # The artboard draws the track at (24,278) with a 200 px slot each; b15
+    # names the two levels at x=127 and x=333. The first version wrote a
+    # sentence saying high contrast does not exist; the owner chose to build
+    # it, so the control is now real and the two slots are live buttons.
     panel._labels["ac_contrast_header"] = at(page, QLabel, text_box(24, 264, 10, width=240), "")
-    panel._labels["ac_contrast"] = _at(page, QLabel, 24, 278, 412, 38, "")
+    panel._labels["ac_contrast_track"] = _at(page, QLabel, 24, 278, 412, 38, "")
+    panel._labels["ac_contrast_note"] = at(page, QLabel, text_box(24, 324, 10.5, width=412), "")
+    # Two equal 200 px slots, matching the artboard's (27,281,200,32) and its
+    # mirror at x=225. Both are buttons: the checked one is the active level.
+    for index, (label_key, level) in enumerate((("standard", "standard"),
+                                                 ("high", "high"))):
+        button = QPushButton("", page)
+        button.setGeometry(24 + index * 200, 278, 200, 38)
+        button.setObjectName(f"ac_contrast:{level}")
+        button.clicked.connect(
+            lambda _checked=False, lv=level: panel._call("contrast_set", lv))
+        panel._buttons[f"ac_contrast:{level}"] = button
 
     # ── GERAK at 344: the 412x64 card, the toggle at (378, 380) ────────────
     panel._labels["ac_motion_header"] = at(page, QLabel, text_box(24, 344, 10, width=240), "")

@@ -272,6 +272,7 @@ class Snapshot:
     permissions: dict = field(default_factory=dict)
     history: tuple = ()
     audit: tuple = ()
+    voice_auth: str = "off"
 
     @property
     def mode_index(self) -> int:
@@ -485,7 +486,7 @@ def snapshot(page: str = "main") -> Snapshot:
     Called on open and after every action, so it has to be cheap: these are
     dictionary reads and one small file read, not a scan.
     """
-    from core import presence_mode, undo
+    from core import presence_mode, undo, voice_auth
 
     used, limit = _quota()
     perms = _permissions()
@@ -502,6 +503,7 @@ def snapshot(page: str = "main") -> Snapshot:
         permissions=perms,
         history=_history(),
         audit=_audit(),
+        voice_auth=str(_safe(voice_auth.status, "off") or "off"),
     )
 
 

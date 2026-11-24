@@ -101,6 +101,7 @@ class AmbientShell:
         # State that `main.py` reads.
         self._muted = False
         self._state = "INITIALISING"
+        self._voice_auth_state = "off"
         self._pending_state: str | None = None
         self._ambient = True
         self._ready = False
@@ -120,6 +121,9 @@ class AmbientShell:
         self.on_wake_manual: Callable[[], None] | None = None
         self.on_wake_install: Callable[[], tuple] | None = None
         self.on_wake_sleep_timeout: Callable[[float], None] | None = None
+        self.on_voice_auth_toggle: Callable[[bool], str] | None = None
+        self.on_voice_auth_enroll: Callable[[], str] | None = None
+        self.on_voice_auth_delete: Callable[[], str] | None = None
         self.ptt_hold: Callable[[bool], None] | None = None
         self.wake_get_state: Callable[[], dict] | None = None
         self.wake_is_ready: Callable[[], bool] | None = None
@@ -285,6 +289,18 @@ class AmbientShell:
         # it does not touch a widget, so it needs no queue.
         from ui.notify_bridge import announce
         announce(self, word)
+
+    def set_voice_auth_state(self, state: str) -> None:
+        """The voice-verification gate's status, for the panel's snapshot.
+
+        Called from the session's worker threads, so the state is a plain
+        assignment (readable from anywhere) and the panel refresh is
+        marshalled to the Qt thread — the same rule `set_state` follows.
+        """
+        self._voice_auth_state = str(state or "off")
+        panel = getattr(self, "_panel", None)
+        if panel is not None:
+            run_on_qt_thread(self._ui_thread_id, lambda: panel.refresh())
 
     def _apply_state(self, word: str) -> None:
         """The half of `set_state` that touches widgets. Qt thread only."""

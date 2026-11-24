@@ -98,7 +98,13 @@ def band_energies(pcm, sr: int) -> np.ndarray:
 
     Left unnormalised on purpose: the decision below projects one of these onto
     another, and a projection needs real magnitudes.
+
+    Accepts a sounddevice-style int16 array OR raw PCM bytes (converted with
+    `np.frombuffer`) — the voice-verification path hands it buffered bytes,
+    while the echo guard on the audio path hands it the live numpy block.
     """
+    if isinstance(pcm, (bytes, bytearray)):
+        pcm = np.frombuffer(pcm, dtype=np.int16)
     x = np.asarray(pcm, dtype=np.float32)
     if x.size < 64:
         return np.zeros(len(_BAND_EDGES) - 1, dtype=np.float32)

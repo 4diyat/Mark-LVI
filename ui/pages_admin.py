@@ -330,7 +330,7 @@ def build_security(panel, page) -> None:
     one sentence saying both are absent — in the same band the artboard gives
     them, not dropped and not faked.
     """
-    from PyQt6.QtWidgets import QLabel
+    from PyQt6.QtWidgets import QLabel, QPushButton
 
     from ui.tray_pages import _at
 
@@ -347,14 +347,36 @@ def build_security(panel, page) -> None:
         panel._labels[f"sec_note:{index}"] = _at(page, QLabel, x + 20, y + 34, 280, 18, "")
         panel._labels[f"sec_count:{index}"] = _at(page, QLabel, x + 300, y + 22, 90, 20, "")
 
-    # MODE TAMU / KONTROL OS: the header stays where b14 puts it, the card the
-    # artboard draws under it becomes the sentence naming both absences.
+    # OS-CONTROL ABSENCE stays where b14 draws it: the header at 176 and the
+    # sentence in the 412x66 card at 190. The OS-control switch has no backend,
+    # and the page says so in the band the artboard gives it.
     panel._labels["sec_os_header"] = at(page, QLabel, text_box(24, 176, 10, width=240), "")
     panel._labels["sec_os"] = _at(page, QLabel, 24, 190, 412, 66, "")
-    # The artboard's amber-bordered card at (24,540,412,76). It is the second
-    # of the two absences and it keeps the drawing's geometry: the card exists,
-    # the control it describes does not.
+
+    # VERIFIKASI SUARA takes the deleted guest-mode card at (24,540,412,76).
+    # The guest-mode switch itself is deleted by ruling and its dot at
+    # (378,216) is enforced absent by the conformance test; the voice switch
+    # is placed clear of it, inside the card the artboard already draws.
     panel._labels["sec_os_card"] = _at(page, QLabel, 24, 540, 412, 76, "")
+    panel._labels["va_header"] = at(page, QLabel, text_box(24, 548, 10, width=240), "")
+    panel._labels["va_status"] = at(page, QLabel, text_box(24, 570, 10, width=340), "")
+    toggle = QPushButton("", page)
+    toggle.setGeometry(378, 548, 40, 22)
+    toggle.setCheckable(True)
+    toggle.setObjectName("va_toggle")
+    toggle.clicked.connect(
+        lambda checked: panel._call("voice_auth_toggle", bool(checked)))
+    panel._buttons["va_toggle"] = toggle
+    enroll = QPushButton("", page)
+    enroll.setGeometry(24, 590, 120, 26)
+    enroll.setObjectName("va_enroll")
+    enroll.clicked.connect(lambda: panel._call("voice_auth_enroll"))
+    panel._buttons["va_enroll"] = enroll
+    delete = QPushButton("", page)
+    delete.setGeometry(156, 590, 120, 26)
+    delete.setObjectName("va_delete")
+    delete.clicked.connect(lambda: panel._call("voice_auth_delete"))
+    panel._buttons["va_delete"] = delete
 
 
 def build_plugins(panel, page) -> None:

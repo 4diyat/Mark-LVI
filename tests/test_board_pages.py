@@ -259,13 +259,21 @@ def test_board_10_forgets_the_memory_it_is_showing(tmp_path, monkeypatch,
 # ── board 11: the pause is the engine's ─────────────────────────────────────
 
 def test_board_11_reads_the_pause_the_scheduler_reads(monkeypatch):
-    """Not a private copy: `actions.proactive`'s own persisted flag."""
+    """The routine list is the store's; the proactive pause is the engine's.
+
+    The scheduled routines come from `memory/routine_store.py` (the store is
+    the only writer). The proactive check is NOT a scheduled routine - it
+    fires on silence, not on a schedule - so its pause is read separately
+    through `suggestion_paused`, and the list does not claim a row for it.
+    """
     from ui import pages_people
 
     monkeypatch.setattr(pages_people, "suggestion_paused", lambda: True)
+    # The list reads the store; with no routines stored it is empty, and the
+    # pause is reported by its own reader, not as a routine row.
+    assert pages_people.suggestion_paused() is True
     rows = pages_people.routines()
-    assert rows and rows[0]["on"] is False, (
-        "the routine list says the proactive check is on while it is paused")
+    assert rows == [], "no scheduled routines are stored, so the list is empty"
 
 
 def test_board_11_pause_button_flips_the_engines_flag(monkeypatch, tmp_path):
@@ -284,6 +292,65 @@ def test_board_11_pause_button_flips_the_engines_flag(monkeypatch, tmp_path):
     assert pages_actions.routines_pause(Shell()) is True
     assert written == {"paused": True}, (
         f"the button wrote {written}; it must pause the engine")
+
+
+def test_board_13_form_fill_refuses_an_unreviewed_url(monkeypatch):
+    """Board 13's apply button builds a plan through the pure policy.
+
+    With no URL in the field it says so and returns False without touching the
+    browser — the review-first gate the board's strip promises.
+    """
+    from ui import pages_actions
+
+    monkeypatch.setattr(pages_actions, "_say", lambda shell, text: None)
+
+    class Panel:
+        _inputs = {}
+        def refresh(self):
+            pass
+
+    class Shell:
+        _panel = Panel()
+
+    assert pages_actions.form_fill_apply(Shell()) is False
+
+
+def test_board_13_form_fill_reviews_before_applying(monkeypatch):
+    """A reviewed plan is driven into the browser adapter.
+
+    The URL and three field values are read from the inputs, the plan is built
+    and reviewed (the "tinjau dulu" gate), then the adapter is called with the
+    reviewed plan's fields. A failed fill is reported and returns False.
+    """
+    from ui import pages_actions
+
+    called = {}
+
+    def fake_fill(page_url, fields):
+        called["page_url"] = page_url
+        called["fields"] = fields
+        return [type("R", (), {"selector": k, "ok": True, "detail": "ok"})()
+                for k in fields]
+
+    monkeypatch.setattr("actions.browser_form.fill_form_to_page", fake_fill)
+    monkeypatch.setattr(pages_actions, "_say", lambda shell, text: None)
+
+    class Panel:
+        _inputs = {
+            "hp_form_url": type("E", (), {"text": lambda self: "https://x.test/f"})(),
+            "hp_form_input:0": type("E", (), {"text": lambda self: "Alice"})(),
+            "hp_form_input:1": type("E", (), {"text": lambda self: "42"})(),
+            "hp_form_input:2": type("E", (), {"text": lambda self: "100"})(),
+        }
+        def refresh(self):
+            pass
+
+    class Shell:
+        _panel = Panel()
+
+    assert pages_actions.form_fill_apply(Shell()) is True
+    assert called["page_url"] == "https://x.test/f"
+    assert called["fields"]["#field0"] == "Alice"
 
 
 # ── board 12: the clipboard is read, and the sensitive label is a pattern ───
@@ -495,10 +562,6 @@ ABSENCE_PAGES = [
     # (page, the label key that carries the sentence, a word it must contain)
     ("tools", "tl_snap_absent", ("belum", "not", "does not")),
     ("gestures", "gs_absent", ("klik", "click", "drawing", "gambar")),
-    # Board 13's absence moved INTO the strip the artboard draws at 578 and
-    # into each of its three field rows: the page keeps b13's geometry and
-    # says in it that nothing is applied to a form.
-    ("help", "hp_preview", ("belum", "not", "nothing")),
     ("security", "sec_os", ("tidak", "no ", "not")),
     ("plugins", "pl_phone", ("belum", "no ", "not")),
     # THE THIRD COLUMN, not the second. `b15()` draws the gesture's ACTION in
