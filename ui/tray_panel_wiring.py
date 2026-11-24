@@ -513,6 +513,10 @@ def actions_for(shell: "AmbientShell") -> dict:
         "voice_auth_enroll": lambda: pages_actions.voice_auth_enroll(shell),
         "voice_auth_delete": lambda: pages_actions.voice_auth_delete(shell),
         "form_fill_apply": lambda: pages_actions.form_fill_apply(shell),
+        # Board 16's phone pairing: mint a code, pair a device, disconnect.
+        "phone_make_code": lambda: pages_actions.phone_make_code(shell),
+        "phone_pair": lambda: pages_actions.phone_pair(shell),
+        "phone_unpair": lambda: pages_actions.phone_unpair(shell),
     }
 
 

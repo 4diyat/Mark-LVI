@@ -253,9 +253,12 @@ lengkap** permukaan UI. Berikut desain per layar, dengan status implementasi
 - **Apa yang ditampilkan:** plugin aktif, sinkron ponsel, kode pasangan.
 - **Desain:** daftar plugin dengan toggle (aktif otomatis saat file
   ada), card sinkron ponsel, card kode pasangan.
-- **Status:** ⚠️ **tidak ada fitur ponsel** — card SINKRON PONSEL tidak
-  ditampilkan dan mengatakannya. Dashboard HP ada sebagai surface terpisah
-  (`dashboard/server.py`), bukan card ini (rekomendasi §5: gabungkan).
+- **Status:** ✅ **pairing ponsel terimplementasi** — policy murni
+  `core/phone_pairing.py` (mint kode satu-kali-pakai, consume dengan
+  clock terinjeksi, scope command/read, handoff), UI board 16 (tombol
+  buat kode / pasang / putus + kode pasangan nyata + status kartu),
+  i18n dua bahasa. Dashboard HP tetap surface terpisah
+  (`dashboard/server.py`); card ini sekarang pairing via policy. Lihat §5.6.
 
 ### Board 17 — Tema terang (panel)
 - **Apa yang ditampilkan:** panel 5 dalam token terang dengan sakelar.
@@ -377,14 +380,21 @@ menyempurnakan prinsip §1.
   transkrip.
 - **Effort:** Sedang.
 
-### 5.6 Handoff ponsel (lanjutkan percakapan) — *prioritas menengah*
+### 5.6 Handoff ponsel (lanjutkan percakapan) — *sebagian: pairing selesai*
 - **Mengapa:** Dashboard ponsel ada, tapi terpisah. Saat pengguna pergi
   dari desktop, ia harus memulai percakapan baru di ponsel.
 - **UI:** Pada dashboard ponsel dan desktop: tombol "Lanjutkan di ponsel"
   / "Lanjutkan di desktop" dengan daftar sesi aktif. Setelah pairing,
   session berpindah dengan konteks yang sama.
+- **Backend (pairing selesai):** `core/phone_pairing.py` policy murni —
+  mint kode satu-kali-pakai (8 karakter, alfabet tanpa O/I/L/0/1, TTL 5
+  menit, satu kode hidup), consume dengan validasi expiry/one-time/scope,
+  catat device dengan scope command/read, dan gate handoff berdasarkan
+  scope. UI board 16: tombol buat kode/pasang/putus, kode pasangan nyata,
+  status kartu. **Transfer konteks (memory + riwayat) adalah transport,
+  belum diimplementasi** — pairing dan gate handoff-nya sudah.
 - **Risiko:** Konteks harus ditransfer dengan aman (memory + riwayat).
-- **Effort:** Sedang.
+- **Effort:** Pairing selesai; handoff konteks belum.
 
 ### 5.7 Izin per plugin & matriks — *prioritas menengah*
 - **Mengapa:** Plugin aktif otomatis saat file ada. Beberapa plugin

@@ -535,6 +535,54 @@ def test_board_16_toggle_writes_the_loaders_store(monkeypatch):
     assert written == {"quick_notes": True}
 
 
+def test_board_16_phone_pairing_mints_and_pairs(monkeypatch):
+    """Board 16's pairing controls drive the pure policy end to end.
+
+    Generate mints a one-time code the policy will accept; pair consumes it and
+    records a device; unpair removes it. Each step repaints so the card and the
+    code box agree with the session's state.
+    """
+    from ui import pages_actions
+
+    monkeypatch.setattr(pages_actions, "_say", lambda shell, text: None)
+
+    class Panel:
+        def refresh(self):
+            pass
+
+    class Shell:
+        _panel = Panel()
+
+    # Mint a code, then pair against it.
+    assert pages_actions.phone_make_code(Shell()) is True
+    assert pages_actions.phone_pair(Shell()) is True
+    session = Shell._panel._phone_pair
+    assert session.paired_names() == ["Ponsel"]
+
+    # Unpair drops the most recent device and returns the card to idle.
+    assert pages_actions.phone_unpair(Shell()) is True
+    assert session.paired_names() == []
+    # With no device left, another unpair says so and returns False.
+    assert pages_actions.phone_unpair(Shell()) is False
+
+
+def test_board_16_phone_pair_without_a_code_is_refused(monkeypatch):
+    """Pairing with no pending code says so and returns False."""
+    from ui import pages_actions
+
+    monkeypatch.setattr(pages_actions, "_say", lambda shell, text: None)
+
+    class Panel:
+        def refresh(self):
+            pass
+
+    class Shell:
+        _panel = Panel()
+
+    assert pages_actions.phone_pair(Shell()) is False
+    assert pages_actions.phone_unpair(Shell()) is False
+
+
 def test_board_16_rows_report_manifest_facts_not_provenance(panel_module):
     """The row's second line is the version and the SECURITY LEVEL.
 
@@ -563,7 +611,6 @@ ABSENCE_PAGES = [
     ("tools", "tl_snap_absent", ("belum", "not", "does not")),
     ("gestures", "gs_absent", ("klik", "click", "drawing", "gambar")),
     ("security", "sec_os", ("tidak", "no ", "not")),
-    ("plugins", "pl_phone", ("belum", "no ", "not")),
     # THE THIRD COLUMN, not the second. `b15()` draws the gesture's ACTION in
     # the middle ("Panggil antarmuka" at x=250, cyan) and "ubah" at 416 on the
     # right; the first version of this page wrote "fixed" into the middle

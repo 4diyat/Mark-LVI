@@ -277,3 +277,22 @@ Three rules:
   inputs; the preview strip reports review/applied/failed. The apply button
   (`pages_actions.form_fill_apply`) reads the inputs, builds and reviews the
   plan, then calls the adapter — never applying an unreviewed plan.
+
+## Phone pairing (board 16)
+
+Board 16 pairs a phone to the desktop, but the pairing decision is a pure
+policy so the rules are testable without a socket. Three rules:
+
+- **The policy is pure.** `core/phone_pairing.py` mints one-time pairing
+  codes (8 chars from a 31-symbol alphabet, no O/I/L/0/1, 5-minute TTL, one
+  live code at a time), consumes them against an injectable clock, records
+  paired devices with a scope (`command` implies `read`, not vice versa), and
+  gates handoff by scope. No network, no file — fully testable with a fake
+  clock.
+- **The alphabet and length MUST match the server.** The dashboard server
+  pins `_KEY_CHARS` / `_KEY_LENGTH`; a code the policy mints must be one the
+  server's `/login` will accept, so the two cannot drift.
+- **The UI drives the policy.** Board 16's phone card has make-code / pair /
+  unpair buttons; the pairing-code box shows the live code (or the no-code
+  sentence), never a fake literal. The panel holds the `PairingSession`; the
+  painter reads it, so a button and the next repaint agree on state.

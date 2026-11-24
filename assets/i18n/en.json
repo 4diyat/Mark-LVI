@@ -1011,5 +1011,16 @@
   "ui.page.help.form_reviewed": "Reviewed — ready to apply.",
   "ui.page.help.form_applied": "Form filled — reviewed and applied.",
   "ui.page.help.form_failed": "Form fill failed: {detail}",
-  "ui.page.help.form_no_url": "Enter the form page URL first."
+  "ui.page.help.form_no_url": "Enter the form page URL first.",
+  "ui.page.plugins.phone_make_code": "Generate code",
+  "ui.page.plugins.phone_pair": "Pair",
+  "ui.page.plugins.phone_unpair": "Disconnect",
+  "ui.page.plugins.phone_paired": "{name} connected",
+  "ui.page.plugins.phone_idle": "No device connected",
+  "ui.page.plugins.phone_code_shown": "Code: {code} · expires in {secs}s",
+  "ui.page.plugins.phone_no_code": "No code pending — generate one first.",
+  "ui.page.plugins.phone_paired_ok": "Phone paired.",
+  "ui.page.plugins.phone_unpaired": "Phone disconnected.",
+  "ui.page.plugins.phone_pair_failed": "Pairing failed: {detail}",
+  "ui.page.plugins.phone_connected_short": "CONNECTED"
 }

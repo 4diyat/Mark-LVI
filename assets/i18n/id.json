@@ -1011,5 +1011,16 @@
   "ui.page.help.form_reviewed": "Ditinjau — siap diterapkan.",
   "ui.page.help.form_applied": "Form terisi — ditinjau dan diterapkan.",
   "ui.page.help.form_failed": "Isi form gagal: {detail}",
-  "ui.page.help.form_no_url": "Masukkan URL halaman form dulu."
+  "ui.page.help.form_no_url": "Masukkan URL halaman form dulu.",
+  "ui.page.plugins.phone_make_code": "Buat kode",
+  "ui.page.plugins.phone_pair": "Pasang",
+  "ui.page.plugins.phone_unpair": "Putuskan",
+  "ui.page.plugins.phone_paired": "{name} terhubung",
+  "ui.page.plugins.phone_idle": "Tidak ada perangkat terhubung",
+  "ui.page.plugins.phone_code_shown": "Kode: {code} · berlaku {secs}s",
+  "ui.page.plugins.phone_no_code": "Belum ada kode — buat dulu.",
+  "ui.page.plugins.phone_paired_ok": "Ponsel terpasang.",
+  "ui.page.plugins.phone_unpaired": "Ponsel diputus.",
+  "ui.page.plugins.phone_pair_failed": "Pemasangan gagal: {detail}",
+  "ui.page.plugins.phone_connected_short": "TERSAMBUNG"
 }

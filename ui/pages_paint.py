@@ -22,10 +22,8 @@ from __future__ import annotations
 from ui.tray_pages import PALETTES
 from ui.tray_panel_model import _t
 
-
 def _labels(panel):
     return panel._labels
-
 
 def paint_memory(panel, snap) -> None:
     """Board 9: the count, the rows that fit, and the remainder."""
@@ -36,43 +34,40 @@ def paint_memory(panel, snap) -> None:
     shown = pages_memory.LIST_ROWS
 
     # THE COUNT IS THE HEADER'S, NOT THIS PAGE'S: `b09()` passes it to
-    # `panel_head()`, which renders it in the shared subtitle at (24,54).
+    # `panel_head()`, rendered in the shared subtitle at (24,54).
     labels["mem_section"].setText(_t("ui.page.memory.section"))
 
-    # THE CARDS STAY ON SCREEN EVEN WHEN THE STORE IS EMPTY: `b09()` draws six
-    # and hiding them left a header over blank space. An empty list is a fact;
-    # an empty PAGE is a bug. The first card carries the nothing-yet sentence.
+    # THE CARDS STAY ON SCREEN EVEN WHEN THE STORE IS EMPTY: hiding them left
+    # a header over blank space. An empty list is a fact; an empty PAGE is a
+    # bug. The first card carries the nothing-yet sentence.
     for index in range(shown):
         row = rows[index] if index < len(rows) else None
-        if row is None:
-            labels[f"mem_card:{index}"].show()
+        empty = row is None
+        labels[f"mem_card:{index}"].show()
+        if empty:
             labels[f"mem_key:{index}"].setText(
                 _t("ui.page.memory.empty_row") if index == 0 and not rows else "")
             labels[f"mem_val:{index}"].setText("")
             panel._buttons[f"mem_open:{index}"].hide()
             continue
-        labels[f"mem_card:{index}"].show()
         labels[f"mem_key:{index}"].setText(str(row.get("key") or ""))
         labels[f"mem_val:{index}"].setText(str(row.get("value") or ""))
         button = panel._buttons[f"mem_open:{index}"]
         button.show()
         button.setText(_t("ui.page.memory.open"))
 
-    # THE REMAINDER IS STATED, NOT HIDDEN: the header counts the store, the list
-    # counts the widgets, so showing eight of twelve must say so.
+    # THE REMAINDER IS STATED, NOT HIDDEN: the header counts the store, the
+    # list counts the widgets, so showing eight of twelve must say so.
     rest = max(0, len(rows) - shown)
     labels["mem_more"].setText(_t("ui.page.memory.more", count=rest) if rest else "")
     panel._buttons["mem_add"].setText(_t("ui.page.memory.add"))
     panel._buttons["mem_clear"].setText(_t("ui.page.memory.clear"))
 
-
 def paint_memory_one(panel, snap) -> None:
     """Board 10: one memory, and four bands the store cannot fill.
 
-    `all_entries_for_ui()` returns category, key, value and `updated` — there
-    is no source, no lifetime, no confidence and no usage tracking. Each band
-    is drawn at the artboard's coordinates and says in that place the value is
-    not recorded. NO PERCENTAGE IS DRAWN.
+    The store returns key/value/updated only — no source, lifetime or
+    confidence. Each band states its absence at the artboard's coordinates.
     """
     from ui import pages_memory
 
@@ -81,8 +76,7 @@ def paint_memory_one(panel, snap) -> None:
     target = panel.target_memory()
     row = pages_memory.find(*target) if target else None
 
-    # BOARD 10 HAS NO `panel_head()`, so it draws its own title line at (58,56),
-    # beside the back chevron the artboard puts at (42, 54).
+    # BOARD 10 HAS NO `panel_head()`, so it draws its own title at (58,56).
     labels["m1_title"].setText(_t("ui.page.memory_one.title"))
 
     labels["m1_isi_header"].setText(_t("ui.page.memory_one.isi"))
@@ -93,11 +87,10 @@ def paint_memory_one(panel, snap) -> None:
         labels["m1_isi_label"].setText(str(row.get("key") or ""))
         labels["m1_isi_value"].setText(str(row.get("value") or ""))
 
-    # The four bands, each stating its own absence where the control would be.
-    labels["m1_source_header"].setText(_t("ui.page.memory_one.source"))
-    labels["m1_source"].setText(_t("ui.page.memory_one.source_absent"))
-    labels["m1_life_header"].setText(_t("ui.page.memory_one.life"))
-    labels["m1_life"].setText(_t("ui.page.memory_one.life_absent"))
+    # The four bands each state their own absence where the control would be.
+    for key in ("source", "life"):
+        labels[f"m1_{key}_header"].setText(_t(f"ui.page.memory_one.{key}"))
+        labels[f"m1_{key}"].setText(_t(f"ui.page.memory_one.{key}_absent"))
     labels["m1_conf_header"].setText(_t("ui.page.memory_one.confidence"))
     labels["m1_conf_track"].setStyleSheet(
         f"background:{PALETTES[panel._theme]['line']};border-radius:1px;")
@@ -106,12 +99,9 @@ def paint_memory_one(panel, snap) -> None:
     labels["m1_used"].setText(_t("ui.page.memory_one.used_absent"))
 
     # The two pills. There is no "Simpan": see `build_memory_one`.
-    panel._buttons["m1_forget"].setText(_t("ui.page.memory_one.forget"))
-    panel._buttons["m1_export"].setText(_t("ui.page.memory_one.export"))
-    if row is None:
-        panel._buttons["m1_forget"].hide()
-    else:
-        panel._buttons["m1_forget"].show()
+    for btn, key in (("m1_forget", "forget"), ("m1_export", "export")):
+        panel._buttons[btn].setText(_t(f"ui.page.memory_one.{key}"))
+    panel._buttons["m1_forget"].setVisible(row is not None)
 
 
 __all__ = ["paint_memory", "paint_memory_one"]
@@ -120,11 +110,10 @@ __all__ = ["paint_memory", "paint_memory_one"]
 # ── boards 11, 12, 13, 7, 19 ─────────────────────────────────────────────────
 
 def _keyed(labels, prefix, count, text_key) -> None:
-    """Write `text` into `prefix:0..count-1`, reading each label's own i18n key.
+    """Write each row's text, reading its own i18n key off the label.
 
-    Board 19's gestures and board 22's modes are drawn from a table and carry a
-    key per row rather than a fixed string, so the painter does not have to know
-    which row says what — the builder stamped the key on the label.
+    Board 19 and 22 carry a key per row rather than a fixed string, so the
+    painter does not have to know which row says what.
     """
     for index in range(count):
         widget = labels.get(f"{prefix}:{index}")
@@ -132,7 +121,6 @@ def _keyed(labels, prefix, count, text_key) -> None:
             continue
         key = getattr(widget, "_key", "") or text_key
         widget.setText(_t(key))
-
 
 def paint_routines(panel, snap) -> None:
     from ui import pages_people
@@ -143,7 +131,7 @@ def paint_routines(panel, snap) -> None:
     paused = pages_people.suggestion_paused()
 
     # UP TO THREE ROUTINE CARDS from the store; a card past the store's length
-    # says so and disables its controls, matching the three artboard slots.
+    # says so and disables its controls, matching the artboard's three slots.
     for index in range(3):
         row = rows[index] if index < len(rows) else None
         labels[f"rt_card:{index}"].setStyleSheet(
@@ -154,10 +142,9 @@ def paint_routines(panel, snap) -> None:
             labels[f"rt_name:{index}"].setText(_t("ui.page.routines.empty"))
             labels[f"rt_when:{index}"].setText("")
             labels[f"rt_what:{index}"].setText("")
-            if toggle is not None:
-                toggle.setEnabled(False)
-            if delete is not None:
-                delete.setEnabled(False)
+            for ctrl in (toggle, delete):
+                if ctrl is not None:
+                    ctrl.setEnabled(False)
         else:
             labels[f"rt_name:{index}"].setText(str(row["name"]))
             labels[f"rt_when:{index}"].setText(str(row["when"]))
@@ -174,18 +161,14 @@ def paint_routines(panel, snap) -> None:
 
     # THE BUILDER: one line for the schedule phrase.
     labels["rt_builder_label"].setText(_t("ui.page.routines.builder_label"))
-    create = panel._buttons.get("rt_builder_create")
-    if create is not None:
+    if (create := panel._buttons.get("rt_builder_create")) is not None:
         create.setText(_t("ui.page.routines.create"))
-
     labels["rt_suggest_header"].setText(_t("ui.page.routines.suggest"))
     labels["rt_suggest_note"].setText(
-        _t("ui.page.routines.paused") if paused else _t("ui.page.routines.no_engine"))
+        _t("ui.page.routines.paused" if paused else "ui.page.routines.no_engine"))
     labels["rt_footnote"].setText(_t("ui.page.routines.footnote"))
-    button = panel._buttons.get("rt_pause")
-    if button is not None:
+    if (button := panel._buttons.get("rt_pause")) is not None:
         button.setText(_t("ui.page.routines.resume" if paused else "ui.page.routines.pause"))
-
 
 def paint_tools(panel, snap) -> None:
     from ui import pages_people
@@ -194,7 +177,7 @@ def paint_tools(panel, snap) -> None:
     labels["tl_clip_header"].setText(_t("ui.page.tools.clipboard"))
     text = pages_people.clipboard_text()
     # THE MARK BELONGS TO THE TEXT, NOT THE PAGE: "safe" was a decision about
-    # ONE clipboard, so it never carries to the next one. New text, new question.
+    # ONE clipboard, so it never carries to the next. New text, new question.
     if text != getattr(panel, "_marked_text", ""):
         panel._marked_text = text
         panel._marked_safe = False
@@ -219,13 +202,12 @@ def paint_tools(panel, snap) -> None:
         label.setText(str(hits[index]) if index < len(hits)
                       else (_t("ui.page.tools.find_none") if index == 0 else ""))
     labels["tl_snap_header"].setText(_t("ui.page.tools.snap"))
-    # Drawn because the artboard draws it; there is no window manager behind it.
+    # Drawn because the artboard draws it; no window manager sits behind it.
     for index in range(3):
         labels[f"tl_snap_thumb:{index}"].setText(
             _t(f"ui.page.tools.snap_thumb{index + 1}"))
-    # The absence sits where the artboard's thumbnails are, not on its caption.
+    # The absence sits where the artboard's thumbnails are, not its caption.
     labels["tl_snap_absent"].setText(_t("ui.page.tools.snap_absent"))
-
 
 def paint_gestures(panel, snap) -> None:
     labels = _labels(panel)
@@ -233,7 +215,6 @@ def paint_gestures(panel, snap) -> None:
     _keyed(labels, "gs_note", 6, "ui.page.gestures.g1.note")
     labels["gs_absent"].setText(_t("ui.page.gestures.absent"))
     labels["gs_note"].setText(_t("ui.page.gestures.note"))
-
 
 def paint_consent(panel, snap) -> None:
     """Board 7: one microphone question, and the segments that say so."""
@@ -247,8 +228,8 @@ def paint_consent(panel, snap) -> None:
     labels["cn_what_header"].setText(_t("ui.page.consent.what"))
 
     # THE FOUR SEGMENTS ARE THE ARTBOARD'S FOUR-STEP FLOW. One step exists, so
-    # ONE is lit and the rest are the unfilled track; two lit would claim a step
-    # nobody will be shown.
+    # ONE is lit and the rest are the unfilled track; two lit would claim a
+    # step nobody will be shown.
     accent = PALETTES[panel._theme]["accent"]
     idle = PALETTES[panel._theme]["line"]
     for index in range(4):
@@ -269,7 +250,6 @@ def paint_consent(panel, snap) -> None:
         _t("ui.page.consent.done") if given else _t("ui.page.consent.allow"))
     panel._buttons["cn_deny"].setText(_t("ui.page.consent.deny"))
 
-
 def paint_help(panel, snap) -> None:
     """Board 13: three panels, and the form strip that reports review status."""
     labels = _labels(panel)
@@ -287,7 +267,6 @@ def paint_help(panel, snap) -> None:
     panel._buttons["hp_form_apply"].setText(_t("ui.page.help.form_apply"))
     labels["hp_preview"].setText(_form_fill_preview(panel))
 
-
 def _form_fill_preview(panel) -> str:
     """The preview strip's sentence, driven by the form-fill state."""
     state = getattr(panel, "_form_fill", {})
@@ -298,7 +277,6 @@ def _form_fill_preview(panel) -> str:
         return _t("ui.page.help.form_failed", detail=state.get("detail", ""))
     return _t("ui.page.help.form_reviewed" if status == "reviewed"
               else "ui.page.help.preview")
-
 
 
 # ── boards 14, 15, 16, 18, 21, 22 ────────────────────────────────────────────
@@ -313,13 +291,13 @@ def paint_security(panel, snap) -> None:
         labels[f"sec_name:{index}"].setText(_t(name_key))
         labels[f"sec_note:{index}"].setText(_t(note_key))
         labels[f"sec_count:{index}"].setText(str(counts.get(level, 0)))
-    # OS-CONTROL absence, stated in the band b14 draws it (header 176, card 190).
+    # OS-CONTROL absence, stated in the band b14 draws it (header 176).
     labels["sec_os_header"].setText(_t("ui.page.security.os"))
     labels["sec_os"].setText(_t("ui.page.security.os_absent"))
 
     # VERIFIKASI SUARA: the deleted guest-mode card now carries the voice gate.
     # The guest-mode dot at (378,216) stays absent; the voice switch sits clear
-    # of it. Status comes from the snapshot.
+    # of it and its status comes from the snapshot.
     labels["va_header"].setText(_t("ui.page.security.voice_auth"))
     va = str(getattr(snap, "voice_auth", "off") or "off")
     labels["va_status"].setText(_t(f"ui.page.security.voice_auth.{va}"))
@@ -342,7 +320,6 @@ def paint_security(panel, snap) -> None:
         f"background:{PALETTES[panel._theme]['panel']};border-radius:12px;"
         f"border:1px solid {PALETTES[panel._theme]['amber']};")
 
-
 def paint_access(panel, snap) -> None:
     from ui import pages_admin
 
@@ -355,8 +332,8 @@ def paint_access(panel, snap) -> None:
     active = pages_admin.active_language()
     from ui.pages_access import language_slots
 
-    # The same order the builder used. Two loops that disagree about
-    # left-to-right is how the slots got reversed in the first place.
+    # The same order the builder used: two loops that disagree left-to-right
+    # is how the slots got reversed in the first place.
     for code in language_slots():
         button = panel._buttons.get(f"ac_lang:{code}")
         if button is not None:
@@ -376,9 +353,9 @@ def paint_access(panel, snap) -> None:
     scale = pages_admin.text_scale()
     labels["ac_size_note"].setText(_t("ui.page.access.size.value",
                                       percent=int(round(scale * 100))))
-    # THE SLIDER MATCHES b15: a 380 px track whose cyan fill width IS the
-    # setting. It is a static bar, not a drag target — the three buttons below
-    # change the value — so the artboard's proportions hold without a new control.
+    # THE SLIDER MATCHES b15: a 380 px track whose fill width IS the setting.
+    # It is a static bar, not a drag target — the three buttons below change the
+    # value — so the artboard's proportions hold without a new control.
     low, high = pages_admin.TEXT_SCALES[0], pages_admin.TEXT_SCALES[-1]
     fraction = 0.0 if high == low else (scale - low) / (high - low)
     labels["ac_size_track"].setStyleSheet(
@@ -386,7 +363,7 @@ def paint_access(panel, snap) -> None:
     labels["ac_size_fill"].setStyleSheet(
         f"background:{PALETTES[panel._theme]['accent']};border-radius:1px;")
     labels["ac_size_fill"].setGeometry(24, 194, max(2, round(380 * fraction)), 3)
-    # The knob is a 7 px radius disc in the drawing, centred on the fill's end.
+    # The knob is a 7 px disc centred on the fill's end, as the drawing shows.
     labels["ac_size_knob"].setStyleSheet(
         f"background:{PALETTES[panel._theme]['accent']};border-radius:7px;")
     labels["ac_size_knob"].setGeometry(
@@ -409,8 +386,8 @@ def paint_access(panel, snap) -> None:
             button.setText(_t(f"ui.page.access.contrast.{label_key}"))
             button.setCheckable(True)
             button.setChecked(high and level == "high")
-    # The note states what the level does, so a reader who cannot tell the
-    # two slots apart still knows which one they chose.
+    # The note states what the level does, so a reader who cannot tell the two
+    # slots apart still knows which one they chose.
     labels["ac_contrast_note"].setText(
         _t("ui.page.access.contrast.high_note") if high
         else _t("ui.page.access.contrast.standard_note"))
@@ -419,12 +396,10 @@ def paint_access(panel, snap) -> None:
         f"background:{PALETTES[panel._theme]['card']};border-radius:12px;")
     labels["ac_motion_name"].setText(_t("ui.page.access.motion.name"))
     labels["ac_motion_note"].setText(_t("ui.page.access.motion.note"))
-    # A TOGGLE IS A STATE, NOT A LABEL. `b15()` draws a bare 40x22 pill and the
-    # first version wrote "Motion on" inside it, which overflowed the pill and
-    # said in words what the switch already says in position. The text is now
-    # empty and the switch's checked state carries the answer; the accessible
-    # name lives in the tooltip, where a screen reader finds it and the eye
-    # does not.
+    # A TOGGLE IS A STATE, NOT A LABEL: `b15()` draws a bare 40x22 pill, and
+    # writing "Motion on" inside it overflowed and repeated what the switch
+    # already says. The text is empty; the checked state carries the answer and
+    # the accessible name lives in the tooltip.
     motion = panel._buttons["ac_motion"]
     motion.setText("")
     motion.setCheckable(True)
@@ -433,30 +408,26 @@ def paint_access(panel, snap) -> None:
         _t("ui.page.access.motion.off") if pages_admin.reduced_motion()
         else _t("ui.page.access.motion.on"))
     labels["ac_gestures_header"].setText(_t("ui.page.access.gestures"))
-    # The artboard draws three gesture rows with a "ubah" affordance on each.
-    # `core.gesture_os` knows the gestures but offers no rebinding, so the rows
-    # are drawn from it and the third column says what is missing.
+    # The artboard draws three gesture rows with a "ubah" affordance each;
+    # `core.gesture_os` knows the gestures but offers no rebinding, so the
+    # rows are drawn from it and the third column says what is missing.
     from ui import pages_people
 
     for index, (name_key, note_key) in enumerate(pages_people.gesture_rows()[:3]):
         labels[f"ac_gest_card:{index}"].setStyleSheet(
             f"background:{PALETTES[panel._theme]['card']};border-radius:12px;")
         labels[f"ac_gest_name:{index}"].setText(_t(name_key))
-        # THE MIDDLE COLUMN IS THE ACTION, WHICH `b15()` DRAWS AS CYAN TEXT:
-        # "Telapak terbuka / Panggil antarmuka". The first version put "fixed"
-        # here — a statement about the third column in the second column's
-        # space, and it threw away the mapping the page already knows. The
-        # gesture's meaning is a fact; "there is no rebinding" is what the
-        # THIRD column says.
+        # THE MIDDLE COLUMN IS THE ACTION `b15()` DRAWS AS CYAN TEXT. The
+        # first version put "fixed" here — a third-column statement in the
+        # second column's space — and threw away the mapping. "No rebinding"
+        # belongs to the THIRD column.
         labels[f"ac_gest_act:{index}"].setText(_t(note_key))
-        # Right-aligned, as `b15()` draws its "ubah" at x=416 with anchor
-        # "end". Qt has no per-label anchor, so the cell ends where 416 is and
-        # the style does the rest.
+        # Right-aligned as `b15()` draws its "ubah" at x=416; Qt has no
+        # per-label anchor, so the cell ends there and the style does the rest.
         edit = labels[f"ac_gest_edit:{index}"]
         edit.setText(_t("ui.page.access.gestures_rebind_absent"))
         edit.setStyleSheet(f"color:{pal['muted']};")
     labels["ac_footnote"].setText(_t("ui.page.access.footnote"))
-
 
 def paint_plugins(panel, snap) -> None:
     from ui import pages_admin
@@ -464,10 +435,9 @@ def paint_plugins(panel, snap) -> None:
     labels = _labels(panel)
     rows = pages_admin.plugin_rows()
     labels["pl_section"].setText(_t("ui.page.plugins.section"))
-    # THREE ROWS, AS `b16()` DRAWS, and the rest are counted rather than
-    # crammed: the artboard's phone card sits at 360, so a fourth row would
-    # land on top of it. A page that drew fifteen rows would not fit the panel
-    # and a page that drew three without saying so would hide twelve plugins.
+    # THREE ROWS AS `b16()` DRAWS, the rest counted not crammed: the phone
+    # card sits at 360, so a fourth row would land on it. Drawing fifteen
+    # would not fit; drawing three silently would hide twelve.
     drawn = 0
     for index, row in enumerate(rows):
         if f"pl_name:{index}" not in labels:
@@ -475,13 +445,10 @@ def paint_plugins(panel, snap) -> None:
         drawn += 1
         name = _t(row["label"]) if row.get("label") else row["name"]
         labels[f"pl_name:{index}"].setText(name)
-        # THE SECOND LINE IS "version · trust", which is what the artboard
-        # draws ("1.4.0 · resmi"). The description is a sentence, not a label,
-        # and it does not fit a 60 px card next to a name — the artboard shows
-        # it nowhere, so neither does the row.
-        # A MISSING LEVEL MUST NOT LEAVE A DANGLING SEPARATOR. "1.0.0 · " reads
-        # as a truncated string, so a manifest with an unreadable `level` gets
-        # the version alone rather than a bullet pointing at nothing.
+        # THE SECOND LINE IS "version · trust" as the artboard draws it. The
+        # description is a sentence that does not fit a 60 px card, so the row
+        # omits it. A missing level must not leave a dangling "1.0.0 · " — an
+        # unreadable `level` gets the version alone.
         version = row.get("version") or "—"
         labels[f"pl_desc:{index}"].setText(
             _t("ui.page.plugins.row", version=version, trust=_t(row["level"]))
@@ -507,22 +474,43 @@ def paint_plugins(panel, snap) -> None:
     labels["pl_phone_shape"].setStyleSheet(
         f"background:{pal['panel']};border-radius:10px;"
         f"border:1px solid {pal['line']};")
-    labels["pl_phone"].setText(_t("ui.page.plugins.phone_absent"))
-    labels["pl_phone2"].setText(_t("ui.page.plugins.phone_absent2"))
+    _paint_phone_state(panel, labels, pal)
     labels["pl_code_header"].setText(_t("ui.page.plugins.code"))
-    # THE PAIRING CODE IS NOT DRAWN. `b16()` prints "4 7 9 2 1 5"; a code this
-    # build never issued is exactly the kind of plausible fake the owner's
-    # ruling forbids, so the box says where a code would come from.
-    labels["pl_code_box"].setStyleSheet(
-        f"background:{pal['card']};border-radius:10px;"
-        f"border:1px solid {pal['line']};")
-    labels["pl_code_box"].setText(_t("ui.page.plugins.code_absent"))
     labels["pl_code_box"].setStyleSheet(
         f"background:{pal['card']};border-radius:10px;"
         f"border:1px solid {pal['line']};padding-left:18px;color:{pal['muted']};")
+    labels["pl_code_box"].setText(_paint_phone_code(panel))
     if drawn == 0:
         labels["pl_section"].setText(_t("ui.page.plugins.section") + " — 0")
 
+def _paint_phone_state(panel, labels, pal) -> None:
+    """Board 16's phone card: paired device, or the idle sentence.
+
+    Reads the panel's pairing state. When a device is paired it names it and
+    tints the silhouette accent; otherwise the card states no device and the
+    silhouette stays neutral.
+    """
+    session = getattr(panel, "_phone_pair", None)
+    devices = getattr(session, "devices", []) if session is not None else []
+    paired = bool(devices)
+    fill = pal["accent"] if paired else pal["panel"]
+    labels["pl_phone"].setText(
+        _t("ui.page.plugins.phone_paired", name=devices[-1].name)
+        if paired else _t("ui.page.plugins.phone_idle"))
+    labels["pl_phone2"].setText(
+        _t("ui.page.plugins.phone_connected_short") if paired else "")
+    labels["pl_phone_shape"].setStyleSheet(
+        f"background:{fill};border-radius:10px;"
+        f"border:1px solid {pal['line']};")
+
+def _paint_phone_code(panel) -> str:
+    """Board 16's pairing-code box: the live code, or the no-code sentence."""
+    session = getattr(panel, "_phone_pair", None)
+    code = getattr(session, "pending_code", None) if session is not None else None
+    if code is None:
+        return _t("ui.page.plugins.phone_no_code")
+    remaining = max(0, int(code.expires_at - session._clock()))
+    return _t("ui.page.plugins.phone_code_shown", code=code.code, secs=remaining)
 
 def paint_light(panel, snap) -> None:
     """Board 18: board 6's content in whatever palette is on screen.
@@ -572,7 +560,6 @@ def paint_light(panel, snap) -> None:
         _t("ui.page.light.drawn_light") if palette_name == "light"
         else _t("ui.page.light.drawn_dark"))
 
-
 def paint_brand(panel, snap) -> None:
     from ui import pages_admin
 
@@ -583,7 +570,6 @@ def paint_brand(panel, snap) -> None:
     _keyed(labels, "br_state_name", 4, "ui.page.brand.state.idle")
     labels["br_app_note"].setText(_t("ui.page.brand.app_note"))
     labels["br_spec"].setText(_t("ui.page.brand.spec"))
-
 
 def paint_installer(panel, snap) -> None:
     from ui import pages_admin
