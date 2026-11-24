@@ -34,6 +34,8 @@ config/suggestions.json
 
 # ── Personal data the assistant accumulates about you ─────────────────────────
 memory/long_term.json
+memory/voiceprint.json
+memory/routines.json
 memory/*.db
 
 # ── Python build noise ────────────────────────────────────────────────────────

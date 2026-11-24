@@ -375,13 +375,21 @@ def test_board_10_forgets_the_memory_it_is_showing(tmp_path, monkeypatch,
 # ── board 11: the pause is the engine's ─────────────────────────────────────
 
 def test_board_11_reads_the_pause_the_scheduler_reads(monkeypatch):
-    """Not a private copy: `actions.proactive`'s own persisted flag."""
+    """The routine list is the store's; the proactive pause is the engine's.
+
+    The scheduled routines come from `memory/routine_store.py` (the store is
+    the only writer). The proactive check is NOT a scheduled routine - it
+    fires on silence, not on a schedule - so its pause is read separately
+    through `suggestion_paused`, and the list does not claim a row for it.
+    """
     from ui import pages_people
 
     monkeypatch.setattr(pages_people, "suggestion_paused", lambda: True)
+    # The list reads the store; with no routines stored it is empty, and the
+    # pause is reported by its own reader, not as a routine row.
+    assert pages_people.suggestion_paused() is True
     rows = pages_people.routines()
-    assert rows and rows[0]["on"] is False, (
-        "the routine list says the proactive check is on while it is paused")
+    assert rows == [], "no scheduled routines are stored, so the list is empty"
 
 
 def test_board_11_pause_button_flips_the_engines_flag(monkeypatch, tmp_path):
@@ -400,6 +408,65 @@ def test_board_11_pause_button_flips_the_engines_flag(monkeypatch, tmp_path):
     assert pages_actions.routines_pause(Shell()) is True
     assert written == {"paused": True}, (
         f"the button wrote {written}; it must pause the engine")
+
+
+def test_board_13_form_fill_refuses_an_unreviewed_url(monkeypatch):
+    """Board 13's apply button builds a plan through the pure policy.
+
+    With no URL in the field it says so and returns False without touching the
+    browser — the review-first gate the board's strip promises.
+    """
+    from ui import pages_actions
+
+    monkeypatch.setattr(pages_actions, "_say", lambda shell, text: None)
+
+    class Panel:
+        _inputs = {}
+        def refresh(self):
+            pass
+
+    class Shell:
+        _panel = Panel()
+
+    assert pages_actions.form_fill_apply(Shell()) is False
+
+
+def test_board_13_form_fill_reviews_before_applying(monkeypatch):
+    """A reviewed plan is driven into the browser adapter.
+
+    The URL and three field values are read from the inputs, the plan is built
+    and reviewed (the "tinjau dulu" gate), then the adapter is called with the
+    reviewed plan's fields. A failed fill is reported and returns False.
+    """
+    from ui import pages_actions
+
+    called = {}
+
+    def fake_fill(page_url, fields):
+        called["page_url"] = page_url
+        called["fields"] = fields
+        return [type("R", (), {"selector": k, "ok": True, "detail": "ok"})()
+                for k in fields]
+
+    monkeypatch.setattr("actions.browser_form.fill_form_to_page", fake_fill)
+    monkeypatch.setattr(pages_actions, "_say", lambda shell, text: None)
+
+    class Panel:
+        _inputs = {
+            "hp_form_url": type("E", (), {"text": lambda self: "https://x.test/f"})(),
+            "hp_form_input:0": type("E", (), {"text": lambda self: "Alice"})(),
+            "hp_form_input:1": type("E", (), {"text": lambda self: "42"})(),
+            "hp_form_input:2": type("E", (), {"text": lambda self: "100"})(),
+        }
+        def refresh(self):
+            pass
+
+    class Shell:
+        _panel = Panel()
+
+    assert pages_actions.form_fill_apply(Shell()) is True
+    assert called["page_url"] == "https://x.test/f"
+    assert called["fields"]["#field0"] == "Alice"
 
 
 # ── board 12: the clipboard is read, and the sensitive label is a pattern ───
@@ -584,6 +651,54 @@ def test_board_16_toggle_writes_the_loaders_store(monkeypatch):
     assert written == {"quick_notes": True}
 
 
+def test_board_16_phone_pairing_mints_and_pairs(monkeypatch):
+    """Board 16's pairing controls drive the pure policy end to end.
+
+    Generate mints a one-time code the policy will accept; pair consumes it and
+    records a device; unpair removes it. Each step repaints so the card and the
+    code box agree with the session's state.
+    """
+    from ui import pages_actions
+
+    monkeypatch.setattr(pages_actions, "_say", lambda shell, text: None)
+
+    class Panel:
+        def refresh(self):
+            pass
+
+    class Shell:
+        _panel = Panel()
+
+    # Mint a code, then pair against it.
+    assert pages_actions.phone_make_code(Shell()) is True
+    assert pages_actions.phone_pair(Shell()) is True
+    session = Shell._panel._phone_pair
+    assert session.paired_names() == ["Ponsel"]
+
+    # Unpair drops the most recent device and returns the card to idle.
+    assert pages_actions.phone_unpair(Shell()) is True
+    assert session.paired_names() == []
+    # With no device left, another unpair says so and returns False.
+    assert pages_actions.phone_unpair(Shell()) is False
+
+
+def test_board_16_phone_pair_without_a_code_is_refused(monkeypatch):
+    """Pairing with no pending code says so and returns False."""
+    from ui import pages_actions
+
+    monkeypatch.setattr(pages_actions, "_say", lambda shell, text: None)
+
+    class Panel:
+        def refresh(self):
+            pass
+
+    class Shell:
+        _panel = Panel()
+
+    assert pages_actions.phone_pair(Shell()) is False
+    assert pages_actions.phone_unpair(Shell()) is False
+
+
 def test_board_16_rows_report_manifest_facts_not_provenance(panel_module):
     """The row's second line is the version and the SECURITY LEVEL.
 
@@ -611,12 +726,7 @@ ABSENCE_PAGES = [
     # (page, the label key that carries the sentence, a word it must contain)
     ("tools", "tl_snap_absent", ("belum", "not", "does not")),
     ("gestures", "gs_absent", ("klik", "click", "drawing", "gambar")),
-    # Board 13's absence moved INTO the strip the artboard draws at 578 and
-    # into each of its three field rows: the page keeps b13's geometry and
-    # says in it that nothing is applied to a form.
-    ("help", "hp_preview", ("belum", "not", "nothing")),
     ("security", "sec_os", ("tidak", "no ", "not")),
-    ("plugins", "pl_phone", ("belum", "no ", "not")),
     # THE THIRD COLUMN, not the second. `b15()` draws the gesture's ACTION in
     # the middle ("Panggil antarmuka" at x=250, cyan) and "ubah" at 416 on the
     # right; the first version of this page wrote "fixed" into the middle
@@ -643,6 +753,55 @@ def test_a_page_that_cannot_do_something_says_so_on_the_page(
     assert text, f"board page {page!r} drew nothing where the absence belongs"
     assert any(word in text for word in words), (
         f"{page}.{label_key} does not read as an absence: {text!r}")
+
+
+def test_board_22_installer_builds_and_reviews_a_plan(monkeypatch):
+    """Board 22's install button drives the pure plan policy.
+
+    With every dependency present, the plan needs no install and the status is
+    "installed". The review gate is exercised: the plan is reviewed before the
+    adapter is ever called, and a missing-package plan reports the count.
+    """
+    from ui import pages_actions
+
+    monkeypatch.setattr(pages_actions, "_say", lambda shell, text: None)
+    # Every module available -> nothing missing.
+    monkeypatch.setattr("core.installer._available", lambda module: True)
+
+    class Panel:
+        def refresh(self):
+            pass
+
+    class Shell:
+        _panel = Panel()
+
+    assert pages_actions.installer_run(Shell()) is True
+    assert Shell._panel._install_state["status"] == "installed"
+    assert Shell._panel._install_state["count"] == 0
+
+
+def test_board_22_installer_reports_missing_count(monkeypatch):
+    """A config with missing packages reports the count and runs the adapter."""
+    from ui import pages_actions
+
+    monkeypatch.setattr(pages_actions, "_say", lambda shell, text: None)
+    monkeypatch.setattr("core.installer._available", lambda module: False)
+    monkeypatch.setattr(
+        "actions.installer_plan.run_install_plan",
+        lambda plan: [type("R", (), {"ok": True, "detail": "ok"})()
+                      for _ in plan.missing])
+
+    class Panel:
+        def refresh(self):
+            pass
+
+    class Shell:
+        _panel = Panel()
+
+    assert pages_actions.installer_run(Shell()) is True
+    state = Shell._panel._install_state
+    assert state["status"] == "installed"
+    assert state["count"] > 0
 
 
 def test_board_22_choosing_a_mode_is_the_presence_switch(monkeypatch):

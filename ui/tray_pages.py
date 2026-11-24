@@ -249,6 +249,19 @@ PALETTES = {
         "text": "#0B1A24", "muted": "#5B7480",
         "accent": "#0A7A93", "amber": "#9A5B00", "on_accent": "#FFFFFF",
     },
+    # HIGH CONTRAST — board 15's third contrast level. Same geometry as dark,
+    # but every luminance is pushed to the maximum: black surfaces, pure white
+    # text, and a bright cyan accent so a low-vision reader can separate every
+    # element without a magnifier. It is a PALETTE, not a third theme setting:
+    # the panel already resolves one palette name per paint, so "high" rides
+    # that single slot instead of a parallel modifier that every painter would
+    # have to remember to consult.
+    "high": {
+        "base": "#000000", "panel": "#080808", "card": "#141414",
+        "line": "#FFFFFF", "line_accent": "#00E5FF",
+        "text": "#FFFFFF", "muted": "#E8E8E8",
+        "accent": "#00E5FF", "amber": "#FFD400", "on_accent": "#000000",
+    },
 }
 
 

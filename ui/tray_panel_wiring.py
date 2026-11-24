@@ -496,6 +496,9 @@ def actions_for(shell: "AmbientShell") -> dict:
         "memory_forget": lambda: pages_actions.memory_forget(shell),
         "memory_clear": lambda: pages_actions.memory_clear(shell),
         "routines_pause": lambda: pages_actions.routines_pause(shell),
+        "routine_create": lambda: pages_actions.routine_create(shell),
+        "routine_toggle": lambda i: pages_actions.routine_toggle(shell, i),
+        "routine_delete": lambda i: pages_actions.routine_delete(shell, i),
         "tools_copy": lambda: pages_actions.tools_copy(shell),
         "tools_clear": lambda: pages_actions.tools_clear(shell),
         "tools_safe": lambda: pages_actions.tools_mark_safe(shell),
@@ -503,8 +506,19 @@ def actions_for(shell: "AmbientShell") -> dict:
         "consent": lambda allowed: pages_actions.consent_answer(shell, allowed),
         "language": lambda code: pages_actions.language_set(shell, code),
         "text_scale": lambda scale: pages_actions.text_scale_set(shell, scale),
+        "contrast_set": lambda level: pages_actions.contrast_set(shell, level),
         "motion_toggle": lambda: pages_actions.motion_toggle(shell),
         "install_mode": lambda index: pages_actions.install_mode(shell, index),
+        "voice_auth_toggle": lambda on: pages_actions.voice_auth_toggle(shell, on),
+        "voice_auth_enroll": lambda: pages_actions.voice_auth_enroll(shell),
+        "voice_auth_delete": lambda: pages_actions.voice_auth_delete(shell),
+        "form_fill_apply": lambda: pages_actions.form_fill_apply(shell),
+        # Board 16's phone pairing: mint a code, pair a device, disconnect.
+        "phone_make_code": lambda: pages_actions.phone_make_code(shell),
+        "phone_pair": lambda: pages_actions.phone_pair(shell),
+        "phone_unpair": lambda: pages_actions.phone_unpair(shell),
+        # Board 22's installer: build a reviewed dependency plan and run it.
+        "installer_run": lambda: pages_actions.installer_run(shell),
     }
 
 

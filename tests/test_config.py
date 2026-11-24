@@ -161,6 +161,25 @@ def test_media_resolution_roundtrips(isolated_config, given):
     assert isolated_config.get_media_resolution() == given
 
 
+def test_voice_auth_gate_roundtrips_and_defaults_off(isolated_config):
+    """The gate is off by default, and a save survives a reload."""
+    assert isolated_config.get_voice_auth_enabled() is False
+    isolated_config.save_voice_auth_enabled(True)
+    assert isolated_config.get_voice_auth_enabled() is True
+    isolated_config.save_voice_auth_enabled(False)
+    assert isolated_config.get_voice_auth_enabled() is False
+
+
+def test_high_contrast_defaults_off_and_roundtrips(isolated_config):
+    """High contrast is an accessibility choice: off unless the owner turns it
+    on, and the saved value survives a reload."""
+    assert isolated_config.get_high_contrast() is False
+    isolated_config.save_high_contrast(True)
+    assert isolated_config.get_high_contrast() is True
+    isolated_config.save_high_contrast(False)
+    assert isolated_config.get_high_contrast() is False
+
+
 def test_turn_tuning_is_clamped(isolated_config):
     isolated_config.save_turn_tuning({"silence_ms": 99_999, "prefix_ms": -5})
     tuning = isolated_config.get_turn_tuning()

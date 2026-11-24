@@ -45,6 +45,14 @@ def _say(shell: "AmbientShell", text: str) -> None:
     note(shell, text)
 
 
+def _t(key: str, **fields) -> str:
+    """`core.i18n.label` with a fallback, so a missing catalogue key still
+    shows the key rather than raising inside a click handler."""
+    from ui.tray_panel_model import _t as _i18n_t
+
+    return _i18n_t(key, **fields)
+
+
 def memory_forget(shell: "AmbientShell") -> bool:
     """Board 10's "Lupakan": delete the memory the detail page is showing."""
     from ui import pages_memory
@@ -216,6 +224,35 @@ def text_scale_set(shell: "AmbientShell", scale: float) -> bool:
     return ok
 
 
+def contrast_set(shell: "AmbientShell", level: str) -> bool:
+    """Board 15's contrast level. High contrast is a modifier on the palette.
+
+    The choice is persisted and applied to the panel at once: turning it on
+    swaps every painted colour to the high-contrast palette, turning it off
+    restores whatever dark/light theme was underneath. A level that saved to
+    the file but did not change what is on screen would be a toggle that
+    looks right and does nothing.
+    """
+    from memory import config_manager
+
+    name = str(level or "").strip().lower()
+    high = name == "high"
+    try:
+        ok = config_manager.save_high_contrast(high)
+    except Exception as e:                          # noqa: BLE001
+        _say(shell, f"Kontras tidak tersimpan — {type(e).__name__}: {e}")
+        return False
+    panel = getattr(shell, "_panel", None)
+    if panel is not None:
+        try:
+            panel.set_high_contrast(high)
+        except Exception as e:                      # noqa: BLE001
+            _say(shell, f"Kontras tidak diterapkan — {type(e).__name__}: {e}")
+            return False
+    _say(shell, "Kontras tinggi aktif." if high else "Kontras standar.")
+    return ok
+
+
 def motion_toggle(shell: "AmbientShell") -> bool:
     """Board 15's motion switch. The orb reads the same flag on its next frame."""
     from ui import pages_admin
@@ -225,6 +262,142 @@ def motion_toggle(shell: "AmbientShell") -> bool:
     _say(shell, ("Gerak dikurangi." if wanted else "Gerak aktif kembali.")
          if ok else "Pilihan gerak tidak bisa disimpan.")
     return ok
+
+
+def voice_auth_toggle(shell: "AmbientShell", enabled: bool) -> bool:
+    """Board 14's voice-verification switch. Reaches the session, not a store.
+
+    The gate state lives in the running session (main.py), so this calls the
+    shell's handler — the same shape `on_wake_toggle` uses. A control that
+    flips a switch in the file but never reaches the live session would be a
+    toggle that looks on and does nothing.
+    """
+    handler = getattr(shell, "on_voice_auth_toggle", None)
+    if not callable(handler):
+        _say(shell, "Verifikasi suara belum tersedia: sesi belum berjalan.")
+        return False
+    try:
+        _say(shell, handler(bool(enabled)))
+        return True
+    except Exception as e:                      # noqa: BLE001
+        _say(shell, f"Verifikasi suara gagal — {type(e).__name__}: {e}")
+        return False
+
+
+def voice_auth_enroll(shell: "AmbientShell") -> bool:
+    """Board 14's register-voice button: start collecting samples."""
+    handler = getattr(shell, "on_voice_auth_enroll", None)
+    if not callable(handler):
+        _say(shell, "Verifikasi suara belum tersedia: sesi belum berjalan.")
+        return False
+    try:
+        _say(shell, handler())
+        return True
+    except Exception as e:                      # noqa: BLE001
+        _say(shell, f"Pendaftaran gagal — {type(e).__name__}: {e}")
+        return False
+
+
+def routine_create(shell: "AmbientShell") -> bool:
+    """Board 11's builder: turn the schedule field into a stored routine.
+
+    Reads the one-line schedule phrase from the builder field, parses it with
+    the pure policy, and writes it through the store — the store is the only
+    writer of `memory/routines.json`. A phrase the parser cannot read is
+    refused with a sentence rather than stored as a routine that fires wrong.
+    """
+    from core.routines import Routine, parse_schedule_or_raise
+    from memory.routine_store import default_store
+
+    panel = getattr(shell, "_panel", None)
+    phrase = ""
+    if panel is not None:
+        edit = panel._inputs.get("rt_builder_edit")
+        if edit is not None:
+            try:
+                phrase = str(edit.text() or "").strip()
+            except Exception:                      # noqa: BLE001
+                phrase = ""
+    if not phrase:
+        _say(shell, "Masukkan jadwal, contoh: setiap hari jam 07")
+        return False
+    try:
+        sched = parse_schedule_or_raise(phrase)
+    except ValueError as e:
+        _say(shell, str(e))
+        return False
+
+    import uuid as _uuid
+    routine = Routine(
+        id=_uuid.uuid4().hex[:8],
+        name=_t("ui.page.routines.named"),
+        schedule=sched,
+        payload="",
+        enabled=True,
+    )
+    try:
+        default_store().add(routine)
+    except Exception as e:                          # noqa: BLE001
+        _say(shell, f"Rutinitas tidak tersimpan — {type(e).__name__}: {e}")
+        return False
+    if panel is not None:
+        panel.refresh()
+    _say(shell, _t("ui.page.routines.created"))
+    return True
+
+
+def routine_toggle(shell: "AmbientShell", index: int) -> bool:
+    """Board 11's pause toggle for the routine at `index` in the store."""
+    from memory.routine_store import default_store
+
+    routines = default_store().all()
+    if index < 0 or index >= len(routines):
+        _say(shell, "Tidak ada rutinitas di slot itu.")
+        return False
+    routine = routines[index]
+    toggled = default_store().set_enabled(routine.id, not routine.enabled)
+    if toggled is None:
+        _say(shell, "Rutinitas tidak bisa diubah.")
+        return False
+    panel = getattr(shell, "_panel", None)
+    if panel is not None:
+        panel.refresh()
+    _say(shell, _t("ui.page.routines.resumed") if toggled.enabled
+        else _t("ui.page.routines.toggled"))
+    return True
+
+
+def routine_delete(shell: "AmbientShell", index: int) -> bool:
+    """Board 11's delete for the routine at `index` in the store."""
+    from memory.routine_store import default_store
+
+    routines = default_store().all()
+    if index < 0 or index >= len(routines):
+        _say(shell, "Tidak ada rutinitas di slot itu.")
+        return False
+    removed = default_store().remove(routines[index].id)
+    if not removed:
+        _say(shell, "Rutinitas tidak bisa dihapus.")
+        return False
+    panel = getattr(shell, "_panel", None)
+    if panel is not None:
+        panel.refresh()
+    _say(shell, _t("ui.page.routines.deleted"))
+    return True
+
+
+def voice_auth_delete(shell: "AmbientShell") -> bool:
+    """Board 14's delete-voiceprint button (confirm-gated by the page)."""
+    handler = getattr(shell, "on_voice_auth_delete", None)
+    if not callable(handler):
+        _say(shell, "Verifikasi suara belum tersedia: sesi belum berjalan.")
+        return False
+    try:
+        _say(shell, handler())
+        return True
+    except Exception as e:                      # noqa: BLE001
+        _say(shell, f"Voiceprint gagal dihapus — {type(e).__name__}: {e}")
+        return False
 
 
 def install_mode(shell: "AmbientShell", index: int) -> bool:
@@ -239,3 +412,189 @@ def install_mode(shell: "AmbientShell", index: int) -> bool:
     from ui.tray_panel_wiring import set_presence
 
     return bool(set_presence(shell, mode))
+
+
+def form_fill_apply(shell: "AmbientShell") -> bool:
+    """Board 13's review-and-apply button.
+
+    Reads the page URL and the three field values from the board's inputs,
+    builds a :class:`FormFillPlan` with the pure policy, reviews it (the
+    "tinjau dulu" gate), then drives the approved plan into the browser session
+    through the adapter. The panel's preview strip and field echo are updated
+    from the result so the board states what happened.
+    """
+    from actions.browser_form import fill_form_to_page
+    from core.form_fill import FormFillError, FormFillPlan
+
+    panel = getattr(shell, "_panel", None)
+    if panel is None:
+        return False
+
+    def _read(key: str) -> str:
+        edit = panel._inputs.get(key)
+        if edit is None:
+            return ""
+        try:
+            return str(edit.text() or "").strip()
+        except Exception:                          # noqa: BLE001
+            return ""
+
+    url = _read("hp_form_url")
+    if not url:
+        _say(shell, _t("ui.page.help.form_no_url"))
+        return False
+    fields = {f"#field{i}": _read(f"hp_form_input:{i}") for i in range(3)}
+    try:
+        plan = FormFillPlan.build(url, fields).review()
+    except FormFillError as e:
+        panel._form_fill = {"status": "failed", "detail": str(e), "values": {}}
+        panel.refresh()
+        _say(shell, str(e))
+        return False
+
+    results = fill_form_to_page(plan.page_url, {e.selector: e.value for e in plan.entries})
+    failed = [r for r in results if not r.ok]
+    panel._form_fill = {
+        "status": "failed" if failed else "applied",
+        "detail": "; ".join(r.detail for r in failed),
+        "values": {str(i): _read(f"hp_form_input:{i}") for i in range(3)},
+    }
+    panel.refresh()
+    if failed:
+        _say(shell, _t("ui.page.help.form_failed", detail=panel._form_fill["detail"]))
+        return False
+    _say(shell, _t("ui.page.help.form_applied"))
+    return True
+
+
+def _phone_session(shell):
+    """The panel's pairing session, created on first use.
+
+    The session is a pure-policy :class:`PairingSession` stored on the panel;
+    it is the same object the painter reads, so a generate or pair and the
+    next repaint agree on state without a second store.
+    """
+    from core.phone_pairing import PairingSession
+
+    panel = getattr(shell, "_panel", None)
+    if panel is None:
+        return None, None
+    session = getattr(panel, "_phone_pair", None)
+    if session is None:
+        session = PairingSession()
+        panel._phone_pair = session
+    return panel, session
+
+
+def phone_make_code(shell: "AmbientShell") -> bool:
+    """Board 16: mint a fresh one-time pairing code.
+
+    A new mint supersedes any pending code, so the box always shows the one
+    live code the policy will accept. The code is generated by the policy, not
+    typed, so it is one the server's pairing endpoint would accept.
+    """
+    panel, session = _phone_session(shell)
+    if session is None:
+        return False
+    session.mint_code()
+    panel.refresh()
+    _say(shell, _t("ui.page.plugins.phone_code_shown",
+                  code=session.pending_code.code,
+                  secs=int(session.pending_code.expires_at - session._clock())))
+    return True
+
+
+def phone_pair(shell: "AmbientShell") -> bool:
+    """Board 16: pair a device against the pending code.
+
+    The device name is a fixed label ("Ponsel") — the panel is the desktop
+    side issuing the code, and the phone is the device that consumes it. A
+    missing or expired code, or a wrong one, is refused with a sentence.
+    """
+    panel, session = _phone_session(shell)
+    if session is None:
+        return False
+    code = session.pending_code
+    if code is None:
+        _say(shell, _t("ui.page.plugins.phone_no_code"))
+        return False
+    try:
+        device = session.consume_code(code.code, "Ponsel")
+    except Exception as e:                          # noqa: BLE001
+        panel.refresh()
+        _say(shell, _t("ui.page.plugins.phone_pair_failed", detail=str(e)))
+        return False
+    panel.refresh()
+    _say(shell, _t("ui.page.plugins.phone_paired_ok", name=device.name))
+    return True
+
+
+def phone_unpair(shell: "AmbientShell") -> bool:
+    """Board 16: disconnect the most recently paired device.
+
+    Removes the device from the session so the card returns to the idle state
+    and a new code must be minted before another device can pair.
+    """
+    panel, session = _phone_session(shell)
+    if session is None:
+        return False
+    if not session.devices:
+        _say(shell, _t("ui.page.plugins.phone_idle"))
+        return False
+    removed = session.devices.pop()
+    if session.handoff_target == removed.name:
+        session.handoff_target = (session.devices[-1].name
+                                  if session.devices else None)
+    panel.refresh()
+    _say(shell, _t("ui.page.plugins.phone_unpaired"))
+    return True
+
+
+def installer_run(shell: "AmbientShell") -> bool:
+    """Board 22: build, review, and run the dependency install plan.
+
+    Reads the live config, builds an :class:`InstallPlan` with the pure policy
+    (availability via `core.installer._available`), reviews it, then drives the
+    approved plan through the adapter. The panel's status strip is updated from
+    the result — never a fake progress bar.
+    """
+    from actions.installer_plan import run_install_plan
+    from core.install_plan import InstallError, InstallPlan
+    from core.installer import _available
+    from memory.config_manager import load_api_keys
+
+    panel = getattr(shell, "_panel", None)
+    if panel is None:
+        return False
+    config = load_api_keys() or {}
+    try:
+        plan = InstallPlan.build(config, _available).review()
+    except InstallError as e:
+        panel._install_state = {"status": "failed", "count": 0, "detail": str(e)}
+        panel.refresh()
+        _say(shell, str(e))
+        return False
+
+    count = len(plan.missing)
+    panel._install_state = {
+        "status": "running" if plan.needs_install else "installed",
+        "count": count,
+    }
+    panel.refresh()
+    if not plan.needs_install:
+        _say(shell, _t("ui.page.installer.all_present"))
+        return True
+
+    results = run_install_plan(plan)
+    failed = [r for r in results if not r.ok]
+    panel._install_state = {
+        "status": "installed" if not failed else "failed",
+        "count": count,
+        "detail": "; ".join(r.detail for r in failed),
+    }
+    panel.refresh()
+    if failed:
+        _say(shell, f"Instal gagal: {panel._install_state['detail']}")
+        return False
+    _say(shell, _t("ui.page.installer.installed"))
+    return True

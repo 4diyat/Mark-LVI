@@ -218,3 +218,100 @@ rule that follows from it:
   The assistant's name, combo-box values and paste-ready commands are the only
   things exempt, and each exemption is listed in that test with a reason.
 - Keep to the libraries already in `requirements.txt`.
+
+## Voice verification (the owner's voiceprint gate)
+
+The owner asked for their **voice** to verify them before JARVIS speaks back,
+so the gate is a biometric control, not a preference. Three rules keep it safe:
+
+- **The policy is pure.** `core/voice_auth.py` decides (`Decision`, `decide`,
+  `next_attempt`, `is_locked`, `should_verify`, `timeout_state`) and holds no
+  I/O. `tests/test_voice_auth.py` drives it with no Qt, no mic, no network.
+- **The voiceprint is private, local and gitignored.** `memory/voiceprint.json`
+  is written by exactly one module — `memory/voiceprint_store.py`. No tool or
+  plugin may import the engine, the store, or mention the path; `tests/test_
+  voice_auth_ast.py` enforces this over the AST.
+- **Enabling is owner-only, through the UI.** `config_manager`
+  (`get_voice_auth_enabled`/`save_voice_auth_enabled`) is the only place the
+  setting is read or written, and the board 14 security card is the only
+  surface that calls it. A plugin that could flip the gate would be a hole the
+  size of the plugin system — that is what the AST test is watching for.
+
+The gate is **off by default**. `tests/test_config.py` proves the default and
+that the round-trip through `save/get` is honest.
+
+## Scheduled routines (board 11)
+
+A routine is the owner telling JARVIS to do something at a time, on a repeat
+pattern. Three rules keep it honest and safe:
+
+- **The policy is pure.** `core/routines.py` parses a schedule phrase, validates
+  it, and decides `is_due` / `next_fire` against an injectable clock. No I/O, no
+  thread, so the whole decision is testable without a session.
+- **The store is the only writer.** `memory/routine_store.py` owns
+  `memory/routines.json` (gitignored, user data). No tool or plugin may reach
+  the store, the scheduler, or the policy; `tests/test_routines_ast.py` enforces
+  this over the AST, and the scheduler does no filesystem or network I/O.
+- **The scheduler owns the clock and the thread.** `core/routine_scheduler.py`
+  polls the store and hands a due routine to `main.py`'s `_fire_routine`, which
+  sends the payload to the session exactly like a user turn. A routine that
+  fires wrong is worse than no routine, so the parser is conservative: an
+  unreadable phrase is refused, not guessed at.
+
+## Form filling, review-first (board 13)
+
+Board 13 fills a form, but only after the owner has reviewed what will be sent.
+Three rules:
+
+- **The policy is pure.** `core/form_fill.py` validates a target page (only
+  `https://` origins are fillable, reusing the browser URL rule), builds a
+  selector→value plan, sanitises values to bounded text, and enforces the
+  "review before apply" gate: an unreviewed `FormFillPlan` refuses to apply.
+  No browser, no network — fully testable with a fake driver.
+- **The adapter is the only I/O edge.** `actions/browser_form.py` drives an
+  approved plan into the existing `_BrowserSession.fill_form` (which owns
+  Playwright and the per-browser event loop). Its pure part,
+  `parse_fill_results`, turns the session's textual report back into per-field
+  `FieldResult`s; the no-session path reports every field failed.
+- **The UI states the status.** Board 13's three field rows are editable
+  inputs; the preview strip reports review/applied/failed. The apply button
+  (`pages_actions.form_fill_apply`) reads the inputs, builds and reviews the
+  plan, then calls the adapter — never applying an unreviewed plan.
+
+## Phone pairing (board 16)
+
+Board 16 pairs a phone to the desktop, but the pairing decision is a pure
+policy so the rules are testable without a socket. Three rules:
+
+- **The policy is pure.** `core/phone_pairing.py` mints one-time pairing
+  codes (8 chars from a 31-symbol alphabet, no O/I/L/0/1, 5-minute TTL, one
+  live code at a time), consumes them against an injectable clock, records
+  paired devices with a scope (`command` implies `read`, not vice versa), and
+  gates handoff by scope. No network, no file — fully testable with a fake
+  clock.
+- **The alphabet and length MUST match the server.** The dashboard server
+  pins `_KEY_CHARS` / `_KEY_LENGTH`; a code the policy mints must be one the
+  server's `/login` will accept, so the two cannot drift.
+- **The UI drives the policy.** Board 16's phone card has make-code / pair /
+  unpair buttons; the pairing-code box shows the live code (or the no-code
+  sentence), never a fake literal. The panel holds the `PairingSession`; the
+  painter reads it, so a button and the next repaint agree on state.
+
+## Installer planning (board 22)
+
+Board 22 installs the dependencies a config needs, but the *decision* is pure
+so the plan is testable without running pip. Three rules:
+
+- **The policy is pure.** `core/install_plan.py` reads the config (stt/tts
+  engine, platform) and the installer's own package tables, applies the
+  Windows version pins, deduplicates by pip name, and splits the result into
+  present vs. missing. Availability is an injected predicate, so tests drive
+  it with a fake and the real adapter supplies `core.installer._available`.
+- **The review gate applies.** Like form filling, an `InstallPlan` is inert
+  until `review()`; `apply_plan` refuses an unreviewed plan outright, so the
+  installer never runs on an unconfirmed plan.
+- **The adapter is the only transport.** `actions/installer_plan.py` maps the
+  policy's `Package` to `core.installer._pip`; the package tables themselves
+  live in `core/installer.py` so the policy and the installer cannot drift on
+  which packages exist. The UI's status strip reports the pending count or the
+  ready state, never a fake progress bar.

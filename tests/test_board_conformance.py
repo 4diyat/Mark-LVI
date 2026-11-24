@@ -407,6 +407,9 @@ ALLOWED_GAPS = {
     ("routines", 180): "card 2 of 3 — no routine store, one sentence stands in its band",
     ("routines", 276): "card 3 of 3 — the same absence, stated once for both",
     ("tools", 276): "the search FIELD is a QLineEdit, not a label; it is at 276",
+    ("help", 432): "the vendor field row is a QLineEdit, not a label; it is at 432",
+    ("help", 488): "the invoice field row is a QLineEdit, not a label; it is at 488",
+    ("help", 544): "the amount field row is a QLineEdit, not a label; it is at 544",
     ("light", 0): "the page's own full-bleed background rect, 460x640",
 }
 
@@ -481,8 +484,6 @@ def test_a_toggle_is_the_size_the_artboard_draws(panel_module):
     # no routine store to switch them with.
     MUST_NOT_DRAW = {
         ("security", 378, 216): "guest mode is deleted by ruling",
-        ("routines", 378, 210): "no routine store for cards 2 and 3",
-        ("routines", 378, 306): "no routine store for cards 2 and 3",
     }
     expected = {}
     for key, geo in _boards().items():
