@@ -295,6 +295,36 @@ def save_wake_word_enabled(enabled: bool) -> None:
     set_config_values(wake_word_enabled=bool(enabled))
 
 
+def get_voice_auth_enabled() -> bool:
+    """Whether the voice-verification gate is on.
+
+    Off by default: the gate costs nothing until a voiceprint is enrolled
+    and the user turns it on, and a default-on biometric gate would be a
+    surprise, not a feature.
+    """
+    return bool(load_api_keys().get("voice_auth_enabled", False))
+
+
+def save_voice_auth_enabled(enabled: bool) -> bool:
+    """Persist the voice-verification gate. Returns whether the write worked."""
+    return set_config_values(voice_auth_enabled=bool(enabled))
+
+
+def get_high_contrast() -> bool:
+    """Whether high-contrast mode is on (board 15's third contrast level).
+
+    Off by default: high contrast is an accessibility preference the owner
+    turns on deliberately, and a default-on change to every surface's
+    luminance would be a surprise on every machine that has not chosen it.
+    """
+    return bool(load_api_keys().get("high_contrast", False))
+
+
+def save_high_contrast(enabled: bool) -> bool:
+    """Persist the high-contrast choice. Returns whether the write worked."""
+    return set_config_values(high_contrast=bool(enabled))
+
+
 def get_wake_sleep_timeout() -> float:
     """Seconds of silence before the assistant auto-sleeps (wake-word mode).
 

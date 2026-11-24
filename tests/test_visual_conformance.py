@@ -264,6 +264,10 @@ def test_every_drawing_surface_declares_sheet_colours():
         "#071018",
         # hover states derived from the accent, not new hues
         "#FFB944",
+        # the high-contrast palette (board 15's third contrast level): black
+        # surfaces, pure white text and a bright cyan accent, deliberately
+        # added as a new design sheet decision, not drift.
+        "#000000", "#080808", "#141414", "#00E5FF", "#E8E8E8", "#FFD400",
     }
     unknown = {}
     for path in _ambient_sources():

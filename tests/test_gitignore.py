@@ -73,6 +73,10 @@ SAMPLE_FOR = {
     "providers/voices/": "providers/voices/en_US.onnx",
     # coverage output
     ".coverage": ".coverage",
+    # personal data — the voiceprint is biometric and never enters git
+    "memory/voiceprint.json": "memory/voiceprint.json",
+    # personal data — routines are user-created schedules, never enter git
+    "memory/routines.json": "memory/routines.json",
     "htmlcov/": "htmlcov/index.html",
 }
 

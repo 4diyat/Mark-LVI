@@ -75,6 +75,7 @@ TESTED = {
     "core/app_identity.py":   "tests/test_app_identity.py",
     "core/history.py":        "tests/test_history.py",
     "core/voice_interrupt.py": "tests/test_voice_interrupt.py",
+    "core/voice_auth.py":      "tests/test_voice_auth.py",
     "core/obsidian.py":       "tests/test_obsidian.py",
     "core/file_access.py":    "tests/test_file_access.py",
     "core/security_camera.py": "tests/test_security_camera.py",
