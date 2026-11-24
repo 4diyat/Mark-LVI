@@ -52,6 +52,25 @@ class PanelTarget:
         self._target = (str(row.get("category") or ""), str(row.get("key") or ""))
         return bool(self._target[1])
 
+    def open_memory_id(self, category: str, key: str) -> bool:
+        """Open a memory the row already identified — no index involved.
+
+        WHY THIS EXISTS BESIDE `open_memory(index)`. The index version does the
+        right thing, but it has to re-read the store and resolve a position
+        that the click did not actually name: between the paint and the click,
+        one deletion above the row moves every row under it. A row built by
+        `pages_memory.populate_memory` already carries `(category, key)`, so
+        this path resolves nothing and cannot land on the wrong memory.
+
+        The index version stays because other callers and one test still use
+        it; the scrolling list uses this one.
+        """
+        identity = (str(category or ""), str(key or ""))
+        if not identity[1]:
+            return False
+        self._target = identity
+        return True
+
     def clear(self) -> None:
         """Forget the selection. Named so a page switch can call it deliberately
         rather than reaching into `_target`."""
