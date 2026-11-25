@@ -49,7 +49,6 @@ from __future__ import annotations
 
 from typing import Callable, Mapping
 
-from ui import tray_theme as theme_policy
 from ui.tray_theme import THEMES, _rgba, resolve_theme  # noqa: F401
 from ui.tray_paint import (  # noqa: F401 — re-exported for the smoke tool
     apply_style, mark_segments, paint, paint_history, paint_permissions,
