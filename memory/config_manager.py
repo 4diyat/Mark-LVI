@@ -1009,3 +1009,29 @@ def save_ui_language(language: str) -> None:
     value = (language or "auto").strip().lower()
     set_config_values(ui_language=value if value == "auto" or value in LOCALES
                       else "auto")
+
+
+# ── Window layout (Board 12) ────────────────────────────────────────────────
+# WHICH OF THE THREE WINDOW ARRANGEMENTS THE DESKTOP USES. The panel's board 12
+# thumbnails pick one; this is the one field they write.
+WINDOW_LAYOUTS = ("columns2", "columns3", "focus")
+
+
+def get_window_layout() -> str:
+    """The configured window layout, collapsed to a mode we draw.
+
+    A missing or unknown value falls back to the artboard's first thumbnail,
+    so an unreadable choice never leaves the card claiming a mode that does
+    not exist.
+    """
+    v = str(load_api_keys().get("window_layout", WINDOW_LAYOUTS[0])).strip().lower()
+    return v if v in WINDOW_LAYOUTS else WINDOW_LAYOUTS[0]
+
+
+def save_window_layout(layout: str) -> bool:
+    """Persist the window layout, collapsing anything unknown to the default."""
+    value = str(layout or "").strip().lower()
+    if value not in WINDOW_LAYOUTS:
+        return False
+    set_config_values(window_layout=value)
+    return True

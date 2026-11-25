@@ -763,7 +763,6 @@
   "ui.page.tools.not_sensitive": "No sensitive pattern",
   "ui.page.tools.sensitive": "Detected: {what} · sensitive",
   "ui.page.tools.snap": "WINDOW LAYOUT",
-  "ui.page.tools.snap_absent": "Window layout does not exist in this build.",
   "ui.page.tools.snap_thumb1": "2 columns",
   "ui.page.tools.snap_thumb2": "3 columns",
   "ui.page.tools.snap_thumb3": "Focus",
@@ -1053,5 +1052,9 @@
   "ui.page.consent.presence.focus": "Focus",
   "ui.page.consent.presence.quiet": "Quiet",
   "ui.page.consent.presence.selected": "Mode: {mode}",
-  "ui.page.consent.step.of": "Step {n} of {total}"
+  "ui.page.consent.step.of": "Step {n} of {total}",
+  "ui.page.tools.snap_columns2": "2 columns",
+  "ui.page.tools.snap_columns3": "3 columns",
+  "ui.page.tools.snap_focus": "Focus",
+  "ui.page.tools.snap_note": "Window layout: {mode}."
 }

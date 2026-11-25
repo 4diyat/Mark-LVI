@@ -629,7 +629,6 @@ def test_board_16_rows_report_manifest_facts_not_provenance(panel_module):
 
 ABSENCE_PAGES = [
     # (page, the label key that carries the sentence, a word it must contain)
-    ("tools", "tl_snap_absent", ("belum", "not", "does not")),
     ("gestures", "gs_absent", ("klik", "click", "drawing", "gambar")),
     # THE THIRD COLUMN, not the second. `b15()` draws the gesture's ACTION in
     # the middle ("Panggil antarmuka" at x=250, cyan) and "ubah" at 416 on the

@@ -39,8 +39,7 @@ def memory_forget(shell: "AmbientShell") -> bool:
         return False
     ok, message = pages_memory.forget(*target)
     _say(shell, message)
-    if ok and panel is not None:
-        # BACK TO THE LIST, because the thing this page described is gone:
+    if ok and panel is not None:  # the detail page describes a memory that is gone
         panel.set_page("memory")
     return ok
 
@@ -55,8 +54,8 @@ def memory_clear(shell: "AmbientShell") -> bool:
         return False
     gone = 0
     for row in rows:
-        ok, _message = pages_memory.forget(str(row.get("category") or ""),
-                                           str(row.get("key") or ""))
+        ok, _m = pages_memory.forget(str(row.get("category") or ""),
+                                     str(row.get("key") or ""))
         gone += 1 if ok else 0
     _say(shell, f"{gone} dari {len(rows)} memori dihapus.")
     return gone == len(rows)
@@ -94,6 +93,24 @@ def tools_copy(shell: "AmbientShell") -> bool:
         return False
     _say(shell, "Disalin.")
     return True
+
+
+def tools_layout(shell: "AmbientShell", index: int) -> bool:
+    """Board 12's susun-jendela: pick one of the three layout thumbnails."""
+    from actions.window_layout import apply, choose
+    modes = ("columns2", "columns3", "focus")
+    try:
+        decision = choose(modes[int(index)])
+    except (IndexError, TypeError, ValueError):
+        return False
+    if not apply(decision):
+        _say(shell, decision.reason)
+        return False
+    panel = getattr(shell, "_panel", None)
+    if panel is not None:
+        panel.refresh()
+    _say(shell, decision.reason)
+    return decision.allowed
 
 
 def tools_clear(shell: "AmbientShell") -> bool:
@@ -151,7 +168,7 @@ def _onboarding_state(shell):
     if panel is None:
         return None, None
     flow = getattr(panel, "_onboarding", None)
-    if flow is None:
+    if flow is None:  # a walk is a transient fact, not a stored one
         from core.onboarding import Onboarding
         flow = Onboarding.start()
         panel._onboarding = flow
@@ -183,8 +200,8 @@ def onboard_next(shell: "AmbientShell") -> bool:
             return False
         decision = str(picked)
     else:
-        decision = {"welcome": "next", "mic": bool(_toggle_checked(shell)),
-                    "done": "finish"}.get(step)
+        decision = {"welcome": "next", "done": "finish",
+                    "mic": bool(_toggle_checked(shell))}.get(step)
     new_flow, ok = answer_step(flow, decision)
     if ok:
         _finish_onboarding(shell, new_flow, _t("ui.page.consent.done"))
@@ -198,14 +215,14 @@ def onboard_back(shell: "AmbientShell") -> bool:
     panel, flow = _onboarding_state(shell)
     if flow is None or flow.current_index <= 0:
         return False
-    if flow.current == MIC:
+    if flow.current == MIC:  # a skip records a refused consent
         from actions.onboarding import answer_step
         new_flow, ok = answer_step(flow, False)
         if ok:
             _finish_onboarding(shell, new_flow, _t("ui.page.consent.deny"))
         return ok
     new_flow = Onboarding(flow._done, flow._skipped, flow.presence_mode,
-                          max(0, flow.current_index - 1))
+                          max(0, flow.current_index - 1))  # back, nothing recorded
     _finish_onboarding(shell, new_flow, "")
     return True
 
@@ -288,32 +305,28 @@ def motion_toggle(shell: "AmbientShell") -> bool:
     return ok
 
 
-def voice_auth_toggle(shell: "AmbientShell", enabled: bool) -> bool:
-    """Board 14's voice-verification switch. Reaches the session, not a store."""
-    handler = getattr(shell, "on_voice_auth_toggle", None)
-    if not callable(handler):
+def _voice_auth_call(shell, method: str, *args, fail: str = "Verifikasi suara gagal") -> bool:
+    """One voice-auth handler: reach the session, report every failure path."""
+    handler = getattr(shell, method, None)
+    if not callable(handler):  # the session, not the store, owns the voiceprint
         _say(shell, "Verifikasi suara belum tersedia: sesi belum berjalan.")
         return False
     try:
-        _say(shell, handler(bool(enabled)))
+        _say(shell, handler(*args))
         return True
     except Exception as e:                      # noqa: BLE001
-        _say(shell, f"Verifikasi suara gagal — {type(e).__name__}: {e}")
+        _say(shell, f"{fail} — {type(e).__name__}: {e}")
         return False
+
+
+def voice_auth_toggle(shell: "AmbientShell", enabled: bool) -> bool:
+    """Board 14's voice-verification switch. Reaches the session, not a store."""
+    return _voice_auth_call(shell, "on_voice_auth_toggle", bool(enabled))
 
 
 def voice_auth_enroll(shell: "AmbientShell") -> bool:
     """Board 14's register-voice button: start collecting samples."""
-    handler = getattr(shell, "on_voice_auth_enroll", None)
-    if not callable(handler):
-        _say(shell, "Verifikasi suara belum tersedia: sesi belum berjalan.")
-        return False
-    try:
-        _say(shell, handler())
-        return True
-    except Exception as e:                      # noqa: BLE001
-        _say(shell, f"Pendaftaran gagal — {type(e).__name__}: {e}")
-        return False
+    return _voice_auth_call(shell, "on_voice_auth_enroll")
 
 
 def routine_create(shell: "AmbientShell") -> bool:
@@ -323,13 +336,11 @@ def routine_create(shell: "AmbientShell") -> bool:
 
     panel = getattr(shell, "_panel", None)
     phrase = ""
-    if panel is not None:
-        edit = panel._inputs.get("rt_builder_edit")
-        if edit is not None:
-            try:
-                phrase = str(edit.text() or "").strip()
-            except Exception:                      # noqa: BLE001
-                phrase = ""
+    edit = panel._inputs.get("rt_builder_edit") if panel else None
+    try:
+        phrase = str(edit.text() or "").strip() if edit else ""
+    except Exception:                              # noqa: BLE001
+        phrase = ""
     if not phrase:
         _say(shell, "Masukkan jadwal, contoh: setiap hari jam 07")
         return False
@@ -366,8 +377,8 @@ def routine_toggle(shell: "AmbientShell", index: int) -> bool:
     if index < 0 or index >= len(routines):
         _say(shell, "Tidak ada rutinitas di slot itu.")
         return False
-    routine = routines[index]
-    toggled = default_store().set_enabled(routine.id, not routine.enabled)
+    toggled = default_store().set_enabled(routines[index].id,
+                                          not routines[index].enabled)
     if toggled is None:
         _say(shell, "Rutinitas tidak bisa diubah.")
         return False
@@ -400,29 +411,19 @@ def routine_delete(shell: "AmbientShell", index: int) -> bool:
 
 def voice_auth_delete(shell: "AmbientShell") -> bool:
     """Board 14's delete-voiceprint button (confirm-gated by the page)."""
-    handler = getattr(shell, "on_voice_auth_delete", None)
-    if not callable(handler):
-        _say(shell, "Verifikasi suara belum tersedia: sesi belum berjalan.")
-        return False
-    try:
-        _say(shell, handler())
-        return True
-    except Exception as e:                      # noqa: BLE001
-        _say(shell, f"Voiceprint gagal dihapus — {type(e).__name__}: {e}")
-        return False
+    return _voice_auth_call(shell, "on_voice_auth_delete",
+                            fail="Voiceprint gagal dihapus")
 
 
 def install_mode(shell: "AmbientShell", index: int) -> bool:
     """Board 22's mode choice, through `presence_mode` like every other switch."""
     from ui import pages_admin
-
-    modes = pages_admin.modes()
-    try:
-        mode = str(modes[int(index)][0])
-    except (IndexError, TypeError, ValueError):
-        return False
     from ui.tray_panel_wiring import set_presence
 
+    try:
+        mode = str(pages_admin.modes()[int(index)][0])
+    except (IndexError, TypeError, ValueError):
+        return False
     return bool(set_presence(shell, mode))
 
 
@@ -492,9 +493,9 @@ def phone_make_code(shell: "AmbientShell") -> bool:
         return False
     session.mint_code()
     panel.refresh()
-    _say(shell, _t("ui.page.plugins.phone_code_shown",
-                  code=session.pending_code.code,
-                  secs=int(session.pending_code.expires_at - session._clock())))
+    code = session.pending_code
+    _say(shell, _t("ui.page.plugins.phone_code_shown", code=code.code,
+                  secs=int(code.expires_at - session._clock())))
     return True
 
 
@@ -539,13 +540,11 @@ def installer_run(shell: "AmbientShell") -> bool:
     from core.install_plan import InstallError, InstallPlan
     from core.installer import _available
     from memory.config_manager import load_api_keys
-
     panel = getattr(shell, "_panel", None)
     if panel is None:
         return False
-    config = load_api_keys() or {}
     try:
-        plan = InstallPlan.build(config, _available).review()
+        plan = InstallPlan.build(load_api_keys() or {}, _available).review()
     except InstallError as e:
         panel._install_state = {"status": "failed", "count": 0, "detail": str(e)}
         panel.refresh()
@@ -558,13 +557,10 @@ def installer_run(shell: "AmbientShell") -> bool:
     if not plan.needs_install:
         _say(shell, _t("ui.page.installer.all_present"))
         return True
-
     failed = [r for r in run_install_plan(plan) if not r.ok]
-    panel._install_state = {
-        "status": "installed" if not failed else "failed",
-        "count": count,
-        "detail": "; ".join(r.detail for r in failed),
-    }
+    panel._install_state = {"status": "installed" if not failed else "failed",
+                            "count": count,
+                            "detail": "; ".join(r.detail for r in failed)}
     panel.refresh()
     if failed:
         _say(shell, f"Instal gagal: {panel._install_state['detail']}")

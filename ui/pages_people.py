@@ -308,15 +308,19 @@ def build_tools(panel, page) -> None:
         panel._labels[f"tl_hit:{index}"] = _at(
             page, QLabel, 60, 328 + index * 22, 356, 18, "")
 
-    # ── SUSUN JENDELA: the card and its three thumbnails, stated absent ────
+    # ── SUSUN JENDELA: the card and its three clickable thumbnails ────────
+    # The artboard draws three thumbnails (2 kolom / 3 kolom / Fokus). Each is
+    # a real button: picking one asks the layout policy to record the choice.
     panel._labels["tl_snap_card"] = _at(page, QLabel, 24, 420, 412, 176, "")
     panel._labels["tl_snap_header"] = _at(page, QLabel, 42, 432, 300, 18, "")
     for index, x in enumerate((40, 166, 292)):
-        panel._labels[f"tl_snap_thumb:{index}"] = _at(page, QLabel, x, 452, 114, 62, "")
-    # The sentence occupies the band the three thumbnails sit in (452..514),
-    # leaving b12's own caption at 572 alone — the two are different claims and
-    # stacking them overlapped one on the other.
-    panel._labels["tl_snap_absent"] = _at(page, QLabel, 40, 456, 380, 52, "")
+        thumb = QPushButton("", page)
+        thumb.setGeometry(x, 452, 114, 62)
+        thumb.setObjectName(f"tl_snap_thumb:{index}")
+        thumb.clicked.connect(
+            lambda _checked=False, i=index: panel._call("tools_layout", i))
+        panel._buttons[f"tl_snap_thumb:{index}"] = thumb
+    panel._labels["tl_snap_note"] = _at(page, QLabel, 40, 528, 380, 34, "")
 
 
 def build_gestures(panel, page) -> None:

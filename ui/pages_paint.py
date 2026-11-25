@@ -192,12 +192,18 @@ def paint_tools(panel, snap) -> None:
         label.setText(str(hits[index]) if index < len(hits)
                       else (_t("ui.page.tools.find_none") if index == 0 else ""))
     labels["tl_snap_header"].setText(_t("ui.page.tools.snap"))
-    # Drawn because the artboard draws it; no window manager sits behind it.
-    for index in range(3):
-        labels[f"tl_snap_thumb:{index}"].setText(
-            _t(f"ui.page.tools.snap_thumb{index + 1}"))
-    # The absence sits where the artboard's thumbnails are, not its caption.
-    labels["tl_snap_absent"].setText(_t("ui.page.tools.snap_absent"))
+    # The three thumbnails are clickable buttons; the chosen one is checked.
+    from actions.window_layout import read_state
+    active = read_state()
+    for index, mode in enumerate(("columns2", "columns3", "focus")):
+        button = panel._buttons[f"tl_snap_thumb:{index}"]
+        button.setText(_t(f"ui.page.tools.snap_thumb{index + 1}"))
+        button.setCheckable(True)
+        button.setChecked(mode == active)
+    # The note states the current arrangement, so the card reads as a real
+    # choice rather than three unconnected thumbnails.
+    labels["tl_snap_note"].setText(_t("ui.page.tools.snap_note",
+                                      mode=_t(f"ui.page.tools.snap_{active}")))
 
 def paint_gestures(panel, snap) -> None:
     labels = _labels(panel)
@@ -466,7 +472,7 @@ def paint_plugins(panel, snap) -> None:
         button.setText("")
         button.setChecked(bool(row["on"]))
     pal = PALETTES[getattr(panel, "_theme", "dark")]
-    for index, row in enumerate(rows[:3]):
+    for index in range(3):
         if f"pl_card:{index}" in labels:
             labels[f"pl_card:{index}"].setStyleSheet(
                 f"background:{pal['card']};border-radius:12px;")
@@ -476,16 +482,14 @@ def paint_plugins(panel, snap) -> None:
     labels["pl_more"].setText(
         _t("ui.page.plugins.more", count=rest) if rest else "")
     labels["pl_phone_header"].setText(_t("ui.page.plugins.phone"))
-    labels["pl_phone_card"].setStyleSheet(
-        f"background:{pal['card']};border-radius:12px;")
+    labels["pl_phone_card"].setStyleSheet(f"background:{pal['card']};border-radius:12px;")
     labels["pl_phone_shape"].setStyleSheet(
-        f"background:{pal['panel']};border-radius:10px;"
-        f"border:1px solid {pal['line']};")
+        f"background:{pal['panel']};border-radius:10px;border:1px solid {pal['line']};")
     _paint_phone_state(panel, labels, pal)
     labels["pl_code_header"].setText(_t("ui.page.plugins.code"))
     labels["pl_code_box"].setStyleSheet(
-        f"background:{pal['card']};border-radius:10px;"
-        f"border:1px solid {pal['line']};padding-left:18px;color:{pal['muted']};")
+        f"background:{pal['card']};border-radius:10px;border:1px solid {pal['line']};"
+        f"padding-left:18px;color:{pal['muted']};")
     labels["pl_code_box"].setText(_paint_phone_code(panel))
     if drawn == 0:
         labels["pl_section"].setText(_t("ui.page.plugins.section") + " — 0")
@@ -496,14 +500,11 @@ def _paint_phone_state(panel, labels, pal) -> None:
     devices = getattr(session, "devices", []) if session is not None else []
     paired = bool(devices)
     fill = pal["accent"] if paired else pal["panel"]
-    labels["pl_phone"].setText(
-        _t("ui.page.plugins.phone_paired", name=devices[-1].name)
-        if paired else _t("ui.page.plugins.phone_idle"))
-    labels["pl_phone2"].setText(
-        _t("ui.page.plugins.phone_connected_short") if paired else "")
+    labels["pl_phone"].setText(_t("ui.page.plugins.phone_paired", name=devices[-1].name)
+                               if paired else _t("ui.page.plugins.phone_idle"))
+    labels["pl_phone2"].setText(_t("ui.page.plugins.phone_connected_short") if paired else "")
     labels["pl_phone_shape"].setStyleSheet(
-        f"background:{fill};border-radius:10px;"
-        f"border:1px solid {pal['line']};")
+        f"background:{fill};border-radius:10px;border:1px solid {pal['line']};")
 
 def _paint_phone_code(panel) -> str:
     """Board 16's pairing-code box: the live code, or the no-code sentence."""
@@ -526,12 +527,10 @@ def paint_light(panel, snap) -> None:
     for index in range(4):
         labels[f"l18_card:{index}"].setStyleSheet(
             f"background:{pal['card']};border-radius:12px;")
-    labels["l18_log_box"].setStyleSheet(
-        f"background:{pal['card']};border-radius:12px;")
+    labels["l18_log_box"].setStyleSheet(f"background:{pal['card']};border-radius:12px;")
     for index in range(3):
         labels[f"l18_state:{index}"].setStyleSheet(
-            f"background:{pal['card']};border:1px solid {pal['line']};"
-            f"border-radius:11px;")
+            f"background:{pal['card']};border:1px solid {pal['line']};border-radius:11px;")
     panel._buttons["l18_clear"].setText(_t("ui.panel.history.clear"))
     panel._buttons["l18_export"].setText(_t("ui.panel.history.export"))
     for index, (key, name_key, sub_key) in enumerate(PERMISSIONS):

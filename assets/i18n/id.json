@@ -763,7 +763,6 @@
   "ui.page.tools.not_sensitive": "Tidak ada pola sensitif",
   "ui.page.tools.sensitive": "Terdeteksi: {what} · sensitif",
   "ui.page.tools.snap": "SUSUN JENDELA",
-  "ui.page.tools.snap_absent": "Menyusun jendela belum ada di versi ini.",
   "ui.page.tools.snap_thumb1": "2 kolom",
   "ui.page.tools.snap_thumb2": "3 kolom",
   "ui.page.tools.snap_thumb3": "Fokus",
@@ -1053,5 +1052,9 @@
   "ui.page.consent.presence.focus": "Fokus",
   "ui.page.consent.presence.quiet": "Senyap",
   "ui.page.consent.presence.selected": "Mode yang dipilih: {mode}",
-  "ui.page.consent.step.of": "Langkah {n} dari {total}"
+  "ui.page.consent.step.of": "Langkah {n} dari {total}",
+  "ui.page.tools.snap_columns2": "2 kolom",
+  "ui.page.tools.snap_columns3": "3 kolom",
+  "ui.page.tools.snap_focus": "Fokus",
+  "ui.page.tools.snap_note": "Susun jendela: {mode}."
 }

@@ -500,6 +500,7 @@ def actions_for(shell: "AmbientShell") -> dict:
         "routine_toggle": lambda i: pages_actions.routine_toggle(shell, i),
         "routine_delete": lambda i: pages_actions.routine_delete(shell, i),
         "tools_copy": lambda: pages_actions.tools_copy(shell),
+        "tools_layout": lambda i: pages_actions.tools_layout(shell, i),
         "tools_clear": lambda: pages_actions.tools_clear(shell),
         "tools_safe": lambda: pages_actions.tools_mark_safe(shell),
         "plugin_toggle": lambda index: pages_actions.plugin_toggle(shell, index),
