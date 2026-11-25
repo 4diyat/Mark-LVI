@@ -532,6 +532,29 @@ def actions_for(shell: "AmbientShell") -> dict:
     }
 
 
+def start_panel(shell: "AmbientShell") -> bool:
+    """Open the tray panel at startup so the new-design boards are visible.
+
+    The panel is built lazily on the tray-icon click path, so at startup the
+    user only saw the orb, the command bar and the toast — the surfaces the
+    phase-2 redesign did not touch. Opening it here puts the redesigned boards
+    in front of the user on launch, which is what "the UI follows the new
+    mockup" means in practice.
+
+    It is a surface like any other: a failure is reported, not raised, and it
+    does not open under `--hidden` (a login entry must not pop a panel onto
+    someone's screen). The panel is still dismissable and re-openable from the
+    tray icon exactly as before.
+    """
+    if getattr(getattr(shell, "_launch", None), "hidden", False):
+        return False
+    try:
+        return open_panel(shell)
+    except Exception as e:                          # noqa: BLE001
+        _say(shell, f"the tray panel failed to open at startup — {type(e).__name__}: {e}")
+        return False
+
+
 def open_panel(shell: "AmbientShell", point=None) -> bool:
     """Open the panel, building it and its actions the first time.
 
@@ -569,6 +592,6 @@ def toggle_panel(shell: "AmbientShell", point=None) -> bool:
 __all__ = [
     "actions_for", "clear_history", "dictate", "erase_local", "export_history",
     "find_file", "open_panel", "quick_action", "screenshot", "send_command",
-    "set_permission", "set_presence", "set_theme", "tidy_windows",
+    "set_permission", "set_presence", "set_theme", "start_panel", "tidy_windows",
     "toggle_panel", "undo_last",
 ]

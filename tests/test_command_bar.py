@@ -247,8 +247,8 @@ def test_the_field_fits_inside_the_window(bar):
 
 
 def test_the_bar_is_the_size_the_artboard_draws(bar):
-    """Board 3 draws 640 × 184 at (320, 268) on a 1280 × 720 desktop."""
-    assert (bar.BAR_WIDTH, bar.BAR_HEIGHT) == (640, 184)
+    """Board 2 (`b02()`) draws 720 × 352 at (280, 178) on a 1280 × 720 desktop."""
+    assert (bar.BAR_WIDTH, bar.BAR_HEIGHT) == (720, 352)
 
 
 def test_the_bar_is_not_transparent_to_the_keyboard(bar):
@@ -276,16 +276,16 @@ def test_the_bar_draws_board_3s_box(bar):
 
 
 def test_the_bar_is_the_artboards_geometry_not_an_invented_one(bar):
-    """Every number is `n03()`'s: 640 × 184, a 16 px radius, rows 26 px apart."""
+    """Every number is `b02()`'s: 720 × 352, a 16 px radius, rows 70 px apart."""
     g = bar.GEOMETRY
-    assert (bar.BAR_WIDTH, bar.BAR_HEIGHT) == (640, 184)
+    assert (bar.BAR_WIDTH, bar.BAR_HEIGHT) == (720, 352)
     assert g["radius"] == 16
-    assert g["rows_y"] == 106 and g["rows_pitch"] == 26
-    assert g["rule"] == (16, 1, 608, 2)
-    assert g["esc"] == (566, 28, 50, 22)
-    # The footer fits INSIDE the 184 px box the artboard measures: the last
-    # row's text ends at 158, the rule lands below it, and the legend ends on
-    # the box's own bottom edge rather than past it.
+    assert g["rows_y"] == 108 and g["rows_pitch"] == 70
+    assert g["esc"] == (610, 30, 44, 20)
+    assert g["icon"] == (24, -8, 28, 28)
+    # The footer fits INSIDE the 352 px box the artboard measures: the last
+    # row's text ends well above it, the rule lands below the rows, and the
+    # legend ends on the box's own bottom edge rather than past it.
     assert g["rows_y"] + 2 * g["rows_pitch"] < g["footer_rule"][1]
     assert g["footer_rule"][1] + g["footer"][3] <= bar.BAR_HEIGHT
 
@@ -353,16 +353,17 @@ def test_set_rows_repaints_and_keeps_the_type(bar):
 
 
 def test_the_footers_keys_are_not_translated(bar):
-    """Esc, ↑↓ and ↵ are printed on keyboards, not prose.
+    """↑↓, ↵ and Ctrl+Space are printed on keyboards, not prose.
 
-    The artboard's last entry is "Ctrl+Space tutup", and Ctrl+Space is how the
-    bar was OPENED — a legend that closes on the instruction that opened it
-    would be the one line on screen contradicting the hotkey that summoned it.
-    Esc is the key that closes, so the footer names Esc.
+    The artboard's footer is three segments — "↑↓ pilih", "↵ jalankan" and
+    "Ctrl+Space tutup" — and Ctrl+Space is how the bar was OPENED. A legend
+    that tells the user to close the bar with the chord that opened it is the
+    one line on screen that contradicts the hotkey that summoned it, so the
+    segments are literals, never catalogue keys.
     """
-    assert "Esc" in bar.FOOTER and "↑↓" in bar.FOOTER and "↵" in bar.FOOTER
-    assert "Ctrl+Space" not in bar.FOOTER, (
-        "the footer tells the user to close the bar with the chord that opened it")
+    footer_text = "".join(seg for seg, _x in bar.FOOTER)
+    assert "↑↓" in footer_text and "↵" in footer_text
+    assert "Ctrl+Space" in footer_text
 
 
 def test_the_bar_reads_none_of_the_retired_hud_palette(bar):

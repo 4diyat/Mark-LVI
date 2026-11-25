@@ -201,13 +201,16 @@ def paint_orb(painter, size: int, mode: str, state: str, level: float = 0.0) -> 
     the user's wallpaper.
     """
     radius = float(appearance(mode).radius)
-    # BOARD 24'S LABEL, AND HOW MUCH ROOM THERE IS FOR IT.
+    # BOARD 1'S LABEL, AND HOW MUCH ROOM THERE IS FOR IT.
     #
     # The overlay window is a fixed 146 px and the ring's centre is at 73, so
-    # the space below the ring is `size/2 - radius` on each side. The label goes
-    # under the ring and needs 12 px; the overlay has 45. The HUD calls
-    # `paint_ring` directly with no `label_room`, which is what keeps a 10 px
-    # caption off a surface that has its own content there.
+    # the space around the ring is `size/2 - radius` on each side. `b01()`
+    # sits the caption "Siaga" OVER the ring (baseline above the orb), so the
+    # overlay passes `label_above=True`; the caption needs 12 px and the
+    # overlay has 45. The HUD calls `paint_ring` directly with no `label_room`,
+    # which is what keeps a 10 px caption off a surface that has its own
+    # content there.
     paint_ring(painter, size / 2.0, size / 2.0, radius,
                mode=mode, state=state, level=level,
-               label_room=max(0.0, size / 2.0 - radius))
+               label_room=max(0.0, size / 2.0 - radius),
+               label_above=True)

@@ -539,9 +539,13 @@ def test_no_surface_at_all_is_said_out_loud(monkeypatch, qt, capsys):
     """Running, listening, and invisible is the one outcome worth shouting about."""
     shell = _shell(monkeypatch, qt, tray_ok=False, bubble_ok=False)
     monkeypatch.setattr(shell, "state", dict(shell.state, orb_starts=0, bar_starts=0))
-    from ui import lifecycle
+    from ui import lifecycle, tray_panel_wiring
     lifecycle.start_orb = lambda s: False
     lifecycle.start_command_bar = lambda s: False
+    # The panel is a startup surface too (phase 2 auto-opens it), so a desktop
+    # with no surface must have its panel fail as well — otherwise the panel
+    # succeeding would make "no surface at all" unreachable.
+    monkeypatch.setattr(tray_panel_wiring, "start_panel", lambda s: False)
     lifecycle.start_interface(shell)
     out = capsys.readouterr().out
     assert "No ambient surface" in out

@@ -199,12 +199,18 @@ def paint_overlay_box(painter, cx: float, cy: float, half: float,
 def paint_ring(painter, cx: float, cy: float, radius: float,
                mode: str = "active", state: str = "idle",
                level: float = 0.0, alert: bool = False,
-               phase: float = 0.0, label_room: float = 0.0) -> None:
+               phase: float = 0.0, label_room: float = 0.0,
+               label_above: bool = False) -> None:
     """Draw one frame of the orb, centred on (cx, cy), at `radius` pixels.
 
     `level` is the live audio level 0..1 and only widens the glow while
     speaking. `phase` (0..1) is a free-running clock used to sweep the thinking
     arc; pass a constant and the arc is still, which is what a test wants.
+
+    `label_room` / `label_above` pick the caption's side: the overlay (board 1)
+    passes both — room for the caption and `label_above=True`, because `b01()`
+    sits "Siaga" over the ring — while the HUD passes neither, so no caption
+    is drawn over its own content. See `label_y`.
 
     Nothing here fills a rectangle: this is drawn on a translucent desktop
     window as well as inside the HUD, and a filled rect would be an opaque
@@ -308,35 +314,49 @@ def paint_ring(painter, cx: float, cy: float, radius: float,
         painter.drawArc(_Rect(cx - arc_r, cy - arc_r, arc_r * 2, arc_r * 2),
                         start * 16, 100 * 16)
 
-    # BOARD 24'S WORD UNDER THE RING. `paint_ring` serves the desktop overlay
-    # AND the HUD, so the label is drawn only when the caller says there is
-    # room for it — a HUD that draws a 10 px caption over its own content is a
-    # caption in the way. The overlay always has the room: a 28 px ring leaves
-    # 45 px below it inside a 146 px window, an 18 px ring leaves 55.
+    # BOARD 1'S WORD OVER THE RING, BOARD 24'S UNDER IT. `paint_ring` serves
+    # the desktop overlay AND the HUD, so the label is drawn only when the
+    # caller says there is room for it — a HUD that draws a 10 px caption over
+    # its own content is a caption in the way. The overlay always has the
+    # room: a 28 px ring leaves 45 px below it inside a 146 px window, an 18 px
+    # ring leaves 55. Which side the caption sits on is the `label_above` flag:
+    # `b01()` puts "Siaga" over the ring, the HUD keeps it under.
     if label_room:
-        draw_label(painter, cx, cy, r, mode, label_room)
+        draw_label(painter, cx, cy, r, mode, label_room, above=label_above)
 
 
-def label_y(cy: float, radius: float) -> float:
-    """Where the caption's baseline sits: 10 px under the ring's edge.
+def label_y(cy: float, radius: float, above: bool = False) -> float:
+    """Where the caption's baseline sits, relative to the ring's edge.
 
-    That is the artboard's gap between `circle cy=602 r=28` and the sentence at
-    `txt y=662`, once the glow ring around the drawing is accounted for.
+    BOARD 1 PUT THE CAPTION ABOVE THE ORB, BOARD 24 KEEPS IT BELOW. `b01()`
+    sits the word "Siaga" at `txt y=614` over an orb centred at `cy=620`, so
+    the caption reads on the upper half of the ring; `n01()` (and the HUD that
+    `paint_ring` also serves) puts it under the circle at `txt y=662`. One
+    painter serves both surfaces, so the side is a parameter rather than a
+    edit: the overlay passes `above=True`, the HUD leaves the default.
+
+    `above=False` keeps the legacy gap: 10 px under the ring's edge, which is
+    the artboard's gap between `circle cy=602 r=28` and the sentence at
+    `txt y=662`. `above=True` mirrors it: 10 px over the ring's top edge.
     """
+    if above:
+        return float(cy) - float(radius) - 10.0
     return float(cy) + float(radius) + 10.0
 
 
 def draw_label(painter, cx: float, cy: float, radius: float, mode: str,
-               room: float) -> bool:
-    """Board 05b: the mode's name, centred under the ring.
+               room: float, above: bool = False) -> bool:
+    """Board 05b: the mode's name, centred on the ring's chosen side.
 
     DRAWN, NOT MERELY AVAILABLE. Board 05b's reason is "status harus terbaca
     tanpa warna": dimming the ring, dropping the glow and going dotted are
     three differences in the SAME channel — brightness — and on a dark desktop
     a screenshot cannot tell a quiet orb from an active one. A word can.
 
-    `room` is the height the caller has below the ring. The label is skipped
-    when it does not fit rather than drawn over whatever is there.
+    `room` is the height the caller has on the side the caption goes. The label
+    is skipped when it does not fit rather than drawn over whatever is there.
+    `above` picks the side: board 1's overlay puts the caption over the ring,
+    board 24's HUD keeps it under (see `label_y`).
     """
     from PyQt6.QtCore import QRectF, Qt
     from PyQt6.QtGui import QColor, QFont, QPen
@@ -372,7 +392,7 @@ def draw_label(painter, cx: float, cy: float, radius: float, mode: str,
     colour = QColor(MUTED)
     colour.setAlphaF(0.85)
     painter.setPen(QPen(colour))
-    box = QRectF(cx - 60.0, label_y(cy, radius) - 11.0, 120.0, 14.0)
+    box = QRectF(cx - 60.0, label_y(cy, radius, above) - 11.0, 120.0, 14.0)
     # The flag object is passed AS IS. `int(Qt.AlignmentFlag...)` raises
     # TypeError in Qt6 and in the repo's stub — a Qt6 port that wraps flags in
     # int() is the mistake `docs/` already records once.
