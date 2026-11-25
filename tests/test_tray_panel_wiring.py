@@ -299,6 +299,9 @@ def test_every_key_the_panel_can_press_has_a_handler(wiring):
                 "routine_create", "routine_toggle", "routine_delete",
                 "tools_copy",
                 "tools_clear", "tools_safe", "plugin_toggle", "consent",
+                # Board 7's four-step onboarding ladder: advance, back, and
+                # the presence-mode toggle the presence step reuses the switch for.
+                "onboard_next", "onboard_back", "onboard_toggle",
                 "language", "text_scale", "motion_toggle", "install_mode",
                 # Board 14's voice-verification gate: a switch, a register
                 # and a delete, each landing on the session, not a store.

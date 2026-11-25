@@ -1,34 +1,16 @@
-"""The board pages' actions: one function per control that reaches a store.
+"""The board pages' actions: one function per store-write a board control reaches.
 
-WHY THESE ARE SEPARATE FROM `tray_panel_wiring`
-    That module carries the panel's own actions — presence, the four quick
-    actions, the permission switches, undo, export, erase, theme, command — and
-    it was 537 lines before the board pages existed. Thirteen more pages added
-    eleven more handlers, which put it past the 600-line ceiling the whole
-    package is held to.
-
-    The split is not "misc": every function here exists because a BOARD PAGE
-    needs it, and every one of them is a STORE WRITE reached by a click. The
-    panel owns which page is open; `ui/pages_memory`, `pages_people` and
-    `pages_admin` own the rules; these carry a rule across the click path and
-    say what happened.
-
-WHAT EVERY FUNCTION HERE HAS TO DO
-    1. Reach the store through ITS OWN writer, never a second one. `forget()`
-       takes the memory lock; `save_plugin_enabled()` is what the loader reads;
-       `proactive._write_paused()` is what the scheduler reads. A page that wrote
-       the file itself would be a second writer racing the first.
-    2. Return a bool that means what it says, including on the sad path — the
-       panel repaints from the result.
-    3. Say one sentence in the user's language, through `_say`. A control that
-       changes something and says nothing is the failure this whole build keeps
-       removing.
+These were split out of `tray_panel_wiring`, which was near the 600-line
+ceiling before the board pages added their handlers. The split is not "misc":
+every function here exists because a BOARD PAGE needs it, and each is a store
+write reached by a click — it reaches the store through its own writer, returns
+a bool that means what it says, and says one sentence through `_say`.
 """
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:                                    # pragma: no cover
+if TYPE_CHECKING:
     from ui.shell import AmbientShell
 
 
@@ -40,8 +22,7 @@ def _say(shell: "AmbientShell", text: str) -> None:
 
 
 def _t(key: str, **fields) -> str:
-    """`core.i18n.label` with a fallback, so a missing catalogue key still
-    shows the key rather than raising inside a click handler."""
+    """`core.i18n.label` with a fallback, so a missing catalogue key still."""
     from ui.tray_panel_model import _t as _i18n_t
 
     return _i18n_t(key, **fields)
@@ -60,8 +41,6 @@ def memory_forget(shell: "AmbientShell") -> bool:
     _say(shell, message)
     if ok and panel is not None:
         # BACK TO THE LIST, because the thing this page described is gone:
-        # staying on it would show "catatan ini sudah dihapus" and a button that
-        # can only fail.
         panel.set_page("memory")
     return ok
 
@@ -84,12 +63,7 @@ def memory_clear(shell: "AmbientShell") -> bool:
 
 
 def routines_pause(shell: "AmbientShell") -> bool:
-    """Board 11's pause, through the engine's own persisted flag.
-
-    WRITTEN BY THE MODULE THAT READS IT. `actions.proactive` keeps the pause in
-    the config file behind `PAUSE_KEY`; this calls its writer, so the toggle and
-    the scheduler cannot disagree about whether suggestions are on.
-    """
+    """Board 11's pause, through the engine's own persisted flag."""
     from actions import proactive
     from ui import pages_people
 
@@ -123,12 +97,7 @@ def tools_copy(shell: "AmbientShell") -> bool:
 
 
 def tools_clear(shell: "AmbientShell") -> bool:
-    """Board 12's "Bersihkan": empty the clipboard.
-
-    IT SAYS WHAT IT DID AND TO WHAT. Emptying a clipboard destroys whatever the
-    user had — the one destructive thing on this page — so the sentence names
-    the store rather than saying "dibersihkan".
-    """
+    """Board 12's "Bersihkan": empty the clipboard."""
     try:
         from actions import computer_control
 
@@ -176,6 +145,95 @@ def consent_answer(shell: "AmbientShell", allowed: bool) -> bool:
     return ok
 
 
+def _onboarding_state(shell):
+    """(panel, flow): the panel and its live walk, started fresh each open."""
+    panel = getattr(shell, "_panel", None)
+    if panel is None:
+        return None, None
+    flow = getattr(panel, "_onboarding", None)
+    if flow is None:
+        from core.onboarding import Onboarding
+        flow = Onboarding.start()
+        panel._onboarding = flow
+    return panel, flow
+
+
+def _finish_onboarding(shell, flow, message: str) -> None:
+    """Store the flow on the panel, say it, and repaint."""
+    panel = getattr(shell, "_panel", None)
+    if panel is None:
+        return
+    panel._onboarding = flow
+    panel.refresh()
+    _say(shell, message)
+
+
+def onboard_next(shell: "AmbientShell") -> bool:
+    """Board 7: advance the onboarding ladder to the next step."""
+    from actions.onboarding import answer_step
+
+    panel, flow = _onboarding_state(shell)
+    if flow is None:
+        return False
+    step = flow.current
+    if step == "presence":
+        picked = getattr(panel, "_onboarding_picked", None) if panel else None
+        if not picked:  # never record a default the user did not choose
+            _say(shell, _t("ui.page.consent.presence.pick"))
+            return False
+        decision = str(picked)
+    else:
+        decision = {"welcome": "next", "mic": bool(_toggle_checked(shell)),
+                    "done": "finish"}.get(step)
+    new_flow, ok = answer_step(flow, decision)
+    if ok:
+        _finish_onboarding(shell, new_flow, _t("ui.page.consent.done"))
+    return ok
+
+
+def onboard_back(shell: "AmbientShell") -> bool:
+    """Board 7: go back to the previous step, or skip the microphone step."""
+    from core.onboarding import MIC, Onboarding
+
+    panel, flow = _onboarding_state(shell)
+    if flow is None or flow.current_index <= 0:
+        return False
+    if flow.current == MIC:
+        from actions.onboarding import answer_step
+        new_flow, ok = answer_step(flow, False)
+        if ok:
+            _finish_onboarding(shell, new_flow, _t("ui.page.consent.deny"))
+        return ok
+    new_flow = Onboarding(flow._done, flow._skipped, flow.presence_mode,
+                          max(0, flow.current_index - 1))
+    _finish_onboarding(shell, new_flow, "")
+    return True
+
+
+def onboard_toggle(shell: "AmbientShell") -> bool:
+    """Board 7: the presence-mode selector on the presence step."""
+    from core.onboarding import PRESENCE
+
+    panel, flow = _onboarding_state(shell)
+    if flow is None or flow.current != PRESENCE:
+        return False
+    modes = ("active", "focus", "quiet")
+    current = getattr(panel, "_onboarding_picked", None) or "active"
+    idx = modes.index(current) if current in modes else 0
+    picked = modes[(idx + 1) % len(modes)]
+    panel._onboarding_picked = picked
+    panel._labels["cn_ack"].setText(_t("ui.page.consent.presence.selected",
+                                       mode=_t(f"ui.page.consent.presence.{picked}")))
+    return True
+
+
+def _toggle_checked(shell) -> bool:
+    """Whether the consent toggle is checked, read off the panel widget."""
+    panel = getattr(shell, "_panel", None)
+    button = panel._buttons.get("cn_toggle") if panel else None
+    return bool(button and button.isChecked())
+
+
 def language_set(shell: "AmbientShell", code: str) -> bool:
     """Board 15's language segment. Returns whether the switch took."""
     from ui import pages_admin
@@ -199,18 +257,10 @@ def text_scale_set(shell: "AmbientShell", scale: float) -> bool:
 
 
 def contrast_set(shell: "AmbientShell", level: str) -> bool:
-    """Board 15's contrast level. High contrast is a modifier on the palette.
-
-    The choice is persisted and applied to the panel at once: turning it on
-    swaps every painted colour to the high-contrast palette, turning it off
-    restores whatever dark/light theme was underneath. A level that saved to
-    the file but did not change what is on screen would be a toggle that
-    looks right and does nothing.
-    """
+    """Board 15's contrast level. High contrast is a modifier on the palette."""
     from memory import config_manager
 
-    name = str(level or "").strip().lower()
-    high = name == "high"
+    high = str(level or "").strip().lower() == "high"
     try:
         ok = config_manager.save_high_contrast(high)
     except Exception as e:                          # noqa: BLE001
@@ -239,13 +289,7 @@ def motion_toggle(shell: "AmbientShell") -> bool:
 
 
 def voice_auth_toggle(shell: "AmbientShell", enabled: bool) -> bool:
-    """Board 14's voice-verification switch. Reaches the session, not a store.
-
-    The gate state lives in the running session (main.py), so this calls the
-    shell's handler — the same shape `on_wake_toggle` uses. A control that
-    flips a switch in the file but never reaches the live session would be a
-    toggle that looks on and does nothing.
-    """
+    """Board 14's voice-verification switch. Reaches the session, not a store."""
     handler = getattr(shell, "on_voice_auth_toggle", None)
     if not callable(handler):
         _say(shell, "Verifikasi suara belum tersedia: sesi belum berjalan.")
@@ -273,13 +317,7 @@ def voice_auth_enroll(shell: "AmbientShell") -> bool:
 
 
 def routine_create(shell: "AmbientShell") -> bool:
-    """Board 11's builder: turn the schedule field into a stored routine.
-
-    Reads the one-line schedule phrase from the builder field, parses it with
-    the pure policy, and writes it through the store — the store is the only
-    writer of `memory/routines.json`. A phrase the parser cannot read is
-    refused with a sentence rather than stored as a routine that fires wrong.
-    """
+    """Board 11's builder: turn the schedule field into a stored routine."""
     from core.routines import Routine, parse_schedule_or_raise
     from memory.routine_store import default_store
 
@@ -389,14 +427,7 @@ def install_mode(shell: "AmbientShell", index: int) -> bool:
 
 
 def form_fill_apply(shell: "AmbientShell") -> bool:
-    """Board 13's review-and-apply button.
-
-    Reads the page URL and the three field values from the board's inputs,
-    builds a :class:`FormFillPlan` with the pure policy, reviews it (the
-    "tinjau dulu" gate), then drives the approved plan into the browser session
-    through the adapter. The panel's preview strip and field echo are updated
-    from the result so the board states what happened.
-    """
+    """Board 13's review-and-apply button."""
     from actions.browser_form import fill_form_to_page
     from core.form_fill import FormFillError, FormFillPlan
 
@@ -406,18 +437,17 @@ def form_fill_apply(shell: "AmbientShell") -> bool:
 
     def _read(key: str) -> str:
         edit = panel._inputs.get(key)
-        if edit is None:
-            return ""
         try:
-            return str(edit.text() or "").strip()
+            return str(edit.text() or "").strip() if edit is not None else ""
         except Exception:                          # noqa: BLE001
             return ""
 
+    values = {f"hp_form_input:{i}": _read(f"hp_form_input:{i}") for i in range(3)}
     url = _read("hp_form_url")
     if not url:
         _say(shell, _t("ui.page.help.form_no_url"))
         return False
-    fields = {f"#field{i}": _read(f"hp_form_input:{i}") for i in range(3)}
+    fields = {f"#field{i}": v for i, v in enumerate(values.values())}
     try:
         plan = FormFillPlan.build(url, fields).review()
     except FormFillError as e:
@@ -426,12 +456,12 @@ def form_fill_apply(shell: "AmbientShell") -> bool:
         _say(shell, str(e))
         return False
 
-    results = fill_form_to_page(plan.page_url, {e.selector: e.value for e in plan.entries})
-    failed = [r for r in results if not r.ok]
+    failed = [r for r in fill_form_to_page(
+        plan.page_url, {e.selector: e.value for e in plan.entries}) if not r.ok]
     panel._form_fill = {
         "status": "failed" if failed else "applied",
         "detail": "; ".join(r.detail for r in failed),
-        "values": {str(i): _read(f"hp_form_input:{i}") for i in range(3)},
+        "values": values,
     }
     panel.refresh()
     if failed:
@@ -442,12 +472,7 @@ def form_fill_apply(shell: "AmbientShell") -> bool:
 
 
 def _phone_session(shell):
-    """The panel's pairing session, created on first use.
-
-    The session is a pure-policy :class:`PairingSession` stored on the panel;
-    it is the same object the painter reads, so a generate or pair and the
-    next repaint agree on state without a second store.
-    """
+    """The panel's pairing session, created on first use."""
     from core.phone_pairing import PairingSession
 
     panel = getattr(shell, "_panel", None)
@@ -461,12 +486,7 @@ def _phone_session(shell):
 
 
 def phone_make_code(shell: "AmbientShell") -> bool:
-    """Board 16: mint a fresh one-time pairing code.
-
-    A new mint supersedes any pending code, so the box always shows the one
-    live code the policy will accept. The code is generated by the policy, not
-    typed, so it is one the server's pairing endpoint would accept.
-    """
+    """Board 16: mint a fresh one-time pairing code."""
     panel, session = _phone_session(shell)
     if session is None:
         return False
@@ -479,12 +499,7 @@ def phone_make_code(shell: "AmbientShell") -> bool:
 
 
 def phone_pair(shell: "AmbientShell") -> bool:
-    """Board 16: pair a device against the pending code.
-
-    The device name is a fixed label ("Ponsel") — the panel is the desktop
-    side issuing the code, and the phone is the device that consumes it. A
-    missing or expired code, or a wrong one, is refused with a sentence.
-    """
+    """Board 16: pair a device against the pending code."""
     panel, session = _phone_session(shell)
     if session is None:
         return False
@@ -504,15 +519,9 @@ def phone_pair(shell: "AmbientShell") -> bool:
 
 
 def phone_unpair(shell: "AmbientShell") -> bool:
-    """Board 16: disconnect the most recently paired device.
-
-    Removes the device from the session so the card returns to the idle state
-    and a new code must be minted before another device can pair.
-    """
+    """Board 16: disconnect the most recently paired device."""
     panel, session = _phone_session(shell)
-    if session is None:
-        return False
-    if not session.devices:
+    if session is None or not session.devices:
         _say(shell, _t("ui.page.plugins.phone_idle"))
         return False
     removed = session.devices.pop()
@@ -544,17 +553,13 @@ def installer_run(shell: "AmbientShell") -> bool:
         return False
 
     count = len(plan.missing)
-    panel._install_state = {
-        "status": "running" if plan.needs_install else "installed",
-        "count": count,
-    }
+    panel._install_state = {"status": "installed", "count": count}
     panel.refresh()
     if not plan.needs_install:
         _say(shell, _t("ui.page.installer.all_present"))
         return True
 
-    results = run_install_plan(plan)
-    failed = [r for r in results if not r.ok]
+    failed = [r for r in run_install_plan(plan) if not r.ok]
     panel._install_state = {
         "status": "installed" if not failed else "failed",
         "count": count,
@@ -584,8 +589,7 @@ def os_control_toggle(shell: "AmbientShell") -> bool:
     """Board 14's OS-control switch: request a change, gated by policy."""
     from actions.os_control import read_state, toggle
 
-    return _os_control_apply(shell, toggle(desired=not read_state(),
-                                           confirmed=False))
+    return _os_control_apply(shell, toggle(not read_state(), confirmed=False))
 
 
 def os_control_confirm(shell: "AmbientShell") -> bool:

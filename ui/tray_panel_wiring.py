@@ -504,6 +504,11 @@ def actions_for(shell: "AmbientShell") -> dict:
         "tools_safe": lambda: pages_actions.tools_mark_safe(shell),
         "plugin_toggle": lambda index: pages_actions.plugin_toggle(shell, index),
         "consent": lambda allowed: pages_actions.consent_answer(shell, allowed),
+        # Board 7's four-step onboarding ladder: advance, back, and the
+        # presence-mode toggle the presence step reuses the consent switch for.
+        "onboard_next": lambda: pages_actions.onboard_next(shell),
+        "onboard_back": lambda: pages_actions.onboard_back(shell),
+        "onboard_toggle": lambda: pages_actions.onboard_toggle(shell),
         "language": lambda code: pages_actions.language_set(shell, code),
         "text_scale": lambda scale: pages_actions.text_scale_set(shell, scale),
         "contrast_set": lambda level: pages_actions.contrast_set(shell, level),
