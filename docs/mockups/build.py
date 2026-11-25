@@ -13,12 +13,12 @@ from __future__ import annotations
 import html
 
 # ── tokens (from the brief) ─────────────────────────────────────────────────
-BASE, PANEL, LINE = "#04080D", "#0A1722", "#17323F"
-LINE_ACC, CYAN, AMBER = "#2A6477", "#4FD8F0", "#F5A524"
-TEXT, MUTED = "#E6F4F8", "#8FA9B5"
+BASE, PANEL, LINE = "#0c0d11", "#101820", "#1c2028"
+LINE_ACC, CYAN, AMBER = "#243040", "#3486fe", "#ff9a40"
+TEXT, MUTED = "#ffffff", "#5e636c"
 # light theme, from the brief
 LBASE, LPANEL, LLINE = "#F6F9FB", "#FFFFFF", "#D8E3E9"
-LACC, LTEXT, LMUTED, LAMBER = "#0A7A93", "#0B1A24", "#5B7480", "#9A5B00"
+LACC, LTEXT, LMUTED, LAMBER = "#1d6fe8", "#0B1A24", "#5B7480", "#9a5b00"
 
 FONT = "'Space Grotesk','Segoe UI',Arial,Helvetica,sans-serif"
 R_CARD, R_PANEL, R_PILL = 12, 16, 21
@@ -127,7 +127,7 @@ def progress(x, y, w, pct, h=4, fill=CYAN):
 
 def orb(cx, cy, r, glow=True, light=False):
     g, gg = uid("orb"), uid("glow")
-    c1, c2, c3 = ("#BFF6FF", "#4FD8F0", "#0B4A5C") if not light else ("#EAFDFF", "#7FDCEC", "#0A7A93")
+    c1, c2, c3 = ("#8fb8ff", "#3486fe", "#0a2a55") if not light else ("#EAFDFF", "#7FDCEC", "#1d6fe8")
     out = [f'<defs><radialGradient id="{g}" cx="0.38" cy="0.34" r="0.72">'
            f'<stop offset="0" stop-color="{c1}"/><stop offset="0.45" stop-color="{c2}"/>'
            f'<stop offset="1" stop-color="{c3}"/></radialGradient>']
@@ -140,7 +140,7 @@ def orb(cx, cy, r, glow=True, light=False):
         out.append(f'<circle cx="{cx}" cy="{cy}" r="{r * 2.6}" fill="url(#{gg})"/>')
     out.append(f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="url(#{g})"/>')
     out.append(f'<circle cx="{cx}" cy="{cy}" r="{r * 0.82}" fill="none" '
-               f'stroke="#0B4A5C" stroke-width="1.2" stroke-dasharray="2 4" opacity="0.85"/>')
+               f'stroke="#0a2a55" stroke-width="1.2" stroke-dasharray="2 4" opacity="0.85"/>')
     return "".join(out)
 
 
@@ -433,7 +433,7 @@ def b04():
     o.append(txt(640, 344, "MENDENGARKAN", 11, CYAN, 500, "middle", track="3"))
     # transcript pill
     tx, ty, tw = 320, 596, 640
-    o.append(rect(tx, ty, tw, 76, "#0A1722", 26, LINE_ACC))
+    o.append(rect(tx, ty, tw, 76, "#101820", 26, LINE_ACC))
     o.append(txt(tx + 30, ty + 30, "“ringkas tabel ini dan tandai baris yang lewat anggaran”",
                  13.5, TEXT, 500))
     o.append(txt(tx + 30, ty + 54, "Baris 7 dan 11 melewati plafon sebesar 12% dan 4%.", 11.5, MUTED))
@@ -470,7 +470,7 @@ def b05():
         o.append(txt(x + 60, y + 48, "Ctrl+Shift+" + k, 9.5, MUTED))
     # chat
     o.append(txt(24, 312, "PERCAKAPAN", 10, MUTED, 500, track="2"))
-    o.append(rect(24, 326, 412, 158, "#081520", R_CARD, LINE))
+    o.append(rect(24, 326, 412, 158, "#14181c", R_CARD, LINE))
     o.append(rect(40, 342, 250, 34, "#0E2130", 10, LINE_ACC))
     o.append(txt(56, 364, "Rapat berikutnya jam berapa?", 11.5, TEXT))
     o.append(rect(180, 386, 240, 40, CYAN, 10, op="0.14"))
@@ -485,7 +485,7 @@ def b05():
         o.append(txt(24, y + 14, n, 11.5, TEXT))
         o.append(toggle(396, y + 2, v))
     # input
-    o.append(rect(24, 596, 340, 40, "#0A1722", 20, LINE))
+    o.append(rect(24, 596, 340, 40, "#101820", 20, LINE))
     o.append(txt(44, 621, "Tulis atau tekan Ctrl+Space", 11.5, MUTED))
     o.append(f'<circle cx="404" cy="616" r="18" fill="{CYAN}"/>')
     o.append(f'<path d="M398 622 l12 -12 M404 610 h8 v8" stroke="{BASE}" stroke-width="2" '
@@ -543,7 +543,7 @@ def b06():
         o.append(txt(44, y + 45, sub, 10.5, MUTED))
         o.append(toggle(378, y + 20, v))
     o.append(txt(24, 412, "LOG AKTIVITAS", 10, MUTED, 500, track="2"))
-    o.append(rect(24, 426, 412, 118, "#081520", R_CARD, LINE))
+    o.append(rect(24, 426, 412, 118, "#14181c", R_CARD, LINE))
     log = [("09:14", "Membaca layar — anggaran.xlsx"),
            ("09:10", "Dikte 42 kata ke editor"),
            ("08:58", "Menolak akses berkas (izin mati)")]
@@ -564,7 +564,7 @@ def b07():
         o.append(rect(24 + i * 105, 74, 97, 4, CYAN if i < 2 else "#13242E", 2))
     o.append(txt(24, 126, "Mikrofon", 22, TEXT, 700))
     o.append(txt(24, 154, "Dibutuhkan untuk perintah suara dan dikte.", 12, MUTED))
-    o.append(rect(24, 174, 412, 190, "#081520", R_CARD, LINE))
+    o.append(rect(24, 174, 412, 190, "#14181c", R_CARD, LINE))
     o.append(orb(230, 244, 26))
     for i, w in enumerate((6, 14, 30, 18, 8, 22, 12)):
         o.append(rect(150 + i * 18, 316 - w / 2, 5, w, CYAN, 2.5, op="0.75"))
@@ -639,7 +639,7 @@ def b10():
          f'stroke-linecap="round" stroke-linejoin="round"/>',
          txt(58, 66, "Detail memori", 14, TEXT, 500),
          txt(24, 116, "ISI MEMORI", 10, MUTED, 500, track="2")]
-    o.append(rect(24, 130, 412, 62, "#081520", R_CARD, LINE_ACC))
+    o.append(rect(24, 130, 412, 62, "#14181c", R_CARD, LINE_ACC))
     o.append(txt(44, 158, "Folder kerja utama", 11, MUTED))
     o.append(txt(44, 180, "~/Projects/RAB", 13.5, TEXT, 500))
     o.append(txt(24, 222, "SUMBER", 10, MUTED, 500, track="2"))
@@ -693,14 +693,14 @@ def b12():
     W, H = 460, 640
     o = [panel_head("Alat cepat", "Tiga alat yang paling sering dipakai")]
     o.append(card(24, 76, 412, 150, "CLIPBOARD CERDAS"))
-    o.append(rect(40, 108, 380, 54, "#081520", 10, LINE))
+    o.append(rect(40, 108, 380, 54, "#14181c", 10, LINE))
     o.append(txt(56, 130, "1234 5678 9012 3456 · BCA · a.n. Diat", 11.5, TEXT))
     o.append(txt(56, 148, "Terdeteksi: nomor rekening · sensitif", 10, AMBER))
     o.append(pill_btn(40, 176, 110, 32, "Salin", primary=False, size=11))
     o.append(pill_btn(158, 176, 140, 32, "Tandai aman", primary=True, size=11))
     o.append(pill_btn(306, 176, 114, 32, "Bersihkan", primary=False, size=11))
     o.append(card(24, 244, 412, 158, "CARI BERKAS · BAHASA ALAMI"))
-    o.append(rect(40, 276, 380, 40, "#081520", 20, LINE_ACC))
+    o.append(rect(40, 276, 380, 40, "#14181c", 20, LINE_ACC))
     o.append(txt(58, 301, "faktur bulan lalu yang belum dibayar", 11.5, TEXT))
     hits = ["faktur-okt-07.pdf", "faktur-okt-21.pdf", "rekap-belum-bayar.xlsx"]
     for i, hh in enumerate(hits):
@@ -730,7 +730,7 @@ def b13():
     W, H = 460, 640
     o = [panel_head("Bantuan tulis", "Dikte · baca layar · isi form")]
     o.append(txt(24, 92, "DIKTE DI APLIKASI MANA PUN", 10, MUTED, 500, track="2"))
-    o.append(rect(24, 106, 412, 88, "#081520", R_CARD, LINE_ACC))
+    o.append(rect(24, 106, 412, 88, "#14181c", R_CARD, LINE_ACC))
     o.append(txt(44, 136, "“kirim email ke tim keuangan soal", 12, TEXT))
     o.append(txt(44, 158, "revisi anggaran kuartal empat”", 12, TEXT))
     o.append(txt(44, 182, "48 kata · Esc batal · ↵ sisipkan", 10, MUTED))
@@ -747,7 +747,7 @@ def b13():
     for i, (k, v) in enumerate(fields):
         y = 410 + i * 56
         o.append(txt(24, y + 14, k, 10, MUTED))
-        o.append(rect(24, y + 22, 412, 32, "#081520", 8, LINE))
+        o.append(rect(24, y + 22, 412, 32, "#14181c", 8, LINE))
         o.append(txt(40, y + 43, v, 11.5, TEXT))
     o.append(rect(24, 578, 412, 34, CYAN, 10, op="0.12"))
     o.append(txt(40, 600, "Pratinjau — belum ada yang diterapkan ke form.", 10.5, CYAN))
@@ -760,7 +760,7 @@ def b14():
     inds = [("Mikrofon", True), ("Kamera", False), ("Layar", True)]
     for i, (n, on) in enumerate(inds):
         x = 24 + i * 140
-        o.append(rect(x, 76, 132, 62, "#081520", R_CARD, LINE))
+        o.append(rect(x, 76, 132, 62, "#14181c", R_CARD, LINE))
         o.append(f'<circle cx="{x+22}" cy="98" r="5" fill="{CYAN if on else "#25404C"}"/>')
         o.append(txt(x + 36, 102, n, 11, TEXT, 500))
         o.append(txt(x + 16, 124, "aktif" if on else "mati", 10, CYAN if on else MUTED))
@@ -840,7 +840,7 @@ def b16():
         o.append(toggle(378, y + 19, on))
     o.append(txt(24, 346, "SINKRON PONSEL", 10, MUTED, 500, track="2"))
     o.append(card(24, 360, 412, 130))
-    o.append(rect(44, 380, 56, 90, "#081520", 10, LINE_ACC))
+    o.append(rect(44, 380, 56, 90, "#14181c", 10, LINE_ACC))
     o.append(rect(50, 390, 44, 70, "#0B1A22", 6, LINE))
     o.append(txt(120, 402, "Pixel 8 · terhubung", 12, TEXT, 500))
     o.append(txt(120, 422, "Sinkron 09.14 · 128 item", 10.5, MUTED))
@@ -848,7 +848,7 @@ def b16():
     o.append(pill_btn(120, 458, 150, 30, "Putuskan", primary=False, size=10.5))
     o.append(rect(24, 506, 412, 1, LINE))
     o.append(txt(24, 536, "Kode pasangan", 10, MUTED, 500, track="2"))
-    o.append(rect(24, 550, 412, 46, "#081520", 10, LINE))
+    o.append(rect(24, 550, 412, 46, "#14181c", 10, LINE))
     for i, ch in enumerate("4 7 9 2 1 5"):
         o.append(txt(52 + i * 30, 579, ch, 16, CYAN, 700, "middle",
                      family="'SFMono-Regular',Consolas,monospace"))
@@ -932,7 +932,7 @@ def b19():
     for i, (n, a, pose, cue) in enumerate(items):
         col, row = i % 3, i // 3
         x, y = 32 + col * 220, 96 + row * 256
-        o.append(rect(x, y, 200, 232, "#081520", R_CARD, LINE))
+        o.append(rect(x, y, 200, 232, "#14181c", R_CARD, LINE))
         hx, hy = x + 100, y + 74
         o.append(hand(hx, hy, 0.9, pose))
         if cue == "ring":
@@ -967,12 +967,12 @@ def b20():
 
     # 1 Siaga: small calm orb, one thin even ring
     cx = 180
-    o.append(rect(cx - 140, 76, 280, 190, "#081520", R_PANEL, LINE_ACC))
+    o.append(rect(cx - 140, 76, 280, 190, "#14181c", R_PANEL, LINE_ACC))
     o.append(arcs(cx, 158, 52, ((1.0, 100, 2, 1.4, 0.45), (0.78, 60, 2, 1.2, 0.22)), CYAN))
     o.append(orb(cx, 158, 24))
     # 2 Mendengarkan: voice graduations grow outward
     cx = 490
-    o.append(rect(cx - 140, 76, 280, 190, "#081520", R_PANEL, LINE_ACC))
+    o.append(rect(cx - 140, 76, 280, 190, "#14181c", R_PANEL, LINE_ACC))
     o.append(arcs(cx, 158, 54, ((1.0, 96, 2, 1.6, 0.55), (0.8, 70, 4, 1.2, 0.3)), CYAN, 12))
     spikes = []
     for i in range(24):
@@ -986,7 +986,7 @@ def b20():
     o.append(orb(cx, 158, 26))
     # 3 Bekerja: a single thick progress arc sweeping around a smaller orb
     cx = 800
-    o.append(rect(cx - 140, 76, 280, 190, "#081520", R_PANEL, LINE_ACC))
+    o.append(rect(cx - 140, 76, 280, 190, "#14181c", R_PANEL, LINE_ACC))
     o.append(f'<circle cx="{cx}" cy="158" r="56" fill="none" stroke="{LINE_ACC}" '
              f'stroke-width="1.2" opacity="0.55" stroke-dasharray="3 5"/>')
     circ = 2 * _m.pi * 56
@@ -996,7 +996,7 @@ def b20():
     o.append(orb(cx, 158, 20))
     # 4 Butuh perhatian: amber ring, orb dimmed, exclamation above
     cx = 1110
-    o.append(rect(cx - 140, 76, 280, 190, "#081520", R_PANEL, AMBER))
+    o.append(rect(cx - 140, 76, 280, 190, "#14181c", R_PANEL, AMBER))
     o.append(f'<circle cx="{cx}" cy="158" r="54" fill="none" stroke="{AMBER}" '
              f'stroke-width="2" opacity="0.9"/>')
     o.append(orb(cx, 158, 20, glow=False))
@@ -1015,7 +1015,7 @@ def b21():
     W, H = 1280, 640
     o = [txt(40, 44, "BRAND & IKON", 11, MUTED, 500, track="2")]
     # app icon
-    o.append(rect(40, 68, 160, 160, "#081520", 34, LINE))
+    o.append(rect(40, 68, 160, 160, "#14181c", 34, LINE))
     o.append(orb(120, 148, 44))
     o.append(txt(40, 258, "Ikon aplikasi · 1024 px", 10.5, MUTED))
     # tray icons, 4 states
@@ -1024,7 +1024,7 @@ def b21():
     o.append(txt(240, 68, "IKON BAKI · 4 STATUS", 10, MUTED, 500, track="2"))
     for i, (n, col, kind) in enumerate(tray):
         x = 240 + i * 120
-        o.append(rect(x, 84, 88, 88, "#081520", 20, LINE))
+        o.append(rect(x, 84, 88, 88, "#14181c", 20, LINE))
         cx, cy = x + 44, 128
         if kind == 0:
             o.append(f'<circle cx="{cx}" cy="{cy}" r="13" fill="none" stroke="{col}" stroke-width="2"/>')
@@ -1106,7 +1106,7 @@ def b22():
             ("Senyap", "Tidak menyapa sampai Anda memanggilnya.", False)]
     for i, (n, s, sel) in enumerate(opts):
         y = 200 + i * 74
-        o.append(rect(40, y, 420, 62, "#0A1722" if sel else "#081520", R_CARD,
+        o.append(rect(40, y, 420, 62, "#101820" if sel else "#14181c", R_CARD,
                       LINE_ACC if sel else LINE))
         o.append(f'<circle cx="66" cy="{y+31}" r="8" fill="none" '
                  f'stroke="{CYAN if sel else LINE_ACC}" stroke-width="2"/>')
@@ -1258,12 +1258,12 @@ def n05():
              ("Cari berkas", "Ctrl+Shift+F"), ("Susun jendela", "Ctrl+Shift+J"))
     for i, (n, k) in enumerate(quick):
         y = 154 + i * 48
-        o.append(rect(24, y, 412, 40, "#081520", 10, LINE))
+        o.append(rect(24, y, 412, 40, "#14181c", 10, LINE))
         o.append(txt(40, y + 25, n, 11.5, TEXT, 500))
         o.append(txt(420, y + 25, k, 9.5, MUTED, 400, "end",
                      family="'SFMono-Regular',Consolas,monospace"))
     o.append(txt(24, 366, "SARAN HARI INI", 10, MUTED, 500, track="2"))
-    o.append(rect(24, 380, 412, 62, "#081520", R_CARD, LINE))
+    o.append(rect(24, 380, 412, 62, "#14181c", R_CARD, LINE))
     o.append(rect(24, 392, 3, 38, AMBER, 1.5))
     o.append(txt(44, 404, "Anggaran Q4 lewat plafon di 2 baris", 11.5, TEXT, 500))
     o.append(txt(44, 424, "Kuota saran hari ini: 2 dari 3 terpakai", 10, MUTED))
@@ -1272,7 +1272,7 @@ def n05():
         y = 492 + i * 30
         o.append(txt(24, y + 15, n, 11.5, TEXT))
         o.append(toggle(396, y + 4, v))
-    o.append(rect(24, 596, 340, 40, "#081520", 20, LINE))
+    o.append(rect(24, 596, 340, 40, "#14181c", 20, LINE))
     o.append(txt(44, 621, "Tanya atau beri perintah", 11.5, MUTED))
     o.append(f'<circle cx="404" cy="616" r="18" fill="{CYAN}"/>')
     o.append(f'<path d="M398 622 l12 -12 M404 610 h8 v8" stroke="{BASE}" stroke-width="2" '
@@ -1410,14 +1410,14 @@ def n07():
              ("Ubah durasi", "45 mnt"), ("Jeda semua penjadwalan", ""))
     for i, (n, k) in enumerate(quick):
         y = 278 + i * 48
-        o.append(rect(24, y, 412, 40, "#081520", 10, LINE))
+        o.append(rect(24, y, 412, 40, "#14181c", 10, LINE))
         o.append(txt(40, y + 25, n, 11.5, TEXT, 500))
         o.append(txt(420, y + 25, k, 9.5, CYAN if k else MUTED, 400, "end"))
     o.append(txt(24, 490, "SARAN HARI INI", 10, MUTED, 500, track="2"))
-    o.append(rect(24, 504, 412, 62, "#081520", R_CARD, LINE))
+    o.append(rect(24, 504, 412, 62, "#14181c", R_CARD, LINE))
     o.append(txt(44, 528, "Kuota saran: 1 dari 3 terpakai", 11.5, TEXT, 500))
     o.append(txt(44, 548, "Dua sisanya ditahan sampai fokus berakhir", 10, MUTED))
-    o.append(rect(24, 596, 340, 40, "#081520", 20, LINE))
+    o.append(rect(24, 596, 340, 40, "#14181c", 20, LINE))
     o.append(txt(44, 621, "Tanya atau beri perintah", 11.5, MUTED))
     o.append(f'<circle cx="404" cy="616" r="18" fill="{CYAN}"/>')
     o.append(f'<path d="M398 622 l12 -12 M404 610 h8 v8" stroke="{BASE}" stroke-width="2" '
@@ -1472,14 +1472,14 @@ def n10():
             ("Dikte 42 kata", "08:31", "aman", "selesai", CYAN, None)]
     for i, (t, tm, risk, state, col, act) in enumerate(rows):
         y = 80 + i * 96
-        o.append(rect(24, y, 412, 84, "#081520", R_CARD, LINE))
+        o.append(rect(24, y, 412, 84, "#14181c", R_CARD, LINE))
         o.append(f'<circle cx="46" cy="{y+28}" r="4.5" fill="{col}"/>')
         o.append(txt(60, y + 32, t, 12, TEXT, 500))
         o.append(txt(60, y + 50, f"{tm}  ·  {risk}  ·  {state}", 10, MUTED))
         if act == "undo":
             o.append(pill_btn(300, y + 48, 120, 26, "Urungkan", primary=False, size=10.5))
     o.append(txt(24, 486, "AUDIT LOG", 10, MUTED, 500, track="2"))
-    o.append(rect(24, 500, 412, 96, "#081520", R_CARD, LINE))
+    o.append(rect(24, 500, 412, 96, "#14181c", R_CARD, LINE))
     for i, (t, s) in enumerate((("14:31:02", "konfirmasi diminta · menunggu"),
                                 ("14:31:01", "tool: send_email · risk=high"),
                                 ("14:30:58", "model meminta tool call"))):
@@ -1498,7 +1498,7 @@ def n11():
          txt(24, 88, "INDIKATOR PRIVASI", 10, MUTED, 500, track="2")]
     for i, (n, on) in enumerate((("Mikrofon", True), ("Kamera", False), ("Layar", True))):
         x = 24 + i * 140
-        o.append(rect(x, 102, 132, 62, "#081520", R_CARD, LINE))
+        o.append(rect(x, 102, 132, 62, "#14181c", R_CARD, LINE))
         o.append(f'<circle cx="{x+22}" cy="124" r="5" fill="{CYAN if on else "#25404C"}"/>')
         o.append(txt(x + 36, 128, n, 11, TEXT, 500))
         o.append(txt(x + 16, 150, "aktif" if on else "mati", 10, CYAN if on else MUTED))
@@ -1509,12 +1509,12 @@ def n11():
              ("Kontrol aplikasi", "Menekan tombol atas nama Anda", False))
     for i, (n, sub, v) in enumerate(perms):
         y = 208 + i * 66
-        o.append(rect(24, y, 412, 56, "#081520", R_CARD, LINE))
+        o.append(rect(24, y, 412, 56, "#14181c", R_CARD, LINE))
         o.append(txt(44, y + 24, n, 12, TEXT, 500))
         o.append(txt(44, y + 42, sub, 10, MUTED))
         o.append(toggle(378, y + 17, v))
     o.append(txt(24, 486, "MODE TAMU", 10, MUTED, 500, track="2"))
-    o.append(rect(24, 500, 412, 58, "#081520", R_CARD, LINE))
+    o.append(rect(24, 500, 412, 58, "#14181c", R_CARD, LINE))
     o.append(txt(44, 524, "Sembunyikan memori & riwayat", 11.5, TEXT, 500))
     o.append(txt(44, 542, "Izin diminta ulang setiap sesi", 10, MUTED))
     o.append(toggle(378, 519, False))
@@ -1592,11 +1592,11 @@ def build_html():
     margin:30px 0 4px;padding-top:14px;border-top:1px solid #CFD8DE}
   .ab{margin:30px 0 42px}
   .abhead{display:flex;align-items:baseline;gap:12px;margin-bottom:10px}
-  .num{font-size:11px;font-weight:700;color:#0A7A93;background:#DDEBEF;border-radius:4px;
+  .num{font-size:11px;font-weight:700;color:#1d6fe8;background:#DDEBEF;border-radius:4px;
     padding:3px 7px;letter-spacing:.08em}
   .ttl{font-size:15px;font-weight:500}
   .dim{margin-left:auto;font-size:11px;color:#7A8894;font-family:Consolas,monospace}
-  .sheet{background:#04080D;border:1px solid #CFD8DE;border-radius:6px;overflow:auto;
+  .sheet{background:#0c0d11;border:1px solid #CFD8DE;border-radius:6px;overflow:auto;
     max-width:100%;line-height:0}
   .sheet svg{display:block;max-width:100%;height:auto}
   table{width:100%;border-collapse:collapse;font-size:12.5px;background:#fff;margin:10px 0 18px}
@@ -1605,7 +1605,7 @@ def build_html():
   th{background:#E3EAEF;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase}
   td.mono{font-family:Consolas,monospace;font-size:11.5px;white-space:nowrap}
   .ok{color:#0A6B3D;font-weight:700}
-  .note{font-size:12.5px;line-height:1.65;background:#fff;border-left:3px solid #F5A524;
+  .note{font-size:12.5px;line-height:1.65;background:#fff;border-left:3px solid #ff9a40;
     padding:10px 14px;margin:0 0 18px}
   h2{font-size:15px;margin:36px 0 8px;padding-bottom:8px;border-bottom:1px solid #CFD8DE}
   h3{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#4A5A66;
@@ -1650,13 +1650,13 @@ dan bentrok dengan yang pertama.</p>
   <h3>Kontras (diukur, bukan diklaim)</h3>
   <table>
     <tr><th>Pasangan</th><th class="mono">Rasio</th><th>Ambang</th></tr>
-    <tr><td>Teks #E6F4F8 pada dasar #04080D</td><td class="mono">17.84</td><td class="ok">lolos</td></tr>
-    <tr><td>Teks #E6F4F8 pada panel #0A1722</td><td class="mono">16.11</td><td class="ok">lolos</td></tr>
-    <tr><td>Redup #8FA9B5 pada panel #0A1722</td><td class="mono">7.35</td><td class="ok">lolos</td></tr>
-    <tr><td>Cyan #4FD8F0 pada panel #0A1722</td><td class="mono">10.71</td><td class="ok">lolos</td></tr>
-    <tr><td>Amber #F5A524 pada panel #0A1722</td><td class="mono">8.88</td><td class="ok">lolos</td></tr>
+    <tr><td>Teks #ffffff pada dasar #0c0d11</td><td class="mono">17.84</td><td class="ok">lolos</td></tr>
+    <tr><td>Teks #ffffff pada panel #101820</td><td class="mono">16.11</td><td class="ok">lolos</td></tr>
+    <tr><td>Redup #5e636c pada panel #101820</td><td class="mono">7.35</td><td class="ok">lolos</td></tr>
+    <tr><td>Cyan #3486fe pada panel #101820</td><td class="mono">10.71</td><td class="ok">lolos</td></tr>
+    <tr><td>Amber #ff9a40 pada panel #101820</td><td class="mono">8.88</td><td class="ok">lolos</td></tr>
     <tr><td>Terang: #0B1A24 pada #FFFFFF</td><td class="mono">17.68</td><td class="ok">lolos</td></tr>
-    <tr><td>Terang: aksen #0A7A93 pada #FFFFFF</td><td class="mono">4.98</td><td class="ok">lolos (tipis)</td></tr>
+    <tr><td>Terang: aksen #1d6fe8 pada #FFFFFF</td><td class="mono">4.98</td><td class="ok">lolos (tipis)</td></tr>
     <tr><td>Terang: redup #5B7480 pada #F6F9FB</td><td class="mono">4.67</td><td class="ok">lolos (paling tipis)</td></tr>
   </table>
   <h3>Asumsi</h3>

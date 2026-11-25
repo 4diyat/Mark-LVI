@@ -302,7 +302,7 @@ def test_a_fact_about_the_machine_is_drawn_as_disabled_not_as_a_switch(
     # its own read, not on the code.
     dot = panel._labels["perm_dot:microphone"]._style
     assert dot, "the permission readout was never painted"
-    assert "#4FD8F0" not in dot, (
+    assert "#3486fe" not in dot, (
         "the microphone readout is lit for a permission that is off")
 
     # And pressing it does nothing, because there is nothing behind it.
@@ -351,15 +351,15 @@ def test_the_light_theme_is_the_same_widget_with_another_palette(
 
     window = panel._window
     dark = window._style
-    assert "#0A1722" in dark
+    assert "#101820" in dark
 
     assert panel.set_theme("light") is True
     assert panel.theme == "light"
     assert panel._window is window, "board 17a must not build a second widget"
-    assert "#FFFFFF" in window._style and "#F6F9FB" not in window._style
+    assert "#FFFFFF" in window._style.upper() and "#F6F9FB" not in window._style.upper()
     # The artboard's own light accent, not a tinted dark one.
-    assert pages.PALETTES["light"]["accent"] == "#0A7A93"
-    assert pages.PALETTES["dark"]["accent"] == "#4FD8F0"
+    assert pages.PALETTES["light"]["accent"] == "#1d6fe8"
+    assert pages.PALETTES["dark"]["accent"] == "#3486fe"
 
     assert panel.set_theme("neon") is False
     assert panel.theme == "light"
@@ -478,12 +478,14 @@ def test_auto_is_a_setting_and_not_a_palette(panel_module, clean_state):
     """`auto` resolves to one of exactly two palettes, never to itself.
 
     A palette dict keyed `auto` would be a third set of colours that somebody
-    has to keep in step; the whole point is that there are two.
+    has to keep in step; `auto` resolves to one of the real palettes instead.
+    There are three now: `dark`, `light` and the high-contrast `high` — a
+    MODIFIER the panel switches in, not a fourth theme setting.
     """
     tray_panel, pages, _model = panel_module
     theme = tray_panel.resolve_theme
 
-    assert set(pages.PALETTES) == {"dark", "light"}
+    assert set(pages.PALETTES) == {"dark", "light", "high"}
     assert theme("dark") == "dark"
     assert theme("light") == "light"
     # Whatever the OS says, `auto` names a palette that exists.
@@ -531,7 +533,7 @@ def test_the_panel_opens_on_the_saved_theme_not_on_dark(
     assert panel.open() is True
     assert panel.theme == "light"
     assert panel.requested_theme == "light"
-    assert "#FFFFFF" in panel._window._style
+    assert "#FFFFFF" in panel._window._style.upper()
 
 
 def test_the_theme_control_cycles_three_values_and_says_which(
@@ -585,6 +587,59 @@ def test_the_saved_theme_is_read_once_and_cycling_is_not_overruled(
     panel.close()
     panel.open()                              # second open, same widget
     assert panel.theme == "light", "re-opening reloaded the file over the click"
+
+
+def test_high_contrast_is_orthogonal_to_the_theme(panel_module, clean_state, monkeypatch):
+    """Board 15's contrast level swaps the palette WITHOUT touching the theme.
+
+    The whole point of modelling high contrast as a modifier on the palette
+    rather than a fourth theme setting: the auto/dark/light cycle keeps
+    working underneath it, and turning it off restores the palette the theme
+    was on. If it were a theme value, cycling would silently drop it.
+    """
+    from memory import config_manager
+
+    tray_panel, _pages, _model = panel_module
+    monkeypatch.setattr(config_manager, "get_ui_theme", lambda: "light")
+    monkeypatch.setattr(config_manager, "system_prefers_light", lambda: True)
+    monkeypatch.setattr(config_manager, "get_high_contrast", lambda: False)
+
+    panel = tray_panel.TrayPanel({})
+    panel.open()
+    assert panel.theme == "light"
+
+    panel.set_high_contrast(True)
+    assert panel.high_contrast is True
+    assert panel.theme == "high", "the on-screen palette is the high-contrast one"
+    # The underlying theme is untouched: cycling still goes light -> auto -> dark.
+    assert panel.requested_theme == "light"
+    panel.cycle_theme()                       # -> auto (resolves light here)
+    assert panel.theme == "high", "high contrast survives a theme cycle"
+    assert panel.requested_theme == "auto"
+
+    panel.set_high_contrast(False)
+    assert panel.theme == "light", "turning it off restores the theme's palette"
+    assert panel.high_contrast is False
+
+
+def test_high_contrast_is_restored_from_the_saved_choice(
+        panel_module, clean_state, monkeypatch):
+    """A user who chose high contrast sees it when the panel is opened.
+
+    `_load_saved_theme` applies the theme first and THEN the modifier, so a
+    saved choice is not overwritten by the palette it sits on top of.
+    """
+    from memory import config_manager
+
+    tray_panel, _pages, _model = panel_module
+    monkeypatch.setattr(config_manager, "get_ui_theme", lambda: "dark")
+    monkeypatch.setattr(config_manager, "system_prefers_light", lambda: False)
+    monkeypatch.setattr(config_manager, "get_high_contrast", lambda: True)
+
+    panel = tray_panel.TrayPanel({})
+    panel.open()
+    assert panel.high_contrast is True
+    assert panel.theme == "high"
 
 
 def test_the_two_theme_tuples_are_the_same_three_values(panel_module):

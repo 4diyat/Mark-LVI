@@ -33,13 +33,13 @@ from core.i18n import label as _t
 # Values are copied from `docs/mockups/build.py`, not invented: BASE, TEXT,
 # MUTED, AMBER and LINE are the sheet's tokens, and #0C1B26 is the artboard's
 # own card fill for the risk dialog.
-BASE = "#04080D"
-PANEL = "#0A1722"
-LINE = "#17323F"
-LINE_ACC = "#2A6477"
-AMBER = "#F5A524"
-TEXT = "#E6F4F8"
-MUTED = "#8FA9B5"
+BASE = "#0c0d11"
+PANEL = "#101820"
+LINE = "#1c2028"
+LINE_ACC = "#243040"
+AMBER = "#ff9a40"
+TEXT = "#ffffff"
+MUTED = "#5e636c"
 AMBER_BG = "#0C1B26"
 #: `FONT` in the sheet is 'Space Grotesk','Segoe UI',Arial — a fallback chain,
 #: because Space Grotesk is not installed on every machine.

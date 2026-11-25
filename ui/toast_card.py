@@ -48,9 +48,9 @@ GAP = 12                  # toast_queue: off += h + 12
 
 # ── the two colours a card needs beyond its accent ────────────────────────
 CARD_FILL = "#0C1B26"     # rect(x, y, w, h, "#0C1B26", R_CARD, LINE)
-CARD_LINE = "#17323F"     # LINE
-TEXT = "#E6F4F8"
-MUTED = "#8FA9B5"
+CARD_LINE = "#1c2028"     # LINE
+TEXT = "#ffffff"
+MUTED = "#5e636c"
 
 
 def fit_text(text, limit_px: int) -> str:
@@ -159,7 +159,7 @@ def paint_card(painter, x: float, y: float, toast) -> None:
     ax = x + PAD
     for index, label in enumerate(toast.actions):
         width = button_width(label)
-        painter.setPen(QPen(QColor("#2A6477" if index else toast.accent), 1))
+        painter.setPen(QPen(QColor("#243040" if index else toast.accent), 1))
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawRoundedRect(
             QRectF(ax, y + BUTTON_DY, width, BUTTON_H), 11, 11)

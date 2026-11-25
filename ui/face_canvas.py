@@ -63,11 +63,11 @@ IDLE_REPAINT_MS = 200
 IDLE_FACET_STRIDE = 3
 
 #: The specular accent on the iris and the lip cavity. Board 1 has one accent
-#: (#4FD8F0) and one highlight (#BFF6FF); the face uses the highlight for the
+#: (#3486fe) and one highlight (#8fb8ff); the face uses the highlight for the
 #: iris ring so the eye reads as lit rather than as a second cyan disc. These
 #: are the values from `docs/mockups/build.py`, and copying them beats importing
 #: `ui.theme` — that module still carries the retired HUD palette.
-FACE_ACCENT = "#BFF6FF"
+FACE_ACCENT = "#8fb8ff"
 
 
 def should_repaint(now_ms: float, last_ms: float, speaking: bool) -> bool:

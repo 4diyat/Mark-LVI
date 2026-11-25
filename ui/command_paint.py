@@ -29,14 +29,14 @@ from dataclasses import dataclass
 BAR_WIDTH, BAR_HEIGHT = 640, 184
 FIELD_MARGIN, FIELD_HEIGHT = 24, 48
 
-BASE = "#04080D"
-PANEL = "#0A1722"
-LINE = "#17323F"
-LINE_ACC = "#2A6477"
-CYAN = "#4FD8F0"
-AMBER = "#F5A524"
-TEXT = "#E6F4F8"
-MUTED = "#8FA9B5"
+BASE = "#0c0d11"
+PANEL = "#101820"
+LINE = "#1c2028"
+LINE_ACC = "#243040"
+CYAN = "#3486fe"
+AMBER = "#ff9a40"
+TEXT = "#ffffff"
+MUTED = "#5e636c"
 #: The box's own vertical gradient, top to bottom, from `n03()`.
 FILL_TOP, FILL_BOTTOM = "#0C1E29", "#081319"
 #: The row the bar is on, lifted out of the fill so the selection is visible in

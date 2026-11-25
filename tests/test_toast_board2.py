@@ -141,9 +141,9 @@ def test_the_accent_follows_the_kind():
     """Board 2's card has a 3 px rule down its left edge in the accent colour.
     Info and warn are cyan; risky is amber — the same rule board 14a uses for a
     confirmation, so a dangerous toast cannot look like a friendly one."""
-    assert Toast(text="x", kind=KIND_INFO).accent == "#4FD8F0"
-    assert Toast(text="x", kind=KIND_WARN).accent == "#4FD8F0"
-    assert Toast(text="x", kind=KIND_RISKY).accent == "#F5A524"
+    assert Toast(text="x", kind=KIND_INFO).accent == "#3486fe"
+    assert Toast(text="x", kind=KIND_WARN).accent == "#3486fe"
+    assert Toast(text="x", kind=KIND_RISKY).accent == "#ff9a40"
 
 
 def test_an_unknown_kind_is_info_and_not_an_error():
@@ -151,7 +151,7 @@ def test_an_unknown_kind_is_info_and_not_an_error():
     must not turn a completed action into a failed one."""
     toast = Toast(text="x", kind="nonsense")
     assert toast.kind == KIND_INFO
-    assert toast.accent == "#4FD8F0"
+    assert toast.accent == "#3486fe"
 
 
 # ── 5. the overflow label, in the artboard's words ────────────────────────

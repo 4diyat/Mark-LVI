@@ -192,8 +192,8 @@ def test_a_risky_card_is_amber_and_an_info_card_is_cyan(card):
         else:
             gui.__dict__["QColor"] = saved
     colours = seen.get("colours", [])
-    assert "#F5A524" in colours, "a risky card must draw with the amber accent"
-    assert "#4FD8F0" in colours, "an info card must draw with the cyan accent"
+    assert "#ff9a40" in colours, "a risky card must draw with the amber accent"
+    assert "#3486fe" in colours, "an info card must draw with the cyan accent"
 
 
 # ── the words ─────────────────────────────────────────────────────────────
