@@ -1,7 +1,7 @@
 """Board 6 — the voice overlay, and the camera tile it carries.
 
 WHAT IS BEING TESTED, AND WHY IT IS NOT A SCREENSHOT
-    The artboard (`docs/mockups/build.py: n06()`) makes three promises that a
+    The design (`design/new-ui-proposal/03-voice-mode.png`) makes three promises that a
     picture cannot hold anyone to: the edge glow appears ONLY while the overlay
     is active, Esc closes it, and Ctrl+Alt+G pauses the gestures without taking
     the transcript away. Each of those is a function in `ui/voice_overlay.py`

@@ -9,8 +9,8 @@ WHY THIS MODULE EXISTS
     cannot say "2 dari 3 terpakai" in the panel's voice.
 
 WHY THE NUMBERS ARE HERE AND NOT IN THE PAINT CALL
-    `toast()` and `toast_queue()` in `docs/mockups/build.py` are the source of
-    truth, and each of the constants below is one of their literals. A paint
+    The toast card design (`design/new-ui-proposal/01-ambient-main.png`) is the
+    source of truth, and each of the constants below is one of its literals. A paint
     call carrying `20` inline is a number no test can fail on; a constant with
     an artboard reference beside it is one `tests/test_toast_card.py` can.
 
@@ -28,8 +28,8 @@ WHAT THIS DOES NOT DO
 """
 from __future__ import annotations
 
-# ── the card's geometry, from `toast()` in docs/mockups/build.py ───────────
-# `def toast(x, y, w=340, ...)`; `n02()` calls `toast_queue(700, 330, 340, ...)`.
+# ── the card's geometry, from the design ───────────
+# `design/new-ui-proposal/01-ambient-main.png`: w=340, the card the toast draws.
 CARD_W = 340
 CARD_RADIUS = 12          # R_CARD
 RULE_W = 3                # rect(x, y+14, 3, h-28, accent, 1.5)

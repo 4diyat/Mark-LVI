@@ -8,11 +8,13 @@ semua komputer. Hasil uji lokal tidak otomatis menjadi hasil CI atau rilis.
 > ## BACA DULU: banyak baris di bawah sudah tidak berlaku
 >
 > Build ini **menghapus** seluruh permukaan yang tidak digambar mockup
-> (`docs/mockups/jarvis-design-system.html`, **22 papan, bernomor 1–22**).
+> (acuan visual sekarang: `design/new-ui-proposal/`, **22 board, bernomor
+> 1–22**).
 > Yang tersisa hanya: orb, toast, command bar, panel baki, konfirmasi risiko,
 > face bubble, dan `AmbientShell` — 8 papan punya permukaan di `ui/`, 13 belum,
 > 1 (board 14) baru separuh. Daftar keduanya ada di
-> **`docs/mockups/NOT-IN-MOCKUP.md`**.
+> **`design/new-ui-proposal-ANALISIS.md`** (catatan: hitungan 8/13/1 ini adalah
+> riwayat keadaan build saat baris ini ditulis).
 >
 > Baris matriks berikut menjelaskan fitur yang **tidak ada lagi** di build ini,
 > dan sengaja tidak dihapus supaya riwayat klaimnya tetap terbaca:
@@ -42,7 +44,7 @@ semua komputer. Hasil uji lokal tidak otomatis menjadi hasil CI atau rilis.
 > timer, bukan tekan-tahan), dan *Cari berkas* (membuka command bar dengan
 > awalan, bukan mencari sendiri). Tiga chord di baris aksi cepat adalah milik
 > artboard dan **tidak** terdaftar sebagai hotkey; hanya summon dan command bar
-> yang benar-benar terikat. Rinciannya di `docs/mockups/NOT-IN-MOCKUP.md`.
+> yang benar-benar terikat. Rinciannya di `design/new-ui-proposal-ANALISIS.md`.
 
 ## Matriks verifikasi
 
@@ -123,7 +125,7 @@ sintetis, dan `tests/test_gesture_os.py` menguji aturan pointer/klik/scroll.
 
 **Yang hilang dari bagian ini:** seluruh lapisan UI gestur
 (`ui/hand_gesture.py`, `ui/gesture_os_bridge.py`, `ui/desktop_ring.py`) DIHAPUS
-bersama jendela — lihat `docs/mockups/NOT-IN-MOCKUP.md`. Papan 6 pada mockup
+bersama jendela — lihat `design/new-ui-proposal-ANALISIS.md`. Papan 6 pada mockup
 menggambar tile kamera gestur, tetapi tile itu masih **usulan**, bukan desain
 yang sudah dikirim. Jadi bagian ini TIDAK dapat diverifikasi pada build ini:
 tidak ada permukaan yang menggerakkan pointer, dan `core/gesture_os.py`
@@ -131,7 +133,9 @@ sekarang tidak punya pemanggil.
 
 ### Pembaruan visual desktop
 
-Mockup acuan: `design/jarvis-desktop-visual-revisi.png`. Implementasi memakai
+Permukaan ini dihapus bersama jendela desktop. Mockup lama
+(`design/jarvis-desktop-visual-revisi.png`) pensiun pada 2026-11-25 — tidak
+ada acuan visual lagi untuk permukaan yang sudah tidak ada. Implementasi memakai
 wallpaper biru-grafit, palet bersama untuk panel workspace, emblem JARVIS
 ornamental, file di kiri dan percakapan di kanan pada layar lebar. Editor kode
 kosong dibuka di bawah Files pada layar lebar setelah registry siap, hanya jika
@@ -575,10 +579,9 @@ membaca kode.
 
 ### Visual sesuai lembar desain
 
-Buka `docs/mockups/jarvis-design-system.html` berdampingan dengan aplikasi, lalu
-periksa enam permukaan ini. `jarvis-desktop-spec.html` menggambar jendela yang
-sudah dihapus dan **bukan** acuan visual. Nomor di bawah adalah nomor artboard
-pada lembar itu; `14a` berarti keadaan yang digambar di bawah board 14.
+Buka gambar proposal di `design/new-ui-proposal/` berdampingan dengan
+aplikasi, lalu periksa permukaan ini. Nomor di bawah adalah nomor board pada
+gambar proposal; `14a` berarti keadaan yang digambar di bawah board 14.
 
 - [ ] **Board 14a, dialog konfirmasi.** Latar biru-gelap `#0C1B26`, **border
       amber**, sudut membulat 16 px, dan **garis amber 3 px di tepi kiri**.
@@ -662,11 +665,12 @@ pada lembar itu; `14a` berarti keadaan yang digambar di bawah board 14.
 tab lifecycle, and fake SSH transports. `tests/test_ssh_protocol.py` exercises
 Paramiko over a local socketpair with a generated host key, including rejection
 of an unknown key; no external server is involved. Kedua tool Qt itu **dihapus** bersama `ui/browser_read.py` dan
-`ui/ssh_manager.py`; lihat `docs/mockups/NOT-IN-MOCKUP.md`. These checks do not establish visual fidelity, real
+`ui/ssh_manager.py`; lihat `design/new-ui-proposal-ANALISIS.md`. These checks do not establish visual fidelity, real
 real SSH interoperability, Windows camera behavior, or
 security against a malicious same-origin page. Exercise those separately on the
-target machine. Selected visual references are `design/proposed-graphite-desktop.png`,
-`design/proposed-graphite-browser.png`, and `design/proposed-graphite-ssh.png`.
+target machine. Visual references for those deleted surfaces
+(`design/proposed-graphite-*.png`) pensiun pada 2026-11-25; acuan visual
+yang berlaku sekarang hanya `design/new-ui-proposal/`.
 The Qt interface adapts those concepts to real controls rather than reproducing
 fictitious system indicators or page contents. Workspace documents share the
 same palette, tab, primary-action, menu and keyboard-focus styling; SSH key

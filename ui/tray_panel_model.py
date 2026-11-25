@@ -197,7 +197,7 @@ MODE_SUBTITLES = {
 # behaviour behind it on any platform this project has run on, and "Cari
 # berkas" has a search function but no chord. The panel still lists them —
 # they are what the mockup asks for and they do something useful when pressed —
-# but `docs/mockups/NOT-IN-MOCKUP.md` does not claim the chords exist, and a
+# but `design/new-ui-proposal-ANALISIS.md` does not claim the chords exist, and a
 # chord printed on a row is not a promise that the OS owns it.
 # (key, label-key, chord). The label is a catalogue key — see `PERMISSIONS`.
 QUICK_ACTIONS = (

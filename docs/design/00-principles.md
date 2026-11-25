@@ -1,10 +1,11 @@
 # JARVIS — prinsip desain
 
 > **Status dokumen ini.** Ini spesifikasi, bukan catatan. Kalau dokumen di
-> `docs/design/` dan `docs/mockups/build.py` berbeda, **dokumen desain yang
-> menang** (keputusan pemilik, 2026-11-23). Artboard tetap berguna sebagai
-> referensi visual — warna, nuansa, proporsi — tetapi tidak lagi menjadi
-> sumber kebenaran untuk ukuran teks, jarak, atau susunan.
+> `docs/design/` dan implementasi berbeda, **dokumen desain yang
+> menang** (keputusan pemilik, 2026-11-23). Gambar proposal
+> (`design/new-ui-proposal/`) tetap berguna sebagai referensi visual — warna,
+> nuansa, proporsi — tetapi tidak lagi menjadi sumber kebenaran untuk ukuran
+> teks, jarak, atau susunan.
 
 ---
 

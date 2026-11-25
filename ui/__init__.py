@@ -2,14 +2,14 @@
 
 WHAT THIS PACKAGE IS NOW
     It used to be a full-screen window with a desktop workspace inside it. The
-    design sheet (`docs/mockups/jarvis-design-system.html`) draws 22 artboards,
+    design proposal (`design/new-ui-proposal/`) draws 22 boards,
     numbered 1-22, and not one of them is a window: an orb, a toast, a command
     bar, a tray panel, a risk confirmation, a history list, a permissions page
     and a light theme among them. So the window is gone and this package is
     those surfaces.
 
     Not every artboard has a surface yet. The ones that do are listed below; the
-    ones that do not are named in `docs/mockups/NOT-IN-MOCKUP.md`, which is the
+    ones that do not are named in `design/new-ui-proposal-ANALISIS.md`, which is the
     file to read before adding one.
 
     | module            | what it is                                        |

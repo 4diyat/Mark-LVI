@@ -23,7 +23,9 @@ def _say(shell: "AmbientShell", text: str) -> None:
 
 def _refresh(shell) -> None:
     """Repaint the panel if it is attached, or do nothing if it is not."""
-    _refresh(shell)
+    panel = getattr(shell, "_panel", None)
+    if panel is not None:
+        panel.refresh()
 
 
 def _t(key: str, **fields) -> str:

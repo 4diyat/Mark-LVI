@@ -74,7 +74,7 @@ def test_the_package_has_exactly_the_mockup_modules():
         "hand_feed.py", "voice_wiring.py",
         # The setup screen: "where does the key go" was answered by a tray
         # balloon saying "edit config/api_keys.json and restart". The mockup
-        # draws no artboard for it (see docs/mockups/NOT-IN-MOCKUP.md), so it
+        # draws no surface for it (see design/new-ui-proposal-ANALISIS.md §4), so it
         # borrows board 5's 460×660 panel and dark palette rather than
         # inventing a second visual language at a gate. Two files for the same
         # reason the tray panel has three: `setup_window` decides and draws,
@@ -271,7 +271,7 @@ DELETED = (
 
 
 def test_the_modules_that_needed_a_window_are_gone():
-    """Not "unused" — absent. `docs/mockups/NOT-IN-MOCKUP.md` says how to get
+    """Not "unused" — absent. `design/new-ui-proposal-ANALISIS.md` says how to get
     any of them back, and why each one went."""
     survivors = [name for name in DELETED if (UI_PKG / name).exists()]
     assert survivors == [], f"back from the dead: {survivors}"

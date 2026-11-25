@@ -15,7 +15,7 @@ WHY THIS IS A SECOND MODULE
 
 WHAT IS IN HERE
     `PALETTES`          dark (boards 5/23/27) and light (board 17a), taken from
-                        `docs/mockups/build.py` rather than retyped by eye.
+                        the design tokens (`ui/tokens.py`) rather than retyped by eye.
     `build_main()`      boards 5 and 05a: four quick actions, the quota line,
                         three switches and the command field. The segments and
                         the hold strip live on the panel itself, because both
@@ -43,7 +43,7 @@ PANEL_W, PANEL_H = 460, 660
 # ── board 5's geometry, as numbers you can check ───────────────────────────
 #
 # WHY A TABLE AND NOT THE SAME NUMBERS INSIDE THE BUILDER
-#     Every value below is read off `docs/mockups/build.py: n05()` and nothing
+#     Every value below is read off `design/new-ui-proposal/05-tray-panel.png` and nothing
 #     else. Written inline in `build_main()` they were unverifiable: four of
 #     them had drifted from the artboard (the suggestion card was never drawn,
 #     its two lines sat 8 px high, and the whole IZIN block sat 18-26 px high
@@ -111,22 +111,17 @@ GEOMETRY = {
     "p6_export": (236, 594, 200, 40),
 
     # ── boards 9 and 10: memory ──────────────────────────────────────────
-    # Board 9's own header carries a COUNT of what is stored, which is why it
-    # is a separate line from the title: the title is the artboard's, the count
-    # is the store's, and a page that merged them would have to choose which
-    # one to keep when they disagree.
-    "mem_head":    (24, 30, 412, 24),         # "Memori personal"
-    "mem_section": (24, 86, 240, 16),         # "FAKTA TENTANG ANDA"
-    "mem_more":    (24, 640, 412, 16),        # "dan 4 lagi"
-    "mem_add":     (24, 600, 200, 36),
-    "mem_clear":   (236, 600, 200, 36),
-
-    # Board 10 packs three fields into the space board 9 gives one row, so its
-    # pitch is 74 and not 72. The artboard is tighter here on purpose: this page
-    # shows ONE memory, and the detail is the point.
-    "m1_head":   (24, 30, 412, 24),
-    "m1_back":   (24, 596, 130, 36),
-    "m1_forget": (306, 596, 130, 36),
+    # NO ROWS IN THIS TABLE FOR THE MEMORY PAGES, and that is a deliberate
+    # omission rather than an oversight. Board 9 used to draw a FIXED number
+    # of rows transcribed here (six cards, a "dan N lagi" line) until the
+    # list migrated to `components.scroll_list` (design principle 2: everything
+    # that grows scrolls). The memory pages now take every number from
+    # `ui/tokens` and build their rows in `pages_memory.populate_memory`, so a
+    # geometry row here would describe a control the build no longer draws —
+    # a registry entry is a claim, and a claim about a widget that does not
+    # exist is the kind of silent drift this table exists to prevent.
+    # Board 9's COUNT ("N hal yang JARVIS ingat") lives in the shared header,
+    # formatted from the store at paint time; it is not a geometry fact.
 
     # ── the list that reaches every board page ───────────────────────────
     "more_head": (24, 30, 412, 24),
@@ -233,7 +228,7 @@ from ui.page_registry import ALL_PAGES as _PAGES  # noqa: E402  (after the const
 PAGES = _PAGES
 
 
-# Boards 5/23/27 (dark) and 28 (light), transcribed from `docs/mockups/build.py`
+# Boards 5/23/27 (dark) and 28 (light), transcribed from the design tokens (`ui/tokens.py`)
 # so the two cannot disagree without a test failing. The keys are what the
 # stylesheet below reads, not what Qt calls them.
 PALETTES = {

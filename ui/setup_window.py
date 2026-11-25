@@ -5,7 +5,7 @@ WHY A WINDOW, WHEN EVERYTHING ELSE IS AMBIENT
     inside it. That left two bad choices and this is neither of them: `main.py`
     blocked in `wait_for_api_key()` while the tray said "edit
     `config/api_keys.json` and restart" — a first run that cannot finish, solved
-    by asking the user to hand-edit JSON. `docs/mockups/NOT-IN-MOCKUP.md` calls
+    by asking the user to hand-edit JSON. `design/new-ui-proposal-ANALISIS.md` calls
     that a real regression and accepts it; this screen is how it stops being
     one.
 

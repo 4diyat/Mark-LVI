@@ -78,7 +78,7 @@ CYAN = "#3486fe"
 CORE = "#8fb8ff"
 DEEP = "#0B4A5C"
 AMBER = "#ff9a40"
-# Board 05b's caption colour, from the token table in `docs/mockups/build.py`.
+# Board 05b's caption colour, from the token table (`ui/tokens.py`).
 # The orb module had no MUTED because until board 05b it never drew a word.
 MUTED = "#5e636c"
 

@@ -8,7 +8,7 @@ WHY THIS IS SHARED AND NOT COPIED
     would not match its artboard, which is the one thing these pages exist to do.
 
 WHERE THE NUMBERS COME FROM
-    `docs/mockups/build.py`, the same file the sheet renders from. Where a board
+    `ui/tokens.py`, the same numbers the design renders from. Where a board
     disagrees with its siblings (board 10's memory detail is tighter than board
     9's list), the page passes its own pitch and this module does not argue.
 
@@ -142,7 +142,7 @@ def text_box(x: float, baseline: float, size: float, *,
     return (int(round(x)), int(top), int(width), int(box))
 
 
-# The header, from `docs/mockups/build.py: n05()` — the PANEL artboard, not the
+# The header, from `design/new-ui-proposal/05-tray-panel.png` — the PANEL board, not the
 # board artboards. `panel_head()` is what the 460x640 boards call and it draws
 # the orb at x=38, pushing its text to x=62; the panel artboard draws the same
 # two lines at x=24 with no orb. The panel's existing header is at (24, 22) and

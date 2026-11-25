@@ -11,12 +11,12 @@ Spesifikasi desain untuk panel baki 460×660. Dibaca berurutan.
 
 ## Aturan tertinggi
 
-> **Kalau dokumen ini dan artboard berbeda, dokumen ini yang menang.**
+> **Kalau dokumen ini dan gambar proposal berbeda, dokumen ini yang menang.**
 >
-> Artboard (`docs/mockups/build.py`) tetap menjadi referensi visual — warna,
-> nuansa, proporsi. Tetapi ia **bukan** sumber kebenaran untuk ukuran teks,
-> jarak, atau susunan. Pemilik memutuskan ini pada 2026-11-23 setelah tiga
-> putaran "samakan dengan artboard" tetap terasa salah.
+> Gambar proposal (`design/new-ui-proposal/`) tetap menjadi referensi visual —
+> warna, nuansa, proporsi. Tetapi ia **bukan** sumber kebenaran untuk ukuran
+> teks, jarak, atau susunan. Pemilik memutuskan ini pada 2026-11-23 setelah
+> tiga putaran "samakan dengan artboard" tetap terasa salah.
 
 ## Ringkas: apa yang berubah
 
@@ -34,7 +34,7 @@ Spesifikasi desain untuk panel baki 460×660. Dibaca berurutan.
 Tidak ada nilai yang dikarang. Setiap angka di `01-tokens.md` berasal dari salah
 satu dari tiga sumber:
 
-1. **Diukur dari `docs/mockups/build.py`** — jarak tepi 24 px (135×), isi kartu
+1. **Diukur dari artboard (acuan visual sekarang: `design/new-ui-proposal/`)** — jarak tepi 24 px (135×), isi kartu
    44 px (50×), lebar isi 412 px, saklar 40×22, radius 12/16/21.
 2. **Turunan aritmetika dari token lain** — tinggi kartu 64 = `16+16+4+12+16`,
    pitch 76 = `64+12`, ruang isi 500 = `660−88−72`. Semua rumusnya tertulis di

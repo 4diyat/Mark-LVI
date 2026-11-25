@@ -184,11 +184,12 @@ Setiap halaman selesai kalau: tidak ada angka piksel teks, daftar memakai
 
 Setelah semua halaman hijau:
 
-1. `ui/board_geometry.py` dan `tools/gen_board_geometry.py` — **hapus**, atau
-   ubah menjadi test yang memverifikasi token, bukan angka SVG. Selama ia ada,
-   ia mendikte desain.
-2. `docs/mockups/build.py` — pertahankan sebagai **referensi visual**, tandai
-   di kepala file bahwa ia bukan sumber kebenaran lagi.
+1. `ui/board_geometry.py` dan `tools/gen_board_geometry.py` — **sudah
+   dihapus/di-pin** (2026-11-25): koordinat di-pin ke token, generator
+   pensiun bersama sumber artboard-nya.
+2. `docs/mockups/build.py` — **sudah dihapus** (2026-11-25). Satu-satunya
+   referensi visual sekarang adalah `design/new-ui-proposal/`; lihat
+   `design/new-ui-proposal-ANALISIS.md`.
 3. `tests/test_board_conformance.py` — tulis ulang: dari "widget ada di
    koordinat artboard" menjadi "widget memakai token dan tidak melampaui
    412 px".

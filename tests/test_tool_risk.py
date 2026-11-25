@@ -126,7 +126,7 @@ def test_the_desktop_name_matches_the_registry():
 # them to `medium` here would be the test writing a claim the code cannot keep.
 #
 # So the honest statement is the one below: these are `risky` *because no undo
-# exists*, the reason says so, and `docs/mockups/NOT-IN-MOCKUP.md` records the
+# exists*, the reason says so, and `design/new-ui-proposal-ANALISIS.md` records the
 # cost — a banner in front of "open Spotify" is the price of that honesty until
 # the undo is real.
 

@@ -963,7 +963,7 @@ def test_voices_follow_the_language():
 def test_the_panel_is_gone_and_the_config_is_the_only_way_in():
     """The provider settings panel was `ui/providers_overlay.py` — a widget.
 
-    It went with the window (docs/mockups/NOT-IN-MOCKUP.md), so what is left to
+    It went with the window (design/new-ui-proposal-ANALISIS.md), so what is left to
     check is not the panel but the thing behind it: the three settings the panel
     wrote have to round-trip through `memory.config_manager` on their own, or a
     provider chosen before the cut cannot be read after it. That is a stronger

@@ -22,7 +22,7 @@ from __future__ import annotations
 from ui import voice_hand as _hand
 from ui import voice_overlay as _model
 
-# ── board 6's tokens, from `docs/mockups/build.py` ──────────────────────────
+# ── board 6's tokens, from `ui/tokens.py` ──────────────────────────
 #
 # THE SHEET IS UNUSUAL HERE AND THE CODE HAD DRIFTED FROM IT. Board 6 is drawn
 # entirely with the same CYAN as every other artboard — the edge glow, the four

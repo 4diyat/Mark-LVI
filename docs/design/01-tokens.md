@@ -1,7 +1,7 @@
 # JARVIS — token
 
 > Angka di dokumen ini menggantikan 15 ukuran teks dan 15 pitch vertikal yang
-> sekarang tersebar di `docs/mockups/build.py`. Setiap nilai di bawah
+> tersebar di artboard lama (pensiun 2026-11-25). Setiap nilai di bawah
 > **diturunkan dari artboard**, bukan dikarang — kolom "asal" menunjukkan dari
 > mana ia diukur.
 >

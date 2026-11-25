@@ -65,7 +65,7 @@ IDLE_FACET_STRIDE = 3
 #: The specular accent on the iris and the lip cavity. Board 1 has one accent
 #: (#3486fe) and one highlight (#8fb8ff); the face uses the highlight for the
 #: iris ring so the eye reads as lit rather than as a second cyan disc. These
-#: are the values from `docs/mockups/build.py`, and copying them beats importing
+#: are the values from the design tokens (`ui/tokens.py`), and copying them beats importing
 #: `ui.theme` — that module still carries the retired HUD palette.
 FACE_ACCENT = "#8fb8ff"
 

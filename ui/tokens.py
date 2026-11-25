@@ -1,7 +1,7 @@
 """The design's numbers, in one place.
 
 WHY THIS MODULE EXISTS
-    `docs/mockups/build.py` used **15 text sizes for about 5 roles** and **15
+    The original artboard spec used **15 text sizes for about 5 roles** and **15
     vertical pitches** between two of them. Every one of those numbers was
     plausible on its own artboard and the set of them was incoherent: 10 / 10.5
     / 11 / 11.5 px were used interchangeably for the same kind of sentence.

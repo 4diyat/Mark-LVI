@@ -112,7 +112,7 @@ def _qs(size=96):
 def test_the_card_is_340_wide_by_the_artboards_height(card):
     """`n02()` calls `toast_queue(700, 330, 340, items)` — 340 px wide."""
     assert card.CARD_W == 340
-    assert card.CARD_RADIUS == 12          # R_CARD in build.py
+    assert card.CARD_RADIUS == 12          # R_CARD token; ref design/new-ui-proposal/
     assert card.RULE_W == 3                # the accent rule
 
 
@@ -255,7 +255,7 @@ def test_the_title_is_set_at_13_px_and_the_body_at_11_5(card):
 
 
 def test_a_title_too_long_for_the_card_is_truncated_not_drawn_past_the_edge(card):
-    """`txt()` in build.py does not wrap; the card is 340 px and the text starts
+    """The design (`design/new-ui-proposal/`) does not wrap; the card is 340 px and the text starts
     at x+20. A title longer than the card can hold is ellipsised HERE, because a
     painter that overflows draws over the wallpaper."""
 

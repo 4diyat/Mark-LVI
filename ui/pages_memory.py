@@ -228,7 +228,7 @@ def populate_memory(panel) -> None:
             widget.setParent(None)
             widget.deleteLater()
 
-    palette = PALETTES["dark"]
+    palette = PALETTES[getattr(panel, "_theme", "dark")]
     rows = entries()
 
     if not rows:

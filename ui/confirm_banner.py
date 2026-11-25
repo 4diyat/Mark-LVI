@@ -30,7 +30,7 @@ from core.i18n import label as _t
 # and this module was the last one reading `C` — which is exactly why it was
 # the one surface that looked nothing like its artboard.
 #
-# Values are copied from `docs/mockups/build.py`, not invented: BASE, TEXT,
+# Values are copied from the design tokens (`ui/tokens.py`), not invented: BASE, TEXT,
 # MUTED, AMBER and LINE are the sheet's tokens, and #0C1B26 is the artboard's
 # own card fill for the risk dialog.
 BASE = "#0c0d11"

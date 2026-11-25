@@ -55,37 +55,20 @@ def paint_memory(panel, snap) -> None:
     from ui import pages_memory
 
     labels = _labels(panel)
-    rows = pages_memory.entries()
-    shown = pages_memory.LIST_ROWS
 
     # THE COUNT IS THE HEADER'S, NOT THIS PAGE'S: `b09()` passes it to
     # `panel_head()`, rendered in the shared subtitle at (24,54).
     labels["mem_section"].setText(_t("ui.page.memory.section"))
 
-    # The cards stay on screen even when the store is empty: an empty list is a fact, an empty PAGE is a bug.
-    for index in range(shown):
-        row = rows[index] if index < len(rows) else None
-        empty = row is None
-        labels[f"mem_card:{index}"].show()
-        if empty:
-            labels[f"mem_key:{index}"].setText(
-                _t("ui.page.memory.empty_row") if index == 0 and not rows else "")
-            labels[f"mem_val:{index}"].setText("")
-            panel._buttons[f"mem_open:{index}"].hide()
-            labels[f"mem_chev:{index}"].hide()
-            continue
-        labels[f"mem_key:{index}"].setText(str(row.get("key") or ""))
-        labels[f"mem_val:{index}"].setText(str(row.get("value") or ""))
-        button = panel._buttons[f"mem_open:{index}"]
-        button.show()
-        button.setText(_t("ui.page.memory.open"))
-        # The chevron is the row's open affordance; it shows with the button.
-        labels[f"mem_chev:{index}"].show()
+    # THE LIST IS REBUILT FROM THE STORE ON EVERY PAINT. The section marker
+    # and the two pills are this page's own frame; the rows are the store's.
+    # `populate_memory` clears the column and adds one card per entry (plus a
+    # card that states an empty store), because `entries()` re-sorts newest
+    # first on every read and a card already carries its own (category, key)
+    # pair — so a row can never be wired to a memory the user did not point
+    # at, and the list cannot clip: it scrolls.
+    pages_memory.populate_memory(panel)
 
-    # THE REMAINDER IS STATED, NOT HIDDEN: the header counts the store, the
-    # list counts the widgets, so showing eight of twelve must say so.
-    rest = max(0, len(rows) - shown)
-    labels["mem_more"].setText(_t("ui.page.memory.more", count=rest) if rest else "")
     panel._buttons["mem_add"].setText(_t("ui.page.memory.add"))
     panel._buttons["mem_clear"].setText(_t("ui.page.memory.clear"))
 

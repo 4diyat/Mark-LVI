@@ -50,19 +50,14 @@ def test_a_toast_lasts_eight_seconds_not_six():
     assert DEFAULT_TTL == 8.0
 
 
-def test_the_eight_seconds_are_checked_against_the_artboard_itself():
-    """Not against a copy of the number in this file: read out of `n02()`.
+def test_the_eight_seconds_are_pinned_as_the_design_number():
+    """Board 2's visual reference is `design/new-ui-proposal/02-command-bar.png`.
 
-    This is the same rule `tests/test_tray_geometry.py` uses for board 5 — the
-    drawing is the source of truth, so it is PARSED, not repeated.
+    The artboard sheet that used to be parsed here (`docs/mockups/build.py`)
+    was retired on 2026-11-25: `design/new-ui-proposal/` is now the ONE visual
+    source, and it is a PNG, so the design number is pinned here instead of
+    parsed from a drawing.
     """
-    import re
-    from pathlib import Path
-
-    build = (Path(__file__).resolve().parent.parent
-             / "docs" / "mockups" / "build.py").read_text(encoding="utf-8")
-    board = re.search(r"^def n02\(\):(.*?)(?=^def )", build, re.S | re.M).group(1)
-    assert "8 detik" in board, "board 2 no longer promises eight seconds"
     assert DEFAULT_TTL == 8.0
 
 
@@ -116,21 +111,19 @@ def test_an_empty_action_is_not_a_button():
 # ── 3. the height the artboard draws ──────────────────────────────────────
 
 def test_the_card_height_is_the_artboards_96_or_74():
-    """`toast()` in build.py: `h = 96 if actions else 74`."""
+    """`design/new-ui-proposal/01-ambient-main.png`: 96 with actions, 74 without."""
     assert Toast(text="x", actions=("a",)).height == 96
     assert Toast(text="x").height == 74
 
 
-def test_the_height_is_read_from_the_artboard_function():
-    """The numbers are asserted against `build.py`'s own `toast()` helper, so a
-    designer changing the card has one place to change and one test to update."""
-    import re
-    from pathlib import Path
+def test_the_height_is_pinned_as_the_design_number():
+    """96 px with actions, 74 px without — the card the proposal draws.
 
-    build = (Path(__file__).resolve().parent.parent
-             / "docs" / "mockups" / "build.py").read_text(encoding="utf-8")
-    helper = re.search(r"^def toast\(.*?\n(.*?)(?=^def )", build, re.S | re.M).group(1)
-    assert "96 if actions else 74" in helper
+    Same retirement as the TTL test: the number used to be read out of
+    `build.py`'s `toast()` helper; the visual reference is now
+    `design/new-ui-proposal/01-ambient-main.png` (the toast card) and the
+    number is pinned here.
+    """
     assert Toast(text="x", actions=("a",)).height == 96
     assert Toast(text="x").height == 74
 
@@ -157,7 +150,7 @@ def test_an_unknown_kind_is_info_and_not_an_error():
 # ── 5. the overflow label, in the artboard's words ────────────────────────
 
 def test_the_overflow_label_is_the_artboards_phrase():
-    """`toast_queue()` in build.py: `f"+{hidden} lain dalam antrean"`.
+    """The design's phrase: `f"+{hidden} lain dalam antrean"`.
 
     It said "2 lagi" — shorter, and wrong in a way that matters: "lagi" reads as
     "two more will follow", which is exactly what does NOT happen when the cap
@@ -169,17 +162,14 @@ def test_the_overflow_label_is_the_artboards_phrase():
     assert q.overflow_label() == "+1 lain dalam antrean"
 
 
-def test_the_label_speaks_indonesian_the_way_the_artboard_does():
+def test_the_label_speaks_indonesian_the_way_the_design_does():
     """The panel and the toasts are Indonesian; `i18n` has no key for this
-    string because it is drawn by the sheet's own helper, and inventing a key
-    would mean a translated toast saying a different thing from the artboard."""
-    import re
-    from pathlib import Path
+    string because it is the design's own phrase, and inventing a key
+    would mean a translated toast saying a different thing from the design.
 
-    build = (Path(__file__).resolve().parent.parent
-             / "docs" / "mockups" / "build.py").read_text(encoding="utf-8")
-    helper = re.search(r"^def toast_queue\(.*?\n(.*?)(?=^def )", build, re.S | re.M).group(1)
-    assert "lain dalam antrean" in helper
+    The phrase used to be parsed out of `build.py`; the visual reference is
+    `design/new-ui-proposal/`, so the phrase is pinned here.
+    """
     q = ToastQueue(visible_max=1)
     q.push("a")
     q.push("b")

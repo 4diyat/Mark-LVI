@@ -267,7 +267,7 @@ Aturan baru:
 ### 4.10 Dokumen (modifikasi)
 - `docs/verification.md`: tambahkan baris Verifikasi Suara ke matriks
   verifikasi: cakupan otomatis + yang perlu diuji perangkat nyata.
-- `docs/mockups/NOT-IN-MOCKUP.md`: catat board 14 kartu Verifikasi
+- `design/new-ui-proposal-ANALISIS.md`: catat board 14 kartu Verifikasi
   Suara + keadaan orb "verifying".
 
 ---
@@ -403,7 +403,7 @@ Pattern `tests/test_paths.py`:
    Keamanan, keadaan orb, i18n dua bahasa.
 8. **Tes AST & dokumen** — `tests/test_voice_auth_ast.py`,
    `AGENTS.md`, `docs/verification.md`,
-   `docs/mockups/NOT-IN-MOCKUP.md`.
+   `design/new-ui-proposal-ANALISIS.md`.
 
 **Ukuran upaya:** Sedang. Bagian terbesar adalah state machine
 integrasi sesi + UI pendaftaran; policy murni dan store relatif
