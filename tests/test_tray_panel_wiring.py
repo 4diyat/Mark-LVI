@@ -313,7 +313,9 @@ def test_every_key_the_panel_can_press_has_a_handler(wiring):
                 # disconnect the most recent one.
                 "phone_make_code", "phone_pair", "phone_unpair",
                 # Board 22's installer: build a reviewed dependency plan and run it.
-                "installer_run"}
+                "installer_run",
+                # Board 14's OS-control switch: a gated toggle plus the physical confirm.
+                "os_control_toggle", "os_control_confirm"}
 
         panel = TrayPanel(actions)
         assert panel.open() is True
@@ -333,6 +335,8 @@ def test_every_key_the_panel_can_press_has_a_handler(wiring):
                            # board 14's voice-verification controls, by the
                            # object names the security page gives them
                            "va_toggle", "va_enroll", "va_delete",
+                           # board 14's OS-control switch, by its object names
+                           "sec_os_toggle", "sec_os_confirm",
                            # board 15's contrast slots, by their prefix
                            "ac_contrast",
                            # board 11's routine controls, by prefix

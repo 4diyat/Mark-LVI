@@ -519,6 +519,9 @@ def actions_for(shell: "AmbientShell") -> dict:
         "phone_unpair": lambda: pages_actions.phone_unpair(shell),
         # Board 22's installer: build a reviewed dependency plan and run it.
         "installer_run": lambda: pages_actions.installer_run(shell),
+        # Board 14's OS-control switch: a gated toggle plus the physical confirm.
+        "os_control_toggle": lambda: pages_actions.os_control_toggle(shell),
+        "os_control_confirm": lambda: pages_actions.os_control_confirm(shell),
     }
 
 

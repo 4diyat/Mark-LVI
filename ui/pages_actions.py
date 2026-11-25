@@ -33,13 +33,7 @@ if TYPE_CHECKING:                                    # pragma: no cover
 
 
 def _say(shell: "AmbientShell", text: str) -> None:
-    """One line to the user, through the ONE path the shell already has.
-
-    NOT A SECOND LOGGER. `ui.lifecycle.note` is where every other surface's
-    sentence goes, and a page action that printed to stdout instead would be
-    invisible in the app's own log — which is the failure mode where the panel
-    looks busy and the record shows nothing.
-    """
+    """One line to the user, through the ONE path the shell already has."""
     from ui.lifecycle import note
 
     note(shell, text)
@@ -73,13 +67,7 @@ def memory_forget(shell: "AmbientShell") -> bool:
 
 
 def memory_clear(shell: "AmbientShell") -> bool:
-    """Board 9's "Hapus semua": every remembered fact, one at a time.
-
-    ONE AT A TIME THROUGH `forget()`, not by rewriting the file. `forget()` is
-    the store's own writer — it takes the lock, loads strictly and saves
-    atomically — and a page that wrote `long_term.json` itself would be a second
-    writer racing the one the program already has.
-    """
+    """Board 9's "Hapus semua": every remembered fact, one at a time."""
     from ui import pages_memory
 
     rows = pages_memory.entries()
@@ -116,14 +104,7 @@ def routines_pause(shell: "AmbientShell") -> bool:
 
 
 def tools_copy(shell: "AmbientShell") -> bool:
-    """Board 12's "Salin": put the clipboard text back where it came from.
-
-    The text is ALREADY the clipboard's, so copying it again looks pointless —
-    and that is why the artboard draws the button: "Salin" means "use this,
-    now", and the honest implementation is to leave the clipboard holding exactly
-    what the card showed when the user pressed it, even if something else has
-    taken the clipboard since.
-    """
+    """Board 12's "Salin": put the clipboard text back where it came from."""
     from ui import pages_people
 
     text = pages_people.clipboard_text()
@@ -160,14 +141,7 @@ def tools_clear(shell: "AmbientShell") -> bool:
 
 
 def tools_mark_safe(shell: "AmbientShell") -> bool:
-    """Board 12's "Tandai aman" — a decision that lasts this session.
-
-    WHAT IT CANNOT BE: a scan of the clipboard that clears a secret. There is no
-    secret scanner, and marking a card number "safe" would be this program
-    vouching for something it never inspected. What the button honestly does is
-    stop the page from calling the text sensitive while the panel is open, which
-    is a display decision and is exactly what "tandai" means.
-    """
+    """Board 12's "Tandai aman" — a decision that lasts this session."""
     panel = getattr(shell, "_panel", None)
     if panel is None:
         return False
@@ -551,13 +525,7 @@ def phone_unpair(shell: "AmbientShell") -> bool:
 
 
 def installer_run(shell: "AmbientShell") -> bool:
-    """Board 22: build, review, and run the dependency install plan.
-
-    Reads the live config, builds an :class:`InstallPlan` with the pure policy
-    (availability via `core.installer._available`), reviews it, then drives the
-    approved plan through the adapter. The panel's status strip is updated from
-    the result — never a fake progress bar.
-    """
+    """Board 22: build, review, and run the dependency install plan."""
     from actions.installer_plan import run_install_plan
     from core.install_plan import InstallError, InstallPlan
     from core.installer import _available
@@ -598,3 +566,30 @@ def installer_run(shell: "AmbientShell") -> bool:
         return False
     _say(shell, _t("ui.page.installer.installed"))
     return True
+
+
+def _os_control_apply(shell, decision) -> bool:
+    """Store a switch decision on the panel and report it; False if unwired."""
+    panel = getattr(shell, "_panel", None)
+    if panel is None:
+        return False
+    panel._os_control = {"enabled": decision.desired if decision.allowed
+                         else decision.current, "reason": decision.reason}
+    panel.refresh()
+    _say(shell, decision.reason)
+    return decision.allowed
+
+
+def os_control_toggle(shell: "AmbientShell") -> bool:
+    """Board 14's OS-control switch: request a change, gated by policy."""
+    from actions.os_control import read_state, toggle
+
+    return _os_control_apply(shell, toggle(desired=not read_state(),
+                                           confirmed=False))
+
+
+def os_control_confirm(shell: "AmbientShell") -> bool:
+    """Board 14's physical confirmation: the keystroke that arms OS control."""
+    from actions.os_control import enable
+
+    return _os_control_apply(shell, enable(confirmed=True))
