@@ -149,6 +149,13 @@ def test_the_package_has_exactly_the_mockup_modules():
         # reading size, motion, gestures) rather than the machine, and it is the
         # only one that reads the gesture table.
         "pages_access.py",
+        # The board painters' shared text writers, split out of `pages_paint`
+        # when that module crossed 600 with board 14's level glyphs. These four
+        # routines (`_keyed`, the phone-state/code writers, the installer strip)
+        # only read the panel's labels and write a sentence; they hold no paint
+        # logic of their own, so they belong in their own small module rather
+        # than forcing a subject split of the painters.
+        "pages_paint_util.py",
     }
     present = {p.name for p in _modules()}
     assert present == expected, (

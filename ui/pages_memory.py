@@ -172,7 +172,7 @@ def build_memory(panel, page) -> None:
         chev.setStyleSheet(
             f"color:{PALETTES['dark']['muted']};background:transparent;"
             f"font-size:14px;")
-        chev.setText("Â»")
+        chev.setText("»")
         panel._labels[f"mem_chev:{index}"] = chev
 
     # The artboard's "dan N lagi" line sits between the last card and the

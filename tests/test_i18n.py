@@ -302,7 +302,7 @@ QT_LABEL_CALLS = {"setText", "setWindowTitle", "setPlaceholderText",
 # that is not "we ran out of time".
 LITERALS_OK = {
     "AIza…",                 # a key prefix, not a phrase
-    "—", "✓", "▶  ", "FINISH  →",  # punctuation and glyph scaffolding (below)
+    "—", "✓", "▶  ", "»", "FINISH  →",  # punctuation and glyph scaffolding (below)
     "pip install\nqrcode[pil]",     # a command to paste, identical everywhere
 }
 

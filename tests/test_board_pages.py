@@ -188,7 +188,7 @@ def test_board_9_rows_draw_the_artboards_chevron(
     tray_paint.paint(panel, snapshot("memory"))
 
     chev = panel._labels["mem_chev:0"]
-    assert chev.text() == "Â»", "the row chevron glyph is missing"
+    assert chev.text() == "»", "the row chevron glyph is missing"
     assert chev.x() >= 390, "the chevron is off the card's right edge"
     assert chev.isVisible()
     monkeypatch.setattr(pages_memory, "entries", lambda: [])
