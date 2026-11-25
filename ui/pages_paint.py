@@ -316,10 +316,25 @@ def paint_security(panel, snap) -> None:
     labels = _labels(panel)
     labels["sec_levels_header"].setText(_t("ui.page.security.levels"))
     counts = pages_admin.level_counts()
+    # THE GLYPH each level card draws at its right edge (b14): a tick for
+    # Aman, an undo arrow for Sedang, an exclamation for Berisiko, in the
+    # level's own colour. The cards had the name, note and count but not
+    # the marker that says which policy the row carries.
+    pal = PALETTES[getattr(panel, "_theme", "dark")]
+    glyphs = {"safe": ("✓", pal["accent"]),
+              "medium": ("↶", pal["amber"]),
+              "risky": ("!", "#f44a42")}
     for index, (level, name_key, note_key) in enumerate(pages_admin.levels()):
         labels[f"sec_name:{index}"].setText(_t(name_key))
         labels[f"sec_note:{index}"].setText(_t(note_key))
         labels[f"sec_count:{index}"].setText(str(counts.get(level, 0)))
+        glyph_text, glyph_colour = glyphs.get(level, ("", pal["muted"]))
+        glyph = labels.get(f"sec_glyph:{index}")
+        if glyph is not None:
+            glyph.setText(glyph_text)
+            glyph.setStyleSheet(
+                f"color:{glyph_colour};background:transparent;"
+                f"font-size:16px;font-weight:700;")
     state = getattr(panel, "_os_control", None)  # OS-control state from the panel
     if state is None:
         from actions.os_control import read_state

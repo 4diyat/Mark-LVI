@@ -453,6 +453,28 @@ def test_board_14_names_the_levels_the_gate_returns():
         f"the page draws {names}, the gate returns {list(risk_policy.LEVELS)}")
 
 
+def test_board_14_level_cards_draw_the_artboards_glyph(panel_module):
+    """b14 draws a glyph at each level card's right edge (mx=404).
+
+    A tick for Aman, an undo arrow for Sedang, an exclamation for Berisiko —
+    the marker that says which policy the row carries. The cards had the
+    name, note and count but never the glyph the artboard draws.
+    """
+    tray_panel, tray_paint = panel_module
+    panel = tray_panel.TrayPanel({})
+    panel.open()
+    panel.set_page("security")
+    tray_paint.paint(panel, panel.snapshot)
+
+    # The three levels, in the order `levels()` returns them: safe, medium, risky.
+    glyphs = [panel._labels[f"sec_glyph:{i}"].text() for i in range(3)]
+    assert glyphs == ["✓", "↶", "!"], f"glyphs {glyphs} != the artboard's tick/undo/exclamation"
+    # Each glyph sits at the card's right edge, where b14 draws it (mx=404).
+    for i in range(3):
+        glyph = panel._labels[f"sec_glyph:{i}"]
+        assert glyph.x() >= 390, "the glyph is off the card's right edge"
+
+
 def test_board_14_os_control_switch_is_gated_and_confirm_arms_it(panel_module,
                                                                  monkeypatch):
     """The OS-control switch draws a toggle + confirm; the policy gates it."""
