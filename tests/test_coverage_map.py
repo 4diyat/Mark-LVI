@@ -84,6 +84,13 @@ TESTED = {
     # was never registered passed unnoticed until the file crossed the size
     # threshold. Found by the suite, fixed here.
     "core/gesture_os.py":     "tests/test_gesture_os.py",
+    "core/health.py":         "tests/test_health.py",
+    "core/session_summary.py": "tests/test_session_summary.py",
+    "core/handoff.py":        "tests/test_handoff.py",
+    "core/plugin_permissions.py": "tests/test_plugin_permissions.py",
+    "core/keyboard_nav.py":   "tests/test_keyboard_nav.py",
+    "core/custom_voice.py":   "tests/test_custom_voice.py",
+    "core/window_tile.py":    "tests/test_window_tile.py",
     "memory/config_manager.py": "tests/test_config.py",
     "memory/memory_manager.py": "tests/test_memory.py",
 }
