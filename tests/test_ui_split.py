@@ -161,6 +161,10 @@ def test_the_package_has_exactly_the_mockup_modules():
         # `components` imports tokens and Qt (inside its functions), so a page
         # gets its heights from one place.
         "tokens.py", "components.py",
+        # Boards 15-22's shared painter helpers, split out of `pages_paint`
+        # when that file crossed the ceiling. It holds the painting arithmetic
+        # the admin pages share; it is not page logic.
+        "pages_paint_util.py",
     }
     present = {p.name for p in _modules()}
     assert present == expected, (
