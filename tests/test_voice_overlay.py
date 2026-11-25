@@ -344,6 +344,32 @@ def test_the_active_overlay_draws_the_artboards_five_level_bars():
         f"bar heights {heights} != the artboard's {sorted(voice_overlay.WAVEFORM_BARS)}")
 
 
+def test_the_transcript_pill_is_drawn_behind_the_words():
+    """b04() fills a 640x76 rounded rect behind the transcript; the overlay
+    drew the words but never the pill, so the transcript had no surface.
+
+    The pill is the transcript's surface, so it is drawn at the artboard's
+    geometry — a rounded rect of the panel fill and the accent-line border,
+    640 wide and the pill's height tall, at the artboard's radius. The camera
+    tile is the only other rounded rect on the frame, and it is smaller, so
+    the width and height separate the two.
+    """
+    overlay = voice_overlay.VoiceOverlay(state="listening")
+    overlay.show()
+    painter = _paint(overlay)
+
+    pills = [args for name, args, _ in painter.calls
+             if name == "drawRoundedRect" and len(args) == 3
+             and abs(args[0].w - voice_overlay.PILL_W) < 1
+             and abs(args[0].h - voice_overlay.PILL_H) < 1]
+    assert len(pills) == 1, "the transcript pill was not drawn"
+    rect = pills[0][0]
+    assert (rect.x, rect.y) == tuple(voice_overlay.PILL_AT), (
+        "the pill is not at the artboard's position")
+    assert abs(pills[0][1] - voice_overlay.PILL_RADIUS) < 1, (
+        "the pill does not use the artboard's corner radius")
+
+
 def test_the_paused_tile_says_the_gestures_are_paused_and_draws_no_hand():
     overlay = voice_overlay.VoiceOverlay(state="listening")
     overlay.show()

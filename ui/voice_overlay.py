@@ -75,6 +75,16 @@ WAVEFORM_AT = (868, 394)
 WAVEFORM_WIDTH = 4
 WAVEFORM_PITCH = 12
 WAVEFORM_ALPHA = 0.8
+# The transcript pill artboard `b04()` draws behind the transcript: a 640x76
+# rounded rect (`rect(tx, ty, tw, 76, "#101820", 26, LINE_ACC)`) centred on the
+# transcript row, filled with the panel surface and stroked with the accent
+# line. The overlay drew the pill's words but never the pill itself, so the
+# transcript floated on the desktop. The pill is the transcript's surface, so
+# it is drawn whenever the words are.
+PILL_AT = (320, 376)
+PILL_W = 640
+PILL_H = 84
+PILL_RADIUS = 26
 
 # Redrawn at 12 fps like the orb: the transcript does not move between tokens
 # and the hand does not need 30 fps to look live at this size.
@@ -561,6 +571,7 @@ def frame_words(overlay: "VoiceOverlay") -> dict:
 __all__ = [
     "ANSWER_AT", "CAMERA", "EDGE_OPACITY", "EDGE_PX", "FOOTNOTE_AT", "FRAME_MS",
     "GLOW_INNER", "GLOW_MAX_OPACITY", "Hand", "LABEL_AT", "ORB_AT", "ORB_RADIUS",
+    "PILL_AT", "PILL_H", "PILL_RADIUS", "PILL_W",
     "REFERENCE", "STATES", "TRANSCRIPT_AT", "VoiceOverlay", "camera_label",
     "edge_alpha", "footnote", "frame_words", "hand_from_sample", "hand_point",
     "lines_for", "paint_frame", "pose_of", "status_word", "tile_rect",

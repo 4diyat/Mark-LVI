@@ -38,6 +38,7 @@ CYAN = "#3486fe"
 TEXT = "#ffffff"
 MUTED = "#5e636c"
 LINE_ACC = "#243040"
+PANEL = "#101820"       # the transcript pill's surface, as the sheet fills it
 TILE = "#071018"        # the camera inset, drawn as such in the sheet
 
 
@@ -97,6 +98,7 @@ def paint_frame(painter, size, overlay) -> None:
 
         _paint_camera(painter, overlay)
         _paint_orb(painter, overlay)
+        _paint_pill(painter, overlay)
         _paint_words(painter, overlay)
         # The level bars are a listening readout: an overlay that is not
         # active draws neither them nor the edge, which is the same promise
@@ -178,6 +180,25 @@ def _paint_orb(painter, overlay) -> None:
     except Exception as exc:                        # noqa: BLE001
         print(f"[JARVIS] Voice overlay: orb not drawn — "
               f"{type(exc).__name__}: {exc}")
+
+
+def _paint_pill(painter, overlay) -> None:
+    """The transcript pill artboard `b04()` draws behind the transcript.
+
+    The artboard fills a 640x76 rounded rect (`rect(tx, ty, tw, 76,
+    "#101820", 26, LINE_ACC)`) with the panel surface and strokes it with the
+    accent line, then sits the transcript and the level bars inside it. The
+    overlay drew the pill's words but never the pill, so the transcript floated
+    on the desktop with no surface under it. The pill is the transcript's
+    surface: it is drawn with the panel fill and the accent-line border, at the
+    artboard's radius, so the words and the bars have somewhere to sit.
+    """
+    QPointF, QRectF, Qt, QColor, QPen, _QRadial = _qt()
+    left, top = _model.PILL_AT
+    rect = QRectF(left, top, _model.PILL_W, _model.PILL_H)
+    painter.setPen(QPen(QColor(LINE_ACC)))
+    painter.setBrush(QColor(PANEL))
+    painter.drawRoundedRect(rect, _model.PILL_RADIUS, _model.PILL_RADIUS)
 
 
 def _paint_words(painter, overlay) -> None:
