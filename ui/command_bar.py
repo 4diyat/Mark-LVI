@@ -28,7 +28,7 @@ WHAT IT DID NOT DRAW, AND NOW DOES
     Until board 3 was implemented this window was a translucent box with a
     `QLineEdit` floating in it: no fill, no border, no caret, no hint row, no
     result rows. Board 3 draws all of them, plus a footer that says what the
-    keys do. Everything drawn here comes from `docs/mockups/build.py: n03()` —
+    keys do. Everything drawn here comes from `design/new-ui-proposal/02-command-bar.png` —
     the gradient, the 16 px radius, the 2 px cyan rule, the three result rows
     with their 3 px dots, and the `Esc` chip — and the three rows are FED BY
     `core.tool_risk`, so "aman · langsung", "sedang · bisa diurungkan" and

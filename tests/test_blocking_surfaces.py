@@ -75,10 +75,11 @@ def test_the_banner_is_its_own_window_not_a_child_of_the_orb(qt):
     makes it invisible without making it any less blocking.
 
     THE WIDTH IS THE ARTBOARD'S, NOT A PIXEL COUNT THAT HAPPENED TO PASS. This
-    pinned 430, which was never board 14a's number — the drawing is 520 wide
-    (`bx, by, bw, bh = 380, 236, 520, 250` in `docs/mockups/build.py`), so the
+    pinned 430, which was never board 14a's number — the design is 520 wide
+    (confirm-banner geometry; visual reference
+    `design/new-ui-proposal/04-security-permissions.png`), so the
     test was recording the implementation's guess and would have failed the
-    correct value. It now names the artboard, which is what it was always for.
+    correct value. It now names the design, which is what it was always for.
     """
     from ui.confirm_banner import build_confirm_window
 

@@ -355,7 +355,13 @@ def test_every_key_the_panel_can_press_has_a_handler(wiring):
                            # board 16's phone pairing controls, by prefix
                            "pl_phone_make", "pl_phone_pair", "pl_phone_unpair",
                            # board 22's install button, by prefix
-                           "in_install"}
+                           "in_install",
+                           # Board 5's navigation segments. They navigate the
+                           # panel itself (`set_page`), not an action handler,
+                           # so they have no entry in `actions` — but they are
+                           # real controls and must be named here so a new one
+                           # cannot be added silently.
+                           "nav"}
         # `p6*` replaced `permx` when board 6 replaced 06a on the privacy page:
         # the four rows keep the `p6:` prefix, its two buttons are `p6_clear`
         # and `p6_export`, and the history page keeps its own `clear`/`export`.

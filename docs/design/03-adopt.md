@@ -28,7 +28,8 @@ angka piksel untuk teks.
 | 5 · bersihkan | belum | |
 
 **Titik keputusan langkah 3 sudah lewat**, jadi langkah 4 menunggu penilaian Anda atas
-`docs/verification/list-memory.png`.
+render daftar memori (hasil token; tool renderer pensiun 2026-11-25 bersama
+sumber visual lain, jadi tidak ada lagi gambar acuan untuk ini).
 
 ### Apa yang berubah saat pelaksanaan, dan kenapa
 
@@ -67,15 +68,18 @@ untuk **setiap** widget, bukan hanya layout. Jadi `QWidget(card)` — anak dari
 sebuah kartu — memasang dirinya sebagai layout kartu itu. Pohon widget halaman
 mana pun yang punya baris dua kolom terlihat kosong bagi test.
 
-### Alat render juga buta terhadap halaman bergulir
+### Alat render juga buta terhadap halaman bergulir (historis)
 
-`tools/render_board_overlay.py` hanya melihat widget yang menjadi anak langsung
-halaman. Setelah Memori pindah ke kolom gulir, kartunya menjadi cucu, dan alat
-itu mencetak **kartu contoh milik artboard** — persis jenis kebingungan yang
-pernah saya alami di board 16. Dua perbaikan:
+Alat renderer (`tools/render_board_overlay.py` dan `tools/render_list.py`)
+**sudah pensiun pada 2026-11-25** bersama semua sumber visual lain;
+keluarannya di `docs/verification/` juga dihapus, jadi tidak ada lagi gambar
+acuan dari mereka. Saat masih aktif, overlay hanya melihat widget yang menjadi
+anak langsung halaman. Setelah Memori pindah ke kolom gulir, kartunya menjadi
+cucu, dan alat itu mencetak **kartu contoh milik artboard** — persis jenis
+kebingungan yang pernah saya alami di board 16. Dua perbaikan yang dulu:
 
-* overlay sekarang menelusuri rantai parent (`_inside`), bukan hanya satu tingkat;
-* `tools/render_list.py` mengukur kolom dari token dan menggambar kartunya,
+* overlay menelusuri rantai parent (`_inside`), bukan hanya satu tingkat;
+* `render_list.py` mengukur kolom dari token dan menggambar kartunya,
   karena widget yang di-layout tidak punya `setGeometry` untuk dibaca.
 
 ---
@@ -146,7 +150,7 @@ Yang dikerjakan:
 
 **Kriteria selesai — dan ini titik keputusan:**
 
-- Render `tools/render_board_overlay.py memory --text-only` dan bandingkan
+- Bandingkan dengan gambar acuan di `design/new-ui-proposal/`
 - Tambah 50 entri ke store di test; halaman tetap utuh dan bisa digulir
 - Kosongkan store; satu kartu berisi kalimat kosong, bukan halaman kosong
 
@@ -184,11 +188,12 @@ Setiap halaman selesai kalau: tidak ada angka piksel teks, daftar memakai
 
 Setelah semua halaman hijau:
 
-1. `ui/board_geometry.py` dan `tools/gen_board_geometry.py` — **hapus**, atau
-   ubah menjadi test yang memverifikasi token, bukan angka SVG. Selama ia ada,
-   ia mendikte desain.
-2. `docs/mockups/build.py` — pertahankan sebagai **referensi visual**, tandai
-   di kepala file bahwa ia bukan sumber kebenaran lagi.
+1. `ui/board_geometry.py` dan `tools/gen_board_geometry.py` — **sudah
+   dihapus/di-pin** (2026-11-25): koordinat di-pin ke token, generator
+   pensiun bersama sumber artboard-nya.
+2. `docs/mockups/build.py` — **sudah dihapus** (2026-11-25). Satu-satunya
+   referensi visual sekarang adalah `design/new-ui-proposal/`; lihat
+   `design/new-ui-proposal-ANALISIS.md`.
 3. `tests/test_board_conformance.py` — tulis ulang: dari "widget ada di
    koordinat artboard" menjadi "widget memakai token dan tidak melampaui
    412 px".
@@ -217,10 +222,10 @@ Jujur soal batasnya — ini pelajaran dari putaran sebelumnya.
 - Apakah hierarki terasa benar.
 - Apakah sebuah halaman terlalu padat.
 
-Untuk tiga hal itu, satu-satunya alat adalah render dan mata. Karena itu
-`render_board_overlay.py --text-only` tetap dipakai di setiap langkah — bukan
-sebagai bukti kebenaran, tetapi sebagai cara melihat apa yang sebenarnya
-tertulis.
+Untuk tiga hal itu, satu-satunya alat adalah gambar acuan dan mata. Renderer
+sebelumnya (`render_board_overlay.py`) pensiun 2026-11-25, jadi sekarang
+acuan visualnya hanya gambar di `design/new-ui-proposal/` — bukan sebagai
+bukti kebenaran, tetapi sebagai cara melihat apa yang sebenarnya tertulis.
 
 ---
 

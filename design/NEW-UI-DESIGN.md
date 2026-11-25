@@ -2,8 +2,8 @@
 
 > Dokumen ini adalah **peta desain UI untuk seluruh fitur yang ada**, plus
 > **rekomendasi fitur baru** yang bisa menyempurnakan asisten AI ini.
-> Setiap klaim didasarkan pada apa yang ada di repo (`ui/`, `docs/mockups/`,
-> `readme.md`, `docs/verification.md`), bukan asumsi.
+> Setiap klaim didasarkan pada apa yang ada di repo (`ui/`,
+> `design/new-ui-proposal/`, `readme.md`, `docs/verification.md`), bukan asumsi.
 >
 > Tanggal: 2026-11-24 · Branch: `arena/a905a8af-mark-lvi`
 
@@ -30,7 +30,7 @@ proyek ini, dan menjadikannya sebagai *North Star*:
 ## 2. Token Desain (Design Tokens)
 
 Sumber: `ui/theme.py` (class `C`), `ui/tray_theme.py` (`PALETTES`),
-`docs/mockups/README.md` (geometri).
+`ui/tokens.py` (geometri).
 
 ### 2.1 Warna
 
@@ -114,9 +114,9 @@ ambient. Glow hanya dipakai untuk orb dan status aktif.
 
 ## 4. Desain Per Layar — Semua Fitur yang Ada
 
-22 artboard di `docs/mockups/jarvis-design-system.html` adalah **daftar
+22 board di `design/new-ui-proposal/` (17 gambar) adalah **daftar
 lengkap** permukaan UI. Berikut desain per layar, dengan status implementasi
-(dari `docs/mockups/NOT-IN-MOCKUP.md`).
+(dari `design/new-ui-proposal-ANALISIS.md`).
 
 ### Board 1 — Desktop ambient (utama)
 - **Apa yang ditampilkan:** desktop contoh, orb 56 px + glow di pojok,

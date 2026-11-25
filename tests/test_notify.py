@@ -367,12 +367,13 @@ def test_the_notification_setting_has_no_surface_and_is_said_not_hidden():
     It is not silently dropped: the setting still exists and still works, so a
     user who turned notifications off keeps them off. What is missing is a way
     to change it from the screen, and that is a documented gap rather than a
-    broken checkbox — `docs/mockups/NOT-IN-MOCKUP.md` names the file to edit.
+    broken checkbox — `design/new-ui-proposal-ANALISIS.md` (record of gaps,
+    formerly `docs/mockups/NOT-IN-MOCKUP.md`) names the file to edit.
     """
-    settings = ROOT / "docs" / "mockups" / "NOT-IN-MOCKUP.md"
+    settings = ROOT / "design" / "new-ui-proposal-ANALISIS.md"
     assert settings.exists(), (
         "a setting lost its only control; that has to be written down")
-    assert "notifications" in settings.read_text(encoding="utf-8").lower()
+    assert "notifikasi" in settings.read_text(encoding="utf-8").lower()
 
     for gone in ("notify_row.py", "drawer_note.py", "settings_drawer.py"):
         assert not (ROOT / "ui" / gone).exists(), f"ui/{gone} is back"

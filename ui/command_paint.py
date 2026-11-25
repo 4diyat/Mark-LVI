@@ -12,7 +12,7 @@ WHY THIS IS A SECOND MODULE
     test stub is a painter whose marks can be asserted.
 
 WHAT IS IN HERE
-    `GEOMETRY`     every number from `docs/mockups/build.py: n03()`, in one dict
+    `GEOMETRY`     every number from `design/new-ui-proposal/02-command-bar.png`, in one dict
     `default_rows` the three result lines, CLASSIFIED by `core.tool_risk`
     `paint_bar`    the drawing: gradien, 16 px radius, cyan rule, Esc chip,
                    caret, context line, three rows with 3 px dots, footer

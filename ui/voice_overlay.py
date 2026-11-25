@@ -6,7 +6,7 @@ WHAT THIS IS, AND WHY IT IS NOT THE ORB
     assistant is actually listening, the whole screen becomes the interface — a
     2 px cyan edge, a camera tile in the corner that shows the hand it is
     reading, the words it just heard, and the answer underneath. The artboard is
-    `docs/mockups/build.py: n06()` and every number below is read off it.
+    `design/new-ui-proposal/03-voice-mode.png` and every number below is read off it.
 
     They are two windows because they answer two questions and are on screen at
     different times. Merging them would mean a 96 px window that has to become

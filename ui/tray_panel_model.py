@@ -30,6 +30,19 @@ MODE_ORDER = ("active", "focus", "quiet")
 # where three words sit side by side and a truncated translation is obvious.
 MODE_LABELS = {"active": "Aktif", "focus": "Fokus", "quiet": "Senyap"}
 
+# The navigation segments (board 5), in the order the artboard draws them.
+# Each is a key into the i18n catalogue `ui.panel.nav.<key>`; `NAV_PAGES` is the
+# page it opens. One row per segment: adding a tab means adding a pair here, and
+# the builder, the active-state painter and the tests all read these two tuples
+# rather than a second list.
+NAV_ORDER = ("orb", "history", "memory", "tools", "settings")
+
+# nav key -> the page `TrayPanel.set_page` opens. The three core pages and the
+# board pages come from `page_registry`, so these are the names that already
+# exist, not new ones.
+NAV_PAGES = {"orb": "main", "history": "history", "memory": "memory",
+             "tools": "tools", "settings": "privacy"}
+
 
 def _t(key: str, **fields) -> str:
     """`core.i18n.label`, falling back to the key itself.
@@ -197,7 +210,7 @@ MODE_SUBTITLES = {
 # behaviour behind it on any platform this project has run on, and "Cari
 # berkas" has a search function but no chord. The panel still lists them —
 # they are what the mockup asks for and they do something useful when pressed —
-# but `docs/mockups/NOT-IN-MOCKUP.md` does not claim the chords exist, and a
+# but `design/new-ui-proposal-ANALISIS.md` does not claim the chords exist, and a
 # chord printed on a row is not a promise that the OS owns it.
 # (key, label-key, chord). The label is a catalogue key — see `PERMISSIONS`.
 QUICK_ACTIONS = (
@@ -508,6 +521,6 @@ def snapshot(page: str = "main") -> Snapshot:
 
 
 __all__ = [
-    "ALL_QUICK_KEYS", "FOCUS_ACTIONS", "quota_note", "MODE_LABELS", "MODE_ORDER", "MODE_SUBTITLES", "PAGE_TITLES", "PERMISSIONS", "QUICK_ACTIONS",
+    "ALL_QUICK_KEYS", "FOCUS_ACTIONS", "NAV_ORDER", "NAV_PAGES", "quota_note", "MODE_LABELS", "MODE_ORDER", "MODE_SUBTITLES", "PAGE_TITLES", "PERMISSIONS", "QUICK_ACTIONS",
     "Snapshot", "snapshot",
 ]

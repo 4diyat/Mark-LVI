@@ -59,8 +59,8 @@ from ui.tray_pages import (
     build_history, build_main, build_permissions, panel_position,
 )
 from ui.tray_panel_model import (
-    ALL_QUICK_KEYS, MODE_LABELS, MODE_ORDER, PERMISSIONS, Snapshot, _t,
-    snapshot,
+    ALL_QUICK_KEYS, MODE_LABELS, MODE_ORDER, NAV_ORDER, NAV_PAGES, PERMISSIONS,
+    Snapshot, _t, snapshot,
 )
 
 
@@ -496,9 +496,21 @@ class TrayPanel:
             button.clicked.connect(lambda _checked=False, m=mode: self.press_mode(m))
             self._buttons[f"mode:{mode}"] = button
 
+        # Navigation segments, board 5. One button per destination; the active
+        # one (matching `panel._page`) is filled by `mark_nav` in the painter.
+        # Five fit the width with a small gap: 5 * 76 + 4 * 8 = 412.
+        for index, key in enumerate(NAV_ORDER):
+            button = QPushButton(_t(f"ui.panel.nav.{key}"), window)
+            button.setGeometry(24 + index * 84, 112, 76, 28)
+            page = NAV_PAGES[key]
+            button.clicked.connect(
+                lambda _checked=False, p=page: self.set_page(p))
+            self._buttons[f"nav:{key}"] = button
+
         # Board 05a's hold strip. Hidden entirely outside Fokus: a strip that
-        # says "0 tertahan" in a mode that holds nothing is noise.
-        self._labels["held"] = _placed(window, QLabel, 32, 128, 396, 96, "")
+        # says "0 tertahan" in a mode that holds nothing is noise. Sits below
+        # the nav segments (y=112–140) so the two controls never overlap.
+        self._labels["held"] = _placed(window, QLabel, 32, 144, 396, 96, "")
         self._labels["held"].hide()
 
         page = QWidget(window)

@@ -415,7 +415,7 @@ def paint_stack(painter, owner) -> None:
     """Draw every live card, top to bottom, then the overflow label.
 
     THE OVERFLOW LINE IS UNDER THE STACK, right-aligned to the card's edge —
-    `toast_queue()` in build.py puts it at `(x + w, y + off - 2)` with
+    `toast_queue()` in the design puts it at `(x + w, y + off - 2)` with
     `anchor="end"`.
     """
     from PyQt6.QtCore import QRectF, Qt

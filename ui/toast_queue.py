@@ -48,7 +48,7 @@ KIND_INFO, KIND_WARN, KIND_RISKY = "info", "warn", "risky"
 KINDS = (KIND_INFO, KIND_WARN, KIND_RISKY)
 
 # The accent rule down the card's left edge — `toast(x, y, w, ..., accent=CYAN)`
-# in build.py. Risky is amber for the same reason board 14a's confirmation is:
+# in the design. Risky is amber for the same reason board 14a's confirmation is:
 # a dangerous toast and a friendly one must not look alike at a glance.
 ACCENTS = {
     KIND_INFO: "#3486fe",
@@ -56,9 +56,8 @@ ACCENTS = {
     KIND_RISKY: "#ff9a40",
 }
 
-# `toast()` in build.py: `h = 96 if actions else 74`. The taller card is the
-# one with a button row; the numbers are asserted against that helper in
-# `tests/test_toast_board2.py`.
+# The design: `h = 96 if actions else 74`. The taller card is the
+# one with a button row; the numbers are pinned in `tests/test_toast_board2.py`.
 HEIGHT_WITH_ACTIONS = 96
 HEIGHT_PLAIN = 74
 
@@ -189,7 +188,7 @@ class ToastQueue:
         count = self.dropped()
         if count <= 0:
             return ""
-        # THE ARTBOARD'S PHRASE, verbatim — `toast_queue()` in build.py:
+        # THE DESIGN'S PHRASE, verbatim — `toast_queue()` in the design:
         # `f"+{hidden} lain dalam antrean"`. It used to say "2 lagi", which reads
         # as "two more are coming", and they are not: the cap replaced them.
         return f"+{count} lain dalam antrean"

@@ -15,7 +15,7 @@ PLUGIN = {
 def run(parameters: dict, player=None, session_memory=None) -> str:
     if player is None or not callable(getattr(player, "show_code_job", None)):
         # The editor was a pane inside the window, and the window is gone
-        # (docs/mockups/NOT-IN-MOCKUP.md). `show_code_job` is the method that
+        # (design/new-ui-proposal-ANALISIS.md). `show_code_job` is the method that
         # asked for it, so its absence is the absence of the editor.
         return ("The image editor has no interface in this build — its window "
                 "was removed. No image was changed.")

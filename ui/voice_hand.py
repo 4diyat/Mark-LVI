@@ -101,7 +101,7 @@ def _finger_joints(palm, spread: float,
                    pose: str) -> list[tuple[tuple[float, float], tuple[float, float]]]:
     """Four fingers as `(base, tip)` pairs, in the artboard's own proportions.
 
-    The numbers are `hand()` in `docs/mockups/build.py` scaled to a 0.95 hand:
+    The numbers are the hand-skeleton design (`design/new-ui-proposal/03-gesture-control.png`) scaled to a 0.95 hand:
     bases across the palm, lengths index→little. Keeping them in one list means
     the tile is the same silhouette as the artboard, which is the only thing a
     person comparing the two would notice.

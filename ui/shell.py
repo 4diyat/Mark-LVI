@@ -4,8 +4,7 @@ WHY THIS REPLACED `JarvisUI` RATHER THAN SHRINKING IT
     `ui/window.py` was 3,797 lines and `JarvisUI` was its facade. Between them
     they built a full-screen HUD, a desktop workspace with an MDI area, a chat
     log, an image editor, a code editor, an SSH panel, a trading terminal, a
-    floating-document system and a metrics thread. The mockup (`docs/mockups/
-    jarvis-design-system.html`, twelve artboards) draws none of that. It draws
+    floating-document system and a metrics thread. The proposal set (`design/new-ui-proposal/`) draws none of that. It draws
     five things: an orb, a toast, a command bar, a tray panel, and a risk
     confirmation.
 

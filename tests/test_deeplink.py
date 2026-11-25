@@ -546,7 +546,9 @@ def test_the_scheme_has_no_button_and_is_driven_by_the_command_line():
 
     Registering the scheme is now a command, and saying WHICH command is the
     whole remaining obligation — a feature with no button and no documented way
-    in is a feature that does not exist.
+    in is a feature that does not exist. The record of the gap lives in
+    `design/new-ui-proposal-ANALISIS.md` (formerly
+    `docs/mockups/NOT-IN-MOCKUP.md`, retired 2026-11-25).
     """
     from core import deeplink
 
@@ -556,7 +558,7 @@ def test_the_scheme_has_no_button_and_is_driven_by_the_command_line():
     from pathlib import Path
 
     root = Path(__file__).resolve().parent.parent
-    note = (root / "docs" / "mockups" / "NOT-IN-MOCKUP.md").read_text(encoding="utf-8")
+    note = (root / "design" / "new-ui-proposal-ANALISIS.md").read_text(encoding="utf-8")
     assert "jarvis://" in note, "the scheme lost its only entry point and its note"
 
     # And nothing in `ui/` remembers the state: the surface would have to ask
