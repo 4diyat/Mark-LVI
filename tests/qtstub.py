@@ -276,9 +276,8 @@ class _Object:
 
     # `setAlignment` IS A REAL QLABEL METHOD, not a test convenience. The stub
     # did not have it, so `ui/pages_admin.py` could not right-align the gesture
-    # page's third column without the call vanishing into a no-op — and
-    # `tools/render_board_overlay.py` could not know where the words land. Real
-    # Qt ignores alignment on the widget types that have none; the stub accepts
+    # page's third column without the call vanishing into a no-op. Real Qt
+    # ignores alignment on the widget types that have none; the stub accepts
     # it everywhere, which is the harmless direction to be wrong in.
     def setAlignment(self, flags):
         # `AlignmentFlag.AlignRight` is an `enum.IntFlag`; the stub's own
@@ -586,8 +585,8 @@ class _EchoMode:
 # THE ONE FAMILY OF ENUMS WITH VALUES THAT MATTER. Everywhere else the stub
 # returns a singleton that compares to nothing, and that is fine — a test that
 # asserts `Qt.NoFrame` is a test of the stub. Alignment is different: the page
-# SETS it, and `tools/render_board_overlay.py` READS it to know where words
-# land. Real Qt values, so the arithmetic is Qt's arithmetic.
+# SETS it, and the values must be real Qt's so the arithmetic is Qt's
+# arithmetic.
 _ALIGNMENT = {"AlignLeft": 1, "AlignRight": 2, "AlignHCenter": 4,
               "AlignJustify": 8, "AlignTop": 32, "AlignBottom": 64,
               "AlignVCenter": 128, "AlignCenter": 132}
