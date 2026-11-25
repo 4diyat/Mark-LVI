@@ -539,6 +539,27 @@ def test_board_14_names_the_levels_the_gate_returns():
         f"the page draws {names}, the gate returns {list(risk_policy.LEVELS)}")
 
 
+def test_board_14_os_control_switch_is_gated_and_confirm_arms_it(panel_module,
+                                                                 monkeypatch):
+    """The OS-control switch draws a toggle + confirm; the policy gates it."""
+    from core import os_control
+
+    tray_panel, tray_paint = panel_module
+    panel = tray_panel.TrayPanel({})
+    panel.open()
+    panel.set_page("security")
+    tray_paint.paint(panel, panel.snapshot)
+
+    assert "sec_os_toggle" in panel._buttons, "the switch must be drawn"
+    assert "sec_os_confirm" in panel._buttons, "the physical confirm must be drawn"
+    assert "va_card" in panel._labels, "VERIFIKASI SUARA is on the guest card"
+
+    # the policy refuses a bare enable, allows a confirmed one, always allows disable.
+    assert os_control.request(False, True, confirmed=False).allowed is False
+    assert os_control.request(False, True, confirmed=True).allowed is True
+    assert os_control.request(True, False, confirmed=False).allowed is True
+
+
 # ── board 15: three real settings ───────────────────────────────────────────
 
 def test_board_15_language_switch_reports_what_took_effect(monkeypatch):
@@ -726,7 +747,6 @@ ABSENCE_PAGES = [
     # (page, the label key that carries the sentence, a word it must contain)
     ("tools", "tl_snap_absent", ("belum", "not", "does not")),
     ("gestures", "gs_absent", ("klik", "click", "drawing", "gambar")),
-    ("security", "sec_os", ("tidak", "no ", "not")),
     # THE THIRD COLUMN, not the second. `b15()` draws the gesture's ACTION in
     # the middle ("Panggil antarmuka" at x=250, cyan) and "ubah" at 416 on the
     # right; the first version of this page wrote "fixed" into the middle

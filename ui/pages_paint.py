@@ -56,9 +56,7 @@ def paint_memory(panel, snap) -> None:
     # `panel_head()`, rendered in the shared subtitle at (24,54).
     labels["mem_section"].setText(_t("ui.page.memory.section"))
 
-    # THE CARDS STAY ON SCREEN EVEN WHEN THE STORE IS EMPTY: hiding them left
-    # a header over blank space. An empty list is a fact; an empty PAGE is a
-    # bug. The first card carries the nothing-yet sentence.
+    # The cards stay on screen even when the store is empty: an empty list is a fact, an empty PAGE is a bug.
     for index in range(shown):
         row = rows[index] if index < len(rows) else None
         empty = row is None
@@ -83,11 +81,7 @@ def paint_memory(panel, snap) -> None:
     panel._buttons["mem_clear"].setText(_t("ui.page.memory.clear"))
 
 def paint_memory_one(panel, snap) -> None:
-    """Board 10: one memory, and four bands the store cannot fill.
-
-    The store returns key/value/updated only — no source, lifetime or
-    confidence. Each band states its absence at the artboard's coordinates.
-    """
+    """Board 10: one memory, and four bands the store cannot fill."""
     from ui import pages_memory
 
     labels = _labels(panel)
@@ -129,11 +123,7 @@ __all__ = ["paint_memory", "paint_memory_one"]
 # ── boards 11, 12, 13, 7, 19 ─────────────────────────────────────────────────
 
 def _keyed(labels, prefix, count, text_key) -> None:
-    """Write each row's text, reading its own i18n key off the label.
-
-    Board 19 and 22 carry a key per row rather than a fixed string, so the
-    painter does not have to know which row says what.
-    """
+    """Write each row's text, reading its own i18n key off the label."""
     for index in range(count):
         widget = labels.get(f"{prefix}:{index}")
         if widget is None:
@@ -310,9 +300,27 @@ def paint_security(panel, snap) -> None:
         labels[f"sec_name:{index}"].setText(_t(name_key))
         labels[f"sec_note:{index}"].setText(_t(note_key))
         labels[f"sec_count:{index}"].setText(str(counts.get(level, 0)))
-    # OS-CONTROL absence, stated in the band b14 draws it (header 176).
-    labels["sec_os_header"].setText(_t("ui.page.security.os"))
-    labels["sec_os"].setText(_t("ui.page.security.os_absent"))
+    # OS-CONTROL switch state from the panel's stored decision; the confirm button shows only when the gate asks for the physical keystroke.
+    state = getattr(panel, "_os_control", None)
+    if state is None:
+        from actions.os_control import read_state
+        enabled = read_state()
+        labels["sec_os"].setText(_t("ui.page.security.os_off"))
+    else:
+        enabled = state.get("enabled", False)
+        labels["sec_os"].setText(_t("ui.page.security.os_on") if enabled
+                                 else _t("ui.page.security.os_off"))
+    os_toggle = panel._buttons.get("sec_os_toggle")
+    if os_toggle is not None:
+        os_toggle.setChecked(bool(enabled))
+        os_toggle.setToolTip(_t("ui.page.security.os.toggle"))
+    os_confirm = panel._buttons.get("sec_os_confirm")
+    if os_confirm is not None:
+        need_confirm = not enabled
+        os_confirm.setVisible(need_confirm)
+        os_confirm.setText(_t("ui.page.security.os.confirm"))
+        os_confirm.setToolTip(
+            _t("ui.page.security.os.confirm.tip") if need_confirm else "")
 
     # VERIFIKASI SUARA: the deleted guest-mode card now carries the voice gate.
     # The guest-mode dot at (378,216) stays absent; the voice switch sits clear
@@ -335,9 +343,12 @@ def paint_security(panel, snap) -> None:
     delete = panel._buttons.get("va_delete")
     if delete is not None:
         delete.setText(_t("ui.page.security.voice_auth.delete"))
-    labels["sec_os_card"].setStyleSheet(
+    labels["va_card"].setStyleSheet(
         f"background:{PALETTES[panel._theme]['panel']};border-radius:12px;"
         f"border:1px solid {PALETTES[panel._theme]['amber']};")
+    labels["sec_os"].setStyleSheet(
+        f"background:{PALETTES[panel._theme]['panel']};border-radius:12px;"
+        f"border:1px solid {PALETTES[panel._theme]['panel']};")
 
 def paint_access(panel, snap) -> None:
     from ui import pages_admin
@@ -500,12 +511,7 @@ def paint_plugins(panel, snap) -> None:
         labels["pl_section"].setText(_t("ui.page.plugins.section") + " — 0")
 
 def _paint_phone_state(panel, labels, pal) -> None:
-    """Board 16's phone card: paired device, or the idle sentence.
-
-    Reads the panel's pairing state. When a device is paired it names it and
-    tints the silhouette accent; otherwise the card states no device and the
-    silhouette stays neutral.
-    """
+    """Board 16's phone card: paired device, or the idle sentence."""
     session = getattr(panel, "_phone_pair", None)
     devices = getattr(session, "devices", []) if session is not None else []
     paired = bool(devices)
@@ -529,13 +535,7 @@ def _paint_phone_code(panel) -> str:
     return _t("ui.page.plugins.phone_code_shown", code=code.code, secs=remaining)
 
 def paint_light(panel, snap) -> None:
-    """Board 18: board 6's content in whatever palette is on screen.
-
-    IT READS THE PALETTE THROUGH `panel._theme`, so opening board 18 while the
-    light theme is on shows exactly board 6 in light — which is what the
-    artboard is: the same page, the same words, different tokens. Opening it in
-    dark shows board 6 in dark, and the page says which palette it drew.
-    """
+    """Board 18: board 6's content in whatever palette is on screen."""
     from ui.tray_panel_model import PERMISSIONS
 
     labels = _labels(panel)
