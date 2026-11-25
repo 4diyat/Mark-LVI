@@ -66,6 +66,15 @@ ORB_RADIUS = 44
 TRANSCRIPT_AT = (640, 394)
 ANSWER_AT = (640, 416)
 FOOTNOTE_AT = (40, 690)
+# The five level bars artboard `b04()` draws at the right end of the transcript
+# pill — `for i, h in enumerate((8, 16, 26, 14, 6))` — the listening level
+# readout. The first number is the x of the left bar; each bar is 4 px wide
+# with a 12 px pitch, vertically centred on the given y.
+WAVEFORM_BARS = (8, 16, 26, 14, 6)
+WAVEFORM_AT = (868, 394)
+WAVEFORM_WIDTH = 4
+WAVEFORM_PITCH = 12
+WAVEFORM_ALPHA = 0.8
 
 # Redrawn at 12 fps like the orb: the transcript does not move between tokens
 # and the hand does not need 30 fps to look live at this size.
@@ -555,5 +564,6 @@ __all__ = [
     "REFERENCE", "STATES", "TRANSCRIPT_AT", "VoiceOverlay", "camera_label",
     "edge_alpha", "footnote", "frame_words", "hand_from_sample", "hand_point",
     "lines_for", "paint_frame", "pose_of", "status_word", "tile_rect",
-    "Hand", "CAMERA", "PAUSED_WORD",
+    "WAVEFORM_ALPHA", "WAVEFORM_AT", "WAVEFORM_BARS", "WAVEFORM_PITCH",
+    "WAVEFORM_WIDTH", "Hand", "CAMERA", "PAUSED_WORD",
 ]

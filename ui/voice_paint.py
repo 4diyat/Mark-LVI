@@ -98,6 +98,11 @@ def paint_frame(painter, size, overlay) -> None:
         _paint_camera(painter, overlay)
         _paint_orb(painter, overlay)
         _paint_words(painter, overlay)
+        # The level bars are a listening readout: an overlay that is not
+        # active draws neither them nor the edge, which is the same promise
+        # the footnote's first line makes about the glow.
+        if active:
+            _paint_waveform(painter, overlay)
     except Exception as exc:                        # noqa: BLE001
         # A failed repaint costs a frame. Letting it escape would take down the
         # event loop of a window whose only job is to be seen.
@@ -204,6 +209,28 @@ def _paint_words(painter, overlay) -> None:
     font.setPixelSize(10)
     painter.setFont(font)
     painter.drawText(QPointF(*_model.FOOTNOTE_AT), _model.footnote())
+
+
+def _paint_waveform(painter, overlay) -> None:
+    """The five level bars `b04()` draws at the right end of the transcript.
+
+    The artboard's pill carries a five-bar listening-level readout at its
+    right edge — `for i, h in enumerate((8, 16, 26, 14, 6))`. The overlay
+    drew the pill's words but never the bars, so the readout was absent. They
+    are a fixed shape: 4 px wide, 12 px pitch, centred on the transcript row,
+    in the accent cyan at 80 % opacity.
+    """
+    QPointF, _QRectF, Qt, QColor, QPen, _QRadial = _qt()
+    base_x, base_y = _model.WAVEFORM_AT
+    colour = QColor(CYAN)
+    colour.setAlphaF(_model.WAVEFORM_ALPHA)
+    painter.setPen(QPen(colour))
+    painter.setBrush(Qt.BrushStyle.SolidPattern)
+    for index, height in enumerate(_model.WAVEFORM_BARS):
+        bar_x = base_x + index * _model.WAVEFORM_PITCH
+        top = base_y - height / 2.0
+        painter.drawRect(QPointF(bar_x, top),
+                         _model.WAVEFORM_WIDTH, height)
 
 
 def _half_width(painter, text: str) -> float:

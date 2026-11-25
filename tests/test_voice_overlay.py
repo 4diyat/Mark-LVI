@@ -322,6 +322,28 @@ def test_an_active_overlay_draws_the_two_pixel_edge_and_the_glow():
         "the border must sit inside the frame, or half of it is off screen")
 
 
+def test_the_active_overlay_draws_the_artboards_five_level_bars():
+    """b04() draws five level bars at the right end of the transcript pill.
+
+    The artboard's own loop is `for i, h in enumerate((8, 16, 26, 14, 6))`.
+    The overlay drew the pill's words but never the bars, so the listening
+    level readout was absent. This checks the shape, not a pixel: five bars,
+    the artboard's heights, drawn only while the overlay is active.
+    """
+    overlay = voice_overlay.VoiceOverlay(state="listening")
+    overlay.show()
+    painter = _paint(overlay)
+
+    bars = [args for name, args, _ in painter.calls
+            if name == "drawRect" and len(args) == 3
+            and 0 < args[1] <= 30 and 0 < args[2] <= 30]
+    assert len(bars) == 5, f"expected five level bars, drew {len(bars)}"
+
+    heights = sorted(round(b[2]) for b in bars)
+    assert heights == sorted(voice_overlay.WAVEFORM_BARS), (
+        f"bar heights {heights} != the artboard's {sorted(voice_overlay.WAVEFORM_BARS)}")
+
+
 def test_the_paused_tile_says_the_gestures_are_paused_and_draws_no_hand():
     overlay = voice_overlay.VoiceOverlay(state="listening")
     overlay.show()
