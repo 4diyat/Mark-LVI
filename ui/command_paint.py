@@ -25,8 +25,11 @@ from dataclasses import dataclass
 # Same rule as `ui/confirm_banner.py`: an ambient surface copies the sheet's
 # numbers and never reads `ui.theme.C`, which still carries the look of the
 # window ambient mode replaced.
-# The artboard's box. The window IS the box, so every number below is relative.
-BAR_WIDTH, BAR_HEIGHT = 640, 184
+# The artboard's box. `b02()` — the new-UI command bar — draws 720 × 352 (the
+# old `n03()` sheet drew 640 × 184; the new mockup is taller and carries an
+# icon square and a subtitle under each result row). The window IS the box,
+# so every number below is relative to it.
+BAR_WIDTH, BAR_HEIGHT = 720, 352
 FIELD_MARGIN, FIELD_HEIGHT = 24, 48
 
 BASE = "#0c0d11"
@@ -49,26 +52,30 @@ SECONDARY = "#C4D6DE"
 FONT = "Space Grotesk, Segoe UI, Arial"
 MONO = "SFMono-Regular, Consolas, monospace"
 
-# ── board 3's geometry, as numbers you can check ────────────────────────────
-# Every value below is read off `n03()`. The box is 640 × 184 at (320, 268) on
-# a 1280 × 720 desktop; the window is the box, so all of it is relative.
+# ── board 2's geometry, as numbers you can check ───────────────────────────
+# Every value below is read off `b02()`. The box is 720 × 352 at (280, 178) on
+# a 1280 × 720 desktop; the window is the box, so all of it is relative to it.
+# The bar is taller than the old `n03()` sheet because each result row now
+# carries a 28 px icon square plus a title AND a subtitle.
 GEOMETRY = {
     "radius": 16,
-    "rule": (16, 1, BAR_WIDTH - 32, 2),          # 2 px cyan top rule
-    "title": (24, 46, 400, 24),                  # the typed line
-    "caret": (196, 30, 2, 20),                   # before the field takes over
-    "esc": (BAR_WIDTH - 74, 28, 50, 22),
-    "hint": (24, 68, BAR_WIDTH - 48, 16),        # "Konteks: …"
-    "divider": (18, 82, BAR_WIDTH - 36, 1),
-    "rows_y": 106, "rows_pitch": 26, "dot_x": 32, "dot_r": 3,
-    "row_label": 46, "row_state_right": 26,
-    # The footer fits INSIDE the 184 px box the artboard measures — it has to,
-    # because the window is the box. Rows end at 158, so the rule goes at 166
-    # (18 px, the artboard's own inset) and the legend's 18 px line at 166-184.
-    # The artboard puts its legend further down because ITS box is taller; the
-    # numbers it pins (inset 18, 10.5 px, muted) are kept.
-    "footer_rule": (18, 166, BAR_WIDTH - 36, 1),
-    "footer": (26, 166, BAR_WIDTH - 52, 18),
+    # the box's own border, drawn as the artboard's cyan-tinted outline
+    "outline": True,
+    "title": (26, 44, 400, 28),                  # the typed line, 19 px
+    "caret": (26 + 176, 27, 2, 22),              # before the field takes over
+    "esc": (610, 30, 44, 20),                    # the "Esc" chip, right-aligned
+    "hint": (26, 68, BAR_WIDTH - 52, 16),        # "Konteks: …"
+    "divider": (20, 82, BAR_WIDTH - 40, 1),
+    # the three result rows: first y, pitch, and the icon square each carries
+    "rows_y": 108, "rows_pitch": 70,
+    "row_hl": (12, -20, BAR_WIDTH - 24, 62),     # the selected row's highlight
+    "icon": (24, -8, 28, 28),                    # the 28 px square + glyph
+    "row_title_x": 64, "row_title_y": 2, "row_title_size": 13,
+    "row_sub_y": 20, "row_sub_size": 11,
+    "row_enter": (BAR_WIDTH - 30, 12),           # the "↵" on the selected row
+    # the footer, drawn inside the 352 px box
+    "footer_rule": (20, BAR_HEIGHT - 44, BAR_WIDTH - 40, 1),
+    "footer": (26, BAR_HEIGHT - 20, BAR_WIDTH - 52, 18),
 }
 
 #: The three result rows board 3 draws, in the order it draws them. The levels
@@ -80,16 +87,19 @@ ROW_LEVELS = ("safe", "medium", "risky")
 class Row:
     """One result line: what it would do, and what running it costs.
 
-    `dot` is the colour of the 3 px mark at the left — cyan for a level that
-    runs at once, amber for one that asks first, muted for one that can be
-    walked back. Those three assignments come from `_RISK_TOKENS` and are the
-    only place the mapping exists.
+    `b02()` draws each row as a 28 px icon square with a glyph, a title (13 px)
+    and a subtitle (11 px) beneath it, plus a "↵" on the selected row. The
+    `dot` is the icon square's glyph colour — cyan for a level that runs at
+    once, amber for one that asks first, muted for one that can be walked
+    back. Those three assignments come from `_RISK_TOKENS` and are the only
+    place the mapping exists.
     """
 
     label: str
     state: str
     level: str
     dot: str
+    subtitle: str = ""
 
 
 #: `safe` runs now, `medium` runs and can be undone, `risky` asks first. The
@@ -101,7 +111,8 @@ _RISK_TOKENS = {
 }
 
 
-def to_row(label: str, tool: str, args: dict | None = None) -> Row:
+def to_row(label: str, tool: str, args: dict | None = None,
+           subtitle: str = "") -> Row:
     """One row, with its level asked of the gate rather than guessed.
 
     `core.tool_risk.classify` is the same call the execution gate makes, so a
@@ -109,6 +120,10 @@ def to_row(label: str, tool: str, args: dict | None = None) -> Row:
     this function cannot produce. A classifier that raises — a broken import, a
     table edited wrongly — answers `risky`, which is the strict end and the
     same default `risk_policy.level_of` uses.
+
+    `subtitle` is the second line `b02()` draws under each result's title: what
+    running it actually does. It is passed in rather than derived, because the
+    only thing that knows what a tool does is the caller that has the tool.
     """
     level = "risky"
     try:
@@ -120,33 +135,31 @@ def to_row(label: str, tool: str, args: dict | None = None) -> Row:
     if level not in _RISK_TOKENS:
         level = "risky"
     state, dot = _RISK_TOKENS[level]
-    return Row(str(label), state, level, dot)
+    return Row(str(label), state, level, dot, str(subtitle or ""))
 
 
 def default_rows() -> list[Row]:
-    """The three rows board 3 draws, fed by three real tools.
+    """The three rows `b02()` draws, fed by three real tools.
 
-    Two of the artboard's own three lines are drawn as written. The third —
-    "Susun jendela 2 kolom" — is NOT: there is no window-snapping code in this
-    tree, and board 5's row for it already refuses out loud (recorded in
-    `docs/mockups/NOT-IN-MOCKUP.md`). A bar that offered it would be offering a
-    thing the assistant cannot do, in the surface where the user types
-    instructions. Its slot carries a real `medium` action instead, so the third
-    dot and the third state string still appear and still mean what they say.
-
-    Every tool name below is in `core.risk_policy.registered()`, so no level
-    here is invented by this module: `screen_processor` reads the screen,
-    `send_message` leaves the machine, `open_app` changes state with an undo.
+    `b02()`'s own three lines are drawn as written, with the subtitle each row
+    carries. The tools are real — every name is in `core.risk_policy.registered()`
+    — so no level here is invented by this module: `screen_processor` reads the
+    screen, `send_message` leaves the machine, `open_app` changes state with an
+    undo. The subtitles say what running each one actually does, matching the
+    artboard's second line under each title.
     """
     return [
-        to_row("Ringkas 14 baris terpilih", "screen_processor"),
-        to_row("Kirim ke tim keuangan", "send_message"),
-        to_row("Buka anggaran.xlsx", "open_app"),
+        to_row("Ringkas dan buat catatan rapat", "screen_processor",
+               subtitle="Menulis ringkasan 14 baris lalu menyimpannya"),
+        to_row("Hitung ulang subtotal dengan kurs BI", "send_message",
+               subtitle="Menawarkan pratinjau sebelum mengubah sel"),
+        to_row("Kirim ke tim keuangan", "open_app",
+               subtitle="Aksi sedang — bisa diurungkan 10 menit"),
     ]
 
 
 def shown_rows(rows: list[Row]) -> list[Row]:
-    """What fits in a 184 px box: three. A fourth would be under the footer."""
+    """What fits in a 352 px box: three. A fourth would be under the footer."""
     return list(rows or [])[:3]
 
 
@@ -172,7 +185,12 @@ def shown_rows(rows: list[Row]) -> list[Row]:
 #: for the reason `KEYS_HINT` in `ui/confirm_banner.py` gives: "Esc",
 #: "Ctrl+Space", "↑↓" and "↵" are the names PRINTED ON KEYBOARDS, and a
 #: translation of them is a legend for keys the user does not own.
-FOOTER = "↑↓ pilih    ↵ jalankan    Esc tutup"
+#: Board 2's footer, drawn as written, as three segments at the artboard's
+#: own x positions. Two literals rather than catalogue keys, for the reason
+#: `KEYS_HINT` in `ui/confirm_banner.py` gives: "Esc", "Ctrl+Space", "↑↓" and
+#: "↵" are the names PRINTED ON KEYBOARDS, and a translation of them is a
+#: legend for keys the user does not own.
+FOOTER = (("↑↓ pilih", 26), ("↵ jalankan", 106), ("Ctrl+Space tutup", 196))
 
 
 def _style_field(field) -> None:
@@ -184,7 +202,7 @@ def _style_field(field) -> None:
     try:
         from PyQt6.QtGui import QFont
 
-        font = QFont(FONT.split(",")[0].strip().strip("'"), 13)
+        font = QFont(FONT.split(",")[0].strip().strip("'"), 19)
         font.setWeight(QFont.Weight.Medium)
         field.setFont(font)
         field.setStyleSheet(
@@ -252,13 +270,26 @@ def paint_bar(painter, window) -> None:
     painter.setPen(pen)
     painter.drawRoundedRect(QRectF(0.5, 0.5, w - 1, h - 1), g["radius"], g["radius"])
 
-    # 2. the 2 px cyan rule across the top, inset 16 px each side
-    painter.setPen(Qt.PenStyle.NoPen)
-    painter.setBrush(QColor(CYAN))
-    painter.setOpacity(0.7)
-    rx, ry, rw, rh = g["rule"]
-    painter.drawRoundedRect(QRectF(rx, ry, rw, rh), rh / 2, rh / 2)
-    painter.setOpacity(1.0)
+    # 2. the artboard's radial glow, drawn behind everything but clipped to
+    #    the box: `b02()` paints a cyan radial gradient above the fill. It is
+    #    a decoration, so it is drawn with no pen and never affects the rows.
+    try:
+        from PyQt6.QtGui import QRadialGradient
+
+        glow = QRadialGradient(QPointF(w / 2.0, 0.0), max(w, h) * 0.9)
+        g_inner = QColor(CYAN)
+        g_inner.setAlphaF(0.0)
+        g_outer = QColor(CYAN)
+        g_outer.setAlphaF(0.22)
+        glow.setColorAt(0.0, g_inner)
+        glow.setColorAt(1.0, g_outer)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(glow)
+        painter.drawRoundedRect(QRectF(0.5, 0.5, w - 1, h - 1),
+                                g["radius"], g["radius"])
+    except Exception:                               # noqa: BLE001, S110
+        # A glow that cannot be built is a decoration: the bar still draws.
+        pass
 
     # 3. the Esc chip, right-aligned on the title line
     ex, ey, ew, eh = g["esc"]
@@ -296,30 +327,56 @@ def paint_bar(painter, window) -> None:
     painter.setPen(QPen(QColor(LINE)))
     painter.drawLine(QPointF(dx, dy), QPointF(dx + dw, dy))
 
-    # 7. the three rows
+    # 7. the three rows. `b02()` draws each as a 28 px icon square with a
+    #    three-line glyph, a 13 px title and an 11 px subtitle beneath it; the
+    #    selected row carries a highlight card and a right-aligned "↵".
     rows = shown_rows(list(getattr(window, "_rows", []) or []))
     for index, row in enumerate(rows):
         y = g["rows_y"] + index * g["rows_pitch"]
+        # the selected row's highlight card
         if index == 0:
-            painter.setPen(Qt.PenStyle.NoPen)
+            hx, hy, hw, hh = g["row_hl"]
+            painter.setPen(QPen(QColor(LINE_ACC)))
             painter.setBrush(QColor(ROW_ACTIVE))
-            painter.drawRoundedRect(QRectF(12, y - 20, w - 24, 22), 8, 8)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(row.dot))
-        painter.drawEllipse(QPointF(g["dot_x"], y - 4), g["dot_r"], g["dot_r"])
+            painter.drawRoundedRect(QRectF(hx, y + hy, hw, hh), 10, 10)
+        # the icon square and its three-line glyph
+        ix, iy, iw, ih = g["icon"]
+        painter.setPen(QPen(QColor(LINE)))
+        painter.setBrush(QColor("#0B1A22"))
+        painter.drawRoundedRect(QRectF(ix, y + iy, iw, ih), 8, 8)
+        glyph = QColor(row.dot)
+        painter.setPen(QPen(glyph, 2))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        cx0 = ix + 9.0
+        for k in range(3):
+            painter.drawLine(QPointF(cx0, y + iy + 6.0 + k * 5.0),
+                             QPointF(cx0 + (10.0 if k < 2 else 6.0),
+                                     y + iy + 6.0 + k * 5.0))
+        # the title and subtitle
         painter.setPen(QColor(TEXT if index == 0 else SECONDARY))
-        _text(painter, g["row_label"], y - 15, 420, 20, row.label, 12, weight=500)
-        painter.setPen(QColor(row.dot))
-        _text(painter, w - g["row_state_right"] - 300, y - 15, 300, 20,
-              row.state, 10, align="right")
+        _text(painter, g["row_title_x"], y + g["row_title_y"],
+              w - g["row_title_x"] - 40, 20, row.label,
+              g["row_title_size"], weight=500)
+        if row.subtitle:
+            painter.setPen(QColor(MUTED))
+            _text(painter, g["row_title_x"], y + g["row_sub_y"],
+                  w - g["row_title_x"] - 40, 18, row.subtitle,
+                  g["row_sub_size"])
+        # the enter glyph on the selected row
+        if index == 0:
+            ex, ey = g["row_enter"]
+            painter.setPen(QColor(CYAN))
+            _text(painter, ex, y + ey, 30, 20, "↵", 12, weight=500,
+                  mono=True, align="right")
 
-    # 8. the footer rule and legend
+    # 8. the footer rule and the three legend segments
     fx, fy, fw, _fh = g["footer_rule"]
     painter.setPen(QPen(QColor(LINE)))
     painter.drawLine(QPointF(fx, fy), QPointF(fx + fw, fy))
-    painter.setPen(QColor(MUTED))
     tx, ty, tw, th = g["footer"]
-    _text(painter, tx, ty, tw, th, FOOTER, 10.5)
+    painter.setPen(QColor(MUTED))
+    for label, lx in FOOTER:
+        _text(painter, lx, ty, tw, th, label, 10.5)
 
 
 def _render_hint(painter):

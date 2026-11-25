@@ -171,23 +171,13 @@ def start_interface(shell: "AmbientShell") -> None:
 
     watch_for_another_launch(shell)
 
-    # ONE SURFACE THAT RAISES MUST NOT TAKE THE OTHERS DOWN.
-    #
-    # Every `start_*` is WRITTEN to report failure by returning False, and three
-    # of them catch their own exceptions. The rest do not, and they construct Qt
-    # objects — the one thing on this path that can raise for reasons nobody
-    # wrote a `try` for: a desktop with no notification area, a platform plugin
-    # that refuses a translucent window, a Qt version that moved a flag.
-    #
-    # Before `main()` called this function, a raise here cost nothing because
-    # nothing ran. Now it runs on the main thread BEFORE `exec()`, so an
-    # escaping exception kills the process with no window, no tray and no event
-    # loop — indistinguishable, to the user, from the bug that put this call
-    # here in the first place.
-    #
-    # The order is written out rather than looped over because it IS the design:
-    # the tray is the only surface that can always get the user back, so it goes
-    # first, and the orb goes last.
+    # ONE SURFACE THAT RAISES MUST NOT TAKE THE OTHERS DOWN. `start_*` report
+    # failure by returning False, but they construct Qt objects — the one thing
+    # on this path that can raise for reasons nobody wrote a `try` for — and
+    # this runs on the main thread BEFORE `exec()`, so an escaping exception
+    # kills the process with no window and no event loop. The order IS the
+    # design: tray first (the only surface that always gets the user back),
+    # orb last.
     started = []
     try:
         if start_tray(shell):
@@ -213,15 +203,25 @@ def start_interface(shell: "AmbientShell") -> None:
     # BOARD 6 IS BUILT HERE AND SHOWN LATER: a 1280x720 frame up during
     # start-up would be the first thing the user saw. Not appended to
     # `started` — a decoration with no way back is not "a surface came up".
-    # GUARDED LIKE EVERY OTHER SURFACE, and this one does the most work: a
-    # 1280x720 window, a camera worker, a second global chord. An exception
-    # here escaped `start_interface`, which runs on the Qt thread BEFORE
-    # `exec()` — the tray icon stayed (Qt paints it synchronously) and the
-    # event loop never started. That is "the app hung" to a user.
+    # GUARDED LIKE EVERY OTHER SURFACE: a 1280x720 window, a camera worker,
+    # a second chord. An exception here escaped the Qt thread BEFORE `exec()`.
     try:
         start_voice_overlay(shell)
     except Exception as e:                          # noqa: BLE001
         note(shell, f"the voice overlay failed to start — {type(e).__name__}: {e}")
+
+    # THE TRAY PANEL, OPENED AT STARTUP. The panel is built lazily on the
+    # tray-icon click path, so without this the surfaces visible at launch are
+    # only the orb, the bar and the toast — none of which the phase-2 board
+    # redesign touched. Opening it here is what makes the new-design boards
+    # visible on launch. `--hidden` skips it (see `tray_panel_wiring.start_panel`),
+    # and a failure is reported through the same channel as every other surface.
+    try:
+        from ui import tray_panel_wiring
+        if tray_panel_wiring.start_panel(shell):
+            started.append("panel")
+    except Exception as e:                          # noqa: BLE001
+        note(shell, f"the tray panel failed to start — {type(e).__name__}: {e}")
 
     # `--hidden`: still BUILT (nothing built means nothing to summon), just not
     # shown — a login entry must not pop a face onto someone's screen.

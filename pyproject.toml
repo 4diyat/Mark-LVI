@@ -150,6 +150,7 @@ select = ["F", "E9", "B006", "S110"]
 # Test harnesses: a stub that swallows an unrelated exception is part of building
 # a fake, not of deciding an outcome for the user.
 "tests/test_logbook.py" = ["S110"]
+"ui/command_paint.py" = ["S110"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
