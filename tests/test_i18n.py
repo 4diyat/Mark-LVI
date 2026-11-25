@@ -141,6 +141,10 @@ def test_the_two_locales_are_not_the_same_file():
         "ui.panel.title", "ui.panel.history.meta", "ui.panel.section.audit",
         "ui.panel.mode.active", "ui.panel.mode.focus", "ui.panel.mode.quiet",
         "ui.panel.page.main",
+        # Board 5's navigation tab. "Orb" is the product's own name for the
+        # ambient surface (the same word the artboard draws), so it is a proper
+        # noun in any locale, not an untranslated copy.
+        "ui.panel.nav.orb",
         # Board 22's three presence modes. "Ambient" is the product's own name
         # for the mode — the same word on the artboard, in the menu bar and in
         # `DESIGN-ambient.md` — so translating it would rename a mode the rest

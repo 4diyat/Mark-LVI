@@ -192,6 +192,63 @@ def test_an_unknown_mode_is_refused_without_reaching_the_handler(
     assert setter.calls == []
 
 
+# ── board 5: the navigation segments ────────────────────────────────────────
+
+def test_each_navigation_segment_opens_its_page_and_marks_it_active(
+        panel_module, clean_state):
+    """Board 5's header has five nav segments; each opens its page.
+
+    The segment that matches the page on screen is FILLED; the others are
+    outlines. A navigation click changes the page without a new snapshot, so
+    the active-state painter must follow `panel._page` itself — this test is
+    what fails if `mark_nav` is dropped or wired to the wrong page.
+    """
+    tray_panel, _pages, _model = panel_module
+    nav_order = _model.NAV_ORDER
+    nav_pages = _model.NAV_PAGES
+    panel = tray_panel.TrayPanel({})
+    panel.open()
+
+    # Every segment is built, one button per nav key.
+    for key in nav_order:
+        assert f"nav:{key}" in panel._buttons
+
+    for key in nav_order:
+        target = nav_pages[key]
+        panel._buttons[f"nav:{key}"].clicked.emit()
+
+        assert panel.page == target
+        assert panel._page == target
+        for other in nav_order:
+            sheet = panel._buttons[f"nav:{other}"]._style or ""
+            if other == key:
+                # The active segment is filled, never a transparent outline.
+                assert "background:transparent" not in sheet
+            else:
+                assert "background:transparent" in sheet
+
+
+def test_the_navigation_segments_sit_inside_the_panel(panel_module, clean_state):
+    """The nav row is part of the header, so it must stay inside 460×660.
+
+    `test_no_page_draws_a_control_off_the_panel` already covers every header
+    widget, but the nav row is new and a row that clipped its last segment
+    would be invisible at exactly the width board 5 draws.
+    """
+    from ui.tray_pages import PANEL_H, PANEL_W
+
+    tray_panel, _pages, _model = panel_module
+    panel = tray_panel.TrayPanel({})
+    panel.open()
+
+    for key in _model.NAV_ORDER:
+        button = panel._buttons[f"nav:{key}"]
+        x, y = button.x(), button.y()
+        w, h = button.width(), button.height()
+        assert 0 <= x and 0 <= y
+        assert x + w <= PANEL_W and y + h <= PANEL_H
+
+
 # ── board 08a: history and undo ──────────────────────────────────────────────
 
 def test_the_history_page_lists_the_undo_stack_newest_first(panel_module, clean_state):

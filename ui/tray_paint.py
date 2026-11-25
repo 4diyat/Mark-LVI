@@ -29,8 +29,9 @@ import dataclasses
 
 from ui.tray_pages import PALETTES
 from ui.tray_theme import _rgba
-from ui.tray_panel_model import (ALL_QUICK_KEYS, MODE_ORDER, PERMISSIONS,
-                                _t, quick_actions_for)
+from ui.tray_panel_model import (ALL_QUICK_KEYS, MODE_ORDER, NAV_ORDER,
+                                 NAV_PAGES, PERMISSIONS, _t,
+                                 quick_actions_for)
 # `quota_note` is called THROUGH the module, not imported by name: the tests
 # patch it on `tray_panel_model`, and a by-name import would make that patch
 # invisible here — the seam would look tested and paint a stale answer.
@@ -62,6 +63,7 @@ def paint(panel, snap) -> None:
     for mode in MODE_ORDER:
         panel._buttons[f"mode:{mode}"].setChecked(mode == snap.mode)
     mark_segments(panel, snap)
+    mark_nav(panel)
 
     paint_quick(panel, snap)
 
@@ -273,6 +275,33 @@ def mark_segments(panel, snap) -> None:
                 f"border:1px solid {pal['line']};border-radius:9px;")
 
 
+def mark_nav(panel) -> None:
+    """Lit the navigation segment that matches the page on screen.
+
+    Board 5's header carries two segmented controls: the mode selector above
+    and the page navigator below. The mode one is filled from the snapshot
+    (`mark_segments`); this one is filled from `panel._page`, because the page
+    is a panel-owned fact, not a snapshot fact — a navigation click changes the
+    page without taking a new snapshot, so the active segment has to follow the
+    page itself. Same fill-plus-weight convention, so the difference survives a
+    grey-scale screenshot the same way the mode segments do.
+    """
+    pal = PALETTES[panel._theme]
+    current = getattr(panel, "_page", "")
+    for key in NAV_ORDER:
+        try:
+            button = panel._buttons[f"nav:{key}"]
+        except KeyError:
+            continue
+        if NAV_PAGES.get(key) == current:
+            button.setStyleSheet(
+                f"background:{pal['accent']};color:{pal['on_accent']};"
+                f"border:none;border-radius:9px;font-weight:600;")
+        else:
+            button.setStyleSheet(
+                f"background:transparent;color:{pal['muted']};"
+                f"border:1px solid {pal['line']};border-radius:9px;")
+
 
 def paint_history(panel, snap) -> None:
     labels = panel._labels
@@ -370,6 +399,10 @@ def show_page(panel) -> None:
             page.show() if name == panel._page else page.hide()
         except Exception as e:                   # noqa: BLE001
             panel._note(f"page {name!r} would not switch — {type(e).__name__}: {e}")
+    # The active nav segment follows the page, so it is re-marked here as well:
+    # a navigation click calls `set_page` → `_show_page`, and `paint` is not
+    # guaranteed to run on that path.
+    mark_nav(panel)
 
 
 
