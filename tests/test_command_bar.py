@@ -373,4 +373,4 @@ def test_the_bar_reads_none_of_the_retired_hud_palette(bar):
     offenders = [f"line {n.lineno}" for n in ast.walk(tree)
                  if isinstance(n, ast.ImportFrom) and n.module == "ui.theme"]
     assert not offenders, f"the command bar imports the retired palette: {offenders}"
-    assert bar.CYAN == "#4FD8F0" and bar.AMBER == "#F5A524"
+    assert bar.CYAN == "#3486fe" and bar.AMBER == "#ff9a40"

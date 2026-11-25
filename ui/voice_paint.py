@@ -32,12 +32,12 @@ from ui import voice_overlay as _model
 # accent, and beside board 1's dashed box it is a different design.
 #
 # #1c3a4a (the camera tile's border) is the same story with a smaller gap:
-# the sheet draws that tile with LINE_ACC (#2A6477). #7f97a6 is MUTED
-# (#8FA9B5). #eaf6ff (the transcript) is TEXT (#E6F4F8).
-CYAN = "#4FD8F0"
-TEXT = "#E6F4F8"
-MUTED = "#8FA9B5"
-LINE_ACC = "#2A6477"
+# the sheet draws that tile with LINE_ACC (#243040). #7f97a6 is MUTED
+# (#5e636c). #eaf6ff (the transcript) is TEXT (#ffffff).
+CYAN = "#3486fe"
+TEXT = "#ffffff"
+MUTED = "#5e636c"
+LINE_ACC = "#243040"
 TILE = "#071018"        # the camera inset, drawn as such in the sheet
 
 

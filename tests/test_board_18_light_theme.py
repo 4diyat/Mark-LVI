@@ -107,9 +107,9 @@ def test_light_text_meets_wcag_on_every_surface():
 
 def test_the_light_accent_and_amber_are_distinct_from_the_dark_theme():
     """Board 17a is a real light accent, not a tinted dark one."""
-    assert PALETTES["light"]["accent"] == "#0A7A93"
-    assert PALETTES["dark"]["accent"] == "#4FD8F0"
-    assert PALETTES["light"]["amber"] == "#9A5B00"
+    assert PALETTES["light"]["accent"] == "#1d6fe8"
+    assert PALETTES["dark"]["accent"] == "#3486fe"
+    assert PALETTES["light"]["amber"].upper() == "#9A5B00"
     # the accent must be readable on the card it highlights
     assert _contrast(PALETTES["light"]["accent"], PALETTES["light"]["card"]) >= 3.0
 
@@ -130,8 +130,8 @@ def test_the_light_stylesheet_is_built_from_the_light_tokens(panel_module):
     assert panel.set_theme("light") is True
     assert panel.theme == "light"
     window = panel._window
-    assert "#FFFFFF" in window._style, "the light panel surface is missing"
-    assert "#F6F9FB" not in window._style, (
+    assert "#FFFFFF" in window._style.upper(), "the light panel surface is missing"
+    assert "#F6F9FB" not in window._style.upper(), (
         "the light base token leaked where the panel surface belongs")
     light = PALETTES["light"]
     assert light["accent"] in window._style, (

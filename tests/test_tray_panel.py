@@ -302,7 +302,7 @@ def test_a_fact_about_the_machine_is_drawn_as_disabled_not_as_a_switch(
     # its own read, not on the code.
     dot = panel._labels["perm_dot:microphone"]._style
     assert dot, "the permission readout was never painted"
-    assert "#4FD8F0" not in dot, (
+    assert "#3486fe" not in dot, (
         "the microphone readout is lit for a permission that is off")
 
     # And pressing it does nothing, because there is nothing behind it.
@@ -351,15 +351,15 @@ def test_the_light_theme_is_the_same_widget_with_another_palette(
 
     window = panel._window
     dark = window._style
-    assert "#0A1722" in dark
+    assert "#101820" in dark
 
     assert panel.set_theme("light") is True
     assert panel.theme == "light"
     assert panel._window is window, "board 17a must not build a second widget"
-    assert "#FFFFFF" in window._style and "#F6F9FB" not in window._style
+    assert "#FFFFFF" in window._style.upper() and "#F6F9FB" not in window._style.upper()
     # The artboard's own light accent, not a tinted dark one.
-    assert pages.PALETTES["light"]["accent"] == "#0A7A93"
-    assert pages.PALETTES["dark"]["accent"] == "#4FD8F0"
+    assert pages.PALETTES["light"]["accent"] == "#1d6fe8"
+    assert pages.PALETTES["dark"]["accent"] == "#3486fe"
 
     assert panel.set_theme("neon") is False
     assert panel.theme == "light"
@@ -533,7 +533,7 @@ def test_the_panel_opens_on_the_saved_theme_not_on_dark(
     assert panel.open() is True
     assert panel.theme == "light"
     assert panel.requested_theme == "light"
-    assert "#FFFFFF" in panel._window._style
+    assert "#FFFFFF" in panel._window._style.upper()
 
 
 def test_the_theme_control_cycles_three_values_and_says_which(

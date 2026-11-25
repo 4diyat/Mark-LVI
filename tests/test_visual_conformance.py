@@ -2,8 +2,8 @@
 
 WHY THIS FILE EXISTS
     `docs/mockups/build.py` is the source of truth and it defines one palette:
-    BASE #04080D, PANEL #0A1722, LINE #17323F, CYAN #4FD8F0, AMBER #F5A524,
-    TEXT #E6F4F8, MUTED #8FA9B5. Four of the six ambient surfaces declared
+    BASE #0c0d11, PANEL #101820, LINE #1c2028, CYAN #3486fe, AMBER #ff9a40,
+    TEXT #ffffff, MUTED #5e636c. Four of the six ambient surfaces declared
     those numbers themselves. Two did not:
 
       * `ui/confirm_banner.py` read `ui.theme.C`, which still carries the look
@@ -63,7 +63,7 @@ def _without_comments(source: str) -> str:
         under test. It passed on 3.11 and failed on all three 3.12 runners.
 
     WHY NOT "CUT EVERY LINE AT `#`", WHICH WAS THE SECOND VERSION.
-        `BASE = "#04080D"` is a string containing a hash. The second attempt
+        `BASE = "#0c0d11"` is a string containing a hash. The second attempt
         cut it in half and the test then failed on the very constant it was
         written to check. A quote-aware scan is small and has no version-
         dependent behaviour, which is the whole requirement here.
@@ -112,9 +112,9 @@ def _ambient_sources() -> list[Path]:
 
 def test_the_sheet_still_defines_the_palette_these_assertions_use():
     """A guard on the guard: if the sheet's tokens move, say so here."""
-    assert TOK["BASE"] == "#04080D"
-    assert TOK["CYAN"] == "#4FD8F0"
-    assert TOK["AMBER"] == "#F5A524"
+    assert TOK["BASE"] == "#0c0d11"
+    assert TOK["CYAN"] == "#3486fe"
+    assert TOK["AMBER"] == "#ff9a40"
 
 
 def test_no_drawing_surface_reads_the_retired_hud_palette():
@@ -148,7 +148,7 @@ def test_board_25_dialog_uses_the_artboards_tokens():
     source = _without_comments(
         (UI / "confirm_banner.py").read_text(encoding="utf-8"))
     assert 'AMBER_BG = "#0C1B26"' in source, "the dialog no longer knows its fill"
-    assert 'AMBER = "#F5A524"' in source
+    assert 'AMBER = "#ff9a40"' in source
     assert "background: {AMBER_BG}" in source, (
         "the dialog body is not drawn in the artboard's fill")
     assert "border: 1px solid {AMBER}" in source, (
@@ -209,7 +209,7 @@ def test_board_25_is_the_artboards_width():
 def test_the_floating_face_is_painted_in_the_orb_it_sits_in():
     """The face and the ring beside it must not be two different colours.
 
-    `C.PRI` is #4b9fff blue and the orb's ring is #4FD8F0 cyan. On the same
+    `C.PRI` is #4b9fff blue and the orb's ring is #3486fe cyan. On the same
     260 px surface that is visible without a screenshot — one of them is the
     accent and the other is from a theme that no longer exists.
     """
@@ -234,10 +234,10 @@ def test_the_floating_face_is_painted_in_the_orb_it_sits_in():
 
 
 def test_the_face_accent_is_the_sheets_highlight_token():
-    """#BFF6FF is `CORE` in `ui/orb_paint.py` and the sheet's bright stop."""
+    """#8fb8ff is `CORE` in `ui/orb_paint.py` and the sheet's bright stop."""
     from ui.face_canvas import FACE_ACCENT
 
-    assert FACE_ACCENT == "#BFF6FF"
+    assert FACE_ACCENT == "#8fb8ff"
 
 
 # ── and the surfaces that were already right stay right ─────────────────────
@@ -251,11 +251,11 @@ def test_every_drawing_surface_declares_sheet_colours():
     added to this list deliberately.
     """
     allowed = {
-        "#04080D", "#0A1722", "#17323F", "#2A6477", "#4FD8F0", "#F5A524",
-        "#E6F4F8", "#8FA9B5", "#0C1B26", "#081520", "#BFF6FF", "#0B4A5C",
+        "#0c0d11", "#101820", "#14181c", "#1c2028", "#243040", "#3486fe", "#ff9a40",
+        "#ffffff", "#5e636c", "#0C1B26", "#081520", "#8fb8ff", "#0B4A5C",
         "#25404C", "#13242E", "#5E7A87",
         # light theme, from the same sheet
-        "#F6F9FB", "#FFFFFF", "#D8E3E9", "#0A7A93", "#0B1A24", "#5B7480",
+        "#F6F9FB", "#FFFFFF", "#D8E3E9", "#1d6fe8", "#0B1A24", "#5B7480",
         "#9A5B00",
         # board 6's camera inset, drawn as #071018 in the sheet. #1c3a4a,
         # #7f97a6, #00d4ff and #eaf6ff were boarded 6's own drift and are
@@ -276,8 +276,9 @@ def test_every_drawing_surface_declares_sheet_colours():
         # bug, not a repeat of it — the first version of this test counted
         # those and failed on its own documentation.
         code = _without_comments(path.read_text(encoding="utf-8"))
-        found = re.findall(r"#[0-9A-Fa-f]{6}", code)
-        stray = sorted({h for h in found if h not in allowed})
+        found = {h.upper() for h in re.findall(r"#[0-9A-Fa-f]{6}", code)}
+        allowed_u = {h.upper() for h in allowed}
+        stray = sorted(found - allowed_u)
         if stray:
             unknown[path.name] = stray
     assert not unknown, f"colours outside the design sheet: {unknown}"
@@ -349,20 +350,20 @@ def test_the_comment_stripper_keeps_code_and_drops_prose():
 
     The first version used `tokenize`, and PEP 701 breaks f-strings into
     separate tokens there; the second cut every line at `#`, which decapitated
-    `BASE = "#04080D"` — the constant the audit exists to check. Both are the
+    `BASE = "#0c0d11"` — the constant the audit exists to check. Both are the
     same lesson: the stripper is only correct if a hash inside a string is not
     a comment, and no tokenizer is needed to say so.
     """
     sample = (
         '"""Module docstring with #00d4ff in it."""\n'
-        'BASE = "#04080D"\n'
-        'AMBER = "#F5A524"  # the sheet\'s warning\n'
+        'BASE = "#0c0d11"\n'
+        'AMBER = "#ff9a40"  # the sheet\'s warning\n'
         '# a whole-line comment mentioning #1c3a4a\n'
         'x = f"background: {BASE};"\n'
     )
     kept = _without_comments(sample)
-    assert '#04080D' in kept, "a colour inside a string was treated as a comment"
-    assert '#F5A524' in kept
+    assert '#0c0d11' in kept, "a colour inside a string was treated as a comment"
+    assert '#ff9a40' in kept
     assert '"background: {BASE};"' in kept, (
         "an f-string was mangled — the failure PEP 701 causes on Python 3.12")
     assert 'the sheet' not in kept, "a trailing comment survived"

@@ -237,17 +237,20 @@ PAGES = _PAGES
 # so the two cannot disagree without a test failing. The keys are what the
 # stylesheet below reads, not what Qt calls them.
 PALETTES = {
+    # New-UI palette (design/new-ui-proposal): deep blue-black ambient with a
+    # bright blue accent. The old neutral sheet (#04080D/#4FD8F0) is replaced
+    # by the agreed mockups' look; every painter reads these keys.
     "dark": {
-        "base": "#04080D", "panel": "#0A1722", "card": "#081520",
-        "line": "#17323F", "line_accent": "#2A6477",
-        "text": "#E6F4F8", "muted": "#8FA9B5",
-        "accent": "#4FD8F0", "amber": "#F5A524", "on_accent": "#04080D",
+        "base": "#0c0d11", "panel": "#101820", "card": "#14181c",
+        "line": "#1c2028", "line_accent": "#243040",
+        "text": "#ffffff", "muted": "#5e636c",
+        "accent": "#3486fe", "amber": "#ff9a40", "on_accent": "#0c0d11",
     },
     "light": {
-        "base": "#F6F9FB", "panel": "#FFFFFF", "card": "#FFFFFF",
-        "line": "#D8E3E9", "line_accent": "#0A7A93",
-        "text": "#0B1A24", "muted": "#5B7480",
-        "accent": "#0A7A93", "amber": "#9A5B00", "on_accent": "#FFFFFF",
+        "base": "#f6f9fb", "panel": "#ffffff", "card": "#ffffff",
+        "line": "#d8e3e9", "line_accent": "#1d6fe8",
+        "text": "#0b1a24", "muted": "#5b7480",
+        "accent": "#1d6fe8", "amber": "#9a5b00", "on_accent": "#ffffff",
     },
     # HIGH CONTRAST — board 15's third contrast level. Same geometry as dark,
     # but every luminance is pushed to the maximum: black surfaces, pure white

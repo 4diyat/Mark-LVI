@@ -74,13 +74,13 @@ HIT_RING = RADIUS + 9
 # cursor moves its own centre and the click lands on nothing.
 OVERLAY_PX = 146
 
-CYAN = "#4FD8F0"
-CORE = "#BFF6FF"
+CYAN = "#3486fe"
+CORE = "#8fb8ff"
 DEEP = "#0B4A5C"
-AMBER = "#F5A524"
+AMBER = "#ff9a40"
 # Board 05b's caption colour, from the token table in `docs/mockups/build.py`.
 # The orb module had no MUTED because until board 05b it never drew a word.
-MUTED = "#8FA9B5"
+MUTED = "#5e636c"
 
 # HUD states are shouted and about the machine ("NO MIC"); the painter's are
 # quiet and about the user ("listening"). Mapping rather than renaming the HUD:

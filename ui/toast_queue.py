@@ -51,9 +51,9 @@ KINDS = (KIND_INFO, KIND_WARN, KIND_RISKY)
 # in build.py. Risky is amber for the same reason board 14a's confirmation is:
 # a dangerous toast and a friendly one must not look alike at a glance.
 ACCENTS = {
-    KIND_INFO: "#4FD8F0",
-    KIND_WARN: "#4FD8F0",
-    KIND_RISKY: "#F5A524",
+    KIND_INFO: "#3486fe",
+    KIND_WARN: "#3486fe",
+    KIND_RISKY: "#ff9a40",
 }
 
 # `toast()` in build.py: `h = 96 if actions else 74`. The taller card is the

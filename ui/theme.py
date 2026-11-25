@@ -22,27 +22,32 @@ import colorsys
 
 
 class C:
-    BG        = "#171719"
-    PANEL     = "#222224"
-    PANEL2    = "#28282b"
-    BORDER    = "#414146"
-    BORDER_B  = "#6b6b72"
-    BORDER_A  = "#55555c"
-    PRI       = "#4b9fff"
-    PRI_DIM   = "#3675bd"
-    PRI_GHO   = "#24364c"
-    ACC       = "#ff6b00"
+    # ── New-UI palette (design/new-ui-proposal) ─────────────────────────────
+    # The agreed mockups render a deep blue-black ambient with a bright blue
+    # accent (not the old neutral-dark + cyan-orange sheet). These tokens are
+    # read by every widget and painter, so they are the single source of the
+    # new look; the structural tests that pin colour compare against these.
+    BG        = "#0c0d11"
+    PANEL     = "#101820"
+    PANEL2    = "#14181c"
+    BORDER    = "#1c2028"
+    BORDER_B  = "#2a3240"
+    BORDER_A  = "#243040"
+    PRI       = "#3486fe"
+    PRI_DIM   = "#1c79e1"
+    PRI_GHO   = "#0a2a55"
+    ACC       = "#ff9a40"
     ACC2      = "#ffcc00"
-    GREEN     = "#00ff88"
-    GREEN_D   = "#00aa55"
-    RED       = "#ff3355"
-    MUTED_C   = "#ff3366"
-    TEXT      = "#ededf2"
-    TEXT_DIM  = "#9b9ba4"
-    TEXT_MED  = "#b8b8c0"
-    WHITE     = "#f5f5f7"
-    DARK      = "#1d1d1f"
-    BAR_BG    = "#252529"
+    GREEN     = "#1fe393"
+    GREEN_D   = "#15a872"
+    RED       = "#f44a42"
+    MUTED_C   = "#e73f39"
+    TEXT      = "#ffffff"
+    TEXT_DIM  = "#5e636c"
+    TEXT_MED  = "#878f9e"
+    WHITE     = "#ffffff"
+    DARK      = "#0c0d11"
+    BAR_BG    = "#14181c"
     # Neutral desktop chrome is independent of the customizable HUD accent.
     DESKTOP_PANEL = "#15212f"
     DESKTOP_SIDEBAR = "#1b2a3b"
