@@ -244,8 +244,7 @@ def paint_consent(panel, snap) -> None:
         given = flow.is_done(MIC)
         panel._buttons["cn_toggle"].setChecked(given)
         panel._buttons["cn_allow"].setText(
-            _t("ui.page.consent.allow") if not given else
-            _t("ui.page.consent.done"))
+            _t("ui.page.consent.allow") if not given else _t("ui.page.consent.done"))
         panel._buttons["cn_deny"].setText(_t("ui.page.consent.deny"))
     elif step == PRESENCE:
         labels["cn_when"].setText(_t("ui.page.consent.presence.body"))
@@ -372,8 +371,7 @@ def paint_access(panel, snap) -> None:
     labels["ac_lang_header"].setText(_t("ui.page.access.language"))
     pal = PALETTES[getattr(panel, "_theme", "dark")]
     labels["ac_lang_track"].setStyleSheet(
-        f"background:{pal['panel']};border-radius:19px;"
-        f"border:1px solid {pal['line']};")
+        f"background:{pal['panel']};border-radius:19px;border:1px solid {pal['line']};")
     active = pages_admin.active_language()
     from ui.pages_access import language_slots
 
@@ -391,7 +389,7 @@ def paint_access(panel, snap) -> None:
     scale = pages_admin.text_scale()
     labels["ac_size_note"].setText(_t("ui.page.access.size.value",
                                       percent=int(round(scale * 100))))
-    low, high = pages_admin.TEXT_SCALES[0], pages_admin.TEXT_SCALES[-1]  # slider == b15
+    low, high = pages_admin.TEXT_SCALES[0], pages_admin.TEXT_SCALES[-1]  # == b15
     fraction = 0.0 if high == low else (scale - low) / (high - low)
     labels["ac_size_track"].setStyleSheet(
         f"background:{PALETTES[panel._theme]['line']};border-radius:1px;")
@@ -400,8 +398,7 @@ def paint_access(panel, snap) -> None:
     labels["ac_size_fill"].setGeometry(24, 194, max(2, round(380 * fraction)), 3)
     labels["ac_size_knob"].setStyleSheet(
         f"background:{PALETTES[panel._theme]['accent']};border-radius:7px;")
-    labels["ac_size_knob"].setGeometry(
-        max(17, round(24 + 380 * fraction - 7)), 187, 14, 14)
+    labels["ac_size_knob"].setGeometry(max(17, round(24 + 380 * fraction - 7)), 187, 14, 14)
     for index, value in enumerate(pages_admin.TEXT_SCALES):
         button = panel._buttons.get(f"ac_scale:{index}")
         if button is not None:
@@ -410,8 +407,7 @@ def paint_access(panel, snap) -> None:
     labels["ac_contrast_header"].setText(_t("ui.page.access.contrast"))
     pal_c = PALETTES[panel._theme]
     labels["ac_contrast_track"].setStyleSheet(
-        f"background:{pal_c['panel']};border-radius:19px;"
-        f"border:1px solid {pal_c['line']};")
+        f"background:{pal_c['panel']};border-radius:19px;border:1px solid {pal_c['line']};")
     high = bool(getattr(panel, "_high_contrast", False))
     for level, label_key in (("standard", "ac_contrast_std"),
                              ("high", "ac_contrast_high")):
@@ -438,14 +434,18 @@ def paint_access(panel, snap) -> None:
     labels["ac_gestures_header"].setText(_t("ui.page.access.gestures"))
     from ui import pages_people
 
-    for index, (name_key, note_key) in enumerate(pages_people.gesture_rows()[:3]):
+    # THE ACTION CELL READS THE LIVE BINDING. The middle column shows the
+    # action this gesture triggers now; "ubah" walks the cycle.
+    from actions.gesture_binding import read_state
+    from core.gesture_binding import GESTURES
+    bindings = read_state()
+    for index, (name_key, _note) in enumerate(pages_people.gesture_rows()[:3]):
         labels[f"ac_gest_card:{index}"].setStyleSheet(
             f"background:{PALETTES[panel._theme]['card']};border-radius:12px;")
         labels[f"ac_gest_name:{index}"].setText(_t(name_key))
-        labels[f"ac_gest_act:{index}"].setText(_t(note_key))
-        edit = labels[f"ac_gest_edit:{index}"]  # the "ubah" cell ends at b15's x=416
-        edit.setText(_t("ui.page.access.gestures_rebind_absent"))
-        edit.setStyleSheet(f"color:{pal['muted']};")
+        action = bindings.get(GESTURES[index] if index < len(GESTURES) else GESTURES[0])
+        labels[f"ac_gest_act:{index}"].setText(_t(f"ui.page.access.action.{action}"))
+        panel._buttons[f"ac_gest_edit:{index}"].setText(_t("ui.page.access.rebind"))
     labels["ac_footnote"].setText(_t("ui.page.access.footnote"))
 
 def paint_plugins(panel, snap) -> None:
@@ -530,7 +530,8 @@ def paint_light(panel, snap) -> None:
     labels["l18_log_box"].setStyleSheet(f"background:{pal['card']};border-radius:12px;")
     for index in range(3):
         labels[f"l18_state:{index}"].setStyleSheet(
-            f"background:{pal['card']};border:1px solid {pal['line']};border-radius:11px;")
+            f"background:{pal['card']};border:1px solid {pal['line']};"
+            f"border-radius:11px;")
     panel._buttons["l18_clear"].setText(_t("ui.panel.history.clear"))
     panel._buttons["l18_export"].setText(_t("ui.panel.history.export"))
     for index, (key, name_key, sub_key) in enumerate(PERMISSIONS):

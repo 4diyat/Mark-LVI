@@ -565,7 +565,6 @@
   "ui.page.access.contrast": "Kontras",
   "ui.page.access.footnote": "Target sentuh minimal 44 px · kontras teks ≥ 4.5:1",
   "ui.page.access.gestures": "GESTUR KUSTOM",
-  "ui.page.access.gestures_rebind_absent": "tetap",
   "ui.page.access.language": "BAHASA UI",
   "ui.page.access.language.en": "English",
   "ui.page.access.language.id": "Indonesia",
@@ -1056,5 +1055,13 @@
   "ui.page.tools.snap_columns2": "2 kolom",
   "ui.page.tools.snap_columns3": "3 kolom",
   "ui.page.tools.snap_focus": "Fokus",
-  "ui.page.tools.snap_note": "Susun jendela: {mode}."
+  "ui.page.tools.snap_note": "Susun jendela: {mode}.",
+  "ui.page.access.action.interface_call": "Panggil antarmuka",
+  "ui.page.access.action.click": "Klik",
+  "ui.page.access.action.media_pause": "Jeda media",
+  "ui.page.access.action.scroll": "Gulir",
+  "ui.page.access.action.stop": "Hentikan",
+  "ui.page.access.action.switch": "Pindah",
+  "ui.page.access.rebind": "Ubah",
+  "ui.page.access.rebind_note": "Ubah apa yang dipicu gestur ini"
 }

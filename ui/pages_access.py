@@ -17,7 +17,6 @@ WHAT IT DOES NOT CHANGE
 """
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QLabel, QPushButton
 
 from ui.board_geometry import BOARDS
@@ -162,13 +161,15 @@ def build_access(panel, page) -> None:
         panel._labels[f"ac_gest_act:{index}"] = _at(page, QLabel, 250, y + 8, 130, 18, "")
         # The artboard's "ubah" is anchored END at x=416. A QLabel has no
         # anchor, so the cell is 96 px wide ending at 416 and the text is
-        # aligned right inside it — the same result, and it stops "fixed"
-        # spilling out of a 32 px box.
-        edit = _at(page, QLabel, 320, y + 8, 96, 18, "")
-        # Alignment is set where the label is MADE, not where it is painted:
-        # `pages_paint` imports no Qt on purpose (it writes onto widgets it is
-        # handed), and an import there to say "align right" would break the one
-        # rule that keeps the painters testable without a screen.
-        edit.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        panel._labels[f"ac_gest_edit:{index}"] = edit
+        # aligned right inside it — the same result, and it stops "ubah"
+        # spilling out of a 32 px box. The cell is a BUTTON now: rebinding is
+        # real (core.gesture_binding + actions.gesture_binding), so "ubah"
+        # walks the action cycle for this gesture rather than stating "fixed".
+        edit = QPushButton("", page)
+        edit.setGeometry(320, y + 8, 96, 18)
+        edit.setObjectName(f"ac_gest_edit:{index}")
+        edit.setStyleSheet("background:transparent;border:none;color:inherit;")
+        edit.clicked.connect(lambda _checked=False, i=index:
+                             panel._call("gesture_rebind", i))
+        panel._buttons[f"ac_gest_edit:{index}"] = edit
     panel._labels["ac_footnote"] = at(page, QLabel, text_box(24, 616, 10, width=412), "")

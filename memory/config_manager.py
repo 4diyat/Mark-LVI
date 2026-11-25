@@ -1035,3 +1035,43 @@ def save_window_layout(layout: str) -> bool:
         return False
     set_config_values(window_layout=value)
     return True
+
+
+GESTURE_BINDINGS = ("open_palm", "pinch", "fist")
+
+
+def get_gesture_bindings() -> dict:
+    """The configured gesture bindings, one action per gesture slot.
+
+    A missing, unreadable, or partially-invalid mapping falls back to the
+    artboard's three cards, so an unreadable binding never leaves the page
+    claiming an action that does not exist.
+    """
+    from core.gesture_binding import ACTIONS, DEFAULT_BINDINGS, GESTURES
+
+    try:
+        raw = load_api_keys().get("gesture_bindings", {})
+    except Exception:                              # noqa: BLE001
+        return dict(DEFAULT_BINDINGS)
+    if not isinstance(raw, dict):
+        return dict(DEFAULT_BINDINGS)
+    out = dict(DEFAULT_BINDINGS)
+    for gesture in GESTURES:
+        action = raw.get(gesture)
+        if action in ACTIONS:
+            out[gesture] = action
+    return out
+
+
+def save_gesture_binding(gesture: str, action: str) -> bool:
+    """Persist one gesture's action, collapsing anything unknown."""
+    from core.gesture_binding import ACTIONS, GESTURES
+
+    gesture = str(gesture or "").strip()
+    action = str(action or "").strip()
+    if gesture not in GESTURES or action not in ACTIONS:
+        return False
+    bindings = get_gesture_bindings()
+    bindings[gesture] = action
+    set_config_values(gesture_bindings=bindings)
+    return True

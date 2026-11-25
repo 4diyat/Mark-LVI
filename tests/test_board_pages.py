@@ -630,12 +630,6 @@ def test_board_16_rows_report_manifest_facts_not_provenance(panel_module):
 ABSENCE_PAGES = [
     # (page, the label key that carries the sentence, a word it must contain)
     ("gestures", "gs_absent", ("klik", "click", "drawing", "gambar")),
-    # THE THIRD COLUMN, not the second. `b15()` draws the gesture's ACTION in
-    # the middle ("Panggil antarmuka" at x=250, cyan) and "ubah" at 416 on the
-    # right; the first version of this page wrote "fixed" into the middle
-    # column and dropped the action entirely — and this line asserted the bug.
-    # "fixed" belongs where "ubah" was, because there is no rebinding.
-    ("access", "ac_gest_edit:0", ("tetap", "fixed")),
 ]
 
 

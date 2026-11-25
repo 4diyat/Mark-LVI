@@ -565,7 +565,6 @@
   "ui.page.access.contrast": "Contrast",
   "ui.page.access.footnote": "Smallest touch target 44 px · text contrast ≥ 4.5:1",
   "ui.page.access.gestures": "CUSTOM GESTURES",
-  "ui.page.access.gestures_rebind_absent": "fixed",
   "ui.page.access.language": "UI LANGUAGE",
   "ui.page.access.language.en": "English",
   "ui.page.access.language.id": "Indonesian",
@@ -1056,5 +1055,13 @@
   "ui.page.tools.snap_columns2": "2 columns",
   "ui.page.tools.snap_columns3": "3 columns",
   "ui.page.tools.snap_focus": "Focus",
-  "ui.page.tools.snap_note": "Window layout: {mode}."
+  "ui.page.tools.snap_note": "Window layout: {mode}.",
+  "ui.page.access.action.interface_call": "Call interface",
+  "ui.page.access.action.click": "Click",
+  "ui.page.access.action.media_pause": "Pause media",
+  "ui.page.access.action.scroll": "Scroll",
+  "ui.page.access.action.stop": "Stop",
+  "ui.page.access.action.switch": "Switch",
+  "ui.page.access.rebind": "Change",
+  "ui.page.access.rebind_note": "Change what this gesture triggers"
 }

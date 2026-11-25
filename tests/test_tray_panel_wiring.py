@@ -303,6 +303,9 @@ def test_every_key_the_panel_can_press_has_a_handler(wiring):
                 # the presence-mode toggle the presence step reuses the switch for.
                 "onboard_next", "onboard_back", "onboard_toggle",
                 "language", "text_scale", "motion_toggle", "install_mode",
+                # Board 15's gesture rebind: the "ubah" cell walks the action
+                # cycle for one gesture, through the gesture_binding adapter.
+                "gesture_rebind",
                 # Board 14's voice-verification gate: a switch, a register
                 # and a delete, each landing on the session, not a store.
                 "voice_auth_toggle", "voice_auth_enroll", "voice_auth_delete",
@@ -335,6 +338,8 @@ def test_every_key_the_panel_can_press_has_a_handler(wiring):
                            "l18_clear", "l18_export", "cn_toggle", "hp_read",
                            "tl_safe", "cn_allow", "cn_deny", "ac_lang",
                            "ac_motion", "ac_scale", "pl_toggle", "in_pick",
+                           # board 15's gesture "ubah" cells, by prefix
+                           "ac_gest_edit",
                            "more", "more_back",
                            # board 14's voice-verification controls, by the
                            # object names the security page gives them

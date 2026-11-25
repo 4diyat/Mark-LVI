@@ -514,6 +514,7 @@ def actions_for(shell: "AmbientShell") -> dict:
         "text_scale": lambda scale: pages_actions.text_scale_set(shell, scale),
         "contrast_set": lambda level: pages_actions.contrast_set(shell, level),
         "motion_toggle": lambda: pages_actions.motion_toggle(shell),
+        "gesture_rebind": lambda i: pages_actions.gesture_rebind(shell, i),
         "install_mode": lambda index: pages_actions.install_mode(shell, index),
         "voice_auth_toggle": lambda on: pages_actions.voice_auth_toggle(shell, on),
         "voice_auth_enroll": lambda: pages_actions.voice_auth_enroll(shell),

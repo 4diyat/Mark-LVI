@@ -21,6 +21,11 @@ def _say(shell: "AmbientShell", text: str) -> None:
     note(shell, text)
 
 
+def _refresh(shell) -> None:
+    """Repaint the panel if it is attached, or do nothing if it is not."""
+    _refresh(shell)
+
+
 def _t(key: str, **fields) -> str:
     """`core.i18n.label` with a fallback, so a missing catalogue key still."""
     from ui.tray_panel_model import _t as _i18n_t
@@ -76,23 +81,27 @@ def routines_pause(shell: "AmbientShell") -> bool:
     return True
 
 
-def tools_copy(shell: "AmbientShell") -> bool:
-    """Board 12's "Salin": put the clipboard text back where it came from."""
-    from ui import pages_people
-
-    text = pages_people.clipboard_text()
-    if not text:
-        _say(shell, "Clipboard kosong.")
-        return False
+def _clipboard_set(shell, text, done, fail) -> bool:
+    """Write `text` to the clipboard, reporting the result either way."""
     try:
         from actions import computer_control
 
         computer_control.pyperclip.copy(text)
     except Exception as e:                       # noqa: BLE001
-        _say(shell, f"Clipboard tidak bisa ditulis — {type(e).__name__}: {e}")
+        _say(shell, f"{fail} — {type(e).__name__}: {e}")
         return False
-    _say(shell, "Disalin.")
+    _say(shell, done)
     return True
+
+
+def tools_copy(shell: "AmbientShell") -> bool:
+    """Board 12's "Salin": put the clipboard text back where it came from."""
+    from ui import pages_people
+    text = pages_people.clipboard_text()
+    if not text:
+        _say(shell, "Clipboard kosong.")
+        return False
+    return _clipboard_set(shell, text, "Disalin.", "Clipboard tidak bisa ditulis")
 
 
 def tools_layout(shell: "AmbientShell", index: int) -> bool:
@@ -106,24 +115,15 @@ def tools_layout(shell: "AmbientShell", index: int) -> bool:
     if not apply(decision):
         _say(shell, decision.reason)
         return False
-    panel = getattr(shell, "_panel", None)
-    if panel is not None:
-        panel.refresh()
+    _refresh(shell)
     _say(shell, decision.reason)
     return decision.allowed
 
 
 def tools_clear(shell: "AmbientShell") -> bool:
     """Board 12's "Bersihkan": empty the clipboard."""
-    try:
-        from actions import computer_control
-
-        computer_control.pyperclip.copy("")
-    except Exception as e:                       # noqa: BLE001
-        _say(shell, f"Clipboard tidak bisa dikosongkan — {type(e).__name__}: {e}")
-        return False
-    _say(shell, "Clipboard dikosongkan.")
-    return True
+    return _clipboard_set(shell, "", "Clipboard dikosongkan.",
+                          "Clipboard tidak bisa dikosongkan.")
 
 
 def tools_mark_safe(shell: "AmbientShell") -> bool:
@@ -141,9 +141,8 @@ def plugin_toggle(shell: "AmbientShell", index: int) -> bool:
     """Board 16's switch for row `index`, through the loader's own store."""
     from ui import pages_admin
 
-    rows = pages_admin.plugin_rows()
     try:
-        row = rows[int(index)]
+        row = pages_admin.plugin_rows()[int(index)]
     except (IndexError, TypeError, ValueError):
         return False
     ok = pages_admin.set_plugin(str(row["name"]), not row["on"])
@@ -157,8 +156,8 @@ def consent_answer(shell: "AmbientShell", allowed: bool) -> bool:
     from ui import pages_people
 
     ok = pages_people.record_consent(bool(allowed))
-    _say(shell, "Izin mikrofon tercatat." if ok and allowed else
-               ("Dilewati." if ok else "Izin tidak bisa disimpan."))
+    _say(shell, "Izin mikrofon tercatat." if ok and allowed
+        else ("Dilewati." if ok else "Izin tidak bisa disimpan."))
     return ok
 
 
@@ -200,8 +199,9 @@ def onboard_next(shell: "AmbientShell") -> bool:
             return False
         decision = str(picked)
     else:
+        checked = panel._buttons.get("cn_toggle") if panel else None
         decision = {"welcome": "next", "done": "finish",
-                    "mic": bool(_toggle_checked(shell))}.get(step)
+                    "mic": bool(checked and checked.isChecked())}.get(step)
     new_flow, ok = answer_step(flow, decision)
     if ok:
         _finish_onboarding(shell, new_flow, _t("ui.page.consent.done"))
@@ -222,7 +222,7 @@ def onboard_back(shell: "AmbientShell") -> bool:
             _finish_onboarding(shell, new_flow, _t("ui.page.consent.deny"))
         return ok
     new_flow = Onboarding(flow._done, flow._skipped, flow.presence_mode,
-                          max(0, flow.current_index - 1))  # back, nothing recorded
+                          max(0, flow.current_index - 1))  # back, recorded nothing
     _finish_onboarding(shell, new_flow, "")
     return True
 
@@ -244,17 +244,9 @@ def onboard_toggle(shell: "AmbientShell") -> bool:
     return True
 
 
-def _toggle_checked(shell) -> bool:
-    """Whether the consent toggle is checked, read off the panel widget."""
-    panel = getattr(shell, "_panel", None)
-    button = panel._buttons.get("cn_toggle") if panel else None
-    return bool(button and button.isChecked())
-
-
 def language_set(shell: "AmbientShell", code: str) -> bool:
     """Board 15's language segment. Returns whether the switch took."""
     from ui import pages_admin
-
     active = pages_admin.set_language(str(code))
     ok = active == str(code)
     _say(shell, f"Bahasa: {active}." if ok else f"Bahasa {code!r} tidak tersedia.")
@@ -264,11 +256,8 @@ def language_set(shell: "AmbientShell", code: str) -> bool:
 def text_scale_set(shell: "AmbientShell", scale: float) -> bool:
     """Board 15's text size, stored and applied to the panel at once."""
     from ui import pages_admin
-
     ok = pages_admin.set_text_scale(float(scale))
-    panel = getattr(shell, "_panel", None)
-    if panel is not None:
-        panel.refresh()
+    _refresh(shell)
     _say(shell, "Ukuran teks disimpan." if ok else "Ukuran teks tidak bisa disimpan.")
     return ok
 
@@ -303,6 +292,21 @@ def motion_toggle(shell: "AmbientShell") -> bool:
     _say(shell, ("Gerak dikurangi." if wanted else "Gerak aktif kembali.")
          if ok else "Pilihan gerak tidak bisa disimpan.")
     return ok
+
+
+def gesture_rebind(shell: "AmbientShell", index: int) -> bool:
+    """Board 15's gesture rebind: walk the action cycle for one gesture."""
+    from actions.gesture_binding import apply, cycle
+    from core.gesture_binding import GESTURES
+    if not 0 <= int(index) < len(GESTURES):  # the artboard draws three slots
+        return False
+    decision = cycle(GESTURES[int(index)])
+    if not apply(decision):
+        _say(shell, decision.reason)
+        return False
+    _refresh(shell)
+    _say(shell, decision.reason)
+    return decision.allowed
 
 
 def _voice_auth_call(shell, method: str, *args, fail: str = "Verifikasi suara gagal") -> bool:
@@ -382,9 +386,7 @@ def routine_toggle(shell: "AmbientShell", index: int) -> bool:
     if toggled is None:
         _say(shell, "Rutinitas tidak bisa diubah.")
         return False
-    panel = getattr(shell, "_panel", None)
-    if panel is not None:
-        panel.refresh()
+    _refresh(shell)
     _say(shell, _t("ui.page.routines.resumed") if toggled.enabled
         else _t("ui.page.routines.toggled"))
     return True
@@ -402,9 +404,7 @@ def routine_delete(shell: "AmbientShell", index: int) -> bool:
     if not removed:
         _say(shell, "Rutinitas tidak bisa dihapus.")
         return False
-    panel = getattr(shell, "_panel", None)
-    if panel is not None:
-        panel.refresh()
+    _refresh(shell)
     _say(shell, _t("ui.page.routines.deleted"))
     return True
 
