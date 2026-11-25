@@ -278,11 +278,18 @@ def paint_history(panel, snap) -> None:
     labels = panel._labels
     labels["history_count"].setText(snap.history_subtitle)
     rows = list(snap.history)[:4]
+    pal = PALETTES[panel._theme]
     for index in range(4):
         row = rows[index] if index < len(rows) else None
         labels[f"history:{index}"].setText(str(row["label"]) if row else "")
         labels[f"history_meta:{index}"].setText(
             _t("ui.panel.history.state.undoable") if row else "")
+        # The status dot: amber while the row can still be undone, the
+        # accent once it is settled — the artboard's own two states.
+        dot_label = labels.get(f"history_dot:{index}")
+        if dot_label is not None:
+            colour = pal["amber"] if (row and row.get("undoable")) else pal["accent"]
+            dot_label.setStyleSheet(f"background:{colour};border-radius:5px;")
         button = panel._buttons[f"undo:{index}"]
         # Only the OLDEST row may carry the button, because undo is a
         # stack and `undo_last()` reverses the oldest entry. Two buttons
