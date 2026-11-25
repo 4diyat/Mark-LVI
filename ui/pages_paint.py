@@ -21,6 +21,12 @@ from __future__ import annotations
 
 from ui.tray_pages import PALETTES
 from ui.tray_panel_model import _t
+from ui.pages_paint_util import (
+    _keyed,
+    _paint_install_status,
+    _paint_phone_code,
+    _paint_phone_state,
+)
 
 def _labels(panel):
     return panel._labels
@@ -66,12 +72,15 @@ def paint_memory(panel, snap) -> None:
                 _t("ui.page.memory.empty_row") if index == 0 and not rows else "")
             labels[f"mem_val:{index}"].setText("")
             panel._buttons[f"mem_open:{index}"].hide()
+            labels[f"mem_chev:{index}"].hide()
             continue
         labels[f"mem_key:{index}"].setText(str(row.get("key") or ""))
         labels[f"mem_val:{index}"].setText(str(row.get("value") or ""))
         button = panel._buttons[f"mem_open:{index}"]
         button.show()
         button.setText(_t("ui.page.memory.open"))
+        # The chevron is the row's open affordance; it shows with the button.
+        labels[f"mem_chev:{index}"].show()
 
     # THE REMAINDER IS STATED, NOT HIDDEN: the header counts the store, the
     # list counts the widgets, so showing eight of twelve must say so.
@@ -121,15 +130,6 @@ __all__ = ["paint_memory", "paint_memory_one"]
 
 
 # ── boards 11, 12, 13, 7, 19 ─────────────────────────────────────────────────
-
-def _keyed(labels, prefix, count, text_key) -> None:
-    """Write each row's text, reading its own i18n key off the label."""
-    for index in range(count):
-        widget = labels.get(f"{prefix}:{index}")
-        if widget is None:
-            continue
-        key = getattr(widget, "_key", "") or text_key
-        widget.setText(_t(key))
 
 def paint_routines(panel, snap) -> None:
     from ui import pages_people
@@ -332,10 +332,25 @@ def paint_security(panel, snap) -> None:
     labels = _labels(panel)
     labels["sec_levels_header"].setText(_t("ui.page.security.levels"))
     counts = pages_admin.level_counts()
+    # THE GLYPH each level card draws at its right edge (b14): a tick for
+    # Aman, an undo arrow for Sedang, an exclamation for Berisiko, in the
+    # level's own colour. The cards had the name, note and count but not
+    # the marker that says which policy the row carries.
+    pal = PALETTES[getattr(panel, "_theme", "dark")]
+    glyphs = {"safe": ("✓", pal["accent"]),
+              "medium": ("↶", pal["amber"]),
+              "risky": ("!", "#f44a42")}
     for index, (level, name_key, note_key) in enumerate(pages_admin.levels()):
         labels[f"sec_name:{index}"].setText(_t(name_key))
         labels[f"sec_note:{index}"].setText(_t(note_key))
         labels[f"sec_count:{index}"].setText(str(counts.get(level, 0)))
+        glyph_text, glyph_colour = glyphs.get(level, ("", pal["muted"]))
+        glyph = labels.get(f"sec_glyph:{index}")
+        if glyph is not None:
+            glyph.setText(glyph_text)
+            glyph.setStyleSheet(
+                f"color:{glyph_colour};background:transparent;"
+                f"font-size:16px;font-weight:700;")
     state = getattr(panel, "_os_control", None)  # OS-control state from the panel
     if state is None:
         from actions.os_control import read_state
@@ -513,27 +528,6 @@ def paint_plugins(panel, snap) -> None:
     if drawn == 0:
         labels["pl_section"].setText(_t("ui.page.plugins.section") + " — 0")
 
-def _paint_phone_state(panel, labels, pal) -> None:
-    """Board 16's phone card: paired device, or the idle sentence."""
-    session = getattr(panel, "_phone_pair", None)
-    devices = getattr(session, "devices", []) if session is not None else []
-    paired = bool(devices)
-    fill = pal["accent"] if paired else pal["panel"]
-    labels["pl_phone"].setText(_t("ui.page.plugins.phone_paired", name=devices[-1].name)
-                               if paired else _t("ui.page.plugins.phone_idle"))
-    labels["pl_phone2"].setText(_t("ui.page.plugins.phone_connected_short") if paired else "")
-    labels["pl_phone_shape"].setStyleSheet(
-        f"background:{fill};border-radius:10px;border:1px solid {pal['line']};")
-
-def _paint_phone_code(panel) -> str:
-    """Board 16's pairing-code box: the live code, or the no-code sentence."""
-    session = getattr(panel, "_phone_pair", None)
-    code = getattr(session, "pending_code", None) if session is not None else None
-    if code is None:
-        return _t("ui.page.plugins.phone_no_code")
-    remaining = max(0, int(code.expires_at - session._clock()))
-    return _t("ui.page.plugins.phone_code_shown", code=code.code, secs=remaining)
-
 def paint_light(panel, snap) -> None:
     """Board 18: board 6's content in whatever palette is on screen."""
     from ui.tray_panel_model import PERMISSIONS
@@ -601,18 +595,3 @@ def paint_installer(panel, snap) -> None:
         install.setText(_t("ui.page.installer.install"))
     _paint_install_status(panel, labels)
 
-def _paint_install_status(panel, labels) -> None:
-    """Board 22's installer strip: the pending count, or the ready sentence."""
-    labels["in_status_header"].setText(_t("ui.page.installer.status"))
-    state = getattr(panel, "_install_state", None)
-    if state is None:
-        return
-    status = state.get("status")
-    if status == "installed":
-        labels["in_status"].setText(_t("ui.page.installer.installed"))
-    elif status == "running":
-        labels["in_status"].setText(
-            _t("ui.page.installer.installing", count=state.get("count", 0)))
-    else:
-        labels["in_status"].setText(
-            _t("ui.page.installer.needs_review", count=state.get("count", 0)))

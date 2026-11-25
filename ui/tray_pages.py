@@ -399,6 +399,15 @@ def build_history(panel, page) -> None:
     # a scroll inside a 660 px popup is a scroll nobody performs.
     for index in range(4):
         y = 80 + index * 96
+        # THE STATUS DOT the artboard draws at (46, y+26): a 10 px disc whose
+        # colour is the row's state — amber while the row can still be
+        # undone, the accent once it is settled. It is a readout, not a
+        # button: the row's affordance is the Urungkan button below it.
+        dot = QLabel(page)
+        dot.setGeometry(41, y + 21, 10, 10)
+        dot.setStyleSheet(
+            f"background:{PALETTES['dark']['line']};border-radius:5px;")
+        panel._labels[f"history_dot:{index}"] = dot
         panel._labels[f"history:{index}"] = _at(page, QLabel, 60, y + 12, 240, 22, "")
         panel._labels[f"history_meta:{index}"] = _at(
             page, QLabel, 60, y + 40, 240, 18, "")

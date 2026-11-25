@@ -345,7 +345,13 @@ def build_security(panel, page) -> None:
         panel._labels[f"sec_card:{index}"] = _at(page, QLabel, x, y, w, h, "")
         panel._labels[f"sec_name:{index}"] = _at(page, QLabel, x + 20, y + 12, 200, 20, "")
         panel._labels[f"sec_note:{index}"] = _at(page, QLabel, x + 20, y + 34, 280, 18, "")
-        panel._labels[f"sec_count:{index}"] = _at(page, QLabel, x + 300, y + 22, 90, 20, "")
+        panel._labels[f"sec_count:{index}"] = _at(page, QLabel, x + 300, y + 22, 84, 20, "")
+        # THE GLYPH b14 draws at the card's right edge (mx=404): a tick for
+        # Aman, an undo arrow for Sedang, an exclamation for Berisiko. The
+        # card had the name, note and count but never the marker that says
+        # which level's policy the row carries. Drawn at the artboard's
+        # coordinate, in the level's own colour.
+        panel._labels[f"sec_glyph:{index}"] = _at(page, QLabel, x + 396, y + 22, 30, 28, "")
 
     # OS-CONTROL switch: the card b14 draws at (24,540,412,76) carries
     # "Kontrol OS dinonaktifkan" and the sentence that says to enable it from
