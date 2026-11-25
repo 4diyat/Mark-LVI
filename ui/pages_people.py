@@ -55,21 +55,29 @@ def suggestion_paused() -> bool:
 
 
 def routines() -> list[dict]:
-    """The routines this build actually runs. Currently one, and it is real.
+    """The scheduled routines this build stores and runs.
 
-    THERE IS NO ROUTINE STORE. The artboard draws three scheduled routines with
-    times and payloads; nothing in this program stores a schedule. The one thing
-    that IS a routine — the proactive check that decides when JARVIS speaks —
-    has a real on/off and a real persistence, so it is what the list shows. The
-    page states the absence rather than drawing three rows nobody can edit.
+    THE STORE IS REAL NOW. `memory/routine_store.py` keeps the list and
+    `core/routine_scheduler.py` fires what is due. Each row is a routine the
+    owner created: a name, when it runs, and the command text it sends. The
+    page draws as many cards as the store holds (up to the artboard's three)
+    and says in the empty band when there are none yet.
     """
-    return [{
-        "key": "proactive",
-        "name": "ui.page.routines.proactive.name",
-        "when": "ui.page.routines.proactive.when",
-        "what": "ui.page.routines.proactive.what",
-        "on": not suggestion_paused(),
-    }]
+    def read():
+        from memory.routine_store import default_store
+        from core.routines import humanize_when
+
+        rows = default_store().all()
+        return [{
+            "key": r.id,
+            "name": r.name,
+            "when": humanize_when(r.schedule),
+            "what": r.payload,
+            "on": r.enabled,
+        } for r in rows]
+
+    return _safe(read, []) or []
+
 
 
 # ── board 12: quick tools ───────────────────────────────────────────────────
@@ -198,41 +206,61 @@ def record_consent(allowed: bool) -> bool:
 # ── Qt ───────────────────────────────────────────────────────────────────────
 
 def build_routines(panel, page) -> None:
-    """Board 11, transcribed from `b11()`: 412x84 cards at pitch 96 from y=84.
+    """Board 11, transcribed from `b11()`: three 412x84 routine cards.
 
-    THE ARTBOARD DRAWS THREE ROUTINES WITH TIMES AND PAYLOADS. Nothing in this
-    build stores a schedule — `actions/proactive` has one on/off and no table —
-    so the page draws the ONE real routine in the first card's geometry, and
-    says in the space the other two would take that there is no routine store.
-    The three suggestion cards at y=406 are drawn at the artboard's pitch with
-    the sentence that says the suggestion engine does not exist.
+    THE STORE IS REAL NOW, so the page draws up to three routine cards from
+    `memory/routine_store.py` — each with its name, when, payload, a pause
+    toggle and a delete button — plus a builder strip that turns a schedule
+    phrase into a stored routine. The three suggestion cards at the bottom
+    keep the artboard's pitch and the sentence about the suggestion engine.
     """
-    from PyQt6.QtWidgets import QLabel, QPushButton
+    from PyQt6.QtWidgets import QLabel, QLineEdit, QPushButton
 
     from ui.tray_pages import _at
 
     page.hide()
     panel._pages["routines"] = page
 
-    # The first card's geometry, read from the drawing: (24, 84, 412, 84).
-    panel._labels["rt_card:0"] = _at(page, QLabel, 24, 84, 412, 84, "")
-    panel._labels["rt_name:0"] = _at(page, QLabel, 44, 102, 300, 20, "")
-    panel._labels["rt_when:0"] = _at(page, QLabel, 44, 124, 300, 16, "")
-    panel._labels["rt_what:0"] = _at(page, QLabel, 44, 142, 300, 16, "")
-    # The pause is the artboard's toggle at (378, 114) — 40x22.
-    panel._buttons["rt_pause"] = QPushButton("", page)
-    panel._buttons["rt_pause"].setGeometry(378, 114, 40, 22)
-    panel._buttons["rt_pause"].clicked.connect(lambda: panel._call("routines_pause"))
-
-    # Cards 2 and 3 have nothing behind them: one sentence in their band.
-    panel._labels["rt_absent"] = _at(page, QLabel, 24, 188, 412, 76, "")
-
-    # SARAN PROAKTIF at 392, three 412x58 cards at y=406, pitch 68.
-    panel._labels["rt_suggest_header"] = at(page, QLabel, text_box(24, 392, 10, width=240), "")
+    # Three routine cards at pitch 96 from y=84, each 412x84. Toggle at
+    # (378, y+30); a delete button sits left of it at (320, y+30).
     for index in range(3):
-        y = 406 + index * 68
+        y = 84 + index * 96
+        panel._labels[f"rt_card:{index}"] = _at(page, QLabel, 24, y, 412, 84, "")
+        panel._labels[f"rt_name:{index}"] = _at(page, QLabel, 44, y + 18, 260, 20, "")
+        panel._labels[f"rt_when:{index}"] = _at(page, QLabel, 44, y + 40, 260, 16, "")
+        panel._labels[f"rt_what:{index}"] = _at(page, QLabel, 44, y + 58, 260, 16, "")
+        toggle = QPushButton("", page)
+        toggle.setGeometry(378, y + 30, 40, 22)
+        toggle.setObjectName(f"rt_toggle:{index}")
+        toggle.clicked.connect(lambda _c=False, i=index: panel._call("routine_toggle", i))
+        panel._buttons[f"rt_toggle:{index}"] = toggle
+        delete = QPushButton("", page)
+        delete.setGeometry(320, y + 30, 40, 22)
+        delete.setObjectName(f"rt_delete:{index}")
+        delete.clicked.connect(lambda _c=False, i=index: panel._call("routine_delete", i))
+        panel._buttons[f"rt_delete:{index}"] = delete
+
+    # THE BUILDER STRIP: a one-line schedule field + a create button. It turns
+    # "setiap hari jam 07" into a stored routine (the builder is deliberately
+    # one line — board 11's artboard has no room for a multi-field form, and a
+    # schedule the owner can type in one line is one they can read back).
+    panel._labels["rt_builder_label"] = at(page, QLabel, text_box(24, 372, 10, width=200), "")
+    edit = QLineEdit(page)
+    edit.setGeometry(24, 388, 300, 26)
+    edit.setObjectName("rt_builder_edit")
+    panel._inputs["rt_builder_edit"] = edit
+    create = QPushButton("", page)
+    create.setGeometry(328, 388, 108, 26)
+    create.setObjectName("rt_builder_create")
+    create.clicked.connect(lambda: panel._call("routine_create"))
+    panel._buttons["rt_builder_create"] = create
+
+    # SARAN PROAKTIF at 432, three 412x58 cards at y=446, pitch 68.
+    panel._labels["rt_suggest_header"] = at(page, QLabel, text_box(24, 432, 10, width=240), "")
+    for index in range(3):
+        y = 446 + index * 68
         panel._labels[f"rt_suggest_card:{index}"] = _at(page, QLabel, 24, y, 412, 58, "")
-    panel._labels["rt_suggest_note"] = _at(page, QLabel, 44, 424, 372, 40, "")
+    panel._labels["rt_suggest_note"] = at(page, QLabel, text_box(24, 464, 10, width=372), "")
 
     # The artboard's footnote at 636 is below the panel's own 660 - 12 line,
     # so it moves to the free band under the last card: same copy, same column.
@@ -280,15 +308,19 @@ def build_tools(panel, page) -> None:
         panel._labels[f"tl_hit:{index}"] = _at(
             page, QLabel, 60, 328 + index * 22, 356, 18, "")
 
-    # ── SUSUN JENDELA: the card and its three thumbnails, stated absent ────
+    # ── SUSUN JENDELA: the card and its three clickable thumbnails ────────
+    # The artboard draws three thumbnails (2 kolom / 3 kolom / Fokus). Each is
+    # a real button: picking one asks the layout policy to record the choice.
     panel._labels["tl_snap_card"] = _at(page, QLabel, 24, 420, 412, 176, "")
     panel._labels["tl_snap_header"] = _at(page, QLabel, 42, 432, 300, 18, "")
     for index, x in enumerate((40, 166, 292)):
-        panel._labels[f"tl_snap_thumb:{index}"] = _at(page, QLabel, x, 452, 114, 62, "")
-    # The sentence occupies the band the three thumbnails sit in (452..514),
-    # leaving b12's own caption at 572 alone — the two are different claims and
-    # stacking them overlapped one on the other.
-    panel._labels["tl_snap_absent"] = _at(page, QLabel, 40, 456, 380, 52, "")
+        thumb = QPushButton("", page)
+        thumb.setGeometry(x, 452, 114, 62)
+        thumb.setObjectName(f"tl_snap_thumb:{index}")
+        thumb.clicked.connect(
+            lambda _checked=False, i=index: panel._call("tools_layout", i))
+        panel._buttons[f"tl_snap_thumb:{index}"] = thumb
+    panel._labels["tl_snap_note"] = _at(page, QLabel, 40, 528, 380, 34, "")
 
 
 def build_gestures(panel, page) -> None:
@@ -312,14 +344,17 @@ def build_gestures(panel, page) -> None:
 
 
 def build_consent(panel, page) -> None:
-    """Board 7, transcribed from `b07()`.
+    """Board 7: the four-step onboarding ladder, transcribed from `b07()`.
 
-    FOUR 97x4 SEGMENTS AT y=74, AND ONLY THE FIRST IS FILLED. The artboard
-    draws a four-step onboarding ("Langkah 2 dari 4") and shows two segments
-    lit. This build has ONE consent question — the microphone — so the first
-    segment is lit, the other three are the unfilled track, and the header says
-    "Langkah 1 dari 1". Drawing two lit segments would claim a second step
-    nobody will ever be shown.
+    FOUR 97x4 SEGMENTS AT y=74. The artboard draws a four-step onboarding
+    ("Langkah 2 dari 4") — welcome, microphone consent, presence mode, and a
+    summary. Each step has its own content in the card and its own controls
+    at the bottom; the step indicator shows where the flow is.
+
+    The three bottom controls are reused across the steps rather than drawn
+    fresh per step, because the artboard's geometry is fixed: the deny button
+    becomes "Back / Skip", the toggle becomes the presence-mode selector on
+    the presence step, and the allow button is the step's primary action.
     """
     from PyQt6.QtWidgets import QLabel, QPushButton
 
@@ -328,12 +363,13 @@ def build_consent(panel, page) -> None:
     page.hide()
     panel._pages["consent"] = page
 
+    # The four-step progress track, the step name, and the shared card.
     for index in range(4):
         panel._labels[f"cn_step:{index}"] = _at(
             page, QLabel, 24 + index * 105, 74, 97, 4, "")
 
     panel._labels["cn_name"] = _at(page, QLabel, 24, 110, 412, 30, "")
-    panel._labels["cn_why"] = at(page, QLabel, text_box(24, 154, 12, width=412), "")
+    panel._labels["cn_body"] = at(page, QLabel, text_box(24, 154, 12, width=412), "")
     panel._labels["cn_card"] = _at(page, QLabel, 24, 174, 412, 190, "")
     panel._labels["cn_when"] = _at(page, QLabel, 44, 330, 372, 20, "")
     panel._labels["cn_what_header"] = at(page, QLabel, text_box(24, 400, 10, width=240), "")
@@ -341,22 +377,20 @@ def build_consent(panel, page) -> None:
         panel._labels[f"cn_point:{index}"] = _at(
             page, QLabel, 50, 408 + index * 28, 372, 18, "")
 
-    # The consent toggle is the artboard's own (24, 520) 40x22 control, and
-    # the allow button is the 200x44 pill at (236, 566).
+    # The consent toggle is the artboard's own (24, 520) 40x22 control. On the
+    # presence step it is repurposed as the mode selector's readout; on the
+    # other steps it mirrors the mic consent.
     panel._labels["cn_ack"] = _at(page, QLabel, 76, 522, 340, 20, "")
-    # b07 draws BOTH a 40x22 toggle at (24,520) AND a 200x44 "Lanjut" pill at
-    # (236,566). They are one decision — consent to the microphone — so they
-    # share one handler and the page keeps them in the same state. Two controls
-    # that could disagree about a permission is how a user ends up not knowing
-    # whether they consented.
     panel._buttons["cn_toggle"] = QPushButton("", page)
     panel._buttons["cn_toggle"].setGeometry(24, 520, 40, 22)
-    panel._buttons["cn_toggle"].clicked.connect(lambda: panel._call("consent"))
+    panel._buttons["cn_toggle"].setCheckable(True)
+    panel._buttons["cn_toggle"].clicked.connect(lambda: panel._call("onboard_toggle"))
     panel._buttons["cn_deny"] = QPushButton("", page)
     panel._buttons["cn_deny"].setGeometry(24, 566, 196, 44)
+    panel._buttons["cn_deny"].clicked.connect(lambda: panel._call("onboard_back"))
     panel._buttons["cn_allow"] = QPushButton("", page)
     panel._buttons["cn_allow"].setGeometry(236, 566, 200, 44)
-    panel._buttons["cn_allow"].clicked.connect(lambda: panel._call("consent"))
+    panel._buttons["cn_allow"].clicked.connect(lambda: panel._call("onboard_next"))
 
 
 def build_help(panel, page) -> None:
@@ -374,7 +408,7 @@ def build_help(panel, page) -> None:
     that does not exist. Each row shows its label and says the value would be
     proposed, never applied, because there is nothing to propose from.
     """
-    from PyQt6.QtWidgets import QLabel, QPushButton
+    from PyQt6.QtWidgets import QLabel, QLineEdit, QPushButton
 
     from ui.tray_pages import _at
 
@@ -400,11 +434,33 @@ def build_help(panel, page) -> None:
         y = 432 + index * 56
         panel._labels[f"hp_form_label:{index}"] = _at(
             page, QLabel, 24, y - 12, 300, 16, "")
-        panel._labels[f"hp_form_field:{index}"] = _at(page, QLabel, 24, y, 412, 32, "")
+        # The field row is an editable QLineEdit, not a label: the value the
+        # plan will send is typed here, then reviewed in the strip before the
+        # apply button sends it to the browser. (A QLineEdit is an input, so
+        # the conformance audit's ALLOWED_GAPS carries the three row coords.)
+        field = QLineEdit(page)
+        field.setGeometry(24, y, 412, 32)
+        field.setObjectName(f"hp_form_input:{index}")
+        panel._inputs[f"hp_form_input:{index}"] = field
 
-    # The preview strip: cyan at 12% opacity in the artboard, and the sentence
-    # inside it is why it exists — nothing here is applied to a form.
+    # The preview strip: cyan at 12% opacity in the artboard. It starts by
+    # saying nothing has been applied, and flips to the review/applied status
+    # once the builder below is used.
     panel._labels["hp_preview"] = _at(page, QLabel, 24, 578, 412, 34, "")
+
+    # THE BUILDER: a page URL field and a review-and-apply button, sitting in
+    # the band under the preview strip. Board 13's form filling is review-first:
+    # the plan is built, reviewed, and only then applied into the browser.
+    panel._labels["hp_form_url_label"] = at(page, QLabel, text_box(24, 616, 10, width=200), "")
+    url_edit = QLineEdit(page)
+    url_edit.setGeometry(24, 630, 300, 24)
+    url_edit.setObjectName("hp_form_url")
+    panel._inputs["hp_form_url"] = url_edit
+    apply_button = QPushButton("", page)
+    apply_button.setGeometry(328, 630, 108, 24)
+    apply_button.setObjectName("hp_form_apply")
+    apply_button.clicked.connect(lambda: panel._call("form_fill_apply"))
+    panel._buttons["hp_form_apply"] = apply_button
 
 
 __all__ = ["GESTURES", "build_consent", "build_gestures", "build_help",

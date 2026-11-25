@@ -295,9 +295,33 @@ def test_every_key_the_panel_can_press_has_a_handler(wiring):
             # store write reached by a click, and each has a test of its own
             # below; this set is what proves the panel's buttons have somewhere
             # to land at all.
-            "memory_forget", "memory_clear", "routines_pause", "tools_copy",
-            "tools_clear", "tools_safe", "plugin_toggle", "consent",
-            "language", "text_scale", "motion_toggle", "install_mode"}
+                "memory_forget", "memory_clear", "routines_pause",
+                "routine_create", "routine_toggle", "routine_delete",
+                "tools_copy",
+                "tools_clear", "tools_safe", "tools_layout", "plugin_toggle", "consent",
+                # Board 7's four-step onboarding ladder: advance, back, and
+                # the presence-mode toggle the presence step reuses the switch for.
+                "onboard_next", "onboard_back", "onboard_toggle",
+                "language", "text_scale", "motion_toggle", "install_mode",
+                # Board 15's gesture rebind: the "ubah" cell walks the action
+                # cycle for one gesture, through the gesture_binding adapter.
+                "gesture_rebind",
+                # Board 14's voice-verification gate: a switch, a register
+                # and a delete, each landing on the session, not a store.
+                "voice_auth_toggle", "voice_auth_enroll", "voice_auth_delete",
+                # Board 15's contrast level: a two-slot segmented control
+                # that swaps the panel to the high-contrast palette.
+                "contrast_set",
+                # Board 13's review-and-apply button: builds a plan, reviews it,
+                # and drives the approved fields into the browser session.
+                "form_fill_apply",
+                # Board 16's phone pairing: mint a code, pair a device,
+                # disconnect the most recent one.
+                "phone_make_code", "phone_pair", "phone_unpair",
+                # Board 22's installer: build a reviewed dependency plan and run it.
+                "installer_run",
+                # Board 14's OS-control switch: a gated toggle plus the physical confirm.
+                "os_control_toggle", "os_control_confirm"}
 
         panel = TrayPanel(actions)
         assert panel.open() is True
@@ -310,10 +334,28 @@ def test_every_key_the_panel_can_press_has_a_handler(wiring):
                            # fail here until someone says what it does
                            "mem_add", "mem_clear", "mem_open", "m1_back",
                            "m1_forget", "m1_export", "rt_pause", "tl_clear", "tl_copy",
+                           "tl_snap_thumb",
                            "l18_clear", "l18_export", "cn_toggle", "hp_read",
                            "tl_safe", "cn_allow", "cn_deny", "ac_lang",
                            "ac_motion", "ac_scale", "pl_toggle", "in_pick",
-                           "more", "more_back"}
+                           # board 15's gesture "ubah" cells, by prefix
+                           "ac_gest_edit",
+                           "more", "more_back",
+                           # board 14's voice-verification controls, by the
+                           # object names the security page gives them
+                           "va_toggle", "va_enroll", "va_delete",
+                           # board 14's OS-control switch, by its object names
+                           "sec_os_toggle", "sec_os_confirm",
+                           # board 15's contrast slots, by their prefix
+                           "ac_contrast",
+                           # board 11's routine controls, by prefix
+                           "rt_toggle", "rt_delete", "rt_builder_create",
+                           # board 13's form-fill apply button, by prefix
+                           "hp_form_apply",
+                           # board 16's phone pairing controls, by prefix
+                           "pl_phone_make", "pl_phone_pair", "pl_phone_unpair",
+                           # board 22's install button, by prefix
+                           "in_install"}
         # `p6*` replaced `permx` when board 6 replaced 06a on the privacy page:
         # the four rows keep the `p6:` prefix, its two buttons are `p6_clear`
         # and `p6_export`, and the history page keeps its own `clear`/`export`.

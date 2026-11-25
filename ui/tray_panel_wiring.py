@@ -496,15 +496,39 @@ def actions_for(shell: "AmbientShell") -> dict:
         "memory_forget": lambda: pages_actions.memory_forget(shell),
         "memory_clear": lambda: pages_actions.memory_clear(shell),
         "routines_pause": lambda: pages_actions.routines_pause(shell),
+        "routine_create": lambda: pages_actions.routine_create(shell),
+        "routine_toggle": lambda i: pages_actions.routine_toggle(shell, i),
+        "routine_delete": lambda i: pages_actions.routine_delete(shell, i),
         "tools_copy": lambda: pages_actions.tools_copy(shell),
+        "tools_layout": lambda i: pages_actions.tools_layout(shell, i),
         "tools_clear": lambda: pages_actions.tools_clear(shell),
         "tools_safe": lambda: pages_actions.tools_mark_safe(shell),
         "plugin_toggle": lambda index: pages_actions.plugin_toggle(shell, index),
         "consent": lambda allowed: pages_actions.consent_answer(shell, allowed),
+        # Board 7's four-step onboarding ladder: advance, back, and the
+        # presence-mode toggle the presence step reuses the consent switch for.
+        "onboard_next": lambda: pages_actions.onboard_next(shell),
+        "onboard_back": lambda: pages_actions.onboard_back(shell),
+        "onboard_toggle": lambda: pages_actions.onboard_toggle(shell),
         "language": lambda code: pages_actions.language_set(shell, code),
         "text_scale": lambda scale: pages_actions.text_scale_set(shell, scale),
+        "contrast_set": lambda level: pages_actions.contrast_set(shell, level),
         "motion_toggle": lambda: pages_actions.motion_toggle(shell),
+        "gesture_rebind": lambda i: pages_actions.gesture_rebind(shell, i),
         "install_mode": lambda index: pages_actions.install_mode(shell, index),
+        "voice_auth_toggle": lambda on: pages_actions.voice_auth_toggle(shell, on),
+        "voice_auth_enroll": lambda: pages_actions.voice_auth_enroll(shell),
+        "voice_auth_delete": lambda: pages_actions.voice_auth_delete(shell),
+        "form_fill_apply": lambda: pages_actions.form_fill_apply(shell),
+        # Board 16's phone pairing: mint a code, pair a device, disconnect.
+        "phone_make_code": lambda: pages_actions.phone_make_code(shell),
+        "phone_pair": lambda: pages_actions.phone_pair(shell),
+        "phone_unpair": lambda: pages_actions.phone_unpair(shell),
+        # Board 22's installer: build a reviewed dependency plan and run it.
+        "installer_run": lambda: pages_actions.installer_run(shell),
+        # Board 14's OS-control switch: a gated toggle plus the physical confirm.
+        "os_control_toggle": lambda: pages_actions.os_control_toggle(shell),
+        "os_control_confirm": lambda: pages_actions.os_control_confirm(shell),
     }
 
 

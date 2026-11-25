@@ -137,6 +137,12 @@ from core.viseme               import VisemeStream
 from core.wake_word            import (
     WakeWordDetector, is_ready as wake_is_ready, install_and_download as wake_install,
 )
+from core.voice_auth           import (
+    VoiceAuth, is_verifiable_speech, MIN_SPEECH_SECONDS, SAMPLES_TO_ENROLL,
+    set_status as va_set_status,
+)
+from core.routine_scheduler    import RoutineScheduler
+from core.routines             import Routine
 
 # How long the assistant stays awake with no user speech before it auto-sleeps
 # again (wake-word mode only).
@@ -812,6 +818,42 @@ class JarvisLive:
         self.ui.on_wake_sleep_timeout = (  # (minutes: float) -> None
             self._ui_wake_sleep_timeout)
 
+        # ── Voice verification ───────────────────────────────────────────────
+        # A local voiceprint gate: while it is on and enrolled, nothing is
+        # streamed to the model until the owner's voice is verified. Off by
+        # default and zero-cost when off (the embedder is numpy-only and the
+        # gate is a boolean until enrollment + enable happen). The voiceprint
+        # never leaves the machine — see core/voice_auth.py.
+        from memory.config_manager import (
+            get_voice_auth_enabled,
+        )
+        from memory.voiceprint_store import default_store as _va_store
+
+        self._voice_auth = VoiceAuth(
+            store=_va_store, enabled_reader=get_voice_auth_enabled)
+        self._va_mode = "off"        # off / gate / enroll
+        self._va_state = "off"       # off / locked / verifying / verified
+        self._va_buffer = bytearray()
+        self._va_speech_s = 0.0
+        self._va_last_speech = 0.0
+        self._va_samples: list[bytes] = []
+        self._va_busy = False
+
+        # Scheduled routines (board 11). The store is local, gitignored user
+        # data; the scheduler is a daemon thread that polls it and hands a due
+        # routine to `_fire_routine`, which sends its payload to the session.
+        # Off-cost when the list is empty: the tick reads an empty store.
+        from memory.routine_store import default_store as _routine_store
+
+        self._routine_store = _routine_store()
+        self._routine_scheduler = RoutineScheduler(
+            self._routine_store, on_fire=self._fire_routine)
+        # UI control surface for the voice-verification card (board 14).
+        self.ui.on_voice_auth_toggle = self._ui_voice_auth_toggle
+        self.ui.on_voice_auth_enroll = self._ui_voice_auth_enroll
+        self.ui.on_voice_auth_delete = self._ui_voice_auth_delete
+        self._ui_set_voice_auth_state(self._va_snapshot_state())
+
     # ── Wake word: state machine ─────────────────────────────────────────────
 
     def _wake_state(self) -> dict:
@@ -916,6 +958,194 @@ class JarvisLive:
         return wake_install(logger=lambda m: print(f"[Wake] {m}"),
                             notify=lambda m: self.ui.write_log(f"SYS: {m}"))
 
+    # ── Voice verification ───────────────────────────────────────────────────
+    # The gate lives here, in the session owner, because it sits on the audio
+    # path: the mic callback buffers, a worker thread embeds and compares, and
+    # the state decides whether anything streams to the model. The policy and
+    # the voiceprint live in core/voice_auth.py and memory/voiceprint_store.py.
+
+    def _va_snapshot_state(self) -> str:
+        """The single status string the UI and the snapshot read."""
+        if not self._voice_auth.is_enabled():
+            return "off"
+        if self._va_mode == "enroll":
+            return "enrolling"
+        if not self._voice_auth.is_enrolled():
+            return "unenrolled"
+        return self._va_state
+
+    def _ui_set_voice_auth_state(self, state: str) -> None:
+        """Publish the state to the module-level status (read by the panel)."""
+        if state in ("locked", "verifying", "verified"):
+            self._va_state = state
+        try:
+            va_set_status(self._va_snapshot_state())
+        except Exception:
+            pass
+        try:
+            self.ui.set_voice_auth_state(self._va_snapshot_state())
+        except Exception:
+            pass
+
+    def _va_feed(self, indata, sr: int) -> None:
+        """Mic callback entry when the gate is on: buffer speech, never
+        stream. Splits into verification collection and enrollment collection."""
+        if self._va_mode == "enroll":
+            self._va_collect_enroll(indata, sr)
+        else:
+            self._va_collect(indata, sr)
+
+    def _va_collect(self, indata, sr: int) -> None:
+        """Accumulate verified speech; run a verification once enough is in.
+
+        Echo is rejected first: while the assistant speaks, the microphone
+        hears its own voice, and a gate that accepted that would authenticate
+        JARVIS to itself. Only speech the echo guard calls a different voice
+        enters the buffer.
+        """
+        level = _pcm_level(indata)
+        try:
+            if not is_verifiable_speech(self._echo, indata.tobytes(), sr, level):
+                return
+        except Exception:
+            return
+        now = time.monotonic()
+        # A stale buffer (no speech for a while) is dropped, not carried
+        # forward to be verified against audio that is no longer in the room.
+        if now - self._va_last_speech > 5.0:
+            self._va_buffer.clear()
+            self._va_speech_s = 0.0
+        self._va_last_speech = now
+        self._va_buffer += indata.tobytes()
+        self._va_speech_s += len(indata) / max(1, sr * 2)  # int16 = 2 bytes/sample
+        if self._va_speech_s >= MIN_SPEECH_SECONDS and not self._va_busy:
+            pcm = bytes(self._va_buffer)
+            self._va_buffer.clear()
+            self._va_speech_s = 0.0
+            self._va_busy = True
+            self._ui_set_voice_auth_state("verifying")
+            threading.Thread(target=self._va_run_verify, args=(pcm, sr),
+                             daemon=True).start()
+
+    def _va_run_verify(self, pcm: bytes, sr: int) -> None:
+        """Worker thread: embed + compare, then apply the result through the
+        thread-safe UI surface."""
+        try:
+            result = self._voice_auth.verify(pcm, sr)
+        except Exception as e:
+            self._va_busy = False
+            self._ui_set_voice_auth_state("locked")
+            self.ui.write_log(f"ERR: voice verification failed ({e})")
+            return
+        try:
+            if result.passed:
+                self._va_state = "verified"
+                self._ui_set_voice_auth_state("verified")
+                self.ui.write_log("Voice verified — you may speak.")
+            else:
+                self._va_state = "locked"
+                self._ui_set_voice_auth_state("locked")
+                self.ui.write_log(f"Voice not verified: {result.reason}")
+        finally:
+            self._va_busy = False
+
+    def _va_collect_enroll(self, indata, sr: int) -> None:
+        """Collect enrollment samples: each chunk of speech becomes one sample."""
+        level = _pcm_level(indata)
+        try:
+            if not is_verifiable_speech(self._echo, indata.tobytes(), sr, level):
+                return
+        except Exception:
+            return
+        now = time.monotonic()
+        if now - self._va_last_speech > 5.0:
+            self._va_buffer.clear()
+            self._va_speech_s = 0.0
+        self._va_last_speech = now
+        self._va_buffer += indata.tobytes()
+        self._va_speech_s += len(indata) / max(1, sr * 2)
+        if self._va_speech_s >= MIN_SPEECH_SECONDS:
+            self._va_samples.append(bytes(self._va_buffer))
+            self._va_buffer.clear()
+            self._va_speech_s = 0.0
+            self.ui.write_log(
+                f"Sample {len(self._va_samples)}/{SAMPLES_TO_ENROLL} recorded.")
+            if len(self._va_samples) >= SAMPLES_TO_ENROLL:
+                self._va_finish_enroll()
+
+    def _va_finish_enroll(self) -> None:
+        """Run the enrollment on a worker thread (embedding is not free)."""
+        samples = list(self._va_samples)
+        self._va_samples.clear()
+        threading.Thread(target=self._va_run_enroll, args=(samples,),
+                         daemon=True).start()
+
+    def _va_run_enroll(self, samples: list[bytes]) -> None:
+        try:
+            result = self._voice_auth.enroll(samples, SEND_SAMPLE_RATE)
+        except Exception as e:
+            self.ui.write_log(f"ERR: enrollment failed ({e})")
+            self._va_mode = "off"
+            self._ui_set_voice_auth_state(self._va_snapshot_state())
+            return
+        if result.ok:
+            self.ui.write_log(f"Voiceprint enrolled: {result.reason}")
+        else:
+            self.ui.write_log(f"Enrollment failed: {result.reason}")
+        self._va_mode = "off"
+        self._ui_set_voice_auth_state(self._va_snapshot_state())
+
+    def _ui_voice_auth_toggle(self, enabled: bool) -> str:
+        """Board 14's voice-verification switch. Returns a status sentence."""
+        from memory.config_manager import save_voice_auth_enabled
+        try:
+            ok = save_voice_auth_enabled(bool(enabled))
+        except Exception as e:
+            return f"Voice verification could not be saved ({e})"
+        if not ok:
+            return "Voice verification could not be saved"
+        if bool(enabled):
+            if not self._voice_auth.is_enrolled():
+                self.ui.write_log("Voice verification is on, but no voiceprint "
+                                  "is enrolled yet — register your voice first.")
+                return "Voice verification on (register your voice first)"
+            self._va_mode = "gate"
+            self._va_state = "locked"
+            self._ui_set_voice_auth_state("locked")
+            self.ui.write_log("Voice verification on — speak to verify.")
+            return "Voice verification on"
+        self._va_mode = "off"
+        self._va_state = "off"
+        self._ui_set_voice_auth_state("off")
+        self.ui.write_log("Voice verification off.")
+        return "Voice verification off"
+
+    def _ui_voice_auth_enroll(self) -> str:
+        """Start collecting enrollment samples from the microphone."""
+        if self._va_mode == "enroll":
+            return "Enrollment already in progress"
+        if not self._voice_auth.is_enabled():
+            return "Turn on voice verification before enrolling"
+        self._va_mode = "enroll"
+        self._va_samples = []
+        self._va_buffer.clear()
+        self._va_speech_s = 0.0
+        self._ui_set_voice_auth_state("enrolling")
+        self.ui.write_log("Speak naturally — recording samples for the voiceprint.")
+        return "Enrollment started — speak naturally"
+
+    def _ui_voice_auth_delete(self) -> str:
+        """Delete the voiceprint (owner-facing; confirm-gated by the UI)."""
+        try:
+            self._voice_auth.forget()
+        except Exception as e:
+            return f"Voiceprint could not be deleted ({e})"
+        self._va_mode = "off"
+        self._va_state = "off"
+        self._ui_set_voice_auth_state("off")
+        self.ui.write_log("Voiceprint deleted.")
+        return "Voiceprint deleted"
+
     def plugin_say(self, instruction: str) -> None:
         """
         Thread-safe speech channel for plugins: lets a plugin ask JARVIS to
@@ -942,6 +1172,51 @@ class JarvisLive:
             asyncio.run_coroutine_threadsafe(_say(), loop)
         except Exception as e:
             print(f"[PluginSay] {e}")
+
+    def _fire_routine(self, routine: Routine) -> None:
+        """Called BY the scheduler thread when a routine is due.
+
+        Runs on the scheduler's thread, so the payload is marshalled onto the
+        session's loop exactly like `plugin_say` — the same shape every other
+        cross-thread "say this" uses. The payload is the command text the user
+        stored; the session treats it as a user turn and Gemini answers it.
+        """
+        loop = getattr(self, "_loop", None)
+        if not loop or not self.session:
+            self.ui.write_log(f"[Routine] {routine.name} skipped (no session).")
+            return
+        text = str(routine.payload or "").strip()
+        if not text:
+            return
+
+        async def _say():
+            try:
+                await self.session.send_client_content(
+                    turns={"role": "user", "parts": [{"text": text}]},
+                    turn_complete=True,
+                )
+                self.ui.write_log(f"[Routine] {routine.name} fired.")
+            except Exception as e:
+                print(f"[Routine] {routine.name} failed: {e}")
+
+        try:
+            asyncio.run_coroutine_threadsafe(_say(), loop)
+        except Exception as e:
+            print(f"[Routine] {routine.name}: {e}")
+
+    async def _run_routine_scheduler(self) -> None:
+        """Start the routine scheduler for the session and stop it on exit.
+
+        The scheduler owns its own daemon thread; this task only brackets its
+        life so it does not outlive the session. When the task is cancelled
+        (the TaskGroup ends the session), the `finally` stops the thread.
+        """
+        self._routine_scheduler.start()
+        try:
+            while True:
+                await asyncio.sleep(3600)
+        finally:
+            self._routine_scheduler.stop()
 
     # ── stall watchdog ───────────────────────────────────────────────────────
 
@@ -1731,6 +2006,17 @@ class JarvisLive:
         loop = asyncio.get_event_loop()
 
         def callback(indata, frames, time_info, status):
+            # ── Voice-verification gate ─────────────────────────────────────
+            # When the voice gate is on and the session is locked (or
+            # enrollment is collecting samples), the microphone listens ONLY
+            # for the owner's voice: nothing is streamed to the model and the
+            # wake detector is not fed until verification passes. The heavy
+            # work (embedding + comparison) runs on a worker thread, so this
+            # callback stays a cheap buffer push — the same discipline the
+            # wake-word detector follows.
+            if getattr(self, "_va_mode", "off") in ("gate", "enroll"):
+                self._va_feed(indata, SEND_SAMPLE_RATE)
+                return
             # ── Wake-word gate ───────────────────────────────────────────────
             # While asleep, the mic audio NEVER goes to Gemini (nothing is
             # streamed, so JARVIS can't respond to speech not addressed to it and
@@ -2915,6 +3201,7 @@ class JarvisLive:
                     tg.create_task(self._run_background_monitor())
                     tg.create_task(_security_camera.watch(self.ui))
                     tg.create_task(self._run_proactive_mode())
+                    tg.create_task(self._run_routine_scheduler())
                     tg.create_task(self._run_sleep_watch())
                     if self._dashboard:
                         tg.create_task(self._relay_phone_audio())

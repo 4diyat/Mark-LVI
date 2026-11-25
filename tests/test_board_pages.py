@@ -259,13 +259,21 @@ def test_board_10_forgets_the_memory_it_is_showing(tmp_path, monkeypatch,
 # ── board 11: the pause is the engine's ─────────────────────────────────────
 
 def test_board_11_reads_the_pause_the_scheduler_reads(monkeypatch):
-    """Not a private copy: `actions.proactive`'s own persisted flag."""
+    """The routine list is the store's; the proactive pause is the engine's.
+
+    The scheduled routines come from `memory/routine_store.py` (the store is
+    the only writer). The proactive check is NOT a scheduled routine - it
+    fires on silence, not on a schedule - so its pause is read separately
+    through `suggestion_paused`, and the list does not claim a row for it.
+    """
     from ui import pages_people
 
     monkeypatch.setattr(pages_people, "suggestion_paused", lambda: True)
+    # The list reads the store; with no routines stored it is empty, and the
+    # pause is reported by its own reader, not as a routine row.
+    assert pages_people.suggestion_paused() is True
     rows = pages_people.routines()
-    assert rows and rows[0]["on"] is False, (
-        "the routine list says the proactive check is on while it is paused")
+    assert rows == [], "no scheduled routines are stored, so the list is empty"
 
 
 def test_board_11_pause_button_flips_the_engines_flag(monkeypatch, tmp_path):
@@ -284,6 +292,65 @@ def test_board_11_pause_button_flips_the_engines_flag(monkeypatch, tmp_path):
     assert pages_actions.routines_pause(Shell()) is True
     assert written == {"paused": True}, (
         f"the button wrote {written}; it must pause the engine")
+
+
+def test_board_13_form_fill_refuses_an_unreviewed_url(monkeypatch):
+    """Board 13's apply button builds a plan through the pure policy.
+
+    With no URL in the field it says so and returns False without touching the
+    browser — the review-first gate the board's strip promises.
+    """
+    from ui import pages_actions
+
+    monkeypatch.setattr(pages_actions, "_say", lambda shell, text: None)
+
+    class Panel:
+        _inputs = {}
+        def refresh(self):
+            pass
+
+    class Shell:
+        _panel = Panel()
+
+    assert pages_actions.form_fill_apply(Shell()) is False
+
+
+def test_board_13_form_fill_reviews_before_applying(monkeypatch):
+    """A reviewed plan is driven into the browser adapter.
+
+    The URL and three field values are read from the inputs, the plan is built
+    and reviewed (the "tinjau dulu" gate), then the adapter is called with the
+    reviewed plan's fields. A failed fill is reported and returns False.
+    """
+    from ui import pages_actions
+
+    called = {}
+
+    def fake_fill(page_url, fields):
+        called["page_url"] = page_url
+        called["fields"] = fields
+        return [type("R", (), {"selector": k, "ok": True, "detail": "ok"})()
+                for k in fields]
+
+    monkeypatch.setattr("actions.browser_form.fill_form_to_page", fake_fill)
+    monkeypatch.setattr(pages_actions, "_say", lambda shell, text: None)
+
+    class Panel:
+        _inputs = {
+            "hp_form_url": type("E", (), {"text": lambda self: "https://x.test/f"})(),
+            "hp_form_input:0": type("E", (), {"text": lambda self: "Alice"})(),
+            "hp_form_input:1": type("E", (), {"text": lambda self: "42"})(),
+            "hp_form_input:2": type("E", (), {"text": lambda self: "100"})(),
+        }
+        def refresh(self):
+            pass
+
+    class Shell:
+        _panel = Panel()
+
+    assert pages_actions.form_fill_apply(Shell()) is True
+    assert called["page_url"] == "https://x.test/f"
+    assert called["fields"]["#field0"] == "Alice"
 
 
 # ── board 12: the clipboard is read, and the sensitive label is a pattern ───
@@ -354,6 +421,27 @@ def test_board_14_names_the_levels_the_gate_returns():
     names = [row[0] for row in pages_admin.levels()]
     assert names == list(risk_policy.LEVELS), (
         f"the page draws {names}, the gate returns {list(risk_policy.LEVELS)}")
+
+
+def test_board_14_os_control_switch_is_gated_and_confirm_arms_it(panel_module,
+                                                                 monkeypatch):
+    """The OS-control switch draws a toggle + confirm; the policy gates it."""
+    from core import os_control
+
+    tray_panel, tray_paint = panel_module
+    panel = tray_panel.TrayPanel({})
+    panel.open()
+    panel.set_page("security")
+    tray_paint.paint(panel, panel.snapshot)
+
+    assert "sec_os_toggle" in panel._buttons, "the switch must be drawn"
+    assert "sec_os_confirm" in panel._buttons, "the physical confirm must be drawn"
+    assert "va_card" in panel._labels, "VERIFIKASI SUARA is on the guest card"
+
+    # the policy refuses a bare enable, allows a confirmed one, always allows disable.
+    assert os_control.request(False, True, confirmed=False).allowed is False
+    assert os_control.request(False, True, confirmed=True).allowed is True
+    assert os_control.request(True, False, confirmed=False).allowed is True
 
 
 # ── board 15: three real settings ───────────────────────────────────────────
@@ -468,6 +556,54 @@ def test_board_16_toggle_writes_the_loaders_store(monkeypatch):
     assert written == {"quick_notes": True}
 
 
+def test_board_16_phone_pairing_mints_and_pairs(monkeypatch):
+    """Board 16's pairing controls drive the pure policy end to end.
+
+    Generate mints a one-time code the policy will accept; pair consumes it and
+    records a device; unpair removes it. Each step repaints so the card and the
+    code box agree with the session's state.
+    """
+    from ui import pages_actions
+
+    monkeypatch.setattr(pages_actions, "_say", lambda shell, text: None)
+
+    class Panel:
+        def refresh(self):
+            pass
+
+    class Shell:
+        _panel = Panel()
+
+    # Mint a code, then pair against it.
+    assert pages_actions.phone_make_code(Shell()) is True
+    assert pages_actions.phone_pair(Shell()) is True
+    session = Shell._panel._phone_pair
+    assert session.paired_names() == ["Ponsel"]
+
+    # Unpair drops the most recent device and returns the card to idle.
+    assert pages_actions.phone_unpair(Shell()) is True
+    assert session.paired_names() == []
+    # With no device left, another unpair says so and returns False.
+    assert pages_actions.phone_unpair(Shell()) is False
+
+
+def test_board_16_phone_pair_without_a_code_is_refused(monkeypatch):
+    """Pairing with no pending code says so and returns False."""
+    from ui import pages_actions
+
+    monkeypatch.setattr(pages_actions, "_say", lambda shell, text: None)
+
+    class Panel:
+        def refresh(self):
+            pass
+
+    class Shell:
+        _panel = Panel()
+
+    assert pages_actions.phone_pair(Shell()) is False
+    assert pages_actions.phone_unpair(Shell()) is False
+
+
 def test_board_16_rows_report_manifest_facts_not_provenance(panel_module):
     """The row's second line is the version and the SECURITY LEVEL.
 
@@ -493,20 +629,7 @@ def test_board_16_rows_report_manifest_facts_not_provenance(panel_module):
 
 ABSENCE_PAGES = [
     # (page, the label key that carries the sentence, a word it must contain)
-    ("tools", "tl_snap_absent", ("belum", "not", "does not")),
     ("gestures", "gs_absent", ("klik", "click", "drawing", "gambar")),
-    # Board 13's absence moved INTO the strip the artboard draws at 578 and
-    # into each of its three field rows: the page keeps b13's geometry and
-    # says in it that nothing is applied to a form.
-    ("help", "hp_preview", ("belum", "not", "nothing")),
-    ("security", "sec_os", ("tidak", "no ", "not")),
-    ("plugins", "pl_phone", ("belum", "no ", "not")),
-    # THE THIRD COLUMN, not the second. `b15()` draws the gesture's ACTION in
-    # the middle ("Panggil antarmuka" at x=250, cyan) and "ubah" at 416 on the
-    # right; the first version of this page wrote "fixed" into the middle
-    # column and dropped the action entirely — and this line asserted the bug.
-    # "fixed" belongs where "ubah" was, because there is no rebinding.
-    ("access", "ac_gest_edit:0", ("tetap", "fixed")),
 ]
 
 
@@ -527,6 +650,55 @@ def test_a_page_that_cannot_do_something_says_so_on_the_page(
     assert text, f"board page {page!r} drew nothing where the absence belongs"
     assert any(word in text for word in words), (
         f"{page}.{label_key} does not read as an absence: {text!r}")
+
+
+def test_board_22_installer_builds_and_reviews_a_plan(monkeypatch):
+    """Board 22's install button drives the pure plan policy.
+
+    With every dependency present, the plan needs no install and the status is
+    "installed". The review gate is exercised: the plan is reviewed before the
+    adapter is ever called, and a missing-package plan reports the count.
+    """
+    from ui import pages_actions
+
+    monkeypatch.setattr(pages_actions, "_say", lambda shell, text: None)
+    # Every module available -> nothing missing.
+    monkeypatch.setattr("core.installer._available", lambda module: True)
+
+    class Panel:
+        def refresh(self):
+            pass
+
+    class Shell:
+        _panel = Panel()
+
+    assert pages_actions.installer_run(Shell()) is True
+    assert Shell._panel._install_state["status"] == "installed"
+    assert Shell._panel._install_state["count"] == 0
+
+
+def test_board_22_installer_reports_missing_count(monkeypatch):
+    """A config with missing packages reports the count and runs the adapter."""
+    from ui import pages_actions
+
+    monkeypatch.setattr(pages_actions, "_say", lambda shell, text: None)
+    monkeypatch.setattr("core.installer._available", lambda module: False)
+    monkeypatch.setattr(
+        "actions.installer_plan.run_install_plan",
+        lambda plan: [type("R", (), {"ok": True, "detail": "ok"})()
+                      for _ in plan.missing])
+
+    class Panel:
+        def refresh(self):
+            pass
+
+    class Shell:
+        _panel = Panel()
+
+    assert pages_actions.installer_run(Shell()) is True
+    state = Shell._panel._install_state
+    assert state["status"] == "installed"
+    assert state["count"] > 0
 
 
 def test_board_22_choosing_a_mode_is_the_presence_switch(monkeypatch):
@@ -560,10 +732,9 @@ def test_board_7_records_the_answer_and_does_not_repeat_the_question(
     assert pages_people.consent_given() is True
 
 
-def test_board_7_says_the_flow_is_one_step_not_four(panel_module):
-    """The artboard says "Langkah 2 dari 4". There is no four-step flow, and a
-    page that printed "2 dari 4" would be describing a program that does not
-    exist."""
+def test_board_7_draws_the_four_step_onboarding_ladder(panel_module):
+    """Board 7's artboard is a four-step ladder. The step line states the real
+    count, the flow walks all four steps, and the summary reads the record."""
     tray_panel, tray_paint = panel_module
 
     panel = tray_panel.TrayPanel({})
@@ -571,30 +742,52 @@ def test_board_7_says_the_flow_is_one_step_not_four(panel_module):
     panel.set_page("consent")
     tray_paint.paint(panel, panel.snapshot)
 
-    # THE STEP LINE IS THE SHARED SUBTITLE. `b07()` passes "Langkah 2 dari 4"
-    # to `panel_head()`, so the page's step count belongs in the header's second
-    # line — the page having its own copy was the duplicate.
+    # THE STEP LINE STATES THE ACTUAL LADDER — "Langkah 1 dari 4", the flow's
+    # own total, never a static "1 dari 1" that would describe a one-step build.
+    from core.onboarding import STEPS, Onboarding
     step = panel._labels["subtitle"].text()
-    assert "4" not in step, f"the page claims a four-step flow: {step!r}"
-    assert "1" in step, f"the page does not say how many steps there are: {step!r}"
+    assert "4" in step, f"the page does not claim the four-step flow: {step!r}"
 
-    # AND THE SENTENCE COMES FROM THE CATALOGUE, not from a literal in the
-    # painter: change the catalogue and the page must change with it.
+    # THE FOUR SEGMENTS ARE DRAWN, and the flow walks welcome → mic → presence
+    # → done. The step indicator fills as the ladder advances.
+    for index in range(4):
+        assert f"cn_step:{index}" in panel._labels
+    flow = Onboarding.start()
+    assert flow.total == 4
+    assert list(STEPS) == ["welcome", "mic", "presence", "done"]
+
+    # AND THE STEP LINE IS FORMATTED FROM THE FLOW'S PROGRESS, not a literal:
+    # it reports the current step against the ladder's total.
     from core import i18n
-    from ui import pages_paint
-    from ui.tray_pages import GEOMETRY, PALETTES
-
-    # The header's subtitle for this page must BE the catalogue's step string,
-    # not a literal typed into the model: swap the catalogue entry and the
-    # subtitle has to follow it.
     from ui.tray_panel_model import PAGE_TITLES
 
     _title, sub_key = PAGE_TITLES["consent"]
-    assert sub_key == "ui.page.consent.subtitle", (
-        f"board 7's subtitle is {sub_key!r}, not the step sentence")
-    assert i18n.label(sub_key) == panel._labels["subtitle"].text(), (
-        "the step line is not the catalogue's sentence")
-    _ = (pages_paint, GEOMETRY, PALETTES)
+    assert sub_key == "ui.page.consent.subtitle"
+    assert "{n}" in i18n.label(sub_key) and "{total}" in i18n.label(sub_key), (
+        "the step line is not parameterised by the flow's progress")
+    assert step == i18n.label(sub_key, n=1, total=4), (
+        f"the step line is {step!r}, not the flow's 1-of-4")
+
+
+def test_board_7_onboarding_walk_records_each_step(panel_module):
+    """The four-step flow records mic consent and the presence mode, and its
+    summary is an honest readout of the record."""
+    from core.onboarding import Onboarding
+
+    flow = Onboarding.start()
+    # welcome: navigation, advances.
+    flow = flow.answer("next")
+    assert flow.current == "mic"
+    # mic: consent, advances to presence.
+    flow = flow.answer(True)
+    assert flow.current == "presence"
+    # presence: a mode, advances to done.
+    flow = flow.answer("focus")
+    assert flow.current == "done"
+    assert flow.presence_mode == "focus"
+    # the summary names what was chosen, honestly.
+    lines = " ".join(flow.summary_lines())
+    assert "consented" in lines and "focus" in lines and "4" in lines
 
 
 # ── the more-list reaches every page ────────────────────────────────────────

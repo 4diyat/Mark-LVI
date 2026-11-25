@@ -88,13 +88,12 @@ class TrayPanel:
                  logger: Callable[[str], None] | None = None):
         self._actions = dict(actions)
         # `theme` is a RESOLVED palette name here, always one of PALETTES. The
-        # three-state setting (`auto`/`dark`/`light`) is `set_theme`'s job: a
-        # widget that has to consult the OS on every paint is a widget that
-        # changes colour halfway through somebody's morning.
         self._requested = "dark"
         self._theme = theme if theme in PALETTES else "dark"
         # `theme` above is a PALETTE; `_requested` is the three-state SETTING.
         self._requested = theme if theme in THEMES else "dark"
+        # HIGH CONTRAST is orthogonal to the theme: it is a MODIFIER on top of
+        self._high_contrast = False
         self._app = app
         self._on_close = on_close
         self._logger = logger
@@ -104,20 +103,18 @@ class TrayPanel:
         self._page = PAGE_MAIN
         self._snapshot: Snapshot = Snapshot()
         self._notes: list[str] = []
+        # Board 7's onboarding ladder lives ON THE PANEL, not in a store: the
+        self._onboarding = None
         # Every widget whose text is a VALUE rather than a constant, so
-        # `_paint` has one list to walk instead of a dozen attributes that
-        # someone will forget to update.
         self._labels: dict = {}
         self._buttons: dict = {}
+        # Text inputs (board 11 builder): a QLineEdit holds and returns text.
+        self._inputs: dict = {}
         # What the last click on a memory or a search chose. See
-        # `ui/panel_target.py` — extracted because it is view state, and it was
-        # the second thing to push this module over the 600-line ceiling.
         from ui.panel_target import PanelTarget
 
         self._view = PanelTarget()
         # Board 12's "Tandai aman": a DISPLAY decision that lasts until the
-        # clipboard text changes or the panel is reopened. See
-        # `pages_actions.tools_mark_safe` for why it cannot be more than that.
         self._marked_safe = False
         self._error = ""
 
@@ -189,13 +186,9 @@ class TrayPanel:
     # ── lifecycle ────────────────────────────────────────────────────────────
 
     def refresh(self) -> Snapshot:
-        """Re-read the world and put it on the widgets.
-
-        Safe before `build()`: the snapshot is taken and stored, and the paint
-        happens on the next build. That matters because `main.py` calls this on
-        every presence change, including the ones before anyone opened the
-        panel.
-        """
+        """Re-read the world and put it on the widgets. Safe before `build()`:
+        the snapshot is stored and painted on the next build, so `main.py`
+        can call it on every presence change before anyone opens the panel."""
         try:
             self._snapshot = snapshot()
         except Exception as e:                       # noqa: BLE001
@@ -289,48 +282,46 @@ class TrayPanel:
         return True
 
     def set_theme(self, theme: str) -> bool:
-        """Dark ↔ light ↔ auto (board 17a). Unknown themes are refused.
-
-        THREE VALUES, TWO PALETTES. `auto` is not a palette: it is the answer
-        to "which one does the OS use", asked once per call and never per
-        paint. `self._requested` keeps what the user asked for (so the panel
-        can say "auto"), `self._theme` keeps what is on screen.
-        """
+        """Dark ↔ light ↔ auto. `_base_theme` resolves the setting; `_theme`
+        is what is on screen, which is "high" when the contrast modifier is on."""
         name = str(theme or "").strip().lower()
         if name not in THEMES:
             return False
         self._requested = name
-        self._theme = resolve_theme(name)
+        self._base_theme = resolve_theme(name)
+        self._theme = "high" if self._high_contrast else self._base_theme
         if self._window is not None:
             self._style()
             self._paint(self._snapshot)
         return True
 
+    def set_high_contrast(self, enabled: bool) -> bool:
+        """Board 15's contrast level. A MODIFIER on the palette: the theme
+        cycle keeps working underneath and turning it off restores the theme."""
+        self._high_contrast = bool(enabled)
+        self._theme = "high" if self._high_contrast else self._base_theme
+        if self._window is not None:
+            self._style()
+            self._paint(self._snapshot)
+        return True
+
+    @property
+    def high_contrast(self) -> bool:
+        return self._high_contrast
+
     def press_theme(self) -> str:
-        """The header control: cycle, then tell the caller so it can be saved.
-
-        SAVED BY THE CALLER, not here. `ui/` must not import
-        `memory.config_manager` on the click path — the panel is one widget and
-        the config file is one file, and a surface that writes config is a
-        surface that can be made to write it on a thread nobody expects.
-
-        When no handler is wired (a test, a host that has not asked for it) the
-        cycle still happens: the palette change is visible either way, and the
-        worst case is a choice that does not survive a restart — reported
-        through `_note`, never raised.
-        """
+        """Cycle the theme and tell the caller so it can save. Saved by the
+        caller, not here: `ui/` must not import `config_manager` on the click
+        path. With no handler wired the cycle still happens — the palette
+        change is visible either way, reported through `_note`, never raised."""
         name = self.cycle_theme()
         self._call("theme", name)
         return name
 
     def cycle_theme(self) -> str:
-        """auto -> dark -> light -> auto, and say what it is now.
-
-        Cycles rather than showing three segments: the header has room for one
-        28 px control and the segments already belong to the presence mode. A
-        third segmented control in the same header would make two rows of
-        three-letter words that look identical.
-        """
+        """auto -> dark -> light -> auto. Cycles rather than segments: the
+        header has room for one 28 px control and three segments there would
+        be two rows of identical three-letter words."""
         order = THEMES
         try:
             index = order.index(self._requested)
@@ -348,10 +339,6 @@ class TrayPanel:
 
     def _call(self, key: str, *args):
         # A PAGE ACTION FIRST, THEN THE SHELL'S HANDLERS.
-        #
-        # Switching pages, remembering which memory board 10 shows and storing a
-        # hit list are the panel's own state; every host that builds a panel
-        # would otherwise have to wire them, including the tests.
         local = self._local_action(key)
         if local is not None:
             return local(*args)
@@ -365,12 +352,9 @@ class TrayPanel:
             self._note(f"{key!r} failed — {type(e).__name__}: {e}")
 
     def _local_action(self, key: str):
-        """The handlers the panel owns. None for anything it does not.
-
-        THE BOUNDARY IS "DOES IT NEED THE SHELL". Switching pages and picking a
-        row are panel state; everything that reaches a store goes to the shell,
-        because the shell is what owns those modules.
-        """
+        """Handlers the panel owns. The boundary is "does it need the shell":
+        page switching is panel state; anything reaching a store goes to the
+        shell, which owns those modules."""
         if key == "page":
             return lambda name: self.set_page(str(name))
         if key == "memory_open":
@@ -486,13 +470,6 @@ class TrayPanel:
                                         _t("ui.panel.title"))
         self._labels["subtitle"] = _placed(window, QLabel, 24, 46, 412, 20, "")
         # THE THEME SWITCH. Board 17a draws the same panel in light colours and
-        # the mockup has no button for it, because a mockup cannot click. This
-        # one is a 30 px control in the header, where it is out of the way of
-        # every reading path, and it cycles auto -> dark -> light.
-        #
-        # Without it the light palette existed and NOBODY COULD REACH IT: the
-        # settings drawer that would have held the switch is deleted, and
-        # `set_theme` was a method only a test called.
         theme_button = QPushButton(window)
         theme_button.setGeometry(408, 22, 28, 24)
         theme_button.setToolTip(_t("ui.panel.theme"))
@@ -504,8 +481,6 @@ class TrayPanel:
         # a segmented control, not three checkboxes and not a dropdown.
         for index, mode in enumerate(MODE_ORDER):
             # The artboard's own three words. A mode label is not translated
-            # because "Aktif / Fokus / Senyap" is what board 5 draws in every
-            # locale; the catalogue carries them anyway for the day it is.
             button = QPushButton(_t(f"ui.panel.mode.{mode}") or MODE_LABELS[mode],
                                  window)
             button.setGeometry(24 + index * 138, 74, 136, 38)
@@ -540,18 +515,16 @@ class TrayPanel:
         was up is not overruled by the file the next time they click the tray.
         """
         try:
-            from memory.config_manager import get_ui_theme
+            from memory.config_manager import get_high_contrast, get_ui_theme
 
             self.set_theme(get_ui_theme())
+            # High contrast is orthogonal, so it is applied AFTER the theme
+            if get_high_contrast():
+                self.set_high_contrast(True)
         except Exception as e:                       # noqa: BLE001
             self._note(f"saved theme not applied — {type(e).__name__}: {e}")
 
     # ── painting ─────────────────────────────────────────────────────────────
-    #
-    # The drawing lives in `ui/tray_paint.py`. It is pure of state — it reads a
-    # Snapshot and writes widgets — so keeping it here only meant this module
-    # held two jobs and sat 43 lines over the 600-line ceiling. The methods
-    # below are the surface the rest of the file (and the tests) use.
 
     def _paint(self, snap: Snapshot) -> None:
         paint(self, snap)
