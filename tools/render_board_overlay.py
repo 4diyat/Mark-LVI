@@ -165,6 +165,18 @@ def render_svg(svg: str, scale: int = 2) -> Image.Image:
     return img
 
 
+def _inside(widget, page) -> bool:
+    """Whether `page` is `widget` or one of its ancestors."""
+    node = widget
+    for _ in range(12):                          # a page is never this deep
+        if node is None:
+            return False
+        if node is page:
+            return True
+        node = getattr(node, "_parent", None)
+    return False
+
+
 def widget_boxes(page: str) -> list[tuple[float, float, float, float, str, str, bool]]:
     """Every visible widget the built page places, in artboard coordinates."""
     from tests.qtstub import fresh_ui, restore_ui
@@ -182,7 +194,15 @@ def widget_boxes(page: str) -> list[tuple[float, float, float, float, str, str, 
             for key, widget in bucket.items():
                 if not widget.isVisible():
                     continue
-                if widget._parent is not panel._pages.get(page):
+                # WIDGETS INSIDE A SCROLLING COLUMN ARE STILL ON THE PAGE.
+                # The first version required a widget's parent to be the page
+                # itself, which was true when every label was placed absolutely.
+                # After the memory page moved onto `components.scroll_list`, its
+                # rows became children of a viewport's inner widget and the tool
+                # went blind — it printed the ARTBOARD's six example cards and
+                # looked like the page was unchanged. A widget is on the page if
+                # the page is somewhere above it in the parent chain.
+                if not _inside(widget, panel._pages.get(page)):
                     continue
                 text = widget.text() if hasattr(widget, "text") else ""
                 # ALIGNMENT AND TYPE SIZE ARE PART OF THE PLACEMENT. Qt centres

@@ -32,7 +32,26 @@ def _labels(panel):
     return panel._labels
 
 def paint_memory(panel, snap) -> None:
-    """Board 9: the count, the rows that fit, and the remainder."""
+    """Memori: the section marker, the actions, and the rows the store holds.
+
+    WHAT THIS NO LONGER DOES
+        It used to draw exactly `pages_memory.LIST_ROWS` cards, hide the rest,
+        and put "dan N lagi" in the band above the divider. That was a truthful
+        workaround for a container that could not scroll — and a workaround
+        that gets worse as the store grows, because with twelve memories the
+        panel showed half and with twelve hundred it would say "dan 1.194 lagi".
+
+        The list is now a scrolling column (`components.scroll_list`) and every
+        entry gets a card. `populate_memory` rebuilds it on each paint, because
+        `entries()` re-sorts newest-first on every read and a rebuilt list is
+        the only version that cannot wire a cross to the wrong memory.
+
+    WHAT THIS STILL DOES
+        The section marker, the two pills' labels, and nothing else. The header
+        above already carries the count (`b09()` passes "12 hal yang JARVIS
+        ingat" to `panel_head`), formatted from the store at snapshot time —
+        one count, one place.
+    """
     from ui import pages_memory
 
     labels = _labels(panel)

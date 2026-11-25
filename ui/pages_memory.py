@@ -116,83 +116,176 @@ def details(category: str, key: str) -> list[tuple[str, str, str]]:
 # that the functions above do not already answer.
 
 def build_memory(panel, page) -> None:
-    """Board 9, transcribed: six 412x62 cards from y=106 at pitch 72.
+    """The memory list: a section marker and a COLUMN THAT SCROLLS.
 
-    THE NUMBERS ARE THE DRAWING'S. `ui/board_geometry.BOARDS["memory"]` is
-    generated from `build.py: b09()`, and `tests/test_board_conformance.py`
-    compares this page against it. The first version of this function placed
-    the list at y=62 — the top of the panel — so the section header printed
-    over the first card and the last two rows fell past the artboard's own
-    divider. Nothing failed, because the only thing checking this page was
-    about to be written.
+    WHAT CHANGED FROM THE ARTBOARD BUILD, AND WHY
+        The previous version drew `LIST_ROWS` (six) fixed cards at the
+        artboard's pitch 72 and put "dan N lagi" in the band above the divider.
+        Both numbers came from `b09()`, and both were wrong for the same
+        reason: they describe a PAGE, not a list. A memory store has no upper
+        bound. Six rows and a counter mean that with twelve memories the panel
+        shows half and mentions the rest; with twelve hundred it mentions
+        ~1,194.
 
-    NO TITLE IS DRAWN HERE. The panel's shared header already carries the
-    page's name and subtitle from `n05`'s (24,34)/(24,54); this page used to
-    add a second copy eight pixels below it.
+        `docs/design/00-principles.md` rule 2 says everything that grows
+        scrolls. So the list is a `components.scroll_list` and the counter is
+        gone — not because counting is wrong, but because counting was
+        compensation for a container that could not scroll.
+
+    WHAT STAYED
+        The section marker above the list, the two pills below it, and the
+        order of the cards: newest first, key over value, the cross on the
+        right. Those are the design; the scroll is how it survives contact
+        with a real store.
+
+    THE HEADER STILL CARRIES THE COUNT. `b09()` passes "12 hal yang JARVIS
+    ingat" to `panel_head()`, and the shared header formats that from the
+    store at paint time. This page does not repeat it: one count, one place.
     """
+    from PyQt6.QtCore import Qt
     from PyQt6.QtWidgets import QLabel, QPushButton
 
-    from ui.tray_pages import _at
+    from ui import components, tokens
+    from ui.page_kit import at, text_box
 
     page.hide()
     panel._pages["memory"] = page
-    card = BOARDS["memory"]
-    first = card["rects"][0]                    # (24, 106, 412, 62, 12)
-    pitch = card["rects"][1][1] - first[1]      # 72, read not assumed
+    palette = PALETTES["dark"]
 
     panel._labels["mem_section"] = at(
-        page, QLabel, text_box(24, 92, 10, width=240), "")
+        page, QLabel, text_box(tokens.S5, tokens.HEAD_H, tokens.LABEL, width=240), "")
 
-    for index in range(LIST_ROWS):
-        y = first[1] + index * pitch
-        box = _at(page, QLabel, first[0], y, first[2], first[3], "")
-        box.setStyleSheet(f"background:{PALETTES['dark']['card']};"
-                          f"border-radius:{first[4]}px;")
-        panel._labels[f"mem_card:{index}"] = box
-        # The artboard's own offsets: label at +24, value at +46, both x+20.
-        panel._labels[f"mem_key:{index}"] = _at(
-            page, QLabel, first[0] + 20, y + 16, 300, 16, "")
-        panel._labels[f"mem_val:{index}"] = _at(
-            page, QLabel, first[0] + 20, y + 36, 300, 20, "")
-        # The row's own affordance is the small cross the artboard draws at
-        # x=400 (a `path`, so it is not in the rect table) — a 24 px target on
-        # the card's right edge. Its label is the row's key, so a screen reader
-        # says which fact it forgets.
-        forget = QPushButton("", page)
-        forget.setGeometry(392, y + 18, 32, 28)
-        forget.clicked.connect(
-            lambda _checked=False, i=index: panel._call("memory_open", i))
-        panel._buttons[f"mem_open:{index}"] = forget
-        # THE CHEVRON the artboard draws at (400, y+22): a double arrow
-        # (M400 {y+22} l8 8 M408 {y+22} l-8 8) marking the row as openable.
-        # The button above is the click target; this label is its visual
-        # glyph, drawn at the artboard's coordinate and in the muted token.
-        chev = QLabel(page)
-        chev.setGeometry(398, y + 20, 18, 18)
-        chev.setStyleSheet(
-            f"color:{PALETTES['dark']['muted']};background:transparent;"
-            f"font-size:14px;")
-        chev.setText("»")
-        panel._labels[f"mem_chev:{index}"] = chev
+    # The column starts under the section marker and ends above the actions.
+    list_top = tokens.HEAD_H + tokens.S6
+    list_height = tokens.PANEL_H - tokens.ACTION_H - list_top
+    viewport, column = components.scroll_list(
+        page, x=tokens.S5, y=list_top,
+        width=tokens.CONTENT_W, height=list_height)
+    panel._labels["mem_list"] = viewport
 
-    # The artboard's "dan N lagi" line sits between the last card and the
-    # divider: 466+62 = 528, divider 556, so 530..554 is the only free band.
-    panel._labels["mem_more"] = _at(page, QLabel, 24, 532, 412, 16, "")
-
-    # The divider and the two 200 px pills, exactly where b09 draws them.
+    # The action band: the divider, then two pills. Sizes from tokens, so the
+    # pill height and the divider's inset cannot drift from the rest of the app.
     rule = QLabel(page)
-    rule.setGeometry(24, 556, 412, 1)
-    rule.setStyleSheet(f"background:{PALETTES['dark']['line']};")
+    rule.setGeometry(tokens.S5, tokens.PANEL_H - tokens.ACTION_H,
+                     tokens.CONTENT_W, 1)
+    rule.setStyleSheet(f"background:{palette['line']};")
     panel._labels["mem_rule"] = rule
 
-    panel._buttons["mem_add"] = QPushButton("", page)
-    panel._buttons["mem_add"].setGeometry(24, 574, 200, 40)
-    panel._buttons["mem_add"].clicked.connect(lambda: panel._call("memory_add"))
-    panel._buttons["mem_clear"] = QPushButton("", page)
-    panel._buttons["mem_clear"].setGeometry(236, 574, 200, 40)
-    panel._buttons["mem_clear"].clicked.connect(
-        lambda: panel._call("memory_clear"))
+    pill_w = (tokens.CONTENT_W - tokens.S3) // 2      # 200 each, 12 apart
+    add = QPushButton("", page)
+    add.setGeometry(tokens.S5, tokens.PANEL_H - tokens.ACTION_H + tokens.S2,
+                    pill_w, tokens.PILL_H_SMALL)
+    add.setStyleSheet(components.pill_style(palette, primary=False))
+    add.clicked.connect(lambda: panel._call("memory_add"))
+    panel._buttons["mem_add"] = add
 
+    clear = QPushButton("", page)
+    clear.setGeometry(tokens.S5 + pill_w + tokens.S3,
+                      tokens.PANEL_H - tokens.ACTION_H + tokens.S2,
+                      pill_w, tokens.PILL_H_SMALL)
+    clear.setStyleSheet(components.pill_style(palette, primary=False))
+    clear.clicked.connect(lambda: panel._call("memory_clear"))
+    panel._buttons["mem_clear"] = clear
+
+    # THE ROWS ARE BUILT BY THE PAINTER, not here. A card's text comes from the
+    # store, and the store must be read when the page is DRAWN: a memory added
+    # while the panel is open has to appear without rebuilding the page. The
+    # builder's job is the frame; `populate_memory` fills it.
+    panel._memory_column = column
+    _ = Qt
+
+
+def populate_memory(panel) -> None:
+    """Rebuild the memory rows from the store. Called on every paint.
+
+    WHY IT REBUILDS RATHER THAN UPDATES. `entries()` returns a list that is
+    re-sorted newest-first on every read, so row 3 is a different memory after
+    one deletion. Updating text in place would leave the crosses wired to the
+    order they were built in — and a click would delete something the user
+    never pointed at. Rebuilding from the current list is the only version that
+    cannot do that.
+
+    IT IS ALSO WHY THE LIST CAN BE ANY LENGTH. There is no `LIST_ROWS` here:
+    every entry gets a card, and the column scrolls. Six is how many are
+    visible; it is not how many exist.
+    """
+    from PyQt6.QtWidgets import (QHBoxLayout, QLabel, QPushButton,
+                                 QVBoxLayout, QWidget)
+
+    from ui import components, tokens
+    from ui.tray_panel_model import _t
+
+    column = getattr(panel, "_memory_column", None)
+    if column is None:                       # page never built: nothing to fill
+        return
+
+    # Clear what the last paint put here. The stretch spacer is re-added at the
+    # end so the cards stay top-aligned instead of spreading down the column.
+    while column.count():
+        item = column.takeAt(0)
+        widget = item.widget() if item is not None else None
+        if widget is not None:
+            widget.setParent(None)
+            widget.deleteLater()
+
+    palette = PALETTES["dark"]
+    rows = entries()
+
+    if not rows:
+        # AN EMPTY STORE GETS A CARD, NOT A BLANK PAGE. The artboard draws six
+        # cards whether or not there is anything in them; an empty list is a
+        # fact to state, not a reason to render an empty section.
+        empty = QLabel(_t("ui.page.memory.empty_row"))
+        empty.setStyleSheet(
+            f"color:{palette['muted']};font-size:{tokens.META}px;"
+            f"background:{palette['card']};border-radius:{tokens.R_CARD}px;"
+            f"border:1px solid {palette['line']};padding:{tokens.S4}px;")
+        empty.setWordWrap(True)
+        empty.setMinimumHeight(tokens.CARD_H_2LINE)
+        column.addWidget(empty)
+        column.addStretch(1)
+        return
+
+    for index, row in enumerate(rows):
+        card = QWidget()
+        card.setStyleSheet(components.card_style(palette))
+        card.setMinimumHeight(components.card_height(2))
+        card_layout = QHBoxLayout(card)
+        card_layout.setContentsMargins(tokens.CARD_PAD, 0, tokens.S4, 0)
+        card_layout.setSpacing(tokens.S2)
+
+        text = QWidget(card)
+        text_column = QVBoxLayout(text)
+        text_column.setContentsMargins(0, 0, 0, 0)
+        text_column.setSpacing(tokens.S1)
+
+        key = QLabel(str(row.get("key") or ""))
+        key.setStyleSheet(f"color:{palette['muted']};"
+                          f"font-size:{tokens.META}px;")
+        value = QLabel(str(row.get("value") or ""))
+        value.setStyleSheet(f"color:{palette['text']};"
+                            f"font-size:{tokens.CARD_TITLE}px;"
+                            f"font-weight:{tokens.WEIGHT_LABEL};")
+        value.setWordWrap(True)
+        text_column.addWidget(key)
+        text_column.addWidget(value)
+        card_layout.addWidget(text, 1)
+
+        # The cross keeps the row's IDENTITY, not its index: `i=index` would
+        # bind to the position, and the list re-sorts on every read.
+        forget = QPushButton(_t("ui.page.memory.open"))
+        forget.setFixedSize(tokens.S7, tokens.S6)
+        forget.setStyleSheet(f"QPushButton{{background:transparent;"
+                             f"border:none;color:{palette['muted']};"
+                             f"font-size:{tokens.META}px;}}")
+        forget.clicked.connect(
+            lambda _checked=False, r=dict(row): panel._call(
+                "memory_open_id", r.get("category", ""), r.get("key", "")))
+        card_layout.addWidget(forget, 0)
+
+        column.addWidget(card)
+
+    column.addStretch(1)
 
 def build_memory_one(panel, page) -> None:
     """Board 10, transcribed from `b10()` — seven bands, three buttons.

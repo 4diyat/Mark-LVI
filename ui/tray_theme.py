@@ -72,4 +72,48 @@ def _rgba(hex_colour: str, alpha: float) -> str:
     return f"rgba({r}, {g}, {b}, {alpha:.2f})"
 
 
-__all__ = ["THEMES", "_rgba", "resolve_theme"]
+# ── the theme control ───────────────────────────────────────────────────────
+# FOUR METHODS THAT WERE ON `TrayPanel` AND NEVER NEEDED TO BE. They are policy
+# about a three-valued setting with two palettes, and none of them touch a
+# widget: `apply` takes the state it changes and returns the new one. Moving
+# them here kept `tray_panel` under its 600-line ceiling when the memory list
+# gained an identity-based open, and the split is honest — the panel is
+# lifecycle and dispatch; this is what "auto" means.
+
+def cycle(requested: str) -> str:
+    """auto -> dark -> light -> auto.
+
+    Cycles rather than showing three segments: the header has room for one
+    28 px control and the segments already belong to the presence mode. A third
+    segmented control in the same header would make two rows of three-letter
+    words that look identical.
+    """
+    order = THEMES
+    try:
+        index = order.index(requested)
+    except ValueError:
+        index = 0
+    return order[(index + 1) % len(order)]
+
+
+def is_valid(requested: str) -> bool:
+    """Whether a name is one of the three the panel accepts."""
+    return str(requested or "").strip().lower() in THEMES
+
+
+def resolve(requested: str, default: str = "dark") -> tuple[str, str]:
+    """(what was asked for, what is on screen), or (`default`, `default`).
+
+    THREE VALUES, TWO PALETTES. `auto` is not a palette: it is the answer to
+    "which one does the OS use", asked once per call and never per paint. The
+    caller keeps both numbers because the panel has to be able to SAY "auto"
+    while painting dark.
+    """
+    name = str(requested or "").strip().lower()
+    if name not in THEMES:
+        return default, default
+    return name, resolve_theme(name)
+
+
+__all__ = ["THEMES", "_rgba", "cycle", "is_valid", "resolve",
+           "resolve_theme"]

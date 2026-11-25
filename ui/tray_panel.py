@@ -49,6 +49,7 @@ from __future__ import annotations
 
 from typing import Callable, Mapping
 
+from ui import tray_theme as theme_policy
 from ui.tray_theme import THEMES, _rgba, resolve_theme  # noqa: F401
 from ui.tray_paint import (  # noqa: F401 — re-exported for the smoke tool
     apply_style, mark_segments, paint, paint_history, paint_permissions,
@@ -154,6 +155,13 @@ class TrayPanel:
     def open_memory(self, index: int) -> bool:
         """Board 9's row button -> board 10, holding the memory that was clicked."""
         opened = self._view.open_memory(index)
+        if opened:
+            self.set_page("memory_one")
+        return opened
+
+    def open_memory_id(self, category: str, key: str) -> bool:
+        """Board 9's row -> board 10, by identity rather than by position."""
+        opened = self._view.open_memory_id(category, key)
         if opened:
             self.set_page("memory_one")
         return opened
@@ -359,6 +367,8 @@ class TrayPanel:
             return lambda name: self.set_page(str(name))
         if key == "memory_open":
             return lambda index: self.open_memory(int(index))
+        if key == "memory_open_id":
+            return self.open_memory_id
         if key == "tools_find":
             return lambda query: self.run_search(str(query))
         return None

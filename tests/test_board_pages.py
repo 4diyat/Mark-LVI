@@ -50,6 +50,45 @@ def panel_module(indonesian):
         restore_ui(saved)
 
 
+def _walk_layouts(widget):
+    """Every widget reachable from `widget` through its layouts."""
+    layout = getattr(widget, "_layout", None)
+    if layout is None or not hasattr(layout, "_items"):
+        return []
+    found = []
+    for child in list(layout._items or []):
+        found.append(child)
+        found.extend(_walk_layouts(child))
+    return found
+
+
+def _first_button(widget):
+    """The first QPushButton inside `widget`'s layout tree, or None.
+
+    The migrated list builds a card per row as a container with its own layout,
+    so `panel._buttons` no longer holds one entry per memory — that is the point
+    of the change: a key per row cannot survive a list that scrolls. Tests walk
+    the widget tree instead, which is also closer to what a user clicks.
+    """
+    # `hasattr(child, "clicked")` IS NOT ENOUGH: the stub gives every widget a
+    # `clicked` signal (Qt declares them on QAbstractButton, but the stub's
+    # `_Signal` walk runs over every class), so a plain QWidget answers True.
+    # `setFixedSize` is the discriminator: the real buttons in this page are
+    # given a fixed size and the container widgets never are.
+    for child in _walk_layouts(widget):
+        if hasattr(child, "clicked") and getattr(child, "_fixed_size", None):
+            return child
+    return None
+
+
+def _press_first_row(panel) -> None:
+    """Open the detail page for the list's first card, as a click would."""
+    card = panel._memory_column.itemAt(0).widget()
+    button = _first_button(card)
+    assert button is not None, "the first card has no button to press"
+    button.clicked.emit()
+
+
 def catalogue(name: str) -> dict:
     return json.loads((I18N / name).read_text(encoding="utf-8"))
 
@@ -130,11 +169,23 @@ def test_no_page_draws_a_control_off_the_panel(panel_module):
 
 # ── board 9: the count is the store's, not the list's ───────────────────────
 
-def test_board_9_counts_what_is_stored_not_what_fits(panel_module, monkeypatch):
-    """The header says "12 hal", the panel holds 8. Both are true, and a page
-    that made them agree would be counting widgets and calling it memory."""
+def test_board_9_draws_every_memory_not_the_six_that_fit(panel_module, monkeypatch):
+    """THE MIGRATION'S CENTRAL CLAIM: the list scrolls, so nothing is hidden.
+
+    The old test asserted the opposite — that the page drew `LIST_ROWS` (six)
+    and counted the rest as "dan N lagi". That was a truthful workaround for a
+    container that could not scroll, and it got worse as the store grew. With
+    the list migrated to `components.scroll_list`, twelve memories mean twelve
+    cards.
+
+    The header still carries the count, because that is where `b09()` puts it
+    (`panel_head("Memori personal", "12 hal yang JARVIS ingat")`) and it is
+    formatted from the store — one count, one place. What is gone is the
+    SECOND count, the one that existed only to explain the clipping.
+    """
     tray_panel, tray_paint = panel_module
     from ui import pages_memory
+    from ui.tray_panel_model import snapshot
 
     rows = [{"category": "notes", "key": f"k{i}", "value": f"v{i}", "updated": ""}
             for i in range(12)]
@@ -143,64 +194,96 @@ def test_board_9_counts_what_is_stored_not_what_fits(panel_module, monkeypatch):
     panel = tray_panel.TrayPanel({})
     panel.open()
     panel.set_page("memory")
-    # A FRESH SNAPSHOT: `open()` captured one before the stub above ran, and
-    # the subtitle is formatted from the store at snapshot time. Painting the
-    # captured one would test the value from before the monkeypatch.
-    from ui.tray_panel_model import snapshot
-
     tray_paint.paint(panel, snapshot("memory"))
 
-    # THE COUNT IS THE SHARED HEADER'S SUBTITLE, because that is where `b09()`
-    # puts it: `panel_head("Memori personal", "12 hal yang JARVIS ingat")`.
     header = panel._labels["subtitle"].text()
     assert "12" in header, f"the header does not state the store's count: {header!r}"
 
-    drawn = [k for k in panel._labels if k.startswith("mem_key:")
-             and panel._labels[k].text()]
-    assert len(drawn) == pages_memory.LIST_ROWS < 12, (
-        f"the page drew {len(drawn)} rows; the panel fits {pages_memory.LIST_ROWS}")
+    column = getattr(panel, "_memory_column", None)
+    assert column is not None, "the list is not a scrolling column"
 
-    rest = 12 - pages_memory.LIST_ROWS
-    assert str(rest) in panel._labels["mem_more"].text(), (
-        f"the {rest} rows that do not fit are not counted: "
-        f"{panel._labels['mem_more'].text()!r}")
+    # Twelve rows plus the trailing stretch, and none of them hidden.
+    cards = [column.itemAt(i).widget() for i in range(column.count())]
+    cards = [c for c in cards if c is not None]
+    assert len(cards) == 12, (
+        f"the list drew {len(cards)} of 12; it scrolls now, so it must draw all")
+
+    # The counter that compensated for clipping is gone, and its absence is
+    # asserted: bringing it back would mean the list stopped scrolling.
+    assert "mem_more" not in panel._labels, (
+        "the 'and N more' line is back — the list is clipping again")
 
 
-def test_board_9_rows_draw_the_artboards_chevron(
+def test_board_9_an_empty_store_states_it_in_a_card_not_a_blank_page(
         panel_module, monkeypatch):
-    """b09() draws a chevron per row at (400, y+22) - the row's open glyph.
+    """Nothing remembered is a FACT to state, not a reason to draw nothing.
 
-    The artboard's own path is M400 {y+22} l8 8 M408 {y+22} l-8 8. The
-    button is the click target; the chevron is its visual marker, drawn at
-    the artboard's coordinate in the muted token. A row with no memory
-    hides both.
+    The old page got this right and the migration keeps it: an empty section
+    with no sentence looks like a broken page.
     """
     tray_panel, tray_paint = panel_module
     from ui import pages_memory
+    from ui.tray_panel_model import snapshot
 
-    rows = [{"category": "notes", "key": "k", "value": "v", "updated": ""}]
+    monkeypatch.setattr(pages_memory, "entries", lambda: [])
+
+    panel = tray_panel.TrayPanel({})
+    panel.open()
+    panel.set_page("memory")
+    tray_paint.paint(panel, snapshot("memory"))
+
+    column = panel._memory_column
+    widgets = [column.itemAt(i).widget() for i in range(column.count())]
+    widgets = [w for w in widgets if w is not None]
+    assert widgets, "an empty store drew nothing at all"
+    said = " ".join(w.text() for w in widgets if hasattr(w, "text"))
+    assert said.strip(), "the empty card carries no sentence"
+    assert any(word in said.lower() for word in ("nothing", "belum", "yet")), (
+        f"the empty card does not say the store is empty: {said!r}")
+
+
+def test_board_9_repainting_does_not_stack_the_rows(panel_module, monkeypatch):
+    """A second paint rebuilds the list; it must not append to the first.
+
+    `populate_memory` clears the column before filling it, and that depends on
+    `QLayout.takeAt` — which the stub used to answer with a lambda that removed
+    nothing. Without a test that paints twice, a list that doubled every
+    refresh would look correct in a single-paint test forever.
+    """
+    tray_panel, tray_paint = panel_module
+    from ui import pages_memory
+    from ui.tray_panel_model import snapshot
+
+    rows = [{"category": "n", "key": f"k{i}", "value": "v", "updated": ""}
+            for i in range(4)]
     monkeypatch.setattr(pages_memory, "entries", lambda: rows)
 
     panel = tray_panel.TrayPanel({})
     panel.open()
     panel.set_page("memory")
-    from ui.tray_panel_model import snapshot
     tray_paint.paint(panel, snapshot("memory"))
-
-    chev = panel._labels["mem_chev:0"]
-    assert chev.text() == "»", "the row chevron glyph is missing"
-    assert chev.x() >= 390, "the chevron is off the card's right edge"
-    assert chev.isVisible()
-    monkeypatch.setattr(pages_memory, "entries", lambda: [])
+    first = panel._memory_column.count()
     tray_paint.paint(panel, snapshot("memory"))
-    assert not panel._labels["mem_chev:0"].isVisible()
+    second = panel._memory_column.count()
+
+    assert first == second, (
+        f"the list went from {first} to {second} items on repaint — it appends "
+        "instead of rebuilding")
 
 
-def test_board_9_row_button_opens_that_memory_and_holds_its_identity(
+def test_board_9_row_button_opens_that_memory_by_identity(
         panel_module, monkeypatch):
-    """The row button must open the memory at ITS index, identified by
-    (category, key) — not by the index, which moves when a row above is
-    deleted."""
+    """The row hands over `(category, key)`, not a position in the list.
+
+    THE INDEX VERSION WAS CORRECT BUT FRAGILE. It re-read the store and
+    resolved index N to a memory at click time, which is right only if nothing
+    changed in between. The scrolling list builds a card per entry, so the card
+    already knows which memory it is — and passing that through means there is
+    no position to re-resolve and nothing to get out of step.
+
+    This test presses the SECOND card's button through the real signal, the way
+    a user would.
+    """
     tray_panel, tray_paint = panel_module
     from ui import pages_memory
 
@@ -213,8 +296,11 @@ def test_board_9_row_button_opens_that_memory_and_holds_its_identity(
     panel.set_page("memory")
     tray_paint.paint(panel, panel.snapshot)
 
-    # Press the SECOND row, through the signal, as a user would.
-    panel._buttons["mem_open:1"].clicked.emit()
+    card = panel._memory_column.itemAt(1).widget()
+    button = _first_button(card)
+    assert button is not None, "the second card has no button"
+    button.clicked.emit()
+
     assert panel.page == "memory_one"
     assert panel.target_memory() == ("projects", "second"), (
         f"the row opened {panel.target_memory()}")
@@ -233,7 +319,7 @@ def test_board_10_says_the_three_fields_it_cannot_show(panel_module, monkeypatch
     panel.open()
     panel.set_page("memory")
     tray_paint.paint(panel, panel.snapshot)
-    panel._buttons["mem_open:0"].clicked.emit()
+    _press_first_row(panel)
     tray_paint.paint(panel, panel.snapshot)
 
     # THREE BANDS, THREE SENTENCES. Board 10 draws SUMBER, MASA BERLAKU,
@@ -275,7 +361,7 @@ def test_board_10_forgets_the_memory_it_is_showing(tmp_path, monkeypatch,
     panel.open()
     panel.set_page("memory")
     tray_paint.paint(panel, panel.snapshot)
-    panel._buttons["mem_open:0"].clicked.emit()
+    _press_first_row(panel)
     target = panel.target_memory()
 
     # The panel's button calls the SHELL action; call the handler it lands on
