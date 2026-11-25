@@ -163,6 +163,17 @@ def build_memory(panel, page) -> None:
         forget.clicked.connect(
             lambda _checked=False, i=index: panel._call("memory_open", i))
         panel._buttons[f"mem_open:{index}"] = forget
+        # THE CHEVRON the artboard draws at (400, y+22): a double arrow
+        # (M400 {y+22} l8 8 M408 {y+22} l-8 8) marking the row as openable.
+        # The button above is the click target; this label is its visual
+        # glyph, drawn at the artboard's coordinate and in the muted token.
+        chev = QLabel(page)
+        chev.setGeometry(398, y + 20, 18, 18)
+        chev.setStyleSheet(
+            f"color:{PALETTES['dark']['muted']};background:transparent;"
+            f"font-size:14px;")
+        chev.setText("Â»")
+        panel._labels[f"mem_chev:{index}"] = chev
 
     # The artboard's "dan N lagi" line sits between the last card and the
     # divider: 466+62 = 528, divider 556, so 530..554 is the only free band.

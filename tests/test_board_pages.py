@@ -166,6 +166,36 @@ def test_board_9_counts_what_is_stored_not_what_fits(panel_module, monkeypatch):
         f"{panel._labels['mem_more'].text()!r}")
 
 
+def test_board_9_rows_draw_the_artboards_chevron(
+        panel_module, monkeypatch):
+    """b09() draws a chevron per row at (400, y+22) - the row's open glyph.
+
+    The artboard's own path is M400 {y+22} l8 8 M408 {y+22} l-8 8. The
+    button is the click target; the chevron is its visual marker, drawn at
+    the artboard's coordinate in the muted token. A row with no memory
+    hides both.
+    """
+    tray_panel, tray_paint = panel_module
+    from ui import pages_memory
+
+    rows = [{"category": "notes", "key": "k", "value": "v", "updated": ""}]
+    monkeypatch.setattr(pages_memory, "entries", lambda: rows)
+
+    panel = tray_panel.TrayPanel({})
+    panel.open()
+    panel.set_page("memory")
+    from ui.tray_panel_model import snapshot
+    tray_paint.paint(panel, snapshot("memory"))
+
+    chev = panel._labels["mem_chev:0"]
+    assert chev.text() == "Â»", "the row chevron glyph is missing"
+    assert chev.x() >= 390, "the chevron is off the card's right edge"
+    assert chev.isVisible()
+    monkeypatch.setattr(pages_memory, "entries", lambda: [])
+    tray_paint.paint(panel, snapshot("memory"))
+    assert not panel._labels["mem_chev:0"].isVisible()
+
+
 def test_board_9_row_button_opens_that_memory_and_holds_its_identity(
         panel_module, monkeypatch):
     """The row button must open the memory at ITS index, identified by

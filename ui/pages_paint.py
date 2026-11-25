@@ -47,12 +47,15 @@ def paint_memory(panel, snap) -> None:
                 _t("ui.page.memory.empty_row") if index == 0 and not rows else "")
             labels[f"mem_val:{index}"].setText("")
             panel._buttons[f"mem_open:{index}"].hide()
+            labels[f"mem_chev:{index}"].hide()
             continue
         labels[f"mem_key:{index}"].setText(str(row.get("key") or ""))
         labels[f"mem_val:{index}"].setText(str(row.get("value") or ""))
         button = panel._buttons[f"mem_open:{index}"]
         button.show()
         button.setText(_t("ui.page.memory.open"))
+        # The chevron is the row's open affordance; it shows with the button.
+        labels[f"mem_chev:{index}"].show()
 
     # THE REMAINDER IS STATED, NOT HIDDEN: the header counts the store, the
     # list counts the widgets, so showing eight of twelve must say so.
