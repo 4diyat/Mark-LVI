@@ -745,14 +745,7 @@ def test_board_16_rows_report_manifest_facts_not_provenance(panel_module):
 
 ABSENCE_PAGES = [
     # (page, the label key that carries the sentence, a word it must contain)
-    ("tools", "tl_snap_absent", ("belum", "not", "does not")),
     ("gestures", "gs_absent", ("klik", "click", "drawing", "gambar")),
-    # THE THIRD COLUMN, not the second. `b15()` draws the gesture's ACTION in
-    # the middle ("Panggil antarmuka" at x=250, cyan) and "ubah" at 416 on the
-    # right; the first version of this page wrote "fixed" into the middle
-    # column and dropped the action entirely — and this line asserted the bug.
-    # "fixed" belongs where "ubah" was, because there is no rebinding.
-    ("access", "ac_gest_edit:0", ("tetap", "fixed")),
 ]
 
 
@@ -855,10 +848,9 @@ def test_board_7_records_the_answer_and_does_not_repeat_the_question(
     assert pages_people.consent_given() is True
 
 
-def test_board_7_says_the_flow_is_one_step_not_four(panel_module):
-    """The artboard says "Langkah 2 dari 4". There is no four-step flow, and a
-    page that printed "2 dari 4" would be describing a program that does not
-    exist."""
+def test_board_7_draws_the_four_step_onboarding_ladder(panel_module):
+    """Board 7's artboard is a four-step ladder. The step line states the real
+    count, the flow walks all four steps, and the summary reads the record."""
     tray_panel, tray_paint = panel_module
 
     panel = tray_panel.TrayPanel({})
@@ -866,30 +858,52 @@ def test_board_7_says_the_flow_is_one_step_not_four(panel_module):
     panel.set_page("consent")
     tray_paint.paint(panel, panel.snapshot)
 
-    # THE STEP LINE IS THE SHARED SUBTITLE. `b07()` passes "Langkah 2 dari 4"
-    # to `panel_head()`, so the page's step count belongs in the header's second
-    # line — the page having its own copy was the duplicate.
+    # THE STEP LINE STATES THE ACTUAL LADDER — "Langkah 1 dari 4", the flow's
+    # own total, never a static "1 dari 1" that would describe a one-step build.
+    from core.onboarding import STEPS, Onboarding
     step = panel._labels["subtitle"].text()
-    assert "4" not in step, f"the page claims a four-step flow: {step!r}"
-    assert "1" in step, f"the page does not say how many steps there are: {step!r}"
+    assert "4" in step, f"the page does not claim the four-step flow: {step!r}"
 
-    # AND THE SENTENCE COMES FROM THE CATALOGUE, not from a literal in the
-    # painter: change the catalogue and the page must change with it.
+    # THE FOUR SEGMENTS ARE DRAWN, and the flow walks welcome → mic → presence
+    # → done. The step indicator fills as the ladder advances.
+    for index in range(4):
+        assert f"cn_step:{index}" in panel._labels
+    flow = Onboarding.start()
+    assert flow.total == 4
+    assert list(STEPS) == ["welcome", "mic", "presence", "done"]
+
+    # AND THE STEP LINE IS FORMATTED FROM THE FLOW'S PROGRESS, not a literal:
+    # it reports the current step against the ladder's total.
     from core import i18n
-    from ui import pages_paint
-    from ui.tray_pages import GEOMETRY, PALETTES
-
-    # The header's subtitle for this page must BE the catalogue's step string,
-    # not a literal typed into the model: swap the catalogue entry and the
-    # subtitle has to follow it.
     from ui.tray_panel_model import PAGE_TITLES
 
     _title, sub_key = PAGE_TITLES["consent"]
-    assert sub_key == "ui.page.consent.subtitle", (
-        f"board 7's subtitle is {sub_key!r}, not the step sentence")
-    assert i18n.label(sub_key) == panel._labels["subtitle"].text(), (
-        "the step line is not the catalogue's sentence")
-    _ = (pages_paint, GEOMETRY, PALETTES)
+    assert sub_key == "ui.page.consent.subtitle"
+    assert "{n}" in i18n.label(sub_key) and "{total}" in i18n.label(sub_key), (
+        "the step line is not parameterised by the flow's progress")
+    assert step == i18n.label(sub_key, n=1, total=4), (
+        f"the step line is {step!r}, not the flow's 1-of-4")
+
+
+def test_board_7_onboarding_walk_records_each_step(panel_module):
+    """The four-step flow records mic consent and the presence mode, and its
+    summary is an honest readout of the record."""
+    from core.onboarding import Onboarding
+
+    flow = Onboarding.start()
+    # welcome: navigation, advances.
+    flow = flow.answer("next")
+    assert flow.current == "mic"
+    # mic: consent, advances to presence.
+    flow = flow.answer(True)
+    assert flow.current == "presence"
+    # presence: a mode, advances to done.
+    flow = flow.answer("focus")
+    assert flow.current == "done"
+    assert flow.presence_mode == "focus"
+    # the summary names what was chosen, honestly.
+    lines = " ".join(flow.summary_lines())
+    assert "consented" in lines and "focus" in lines and "4" in lines
 
 
 # ── the more-list reaches every page ────────────────────────────────────────

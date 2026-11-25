@@ -308,15 +308,19 @@ def build_tools(panel, page) -> None:
         panel._labels[f"tl_hit:{index}"] = _at(
             page, QLabel, 60, 328 + index * 22, 356, 18, "")
 
-    # ── SUSUN JENDELA: the card and its three thumbnails, stated absent ────
+    # ── SUSUN JENDELA: the card and its three clickable thumbnails ────────
+    # The artboard draws three thumbnails (2 kolom / 3 kolom / Fokus). Each is
+    # a real button: picking one asks the layout policy to record the choice.
     panel._labels["tl_snap_card"] = _at(page, QLabel, 24, 420, 412, 176, "")
     panel._labels["tl_snap_header"] = _at(page, QLabel, 42, 432, 300, 18, "")
     for index, x in enumerate((40, 166, 292)):
-        panel._labels[f"tl_snap_thumb:{index}"] = _at(page, QLabel, x, 452, 114, 62, "")
-    # The sentence occupies the band the three thumbnails sit in (452..514),
-    # leaving b12's own caption at 572 alone — the two are different claims and
-    # stacking them overlapped one on the other.
-    panel._labels["tl_snap_absent"] = _at(page, QLabel, 40, 456, 380, 52, "")
+        thumb = QPushButton("", page)
+        thumb.setGeometry(x, 452, 114, 62)
+        thumb.setObjectName(f"tl_snap_thumb:{index}")
+        thumb.clicked.connect(
+            lambda _checked=False, i=index: panel._call("tools_layout", i))
+        panel._buttons[f"tl_snap_thumb:{index}"] = thumb
+    panel._labels["tl_snap_note"] = _at(page, QLabel, 40, 528, 380, 34, "")
 
 
 def build_gestures(panel, page) -> None:
@@ -340,14 +344,17 @@ def build_gestures(panel, page) -> None:
 
 
 def build_consent(panel, page) -> None:
-    """Board 7, transcribed from `b07()`.
+    """Board 7: the four-step onboarding ladder, transcribed from `b07()`.
 
-    FOUR 97x4 SEGMENTS AT y=74, AND ONLY THE FIRST IS FILLED. The artboard
-    draws a four-step onboarding ("Langkah 2 dari 4") and shows two segments
-    lit. This build has ONE consent question — the microphone — so the first
-    segment is lit, the other three are the unfilled track, and the header says
-    "Langkah 1 dari 1". Drawing two lit segments would claim a second step
-    nobody will ever be shown.
+    FOUR 97x4 SEGMENTS AT y=74. The artboard draws a four-step onboarding
+    ("Langkah 2 dari 4") — welcome, microphone consent, presence mode, and a
+    summary. Each step has its own content in the card and its own controls
+    at the bottom; the step indicator shows where the flow is.
+
+    The three bottom controls are reused across the steps rather than drawn
+    fresh per step, because the artboard's geometry is fixed: the deny button
+    becomes "Back / Skip", the toggle becomes the presence-mode selector on
+    the presence step, and the allow button is the step's primary action.
     """
     from PyQt6.QtWidgets import QLabel, QPushButton
 
@@ -356,12 +363,13 @@ def build_consent(panel, page) -> None:
     page.hide()
     panel._pages["consent"] = page
 
+    # The four-step progress track, the step name, and the shared card.
     for index in range(4):
         panel._labels[f"cn_step:{index}"] = _at(
             page, QLabel, 24 + index * 105, 74, 97, 4, "")
 
     panel._labels["cn_name"] = _at(page, QLabel, 24, 110, 412, 30, "")
-    panel._labels["cn_why"] = at(page, QLabel, text_box(24, 154, 12, width=412), "")
+    panel._labels["cn_body"] = at(page, QLabel, text_box(24, 154, 12, width=412), "")
     panel._labels["cn_card"] = _at(page, QLabel, 24, 174, 412, 190, "")
     panel._labels["cn_when"] = _at(page, QLabel, 44, 330, 372, 20, "")
     panel._labels["cn_what_header"] = at(page, QLabel, text_box(24, 400, 10, width=240), "")
@@ -369,22 +377,20 @@ def build_consent(panel, page) -> None:
         panel._labels[f"cn_point:{index}"] = _at(
             page, QLabel, 50, 408 + index * 28, 372, 18, "")
 
-    # The consent toggle is the artboard's own (24, 520) 40x22 control, and
-    # the allow button is the 200x44 pill at (236, 566).
+    # The consent toggle is the artboard's own (24, 520) 40x22 control. On the
+    # presence step it is repurposed as the mode selector's readout; on the
+    # other steps it mirrors the mic consent.
     panel._labels["cn_ack"] = _at(page, QLabel, 76, 522, 340, 20, "")
-    # b07 draws BOTH a 40x22 toggle at (24,520) AND a 200x44 "Lanjut" pill at
-    # (236,566). They are one decision — consent to the microphone — so they
-    # share one handler and the page keeps them in the same state. Two controls
-    # that could disagree about a permission is how a user ends up not knowing
-    # whether they consented.
     panel._buttons["cn_toggle"] = QPushButton("", page)
     panel._buttons["cn_toggle"].setGeometry(24, 520, 40, 22)
-    panel._buttons["cn_toggle"].clicked.connect(lambda: panel._call("consent"))
+    panel._buttons["cn_toggle"].setCheckable(True)
+    panel._buttons["cn_toggle"].clicked.connect(lambda: panel._call("onboard_toggle"))
     panel._buttons["cn_deny"] = QPushButton("", page)
     panel._buttons["cn_deny"].setGeometry(24, 566, 196, 44)
+    panel._buttons["cn_deny"].clicked.connect(lambda: panel._call("onboard_back"))
     panel._buttons["cn_allow"] = QPushButton("", page)
     panel._buttons["cn_allow"].setGeometry(236, 566, 200, 44)
-    panel._buttons["cn_allow"].clicked.connect(lambda: panel._call("consent"))
+    panel._buttons["cn_allow"].clicked.connect(lambda: panel._call("onboard_next"))
 
 
 def build_help(panel, page) -> None:

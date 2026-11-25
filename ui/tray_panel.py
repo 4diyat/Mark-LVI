@@ -89,19 +89,11 @@ class TrayPanel:
                  logger: Callable[[str], None] | None = None):
         self._actions = dict(actions)
         # `theme` is a RESOLVED palette name here, always one of PALETTES. The
-        # three-state setting (`auto`/`dark`/`light`) is `set_theme`'s job: a
-        # widget that has to consult the OS on every paint is a widget that
-        # changes colour halfway through somebody's morning.
         self._requested = "dark"
         self._theme = theme if theme in PALETTES else "dark"
         # `theme` above is a PALETTE; `_requested` is the three-state SETTING.
         self._requested = theme if theme in THEMES else "dark"
         # HIGH CONTRAST is orthogonal to the theme: it is a MODIFIER on top of
-        # whichever palette (dark/light) is on screen, not a third theme
-        # setting. The board 15 switch flips this flag; `palette()` below
-        # returns the high-contrast palette when it is on, so every painter
-        # that reads colours through the panel sees the same answer and the
-        # theme cycle (auto/dark/light) keeps working underneath it.
         self._high_contrast = False
         self._app = app
         self._on_close = on_close
@@ -112,22 +104,18 @@ class TrayPanel:
         self._page = PAGE_MAIN
         self._snapshot: Snapshot = Snapshot()
         self._notes: list[str] = []
+        # Board 7's onboarding ladder lives ON THE PANEL, not in a store: the
+        self._onboarding = None
         # Every widget whose text is a VALUE rather than a constant, so
-        # `_paint` has one list to walk instead of a dozen attributes that
-        # someone will forget to update.
         self._labels: dict = {}
         self._buttons: dict = {}
         # Text inputs (board 11 builder): a QLineEdit holds and returns text.
         self._inputs: dict = {}
         # What the last click on a memory or a search chose. See
-        # `ui/panel_target.py` — extracted because it is view state, and it was
-        # the second thing to push this module over the 600-line ceiling.
         from ui.panel_target import PanelTarget
 
         self._view = PanelTarget()
         # Board 12's "Tandai aman": a DISPLAY decision that lasts until the
-        # clipboard text changes or the panel is reopened. See
-        # `pages_actions.tools_mark_safe` for why it cannot be more than that.
         self._marked_safe = False
         self._error = ""
 
@@ -359,10 +347,6 @@ class TrayPanel:
 
     def _call(self, key: str, *args):
         # A PAGE ACTION FIRST, THEN THE SHELL'S HANDLERS.
-        #
-        # Switching pages, remembering which memory board 10 shows and storing a
-        # hit list are the panel's own state; every host that builds a panel
-        # would otherwise have to wire them, including the tests.
         local = self._local_action(key)
         if local is not None:
             return local(*args)
@@ -496,13 +480,6 @@ class TrayPanel:
                                         _t("ui.panel.title"))
         self._labels["subtitle"] = _placed(window, QLabel, 24, 46, 412, 20, "")
         # THE THEME SWITCH. Board 17a draws the same panel in light colours and
-        # the mockup has no button for it, because a mockup cannot click. This
-        # one is a 30 px control in the header, where it is out of the way of
-        # every reading path, and it cycles auto -> dark -> light.
-        #
-        # Without it the light palette existed and NOBODY COULD REACH IT: the
-        # settings drawer that would have held the switch is deleted, and
-        # `set_theme` was a method only a test called.
         theme_button = QPushButton(window)
         theme_button.setGeometry(408, 22, 28, 24)
         theme_button.setToolTip(_t("ui.panel.theme"))
@@ -514,8 +491,6 @@ class TrayPanel:
         # a segmented control, not three checkboxes and not a dropdown.
         for index, mode in enumerate(MODE_ORDER):
             # The artboard's own three words. A mode label is not translated
-            # because "Aktif / Fokus / Senyap" is what board 5 draws in every
-            # locale; the catalogue carries them anyway for the day it is.
             button = QPushButton(_t(f"ui.panel.mode.{mode}") or MODE_LABELS[mode],
                                  window)
             button.setGeometry(24 + index * 138, 74, 136, 38)
@@ -554,19 +529,12 @@ class TrayPanel:
 
             self.set_theme(get_ui_theme())
             # High contrast is orthogonal, so it is applied AFTER the theme
-            # resolves the base palette — otherwise the modifier would be
-            # overwritten by the theme it is supposed to sit on top of.
             if get_high_contrast():
                 self.set_high_contrast(True)
         except Exception as e:                       # noqa: BLE001
             self._note(f"saved theme not applied — {type(e).__name__}: {e}")
 
     # ── painting ─────────────────────────────────────────────────────────────
-    #
-    # The drawing lives in `ui/tray_paint.py`. It is pure of state — it reads a
-    # Snapshot and writes widgets — so keeping it here only meant this module
-    # held two jobs and sat 43 lines over the 600-line ceiling. The methods
-    # below are the surface the rest of the file (and the tests) use.
 
     def _paint(self, snap: Snapshot) -> None:
         paint(self, snap)

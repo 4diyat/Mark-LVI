@@ -211,12 +211,18 @@ def paint_tools(panel, snap) -> None:
         label.setText(str(hits[index]) if index < len(hits)
                       else (_t("ui.page.tools.find_none") if index == 0 else ""))
     labels["tl_snap_header"].setText(_t("ui.page.tools.snap"))
-    # Drawn because the artboard draws it; no window manager sits behind it.
-    for index in range(3):
-        labels[f"tl_snap_thumb:{index}"].setText(
-            _t(f"ui.page.tools.snap_thumb{index + 1}"))
-    # The absence sits where the artboard's thumbnails are, not its caption.
-    labels["tl_snap_absent"].setText(_t("ui.page.tools.snap_absent"))
+    # The three thumbnails are clickable buttons; the chosen one is checked.
+    from actions.window_layout import read_state
+    active = read_state()
+    for index, mode in enumerate(("columns2", "columns3", "focus")):
+        button = panel._buttons[f"tl_snap_thumb:{index}"]
+        button.setText(_t(f"ui.page.tools.snap_thumb{index + 1}"))
+        button.setCheckable(True)
+        button.setChecked(mode == active)
+    # The note states the current arrangement, so the card reads as a real
+    # choice rather than three unconnected thumbnails.
+    labels["tl_snap_note"].setText(_t("ui.page.tools.snap_note",
+                                      mode=_t(f"ui.page.tools.snap_{active}")))
 
 def paint_gestures(panel, snap) -> None:
     labels = _labels(panel)
@@ -226,38 +232,70 @@ def paint_gestures(panel, snap) -> None:
     labels["gs_note"].setText(_t("ui.page.gestures.note"))
 
 def paint_consent(panel, snap) -> None:
-    """Board 7: one microphone question, and the segments that say so."""
-    from ui import pages_people
+    """Board 7: the four-step onboarding ladder, painted from the panel's flow."""
+    from core.onboarding import MIC, PRESENCE, WELCOME, Onboarding
 
     labels = _labels(panel)
-    given = pages_people.consent_given()
-    labels["cn_name"].setText(_t("ui.page.consent.mic"))
-    labels["cn_why"].setText(_t("ui.page.consent.mic.why"))
-    labels["cn_when"].setText(_t("ui.page.consent.mic.when"))
-    labels["cn_what_header"].setText(_t("ui.page.consent.what"))
+    flow = getattr(panel, "_onboarding", None) or Onboarding.start()
+    step = flow.current
+    index = flow.current_index
 
-    # THE FOUR SEGMENTS ARE THE ARTBOARD'S FOUR-STEP FLOW. One step exists, so
-    # ONE is lit and the rest are the unfilled track; two lit would claim a
-    # step nobody will be shown.
+    labels["cn_name"].setText(_t(f"ui.page.consent.{step}.name"))
+    labels["cn_body"].setText(_t(f"ui.page.consent.{step}.body"))
+    # THE STEP LINE STATES THE ACTUAL LADDER: "Langkah 1 dari 4", not a static
+    labels["subtitle"].setText(_t("ui.page.consent.step.of",
+                                  n=index + 1, total=flow.total))
+
+    # THE FOUR SEGMENTS ARE THE ARTBOARD'S FOUR-STEP FLOW: each decided step
     accent = PALETTES[panel._theme]["accent"]
     idle = PALETTES[panel._theme]["line"]
-    for index in range(4):
-        labels[f"cn_step:{index}"].setStyleSheet(
-            f"background:{accent if index == 0 else idle};border-radius:2px;")
+    for seg in range(4):
+        lit = seg < index or seg == index
+        labels[f"cn_step:{seg}"].setStyleSheet(
+            f"background:{accent if lit else idle};border-radius:2px;")
 
-    for index in range(3):
-        labels[f"cn_point:{index}"].setText(
-            _t(f"ui.page.consent.point{index + 1}"))
-    labels["cn_ack"].setText(_t("ui.page.consent.ack"))
-    # The toggle is a READOUT of the recorded consent, not a second control.
-    toggle = panel._buttons["cn_toggle"]
-    toggle.setText("")
-    toggle.setChecked(given)
-    labels["cn_card"].setStyleSheet(
-        f"background:{PALETTES[panel._theme]['card']};border-radius:12px;")
-    panel._buttons["cn_allow"].setText(
-        _t("ui.page.consent.done") if given else _t("ui.page.consent.allow"))
-    panel._buttons["cn_deny"].setText(_t("ui.page.consent.deny"))
+    if step == MIC:
+        labels["cn_when"].setText(_t("ui.page.consent.mic.when"))
+        labels["cn_what_header"].setText(_t("ui.page.consent.what"))
+        for i in range(3):
+            labels[f"cn_point:{i}"].setText(_t(f"ui.page.consent.point{i + 1}"))
+        labels["cn_ack"].setText(_t("ui.page.consent.ack"))
+        given = flow.is_done(MIC)
+        panel._buttons["cn_toggle"].setChecked(given)
+        panel._buttons["cn_allow"].setText(
+            _t("ui.page.consent.allow") if not given else _t("ui.page.consent.done"))
+        panel._buttons["cn_deny"].setText(_t("ui.page.consent.deny"))
+    elif step == PRESENCE:
+        labels["cn_when"].setText(_t("ui.page.consent.presence.body"))
+        labels["cn_what_header"].setText("")
+        for i in range(3):
+            labels[f"cn_point:{i}"].setText("")
+        picked = getattr(panel, "_onboarding_picked", None)
+        mode_key = picked or ""
+        labels["cn_ack"].setText(
+            _t("ui.page.consent.presence.selected", mode=_t(
+                f"ui.page.consent.presence.{mode_key}" if mode_key else "active")))
+        panel._buttons["cn_allow"].setText(_t("ui.page.consent.next"))
+        panel._buttons["cn_deny"].setText(_t("ui.page.consent.back"))
+    elif step == WELCOME:
+        for i in range(3):
+            labels[f"cn_point:{i}"].setText("")
+        labels["cn_when"].setText("")
+        labels["cn_what_header"].setText("")
+        labels["cn_ack"].setText("")
+        panel._buttons["cn_allow"].setText(_t("ui.page.consent.next"))
+        panel._buttons["cn_deny"].setText(_t("ui.page.consent.skip"))
+    else:  # done: the summary reads the record back.
+        labels["cn_when"].setText("")
+        labels["cn_what_header"].setText(_t("ui.page.consent.done.name"))
+        lines = flow.summary_lines()
+        for i in range(3):
+            labels[f"cn_point:{i}"].setText(lines[i] if i < len(lines) else "")
+        labels["cn_ack"].setText("")
+        panel._buttons["cn_allow"].setText(_t("ui.page.consent.finish"))
+        panel._buttons["cn_deny"].setText(_t("ui.page.consent.back"))
+
+    labels["cn_card"].setStyleSheet(f"background:{PALETTES[panel._theme]['card']};border-radius:12px;")
 
 def paint_help(panel, snap) -> None:
     """Board 13: three panels, and the form strip that reports review status."""
@@ -268,10 +306,8 @@ def paint_help(panel, snap) -> None:
     labels["hp_read"].setText(_t("ui.page.help.read.note"))
     panel._buttons["hp_read"].setText(_t("ui.page.help.read.act"))
     labels["hp_form_header"].setText(_t("ui.page.help.form"))
-    # Field rows are editable inputs, so only the strip reports review status.
     for index in range(3):
-        labels[f"hp_form_label:{index}"].setText(
-            _t(f"ui.page.help.form_field{index + 1}"))
+        labels[f"hp_form_label:{index}"].setText(_t(f"ui.page.help.form_field{index + 1}"))
     labels["hp_form_url_label"].setText(_t("ui.page.help.form_url"))
     panel._buttons["hp_form_apply"].setText(_t("ui.page.help.form_apply"))
     labels["hp_preview"].setText(_form_fill_preview(panel))
@@ -300,8 +336,7 @@ def paint_security(panel, snap) -> None:
         labels[f"sec_name:{index}"].setText(_t(name_key))
         labels[f"sec_note:{index}"].setText(_t(note_key))
         labels[f"sec_count:{index}"].setText(str(counts.get(level, 0)))
-    # OS-CONTROL switch state from the panel's stored decision; the confirm button shows only when the gate asks for the physical keystroke.
-    state = getattr(panel, "_os_control", None)
+    state = getattr(panel, "_os_control", None)  # OS-control state from the panel
     if state is None:
         from actions.os_control import read_state
         enabled = read_state()
@@ -323,8 +358,6 @@ def paint_security(panel, snap) -> None:
             _t("ui.page.security.os.confirm.tip") if need_confirm else "")
 
     # VERIFIKASI SUARA: the deleted guest-mode card now carries the voice gate.
-    # The guest-mode dot at (378,216) stays absent; the voice switch sits clear
-    # of it and its status comes from the snapshot.
     labels["va_header"].setText(_t("ui.page.security.voice_auth"))
     va = str(getattr(snap, "voice_auth", "off") or "off")
     labels["va_status"].setText(_t(f"ui.page.security.voice_auth.{va}"))
@@ -357,25 +390,17 @@ def paint_access(panel, snap) -> None:
     labels["ac_lang_header"].setText(_t("ui.page.access.language"))
     pal = PALETTES[getattr(panel, "_theme", "dark")]
     labels["ac_lang_track"].setStyleSheet(
-        f"background:{pal['panel']};border-radius:19px;"
-        f"border:1px solid {pal['line']};")
+        f"background:{pal['panel']};border-radius:19px;border:1px solid {pal['line']};")
     active = pages_admin.active_language()
     from ui.pages_access import language_slots
 
-    # The same order the builder used: two loops that disagree left-to-right
-    # is how the slots got reversed in the first place.
-    for code in language_slots():
+    for code in language_slots():  # the builder's own order, never reversed
         button = panel._buttons.get(f"ac_lang:{code}")
         if button is not None:
             # THE NAME, NOT THE CODE. `b15()` draws "Indonesia" and "English" in
-            # the 137 px slots; "ID"/"EN" was a different word in the same
-            # place. The build pass already sets this and the paint pass used to
-            # overwrite it with the code — one of the two had to be wrong, and
-            # the drawing settles which.
             button.setText(_t(f"ui.page.access.language.{code}"))
             button.setChecked(code == active)
-    # THE THIRD SLOT IS DRAWN AND SAYS IT IS UNAVAILABLE: `core.i18n` has no
-    # mixed mode, so the third segment exists as a disabled label, not a gap.
+    # The third slot exists as a disabled label — i18n has no mixed mode.
     mixed = panel._buttons.get("ac_lang:mixed")
     if mixed is not None:
         mixed.setText(_t("ui.page.access.language.mixed_absent"))
@@ -383,21 +408,16 @@ def paint_access(panel, snap) -> None:
     scale = pages_admin.text_scale()
     labels["ac_size_note"].setText(_t("ui.page.access.size.value",
                                       percent=int(round(scale * 100))))
-    # THE SLIDER MATCHES b15: a 380 px track whose fill width IS the setting.
-    # It is a static bar, not a drag target — the three buttons below change the
-    # value — so the artboard's proportions hold without a new control.
-    low, high = pages_admin.TEXT_SCALES[0], pages_admin.TEXT_SCALES[-1]
+    low, high = pages_admin.TEXT_SCALES[0], pages_admin.TEXT_SCALES[-1]  # == b15
     fraction = 0.0 if high == low else (scale - low) / (high - low)
     labels["ac_size_track"].setStyleSheet(
         f"background:{PALETTES[panel._theme]['line']};border-radius:1px;")
     labels["ac_size_fill"].setStyleSheet(
         f"background:{PALETTES[panel._theme]['accent']};border-radius:1px;")
     labels["ac_size_fill"].setGeometry(24, 194, max(2, round(380 * fraction)), 3)
-    # The knob is a 7 px disc centred on the fill's end, as the drawing shows.
     labels["ac_size_knob"].setStyleSheet(
         f"background:{PALETTES[panel._theme]['accent']};border-radius:7px;")
-    labels["ac_size_knob"].setGeometry(
-        max(17, round(24 + 380 * fraction - 7)), 187, 14, 14)
+    labels["ac_size_knob"].setGeometry(max(17, round(24 + 380 * fraction - 7)), 187, 14, 14)
     for index, value in enumerate(pages_admin.TEXT_SCALES):
         button = panel._buttons.get(f"ac_scale:{index}")
         if button is not None:
@@ -406,8 +426,7 @@ def paint_access(panel, snap) -> None:
     labels["ac_contrast_header"].setText(_t("ui.page.access.contrast"))
     pal_c = PALETTES[panel._theme]
     labels["ac_contrast_track"].setStyleSheet(
-        f"background:{pal_c['panel']};border-radius:19px;"
-        f"border:1px solid {pal_c['line']};")
+        f"background:{pal_c['panel']};border-radius:19px;border:1px solid {pal_c['line']};")
     high = bool(getattr(panel, "_high_contrast", False))
     for level, label_key in (("standard", "ac_contrast_std"),
                              ("high", "ac_contrast_high")):
@@ -416,8 +435,6 @@ def paint_access(panel, snap) -> None:
             button.setText(_t(f"ui.page.access.contrast.{label_key}"))
             button.setCheckable(True)
             button.setChecked(high and level == "high")
-    # The note states what the level does, so a reader who cannot tell the two
-    # slots apart still knows which one they chose.
     labels["ac_contrast_note"].setText(
         _t("ui.page.access.contrast.high_note") if high
         else _t("ui.page.access.contrast.standard_note"))
@@ -426,10 +443,6 @@ def paint_access(panel, snap) -> None:
         f"background:{PALETTES[panel._theme]['card']};border-radius:12px;")
     labels["ac_motion_name"].setText(_t("ui.page.access.motion.name"))
     labels["ac_motion_note"].setText(_t("ui.page.access.motion.note"))
-    # A TOGGLE IS A STATE, NOT A LABEL: `b15()` draws a bare 40x22 pill, and
-    # writing "Motion on" inside overflowed and repeated the switch. Text is
-    # empty; the checked state carries the answer, the accessible name in the
-    # tooltip.
     motion = panel._buttons["ac_motion"]
     motion.setText("")
     motion.setCheckable(True)
@@ -438,24 +451,20 @@ def paint_access(panel, snap) -> None:
         _t("ui.page.access.motion.off") if pages_admin.reduced_motion()
         else _t("ui.page.access.motion.on"))
     labels["ac_gestures_header"].setText(_t("ui.page.access.gestures"))
-    # The artboard draws three gesture rows with a "ubah" affordance each;
-    # `core.gesture_os` knows the gestures but no rebinding, so the rows are
-    # drawn from it and the third column says what is missing.
     from ui import pages_people
 
-    for index, (name_key, note_key) in enumerate(pages_people.gesture_rows()[:3]):
+    # THE ACTION CELL READS THE LIVE BINDING. The middle column shows the
+    # action this gesture triggers now; "ubah" walks the cycle.
+    from actions.gesture_binding import read_state
+    from core.gesture_binding import GESTURES
+    bindings = read_state()
+    for index, (name_key, _note) in enumerate(pages_people.gesture_rows()[:3]):
         labels[f"ac_gest_card:{index}"].setStyleSheet(
             f"background:{PALETTES[panel._theme]['card']};border-radius:12px;")
         labels[f"ac_gest_name:{index}"].setText(_t(name_key))
-        # THE MIDDLE COLUMN IS THE ACTION `b15()` DRAWS AS CYAN TEXT. The
-        # first version put "fixed" here — a third-column statement in the
-        # second column's space. "No rebinding" belongs to the THIRD column.
-        labels[f"ac_gest_act:{index}"].setText(_t(note_key))
-        # Right-aligned as `b15()` draws its "ubah" at x=416; Qt has no
-        # per-label anchor, so the cell ends there and the style finishes it.
-        edit = labels[f"ac_gest_edit:{index}"]
-        edit.setText(_t("ui.page.access.gestures_rebind_absent"))
-        edit.setStyleSheet(f"color:{pal['muted']};")
+        action = bindings.get(GESTURES[index] if index < len(GESTURES) else GESTURES[0])
+        labels[f"ac_gest_act:{index}"].setText(_t(f"ui.page.access.action.{action}"))
+        panel._buttons[f"ac_gest_edit:{index}"].setText(_t("ui.page.access.rebind"))
     labels["ac_footnote"].setText(_t("ui.page.access.footnote"))
 
 def paint_plugins(panel, snap) -> None:
@@ -465,8 +474,6 @@ def paint_plugins(panel, snap) -> None:
     rows = pages_admin.plugin_rows()
     labels["pl_section"].setText(_t("ui.page.plugins.section"))
     # THREE ROWS AS `b16()` DRAWS, the rest counted not crammed: the phone
-    # card sits at 360, so a fourth row would land on it. Fifteen would not
-    # fit; three silently would hide twelve.
     drawn = 0
     for index, row in enumerate(rows):
         if f"pl_name:{index}" not in labels:
@@ -475,8 +482,6 @@ def paint_plugins(panel, snap) -> None:
         name = _t(row["label"]) if row.get("label") else row["name"]
         labels[f"pl_name:{index}"].setText(name)
         # THE SECOND LINE IS "version · trust" as the artboard draws it; the
-        # description does not fit a 60 px card, so the row omits it. A missing
-        # level must not leave a dangling "1.0.0 · " — unreadable gets version.
         version = row.get("version") or "—"
         labels[f"pl_desc:{index}"].setText(
             _t("ui.page.plugins.row", version=version, trust=_t(row["level"]))
@@ -486,7 +491,7 @@ def paint_plugins(panel, snap) -> None:
         button.setText("")
         button.setChecked(bool(row["on"]))
     pal = PALETTES[getattr(panel, "_theme", "dark")]
-    for index, row in enumerate(rows[:3]):
+    for index in range(3):
         if f"pl_card:{index}" in labels:
             labels[f"pl_card:{index}"].setStyleSheet(
                 f"background:{pal['card']};border-radius:12px;")
@@ -496,16 +501,14 @@ def paint_plugins(panel, snap) -> None:
     labels["pl_more"].setText(
         _t("ui.page.plugins.more", count=rest) if rest else "")
     labels["pl_phone_header"].setText(_t("ui.page.plugins.phone"))
-    labels["pl_phone_card"].setStyleSheet(
-        f"background:{pal['card']};border-radius:12px;")
+    labels["pl_phone_card"].setStyleSheet(f"background:{pal['card']};border-radius:12px;")
     labels["pl_phone_shape"].setStyleSheet(
-        f"background:{pal['panel']};border-radius:10px;"
-        f"border:1px solid {pal['line']};")
+        f"background:{pal['panel']};border-radius:10px;border:1px solid {pal['line']};")
     _paint_phone_state(panel, labels, pal)
     labels["pl_code_header"].setText(_t("ui.page.plugins.code"))
     labels["pl_code_box"].setStyleSheet(
-        f"background:{pal['card']};border-radius:10px;"
-        f"border:1px solid {pal['line']};padding-left:18px;color:{pal['muted']};")
+        f"background:{pal['card']};border-radius:10px;border:1px solid {pal['line']};"
+        f"padding-left:18px;color:{pal['muted']};")
     labels["pl_code_box"].setText(_paint_phone_code(panel))
     if drawn == 0:
         labels["pl_section"].setText(_t("ui.page.plugins.section") + " — 0")
@@ -516,14 +519,11 @@ def _paint_phone_state(panel, labels, pal) -> None:
     devices = getattr(session, "devices", []) if session is not None else []
     paired = bool(devices)
     fill = pal["accent"] if paired else pal["panel"]
-    labels["pl_phone"].setText(
-        _t("ui.page.plugins.phone_paired", name=devices[-1].name)
-        if paired else _t("ui.page.plugins.phone_idle"))
-    labels["pl_phone2"].setText(
-        _t("ui.page.plugins.phone_connected_short") if paired else "")
+    labels["pl_phone"].setText(_t("ui.page.plugins.phone_paired", name=devices[-1].name)
+                               if paired else _t("ui.page.plugins.phone_idle"))
+    labels["pl_phone2"].setText(_t("ui.page.plugins.phone_connected_short") if paired else "")
     labels["pl_phone_shape"].setStyleSheet(
-        f"background:{fill};border-radius:10px;"
-        f"border:1px solid {pal['line']};")
+        f"background:{fill};border-radius:10px;border:1px solid {pal['line']};")
 
 def _paint_phone_code(panel) -> str:
     """Board 16's pairing-code box: the live code, or the no-code sentence."""
@@ -546,8 +546,7 @@ def paint_light(panel, snap) -> None:
     for index in range(4):
         labels[f"l18_card:{index}"].setStyleSheet(
             f"background:{pal['card']};border-radius:12px;")
-    labels["l18_log_box"].setStyleSheet(
-        f"background:{pal['card']};border-radius:12px;")
+    labels["l18_log_box"].setStyleSheet(f"background:{pal['card']};border-radius:12px;")
     for index in range(3):
         labels[f"l18_state:{index}"].setStyleSheet(
             f"background:{pal['card']};border:1px solid {pal['line']};"
