@@ -46,9 +46,9 @@ from typing import Callable
 # `ui/command_paint.py` imports this module back.
 from ui.command_paint import (  # noqa: F401 — re-exported for the tests
     AMBER, BAR_HEIGHT, BAR_WIDTH, BASE, CYAN, FIELD_HEIGHT, FIELD_MARGIN,
-    FILL_BOTTOM, FILL_TOP, FONT, FOOTER, GEOMETRY, LINE, LINE_ACC, MONO, MUTED,
-    PANEL, ROW_ACTIVE, ROW_LEVELS, SECONDARY, TEXT, Row, _BarWindow, _style_field,
-    default_rows, paint_bar, shown_rows, to_row,
+    FILL_BOTTOM, FILL_TOP, FONT, FOOTER, GEOMETRY, GREEN, LINE, LINE_ACC, MONO,
+    MUTED, PANEL, RED, ROW_ACTIVE, ROW_LEVELS, SECONDARY, TEXT, YELLOW, Row,
+    _BarWindow, _style_field, default_rows, paint_bar, shown_rows, to_row,
 )
 
 # The number of remembered entries. Ten is the point past which a recall list

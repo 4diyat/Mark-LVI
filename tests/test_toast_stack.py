@@ -96,15 +96,16 @@ def test_the_toast_window_is_not_click_through(stack):
 
 # ── placement ─────────────────────────────────────────────────────────────
 
-def test_the_stack_opens_in_the_right_edge_clear_of_the_taskbar(stack, monkeypatch):
-    """Board 2 puts the stack at (700, 330) of 1280x720 — right of centre and
-    well above the taskbar. The real rule is the orb's: right edge minus the
-    card, bottom well above the taskbar."""
+def test_the_stack_opens_in_the_top_left_opposite_the_orb(stack, monkeypatch):
+    """Board 1 puts the toast stack in the TOP-LEFT of the desktop, opposite
+    the orb's bottom-right corner (`01-ambient-main.png`). A stack anchored to
+    the orb's rule would land under the orb itself, covering the thing it
+    announces."""
     size = stack.WindowSize()
     width, height = size.width(), size.height()
     x, y = stack.stack_anchor(_Screen(), width, height)
-    assert x == 1920 - width - stack.MARGIN
-    assert y >= 0 and y + height <= 1080
+    assert x == stack.MARGIN
+    assert y == stack.MARGIN
 
 
 def test_the_margin_is_the_artboards_numbers_not_a_new_invention(stack):

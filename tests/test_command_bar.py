@@ -314,17 +314,21 @@ def test_a_row_is_classified_by_the_tool_it_names(bar):
     row = bar.to_row("Kirim ke tim keuangan", "send_message")
     assert row.level == tool_risk.classify("send_message").level == "risky"
     assert row.state == "berisiko · konfirmasi"
-    assert row.dot == bar.AMBER
+    assert row.dot == bar.RED
 
     row = bar.to_row("Ringkas 14 baris terpilih", "screen_processor")
     assert row.level == "safe"
-    assert row.dot == bar.CYAN
+    assert row.dot == bar.GREEN
+
+    row = bar.to_row("Ubah tema ke terang", "open_app")
+    assert row.level == "medium"
+    assert row.dot == bar.YELLOW
 
 
 def test_an_unknown_tool_is_drawn_as_risky(bar):
     """A forgotten name must be noisy and safe on screen, as it is at the gate."""
     row = bar.to_row("Sesuatu yang baru", "a_tool_nobody_registered")
-    assert row.level == "risky" and row.dot == bar.AMBER
+    assert row.level == "risky" and row.dot == bar.RED
 
 
 def test_a_classifier_that_raises_is_drawn_as_risky(bar, monkeypatch):
@@ -375,3 +379,5 @@ def test_the_bar_reads_none_of_the_retired_hud_palette(bar):
                  if isinstance(n, ast.ImportFrom) and n.module == "ui.theme"]
     assert not offenders, f"the command bar imports the retired palette: {offenders}"
     assert bar.CYAN == "#3486fe" and bar.AMBER == "#ff9a40"
+    assert bar.GREEN == "#1fe393" and bar.YELLOW == "#ffcc00" \
+        and bar.RED == "#f44a42"
