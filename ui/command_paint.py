@@ -40,6 +40,13 @@ CYAN = "#3486fe"
 AMBER = "#ff9a40"
 TEXT = "#ffffff"
 MUTED = "#5e636c"
+# Board 2's risk dots: the mockup's honest language, one colour per verdict —
+# green = verified, yellow = unverified, red = failed. They are copied from
+# `ui/theme.py`'s palette (the single writer of colours) rather than read from
+# it, for the same rule as the rest of this surface's tokens.
+GREEN = "#1fe393"
+YELLOW = "#ffcc00"
+RED = "#f44a42"
 #: The box's own vertical gradient, top to bottom, from `n03()`.
 FILL_TOP, FILL_BOTTOM = "#0C1E29", "#081319"
 #: The row the bar is on, lifted out of the fill so the selection is visible in
@@ -89,10 +96,10 @@ class Row:
 
     `b02()` draws each row as a 28 px icon square with a glyph, a title (13 px)
     and a subtitle (11 px) beneath it, plus a "↵" on the selected row. The
-    `dot` is the icon square's glyph colour — cyan for a level that runs at
-    once, amber for one that asks first, muted for one that can be walked
-    back. Those three assignments come from `_RISK_TOKENS` and are the only
-    place the mapping exists.
+    `dot` is the icon square's glyph colour — green for a level that runs at
+    once, yellow for one that needs a look, red for one that fails. Those
+    three assignments come from `_RISK_TOKENS` and are the only place the
+    mapping exists.
     """
 
     label: str
@@ -103,11 +110,13 @@ class Row:
 
 
 #: `safe` runs now, `medium` runs and can be undone, `risky` asks first. The
-#: WORDS are board 3's; the mapping is `core.risk_policy`'s three levels.
+#: WORDS are board 3's, and the DOT is board 2's honest verdict colour — green
+#: for verified, yellow for unverified, red for failed (`02-command-bar.png`);
+#: the mapping is `core.risk_policy`'s three levels.
 _RISK_TOKENS = {
-    "safe": ("aman · langsung", CYAN),
-    "medium": ("sedang · bisa diurungkan", MUTED),
-    "risky": ("berisiko · konfirmasi", AMBER),
+    "safe": ("aman · langsung", GREEN),
+    "medium": ("sedang · bisa diurungkan", YELLOW),
+    "risky": ("berisiko · konfirmasi", RED),
 }
 
 

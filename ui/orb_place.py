@@ -72,6 +72,24 @@ def corner_anchor(area, size: int, margin: int = 24) -> tuple[int, int]:
     return (max(area.x(), x), max(area.y(), y))
 
 
+def top_left_anchor(area, size: int, margin: int = 24) -> tuple[int, int]:
+    """The opposite corner from `corner_anchor`: top-left, at the margin.
+
+    BOARD 1'S TOAST STACK LIVES HERE, NOT IN THE ORB'S CORNER. `01-ambient-main.png`
+    puts the toast card top-left and the orb bottom-right; anchoring the toast
+    with the orb's own rule would stack it under the orb, on the thing it
+    announces. The two surfaces answer two different questions — the orb is
+    "is it awake", the toast is "what just happened" — and they must not
+    occupy the same corner.
+
+    `size` is accepted for signature parity with `corner_anchor`: the toast
+    window is a 340x324 stack, and a future surface that needs the same corner
+    but a different size should be able to swap one for the other without
+    rewriting the call.
+    """
+    return (area.x() + margin, area.y() + margin)
+
+
 def hit_region(mode: str = "active") -> tuple[int, int, int]:
     """(cx, cy, radius) of the clickable circle, in window coordinates.
 

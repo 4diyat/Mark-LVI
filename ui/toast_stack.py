@@ -87,15 +87,17 @@ class _Size:
 
 def stack_anchor(area, width: int, height: int,
                  margin: int = MARGIN) -> tuple[int, int]:
-    """Bottom-right of `area`, clear of the taskbar — the orb's own rule.
+    """Top-left of `area`, at the margin — the orb's corner, mirrored.
 
-    Delegates to `ui.orb_place.corner_anchor` rather than re-deriving it: two
-    surfaces anchored by two copies of the same arithmetic is how one of them
-    ends up on the taskbar.
+    Board 1 draws the toast stack in the TOP-LEFT and the orb bottom-right
+    (`01-ambient-main.png`); sharing the orb's rule would put the card under
+    the orb. Delegates to `ui.orb_place.top_left_anchor` rather than
+    re-deriving the corner: two surfaces anchored by two copies of the same
+    arithmetic is how one of them ends up in the wrong place.
     """
-    from ui.orb_place import corner_anchor
+    from ui.orb_place import top_left_anchor
 
-    return corner_anchor(area, width, margin)
+    return top_left_anchor(area, width, margin)
 
 
 def window_flags(Qt) -> int:

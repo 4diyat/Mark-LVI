@@ -89,6 +89,17 @@ def test_a_corrupt_saved_position_is_ignored_not_raised(place, raw):
     assert place.read_position() is None
 
 
+def test_the_toast_anchors_top_left_where_the_orb_anchors_bottom_right(place):
+    """Board 1 draws the toast stack in the TOP-LEFT and the orb bottom-right.
+
+    Two surfaces, two corners: a toast stacked under the orb would sit on the
+    thing it announces, and the mockup's `01-ambient-main.png` puts the card
+    in the opposite corner. `corner_anchor` is the orb's own rule and must not
+    be reused for the toast.
+    """
+    assert place.top_left_anchor(_Area(), 340, 24) == (24, 24)
+
+
 def test_no_screen_at_all_falls_back_to_the_corner(place, monkeypatch):
     """`screen_area()` returns None before a QApplication exists or on a
     headless box. Validating against nothing must not reject the saved point

@@ -65,7 +65,7 @@ Sumber: `ui/theme.py` (class `C`), `ui/tray_theme.py` (`PALETTES`),
 | Komponen | Ukuran | Sumber |
 |---|---|---|
 | Orb | 146 px (dengan titik alert) | `ui/orb_paint.py` |
-| Command bar | 640 × 184 px | `ui/command_bar.py` |
+| Command bar | 720 × 352 px | `ui/command_bar.py` |
 | Toast card | 340 px | `ui/toast_card.py` |
 | Panel baki | 460 px lebar | `ui/tray_pages.py` |
 | Radius sudut | 8–10 px (tombol/kartu), 5 px (pane tab) | `ui/theme.py` |
@@ -128,8 +128,8 @@ lengkap** permukaan UI. Berikut desain per layar, dengan status implementasi
 - **Status:** ✅ terimplementasi (`orb_paint`, `orb_overlay`).
 
 ### Board 2 — Command bar
-- **Apa yang ditampilkan:** kotak 640×184, gradien, tiga baris hasil dengan
-  titik risiko.
+- **Apa yang ditampilkan:** kotak 720×352, gradien, tiga baris hasil dengan
+  titik risiko (hijau = verified, kuning = unverified, merah = gagal).
 - **Desain:** input di atas, hasil di bawah; setiap hasil punya **titik
   risiko** (hijau = verified, kuning = unverified, merah = gagal).
 - **Interaksi:** ketik perintah → hasil muncul → pilih → eksekusi; titik
@@ -451,6 +451,12 @@ menyempurnakan prinsip §1.
 2. Health / Status panel (5.2) — kumpulkan data yang sudah ada.
 3. Verifikasi visual manual board 18 (token terang) dan board 12 (susun
    jendela) — yang hanya dicek oleh tes.
+4. **Tahap 1 UI — SELESAI & ter-merge (PR #81):** panel baki 460×660
+   (5 segmen navigasi + halaman), UI utama board 1 (orb 146 px di pojok
+   kanan bawah + toast di pojok kiri atas, 340 px, auto-dismiss), dan
+   board 2 (command bar 720×352, tiga baris hasil dengan titik risiko
+   hijau/kuning/merah per verdict). Backend semua fitur (5.2–5.9, board
+   12 tiling) juga sudah diimplementasi di fase ini.
 
 **Phase 2 — Nilai baru**
 4. Rutinitas terjadwal (5.3).
@@ -478,7 +484,7 @@ layar (bukan kolase). Berikut peta setiap board ke visualnya:
 | File | Board | Layar |
 |---|---|---|
 | `01-ambient-main.png` | 1 + 5 | Desktop ambient: orb + glow + panel baki + toast |
-| `02-command-bar.png` | 2 | Command bar 640×184 dengan titik risiko |
+| `02-command-bar.png` | 2 | Command bar 720×352 dengan titik risiko |
 | `03-gesture-control.png` | 3 | Kontrol gestur: tile kamera + kerangka tangan |
 | `03-voice-mode.png` | 4 | Mode suara: glow tepi, orb, bar level, transkrip |
 | `04-security-permissions.png` | 6 + 14 | Keamanan & izin: tingkat risiko + log aktivitas |
