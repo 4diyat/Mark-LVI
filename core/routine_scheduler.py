@@ -12,8 +12,9 @@ WHY THIS IS A SEPARATE MODULE FROM `core/routines.py`
 THE LOOP
     A daemon thread wakes every `tick_seconds`, reads the store once, and for
     each enabled routine checks `is_due(schedule, now, last_fired)`. A due
-    routine is passed to `on_fire(routine)` and its `last_fired` is stamped
-    with today's date so it does not fire twice across a tick boundary. The
+    routine is atomically rechecked and stamped before `on_fire(routine)` so
+    concurrent scheduler threads do not fire the same routine twice. A failed
+    send is not retried that day. The
     callback runs on the scheduler's own thread; the session is expected to
     marshal the actual "say this" onto its own loop (the same shape
     `main.py` uses for every other cross-thread callback).
@@ -94,10 +95,12 @@ class RoutineScheduler:
                 continue
             # Stamp BEFORE firing so a re-entrant or slow callback cannot cause
             # a double-fire on the same tick.
-            self._store.mark_fired(routine.id, now.date().isoformat())
-            fired.append(routine)
+            claimed = self._store.claim_due(routine.id, now)
+            if claimed is None:
+                continue
+            fired.append(claimed)
             try:
-                self._on_fire(routine)
+                self._on_fire(claimed)
             except BaseException as e:           # noqa: BLE001
                 if self._on_error is not None:
                     self._on_error(routine, e)

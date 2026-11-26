@@ -267,7 +267,7 @@ def start_command_bar(shell: "JarvisUI") -> bool:
     """
     from ui.command_bar import CommandBar
 
-    bar = CommandBar(on_submit=lambda text: submit_from_bar(shell, text))
+    bar = CommandBar(on_submit=lambda text: submit_command_bar(shell, text))
     shell._command_bar = bar
     scope = start_bar_hotkey(shell)
     if scope != "global":
@@ -291,7 +291,7 @@ def open_command_bar(shell: "JarvisUI") -> bool:
     bar = getattr(shell, "_command_bar", None)
     if bar is None:
         from ui.command_bar import CommandBar
-        bar = CommandBar(on_submit=lambda text: submit_from_bar(shell, text))
+        bar = CommandBar(on_submit=lambda text: submit_command_bar(shell, text))
         shell._command_bar = bar
     if not bar.open(None):
         _note(shell, f"Command bar unavailable ({bar.error}).")
@@ -299,7 +299,17 @@ def open_command_bar(shell: "JarvisUI") -> bool:
     return True
 
 
-def submit_from_bar(shell: "JarvisUI", text: str) -> None:
+def submit_command_bar(shell: "JarvisUI", text: str) -> bool:
+    """The standalone bar also contributes its typed requests to chat."""
+    if not submit_from_bar(shell, text):
+        return False
+    panel = getattr(shell, "_panel", None)
+    if panel is not None:
+        panel.add_message("user", text)
+    return True
+
+
+def submit_from_bar(shell: "JarvisUI", text: str) -> bool:
     """Hand one line to the assistant, exactly as a typed message arrives.
 
     `on_text_command` is what main.py assigns for that (`_on_text_command`), and
@@ -313,12 +323,14 @@ def submit_from_bar(shell: "JarvisUI", text: str) -> None:
     send = getattr(shell, "on_text_command", None)
     if not callable(send):
         _note(shell, "the command bar cannot send yet: the session is not ready")
-        return
+        return False
     try:
         import threading
         threading.Thread(target=send, args=(text,), daemon=True).start()
+        return True
     except Exception as e:                          # noqa: BLE001
         _note(shell, f"the command bar could not send: {type(e).__name__}: {e}")
+        return False
 
 
 def cycle_presence_mode(shell: "JarvisUI") -> str:

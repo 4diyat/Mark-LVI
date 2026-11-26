@@ -215,7 +215,7 @@ def test_the_privacy_page_titles_itself(panel_module):
 
     assert panel._labels["title"].text() == "Izin & Privasi"
     assert panel._labels["subtitle"].text() == (
-        "Semua data diproses lokal secara default")
+        "Tinjau akses dan aktivitas")
 
 
 def test_the_main_page_keeps_the_assistant_name(panel_module):
@@ -512,7 +512,7 @@ def test_the_cards_are_actually_widgets(panel_module):
 
 # ── 5. the four switches still work, and still refuse what they cannot do ────
 
-def test_the_two_real_switches_write_plugin_enablement(monkeypatch):
+def test_builtin_actions_do_not_claim_plugin_settings_control_them(monkeypatch):
     from memory import config_manager
     from ui import tray_panel_wiring
 
@@ -520,10 +520,9 @@ def test_the_two_real_switches_write_plugin_enablement(monkeypatch):
     monkeypatch.setattr(config_manager, "save_plugin_enabled",
                         lambda name, on: written.append((name, on)) or True)
     monkeypatch.setattr(tray_panel_wiring, "_say", lambda shell, text: None)
-
-    assert tray_panel_wiring.set_permission(None, "files", True) is True
-    assert tray_panel_wiring.set_permission(None, "apps", False) is True
-    assert written == [("file_controller", True), ("computer_control", False)]
+    assert tray_panel_wiring.set_permission(None, "files", True) is False
+    assert tray_panel_wiring.set_permission(None, "apps", False) is False
+    assert written == []
 
 
 def test_a_switch_with_nothing_behind_it_is_refused_by_name(monkeypatch):

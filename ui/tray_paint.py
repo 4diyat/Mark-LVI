@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import dataclasses
 
-from ui.tray_pages import PALETTES
+from ui.tray_pages import GEOMETRY, PALETTES
 from ui.tray_theme import _rgba
 from ui.tray_panel_model import (ALL_QUICK_KEYS, MODE_ORDER, NAV_ORDER,
                                  NAV_PAGES, PERMISSIONS, _t,
@@ -57,6 +57,8 @@ def paint(panel, snap) -> None:
     # only thing that knows whether anything is actually being held.
     labels["quota_held"].setText(tray_panel_model.quota_note())
     paint_theme(panel)
+    if hasattr(panel, "_render_conversation"):
+        panel._render_conversation()
     labels["suggestion"].setText(
         snap.suggestion or _t("ui.panel.suggestion.empty"))
 
@@ -69,7 +71,7 @@ def paint(panel, snap) -> None:
 
     # Board 05a's strip: only in Fokus, because only Fokus holds anything.
     held = labels["held"]
-    if snap.mode == "focus":
+    if snap.mode == "focus" and getattr(panel, "_page", "main") == "main":
         # NO DEADLINE LINE. It used to read "Fokus aktif sampai 17.00" with 17.00
         # HARDCODED here — there is no focus duration anywhere in the build, so
         # the panel was stating a time nobody computed. The owner chose the
@@ -81,11 +83,14 @@ def paint(panel, snap) -> None:
     else:
         held.hide()
 
-    for key, _name, _sub in PERMISSIONS[:3]:
+    for key, name_key, _sub in PERMISSIONS[:3]:
         button = panel._buttons[f"perm:{key}"]
         state = snap.permissions.get(key, {})
-        button.setChecked(bool(state.get("on")))
-        button.setEnabled(not bool(state.get("fixed")))
+        fixed = state.get("fixed", True)
+        button.setCheckable(not fixed)
+        button.setChecked(bool(state.get("on")) and not fixed)
+        button.setEnabled(not fixed)
+        button.setText(f"{_t(name_key)}\n{_permission_status(key, state)}")
         _paint_dot(panel, key, state)
 
     paint_history(panel, snap)
@@ -166,12 +171,15 @@ def _paint_more(panel) -> None:
         name = labels.get(f"more_name:{key}")
         if name is not None:
             name.setText(_t(PAGE_LABEL[key]))
+            name.setStyleSheet(f"color:{PALETTES[panel._theme]['text']};")
         number = labels.get(f"more_board:{key}")
         if number is not None:
             number.setText(f"BOARD {PAGE_BOARD[key]:02d}")
+            number.setStyleSheet(f"color:{PALETTES[panel._theme]['muted']};")
         button = panel._buttons.get(f"more:{key}")
         if button is not None:
             button.setText("")
+            button.setAccessibleName(_t(PAGE_LABEL[key]))
     panel._buttons["more_back"].setText(_t("ui.page.more.back"))
 
 
@@ -197,13 +205,34 @@ def paint_quick(panel, snap) -> None:
         name, chord = "", ""
         for row_key, row_name, row_chord in rows:
             if row_key == key:
-                name, chord = _t(row_name), snap.quick_chord(row_chord)
+                name = _t(row_name)
+                chord = (_t(row_chord) if row_chord.startswith("ui.")
+                         else snap.quick_chord(row_chord))
                 break
-        # A tab separates the label from the right-aligned chord: it is what
-        # board 5's `txt(420, ..., anchor="end")` draws, and Qt renders it the
-        # same way in a QPushButton's text.
-        button.setText(f"{name}\t{chord}" if chord else name)
+        # Cards use a label and description; focus actions use their count.
+        button.setText(f"{name}\n{chord}" if chord else name)
+        index = next(i for i, row in enumerate(rows) if row[0] == key)
+        g = GEOMETRY
+        button.setGeometry(g["quick_x"] + (index % 2) * g["quick_column_pitch"],
+                           g["quick_row_y"] + (index // 2) * g["quick_pitch"],
+                           g["quick_width"], g["quick_row_h"])
         button.show()
+
+
+def _permission_status(key: str, state: dict) -> str:
+    """A capability hint is not proof that OS permission was granted."""
+    if not state:
+        status = "unknown"
+    elif state.get("note") == "unavailable":
+        status = "not_available"
+    elif key == "screen":
+        status = "on_request"
+    elif key == "microphone":
+        # input_available() is a hint: True includes enumeration failures.
+        status = "unknown" if state.get("on") else "not_detected"
+    else:
+        status = "on" if state.get("on") else "off"
+    return _t("ui.panel.chat.status." + status)
 
 
 def _paint_dot(panel, key: str, state: dict) -> None:
@@ -349,14 +378,40 @@ def paint_permissions(panel, snap) -> None:
     labels["p6_head"].setText(_t("ui.panel.perm.title"))
     labels["p6_sub"].setText(_t("ui.panel.perm.subtitle"))
 
-    for key, _name, _sub in PERMISSIONS:
+    pal = PALETTES[panel._theme]
+    for key in ("p6_log_card", *(f"p6_card:{k}" for k, _, _ in PERMISSIONS)):
+        labels[key].setStyleSheet(
+            f"background:{pal['card']};border:1px solid {pal['line']};border-radius:12px;")
+    labels["p6_divider"].setStyleSheet(f"background:{pal['line']};")
+
+    for key, name, sub in PERMISSIONS:
         state = snap.permissions.get(key, {})
+        fixed = state.get("fixed", True)
         button = panel._buttons[f"p6:{key}"]
-        button.setChecked(bool(state.get("on")))
-        # A permission the machine cannot grant is DISABLED, not a switch that
-        # refuses a click — the same rule the main page's switches follow.
-        button.setEnabled(not bool(state.get("fixed")))
+        button.setText(_t(name))
+        button.setCheckable(not fixed)
+        button.setChecked(bool(state.get("on")) and not fixed)
+        button.setEnabled(not fixed)
+        button.setStyleSheet(
+            f"QPushButton {{background:transparent;color:{pal['text']};border:none;"
+            "text-align:left;padding-left:20px;padding-bottom:20px;}"
+            f"QPushButton:disabled {{color:{pal['text']};}}"
+            f"QPushButton:focus {{border:1px solid {pal['accent']};border-radius:12px;}}")
+        labels[f"p6_sub:{key}"].setText(_t(sub))
+        labels[f"p6_sub:{key}"].setStyleSheet(f"color:{pal['muted']};")
+        status = _permission_status(key, state)
+        labels[f"p6_status:{key}"].setText(status)
+        labels[f"p6_status:{key}"].setStyleSheet(f"color:{pal['muted']};")
+        button.setAccessibleDescription(status)
         _paint_dot(panel, key, state)
+        track = labels[f"perm_dot:{key}"]
+        track.setVisible(not fixed)
+        if not fixed:
+            colour = pal['on_accent'] if state.get("on") else pal['muted']
+            track.setText("●")
+            track.setStyleSheet(
+                f"background:{pal['accent'] if state.get('on') else pal['card']};"
+                f"border:1px solid {pal['line']};border-radius:11px;color:{colour};")
 
     lines = _activity_lines()
     for index in range(3):
@@ -399,6 +454,32 @@ def show_page(panel) -> None:
             page.show() if name == panel._page else page.hide()
         except Exception as e:                   # noqa: BLE001
             panel._note(f"page {name!r} would not switch — {type(e).__name__}: {e}")
+    # The full-size page is above the window's shared header in Qt's stacking
+    # order. Raise the main controls explicitly; other pages have their own
+    # headers and only need a back/close control above them.
+    main = getattr(panel, "_page", "") == "main"
+    for key in ("title", "subtitle"):
+        widget = panel._labels[key]
+        visible = (main or panel._page in ("memory", "tools", "access", "routines", "plugins")
+                   or (key == "title" and panel._page == "history"))
+        widget.setVisible(visible)
+        if visible:
+            widget.raise_()
+    for key in ("theme", *(f"mode:{m}" for m in MODE_ORDER),
+                *(f"nav:{n}" for n in NAV_ORDER)):
+        widget = panel._buttons[key]
+        widget.setVisible(main)
+        if main:
+            widget.raise_()
+    if main:
+        panel._labels["held"].raise_()
+    back = panel._buttons.get("panel_back")
+    close = panel._buttons.get("panel_close")
+    if back is not None:
+        back.setVisible(panel._page != "main")
+        back.raise_()
+    if close is not None:
+        close.raise_()
     # The active nav segment follows the page, so it is re-marked here as well:
     # a navigation click calls `set_page` → `_show_page`, and `paint` is not
     # guaranteed to run on that path.
@@ -426,6 +507,9 @@ def apply_style(panel) -> None:
             QPushButton:checked {{ border:1px solid {pal['accent']};
                                   background:{_rgba(pal['accent'], 0.12)}; }}
             QPushButton:disabled {{ color:{pal['muted']}; }}
+            QTextEdit {{ background:{pal['card']};color:{pal['text']};
+                        border:1px solid {pal['line']};border-radius:10px;
+                        padding:8px; }}
             QLineEdit {{ background:{pal['card']};color:{pal['text']};
                         border:1px solid {pal['line']};border-radius:20px;
                         padding-left:18px; }}

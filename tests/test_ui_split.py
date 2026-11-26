@@ -165,6 +165,8 @@ def test_the_package_has_exactly_the_mockup_modules():
         # when that file crossed the ceiling. It holds the painting arithmetic
         # the admin pages share; it is not page logic.
         "pages_paint_util.py",
+        # Clipboard page rendering and guarded session-only actions.
+        "clipboard_view.py", "plugin_panel.py",
     }
     present = {p.name for p in _modules()}
     assert present == expected, (

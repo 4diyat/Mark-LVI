@@ -13,7 +13,7 @@ WHY THIS IS A SECOND MODULE
 
 WHAT IS IN HERE
     `GEOMETRY`     every number from `design/new-ui-proposal/02-command-bar.png`, in one dict
-    `default_rows` the three result lines, CLASSIFIED by `core.tool_risk`
+    `default_rows` up to three recorded terminal audit outcomes
     `paint_bar`    the drawing: gradien, 16 px radius, cyan rule, Esc chip,
                    caret, context line, three rows with 3 px dots, footer
 """
@@ -148,23 +148,39 @@ def to_row(label: str, tool: str, args: dict | None = None,
 
 
 def default_rows() -> list[Row]:
-    """The three rows `b02()` draws, fed by three real tools.
+    """Recent recorded outcomes, newest first; never mock up completed work.
 
-    `b02()`'s own three lines are drawn as written, with the subtitle each row
-    carries. The tools are real — every name is in `core.risk_policy.registered()`
-    — so no level here is invented by this module: `screen_processor` reads the
-    screen, `send_message` leaves the machine, `open_app` changes state with an
-    undo. The subtitles say what running each one actually does, matching the
-    artboard's second line under each title.
+    The audit can contain request/confirmation events as well as outcomes.
+    Only terminal outcomes have a matching status colour; in-progress or
+    unknown entries must not be advertised as verified, unverified or failed.
     """
-    return [
-        to_row("Ringkas dan buat catatan rapat", "screen_processor",
-               subtitle="Menulis ringkasan 14 baris lalu menyimpannya"),
-        to_row("Hitung ulang subtotal dengan kurs BI", "send_message",
-               subtitle="Menawarkan pratinjau sebelum mengubah sel"),
-        to_row("Kirim ke tim keuangan", "open_app",
-               subtitle="Aksi sedang — bisa diurungkan 10 menit"),
-    ]
+    try:
+        from core import audit_log
+        entries = audit_log.shared().entries(50)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[JARVIS] Command bar: audit unavailable — {type(exc).__name__}: {exc}")
+        return []
+    from ui.tray_panel_model import _t
+
+    mapping = {
+        "done": ("ui.command.outcome.done", GREEN),
+        "unverified": ("ui.command.outcome.unverified", YELLOW),
+        "failed": ("ui.command.outcome.failed", RED),
+    }
+    rows = []
+    for entry in reversed(entries):
+        outcome = str(entry.get("outcome") or "").lower()
+        if outcome not in mapping:
+            continue
+        label = str(entry.get("tool") or "").strip()
+        if not label:
+            continue
+        state_key, colour = mapping[outcome]
+        rows.append(Row(label=label, state=_t(state_key), level=outcome,
+                        dot=colour, subtitle=str(entry.get("detail") or "")))
+        if len(rows) == 3:
+            break
+    return rows
 
 
 def shown_rows(rows: list[Row]) -> list[Row]:
@@ -199,7 +215,7 @@ def shown_rows(rows: list[Row]) -> list[Row]:
 #: `KEYS_HINT` in `ui/confirm_banner.py` gives: "Esc", "Ctrl+Space", "↑↓" and
 #: "↵" are the names PRINTED ON KEYBOARDS, and a translation of them is a
 #: legend for keys the user does not own.
-FOOTER = (("↑↓ pilih", 26), ("↵ jalankan", 106), ("Ctrl+Space tutup", 196))
+FOOTER = (("↑↓ riwayat", 26), ("↵ kirim", 146), ("Ctrl+Space tutup", 246))
 
 
 def _style_field(field) -> None:
@@ -257,7 +273,7 @@ class _BarWindow:
 
 
 def paint_bar(painter, window) -> None:
-    """Draw board 3's 640 × 184 box. Every number comes from `GEOMETRY`.
+    """Draw the 720 × 352 command bar from `GEOMETRY`.
 
     Order matters: the fill, then the rule, then the text, then the rows, then
     the footer rule last so the row that sits closest to it is not clipped.
@@ -336,47 +352,39 @@ def paint_bar(painter, window) -> None:
     painter.setPen(QPen(QColor(LINE)))
     painter.drawLine(QPointF(dx, dy), QPointF(dx + dw, dy))
 
-    # 7. the three rows. `b02()` draws each as a 28 px icon square with a
-    #    three-line glyph, a 13 px title and an 11 px subtitle beneath it; the
-    #    selected row carries a highlight card and a right-aligned "↵".
+    # 7. Recent audit outcomes are read-only, not selectable commands.
     rows = shown_rows(list(getattr(window, "_rows", []) or []))
+    if not rows:
+        from ui.tray_panel_model import _t
+        painter.setPen(QColor(MUTED))
+        _text(painter, 26, 115, w - 52, 24,
+              _t("ui.command.outcome.empty"), 11)
     for index, row in enumerate(rows):
         y = g["rows_y"] + index * g["rows_pitch"]
-        # the selected row's highlight card
-        if index == 0:
-            hx, hy, hw, hh = g["row_hl"]
-            painter.setPen(QPen(QColor(LINE_ACC)))
-            painter.setBrush(QColor(ROW_ACTIVE))
-            painter.drawRoundedRect(QRectF(hx, y + hy, hw, hh), 10, 10)
-        # the icon square and its three-line glyph
+        hx, hy, hw, hh = g["row_hl"]
+        painter.setPen(QPen(QColor(LINE_ACC)))
+        painter.setBrush(QColor(PANEL))
+        painter.drawRoundedRect(QRectF(hx, y + hy, hw, hh), 10, 10)
         ix, iy, iw, ih = g["icon"]
         painter.setPen(QPen(QColor(LINE)))
-        painter.setBrush(QColor("#0B1A22"))
+        painter.setBrush(QColor(BASE))
         painter.drawRoundedRect(QRectF(ix, y + iy, iw, ih), 8, 8)
-        glyph = QColor(row.dot)
-        painter.setPen(QPen(glyph, 2))
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        cx0 = ix + 9.0
-        for k in range(3):
-            painter.drawLine(QPointF(cx0, y + iy + 6.0 + k * 5.0),
-                             QPointF(cx0 + (10.0 if k < 2 else 6.0),
-                                     y + iy + 6.0 + k * 5.0))
-        # the title and subtitle
-        painter.setPen(QColor(TEXT if index == 0 else SECONDARY))
+        painter.setPen(QColor(CYAN))
+        _text(painter, ix, y + iy, iw, ih, "•", 16, align="center")
+        painter.setPen(QColor(TEXT))
         _text(painter, g["row_title_x"], y + g["row_title_y"],
-              w - g["row_title_x"] - 40, 20, row.label,
+              w - g["row_title_x"] - 190, 20, row.label,
               g["row_title_size"], weight=500)
         if row.subtitle:
-            painter.setPen(QColor(MUTED))
+            painter.setPen(QColor(SECONDARY))
             _text(painter, g["row_title_x"], y + g["row_sub_y"],
-                  w - g["row_title_x"] - 40, 18, row.subtitle,
+                  w - g["row_title_x"] - 190, 18, row.subtitle,
                   g["row_sub_size"])
-        # the enter glyph on the selected row
-        if index == 0:
-            ex, ey = g["row_enter"]
-            painter.setPen(QColor(CYAN))
-            _text(painter, ex, y + ey, 30, 20, "↵", 12, weight=500,
-                  mono=True, align="right")
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(row.dot))
+        painter.drawEllipse(QRectF(w - 166, y + 2, 9, 9))
+        painter.setPen(QColor(TEXT))
+        _text(painter, w - 150, y - 3, 134, 20, row.state, 10)
 
     # 8. the footer rule and the three legend segments
     fx, fy, fw, _fh = g["footer_rule"]
@@ -384,8 +392,11 @@ def paint_bar(painter, window) -> None:
     painter.drawLine(QPointF(fx, fy), QPointF(fx + fw, fy))
     tx, ty, tw, th = g["footer"]
     painter.setPen(QColor(MUTED))
-    for label, lx in FOOTER:
-        _text(painter, lx, ty, tw, th, label, 10.5)
+    from ui.tray_panel_model import _t
+    for (label, lx), key in zip(FOOTER, ("history", "send", "close")):
+        shortcut = label.split(" ", 1)[0]
+        _text(painter, lx, ty, tw, th,
+              f"{shortcut} {_t('ui.command.footer.' + key)}", 10.5)
 
 
 def _render_hint(painter):

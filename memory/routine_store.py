@@ -21,10 +21,18 @@ import tempfile
 import threading
 from pathlib import Path
 
-from core.routines import Routine
+from core.routines import Routine, is_due
 
 # Next to the other local data, gitignored like the voiceprint.
 ROUTINES_PATH = Path(__file__).resolve().parent / "routines.json"
+
+# Instances serving the UI and scheduler must share a transaction lock. This
+# protects threads in one process, not independent processes or external editors.
+_STORE_LOCK = threading.RLock()
+
+
+class RoutineStoreError(RuntimeError):
+    """A store could not be safely read; never overwrite it as if empty."""
 
 
 def default_store(path: Path | None = None) -> "RoutineStore":
@@ -42,7 +50,7 @@ class RoutineStore:
 
     def __init__(self, path: Path) -> None:
         self._path = Path(path)
-        self._lock = threading.RLock()
+        self._lock = _STORE_LOCK
 
     @property
     def path(self) -> Path:
@@ -52,20 +60,23 @@ class RoutineStore:
 
     def _load(self) -> list[Routine]:
         with self._lock:
-            if not self._path.exists():
-                return []
             try:
-                data = json.loads(self._path.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError):
-                # A corrupt file must not crash the scheduler or block the
-                # panel. Reported by returning empty, not raised: the session
-                # keeps running and the user sees no routines until they fix
-                # or delete the file.
+                raw = self._path.read_text(encoding="utf-8")
+            except FileNotFoundError:
                 return []
-            rows = data.get("routines") if isinstance(data, dict) else data
-            if not isinstance(rows, list):
-                return []
-            return [Routine.from_dict(r) for r in rows if isinstance(r, dict)]
+            except (OSError, UnicodeError) as exc:
+                raise RoutineStoreError("Cannot read routine store") from exc
+            try:
+                data = json.loads(raw)
+                rows = data.get("routines") if isinstance(data, dict) else data
+                if not isinstance(rows, list) or any(not isinstance(r, dict) for r in rows):
+                    raise ValueError("invalid routine list")
+                result = [Routine.from_dict(r) for r in rows]
+                if any(not r.id for r in result) or len({r.id for r in result}) != len(result):
+                    raise ValueError("missing or duplicate routine id")
+                return result
+            except (ValueError, TypeError, AttributeError) as exc:
+                raise RoutineStoreError("Invalid routine store") from exc
 
     def all(self) -> list[Routine]:
         """Every routine, in file order. A snapshot, not a live view."""
@@ -163,4 +174,22 @@ class RoutineStore:
             return None
 
 
-__all__ = ["RoutineStore", "default_store", "ROUTINES_PATH"]
+    def claim_due(self, routine_id: str, now) -> Routine | None:
+        """Atomically recheck current state and mark one due routine fired."""
+        with self._lock:
+            routines = self._load()
+            for index, routine in enumerate(routines):
+                if routine.id != routine_id:
+                    continue
+                if not routine.enabled or not is_due(routine.schedule, now, routine.last_fired):
+                    return None
+                routines[index] = Routine(
+                    id=routine.id, name=routine.name, schedule=routine.schedule,
+                    payload=routine.payload, enabled=routine.enabled,
+                    last_fired=now.date().isoformat())
+                self._write(routines)
+                return routines[index]
+            return None
+
+
+__all__ = ["RoutineStoreError", "RoutineStore", "default_store", "ROUTINES_PATH"]

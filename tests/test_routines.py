@@ -163,7 +163,9 @@ def test_store_corrupt_file_reads_empty(tmp_path):
     path = tmp_path / "routines.json"
     path.write_text("{ not json", encoding="utf-8")
     store = RoutineStore(path)
-    assert store.all() == []                       # no crash, no raise
+    from memory.routine_store import RoutineStoreError
+    with pytest.raises(RoutineStoreError):
+        store.all()
 
 
 def test_store_missing_file_is_empty(tmp_path):
@@ -230,3 +232,99 @@ def test_scheduler_on_fire_error_does_not_stop_others(tmp_path):
     # Both were due; the bad one raised but the good one still fired.
     assert [r.id for r in result] == ["bad", "good"]
     assert fired == ["good"]
+
+
+def test_instances_sharing_file_serialize_read_modify_write(tmp_path, monkeypatch):
+    import threading
+    first = RoutineStore(tmp_path / 'routines.json')
+    second = RoutineStore(tmp_path / 'routines.json')
+    loaded, release, second_done = threading.Event(), threading.Event(), threading.Event()
+    read = first._load
+    def delayed_load(*args, **kwargs):
+        rows = read(*args, **kwargs)
+        loaded.set()
+        assert release.wait(3)
+        return rows
+    monkeypatch.setattr(first, '_load', delayed_load)
+    errors = []
+    def add(store, item, done=None):
+        try:
+            store.add(item)
+        except Exception as exc:
+            errors.append(exc)
+        finally:
+            if done:
+                done.set()
+    t1 = threading.Thread(target=add, args=(first, _routine('first')))
+    t2 = threading.Thread(target=add, args=(second, _routine('second'), second_done))
+    t1.start()
+    assert loaded.wait(1)
+    t2.start()
+    try:
+        assert not second_done.wait(0.2), 'second store wrote while first was mid-transaction'
+    finally:
+        release.set()
+        t1.join(3)
+        t2.join(3)
+    assert not errors
+    assert not t1.is_alive() and not t2.is_alive()
+    assert {r.id for r in second.all()} == {'first', 'second'}
+
+
+def test_writes_do_not_overwrite_unreadable_or_malformed_store(tmp_path):
+    from memory.routine_store import RoutineStoreError
+    path = tmp_path / 'routines.json'
+    store = RoutineStore(path)
+    for broken in ('{ invalid', '{"routines": "bad"}', '{"routines": [42]}'):
+        path.write_text(broken)
+        with pytest.raises(RoutineStoreError):
+            store.add(_routine())
+        assert path.read_text() == broken
+
+
+def test_scheduler_does_not_fire_a_routine_disabled_after_snapshot(tmp_path, monkeypatch):
+    store = RoutineStore(tmp_path / 'routines.json')
+    store.add(_routine())
+    original = store.all
+    def all_then_disable():
+        rows = original()
+        store.set_enabled('r1', False)
+        return rows
+    monkeypatch.setattr(store, 'all', all_then_disable)
+    fired = []
+    scheduler = RoutineScheduler(store, fired.append,
+                                 clock=lambda: _dt.datetime(2026, 11, 24, 8, 0))
+    assert scheduler.tick_once() == []
+    assert fired == []
+    assert store.get('r1').last_fired == ''
+
+
+def test_two_schedulers_claim_a_due_routine_only_once(tmp_path):
+    import threading
+    first = RoutineStore(tmp_path / 'routines.json')
+    second = RoutineStore(tmp_path / 'routines.json')
+    first.add(_routine())
+    barrier = threading.Barrier(2)
+    original_first = first.all
+    original_second = second.all
+    def snapshot(read):
+        rows = read()
+        barrier.wait(timeout=3)
+        return rows
+    first.all = lambda: snapshot(original_first)
+    second.all = lambda: snapshot(original_second)
+    fired, errors = [], []
+    clock = lambda: _dt.datetime(2026, 11, 24, 8, 0)
+    def tick(store):
+        try:
+            RoutineScheduler(store, lambda item: fired.append(item.id), clock=clock).tick_once()
+        except Exception as exc:
+            errors.append(exc)
+    threads = [threading.Thread(target=tick, args=(store,)) for store in (first, second)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(3)
+    assert not errors
+    assert all(not thread.is_alive() for thread in threads)
+    assert fired == ['r1']

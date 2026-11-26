@@ -152,38 +152,22 @@ def _memory_count() -> dict:
 def _routine_count() -> dict:
     """Board 11's "N rutinitas aktif" — the same list the page draws.
 
-    It goes through `pages_people.routines()` and not a second query, so the
-    header cannot count anything the list below it does not show. There is no
-    routine STORE in this build; that function returns the one real routine
-    (the proactive check) and the page states that the artboard's three are not
-    stored.
+    The count is of enabled stored rows, not all routines including paused ones.
     """
     try:
         from ui import pages_people
 
-        return {"count": len(pages_people.routines() or [])}
+        rows = pages_people.routines()
+        count = (_t("ui.page.routines.unknown_count") if rows is None
+                 else sum(bool(row.get("on")) for row in rows))
+        return {"count": count}
     except Exception:                                    # noqa: BLE001
-        return {"count": 0}
+        return {"count": _t("ui.page.routines.unknown_count")}
 
 
 def _plugin_count() -> dict:
-    """Board 16's "N dari M plugin aktif", through the page's own manifest reader.
-
-    NOT `discover_plugins()`. That function IMPORTS every plugin module to
-    validate it — one of the forbidden things on this path, and the reason the
-    count read "0 of 0" while the page listed fifteen: the import blew up and
-    the bare `except` turned a real failure into a plausible zero. The page's
-    reader parses the manifests instead, and it is the same list the rows are
-    drawn from, so the header cannot count something the list does not show.
-    """
-    try:
-        from ui import pages_admin
-
-        rows = pages_admin.plugin_rows()
-        return {"on": sum(1 for r in rows if r["on"]), "total": len(rows)}
-    except Exception as e:                               # noqa: BLE001
-        print(f"[JARVIS] Plugin count tidak terbaca — {type(e).__name__}: {e}")
-        return {"on": 0, "total": 0}
+    """A snapshot has no registry; the live plugin page supplies its own count."""
+    return {"on": "?", "total": "?"}
 
 
 # A SUBTITLE WITH A NUMBER IN IT IS FORMATTED AT PAINT TIME. Written as a
@@ -202,23 +186,17 @@ MODE_SUBTITLES = {
     "quiet": "ui.panel.subtitle.quiet",
 }
 
-# Board 5's four quick actions. The chord is part of the row, not a tooltip,
-# because a quick action whose chord is invisible is one the user retypes.
-#
-# THE CHORDS ARE THE ARTBOARD'S, AND TWO OF THEM ARE NOT BOUND IN THIS BUILD.
-# That is stated rather than quietly relabelled: "Susun jendela" has no snap
-# behaviour behind it on any platform this project has run on, and "Cari
-# berkas" has a search function but no chord. The panel still lists them —
-# they are what the mockup asks for and they do something useful when pressed —
-# but `design/new-ui-proposal-ANALISIS.md` does not claim the chords exist, and a
-# chord printed on a row is not a promise that the OS owns it.
-# (key, label-key, chord). The label is a catalogue key — see `PERMISSIONS`.
+# Board 5's four entry points. The third field is a description key, not a
+# shortcut: selecting a card only prepares a draft and never sends it.
 QUICK_ACTIONS = (
-    ("screenshot", "ui.panel.quick.screenshot", "Ctrl+Shift+S"),
-    ("dictate", "ui.panel.quick.dictate", "Ctrl+Win"),
-    ("find_file", "ui.panel.quick.find_file", "Ctrl+Shift+F"),
-    ("tidy_windows", "ui.panel.quick.tidy_windows", "Ctrl+Shift+J"),
+    ("chat", "ui.panel.card.chat", "ui.panel.card.chat.desc"),
+    ("summarize", "ui.panel.card.summarize", "ui.panel.card.summarize.desc"),
+    ("analyze", "ui.panel.card.analyze", "ui.panel.card.analyze.desc"),
+    ("create", "ui.panel.card.create", "ui.panel.card.create.desc"),
 )
+
+# Existing tools remain reachable from the Tools page and keep their handlers.
+LEGACY_QUICK_KEYS = ("screenshot", "dictate", "find_file", "tidy_windows")
 
 # BOARD 23 DRAWS THREE DIFFERENT ROWS IN FOKUS, and until this tuple existed the
 # panel showed board 5's four in every mode — so a user who had just asked for
@@ -378,32 +356,18 @@ def _mode() -> str:
 def _permissions() -> dict:
     """The four switches of board 06a, from the only place each is decided.
 
-    TWO KINDS OF SWITCH, AND THE PANEL MUST NOT PRETEND THEY ARE ONE.
-
-      * `microphone` is a FACT ABOUT THE MACHINE — a device exists or it does
-        not (`core.audio_devices.input_available`). Drawing it as a switch the
-        user can turn on would be a promise no click can keep, so it renders
-        `fixed` and says why.
-      * `files` and `apps` are PLUGIN ENABLEMENT. They are real toggles because
-        turning one off is what stops the tool from being offered to the model.
-      * `screen` is neither: screenshots are a built-in action, not a plugin, so
-        the honest answer is "always on when asked" rather than a switch that
-        would have nothing behind it.
+    Device and screen entries are capability hints, not OS permission grants.
+    File and computer-control tools are built-in actions, not plugins: changing
+    plugin enablement does not disable them, so no access switch is offered.
     """
     from core import audio_devices
-    from memory import config_manager
 
     can_hear = bool(_safe(lambda: audio_devices.input_available(), True))
     return {
         "screen": {"on": True, "fixed": True, "note": ""},
-        "microphone": {"on": can_hear, "fixed": not can_hear,
-                       "note": ""},
-        "files": {"on": bool(_safe(
-            lambda: config_manager.get_plugin_enabled("file_controller", False), False)),
-                  "fixed": False, "note": ""},
-        "apps": {"on": bool(_safe(
-            lambda: config_manager.get_plugin_enabled("computer_control", False), False)),
-                 "fixed": False, "note": ""},
+        "microphone": {"on": can_hear, "fixed": True, "note": ""},
+        "files": {"on": None, "fixed": True, "note": "unavailable"},
+        "apps": {"on": None, "fixed": True, "note": "unavailable"},
     }
 
 

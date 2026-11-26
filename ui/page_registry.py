@@ -63,5 +63,36 @@ def board_page(board: int) -> str:
     return ""
 
 
+class PanelNavigationMixin:
+    """Remember the path through the single panel, not separate windows."""
+
+    def set_page(self, page: str) -> bool:
+        name = str(page or "").strip().lower()
+        if name not in ALL_PAGES:
+            return False
+        if name != self._page:
+            if name == "main":
+                self._page_history.clear()
+            elif name in self._page_history:
+                # Going directly back to an ancestor must not leave its former
+                # child on the stack (e.g. after deleting a memory detail).
+                index = len(self._page_history) - 1 - self._page_history[::-1].index(name)
+                del self._page_history[index:]
+            else:
+                self._page_history.append(self._page)
+            self._page = name
+        self._show_page()
+        self.refresh()
+        return True
+
+    def go_back(self) -> bool:
+        if self._page == "main":
+            return False
+        self._page = self._page_history.pop() if self._page_history else "main"
+        self._show_page()
+        self.refresh()
+        return True
+
+
 __all__ = ["ALL_PAGES", "CORE_PAGES", "PAGES", "PAGE_BOARD", "PAGE_KEYS",
            "PAGE_LABEL", "PAGE_TITLE", "board_page"]

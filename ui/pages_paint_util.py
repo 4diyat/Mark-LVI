@@ -1,8 +1,6 @@
 """Helper painters shared by the board painters in :mod:`ui.pages_paint`.
 
-These four routines are pure text/state writers — they read the panel's
-labels (and, for the phone pairing, the panel's pairing session) and write
-the right sentence or glyph. They are split out of ``pages_paint.py`` to keep
+These routines write text and state to the panel widgets. They are split out of ``pages_paint.py`` to keep
 that module under the project's per-module line ceiling; they have no
 rendering concerns of their own.
 """
@@ -22,26 +20,20 @@ def _keyed(labels, prefix, count, text_key) -> None:
 
 
 def _paint_phone_state(panel, labels, pal) -> None:
-    """Board 16's phone card: paired device, or the idle sentence."""
-    session = getattr(panel, "_phone_pair", None)
-    devices = getattr(session, "devices", []) if session is not None else []
-    paired = bool(devices)
-    fill = pal["accent"] if paired else pal["panel"]
-    labels["pl_phone"].setText(_t("ui.page.plugins.phone_paired", name=devices[-1].name)
-                               if paired else _t("ui.page.plugins.phone_idle"))
-    labels["pl_phone2"].setText(_t("ui.page.plugins.phone_connected_short") if paired else "")
+    """The panel is not connected to the dashboard's pairing transport."""
+    labels["pl_phone"].setText(_t("ui.page.plugins.phone_panel_unavailable"))
+    labels["pl_phone2"].setText(_t("ui.page.plugins.phone_status_unknown"))
+    labels["pl_phone2"].setWordWrap(True)
     labels["pl_phone_shape"].setStyleSheet(
-        f"background:{fill};border-radius:10px;border:1px solid {pal['line']};")
+        f"background:{pal['panel']};border-radius:10px;border:1px solid {pal['line']};")
+    for key in ("pl_phone_make", "pl_phone_pair", "pl_phone_unpair"):
+        panel._buttons[key].setEnabled(False)
+        panel._buttons[key].hide()
 
 
 def _paint_phone_code(panel) -> str:
-    """Board 16's pairing-code box: the live code, or the no-code sentence."""
-    session = getattr(panel, "_phone_pair", None)
-    code = getattr(session, "pending_code", None) if session is not None else None
-    if code is None:
-        return _t("ui.page.plugins.phone_no_code")
-    remaining = max(0, int(code.expires_at - session._clock()))
-    return _t("ui.page.plugins.phone_code_shown", code=code.code, secs=remaining)
+    """No dashboard-issued code is connected to this panel."""
+    return _t("ui.page.plugins.phone_code_unavailable")
 
 
 def _paint_install_status(panel, labels) -> None:

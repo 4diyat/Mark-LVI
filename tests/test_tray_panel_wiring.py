@@ -232,17 +232,14 @@ def test_erasing_local_data_empties_the_audit_and_says_what_it_did_not_touch(
 
 # ── permissions and guest mode ─────────────────────────────────────────────
 
-def test_a_real_switch_writes_plugin_enablement(wiring, monkeypatch):
+def test_builtin_action_permissions_do_not_write_ineffective_plugin_flags(wiring, monkeypatch):
     from memory import config_manager
-
     written = []
     monkeypatch.setattr(config_manager, "save_plugin_enabled",
                         lambda name, on: written.append((name, on)) or True)
-
-    assert wiring.set_permission(FakeShell(), "files", False) is True
-    assert written == [("file_controller", False)]
-    assert wiring.set_permission(FakeShell(), "apps", True) is True
-    assert written[-1] == ("computer_control", True)
+    assert wiring.set_permission(FakeShell(), "files", False) is False
+    assert wiring.set_permission(FakeShell(), "apps", True) is False
+    assert written == []
 
 
 def test_a_switch_with_nothing_behind_it_is_refused_by_name(wiring):
@@ -298,7 +295,7 @@ def test_every_key_the_panel_can_press_has_a_handler(wiring):
                 "memory_forget", "memory_clear", "routines_pause",
                 "routine_create", "routine_toggle", "routine_delete",
                 "tools_copy",
-                "tools_clear", "tools_safe", "tools_layout", "plugin_toggle", "consent",
+                "tools_clear", "tools_safe", "tools_layout", "plugin_toggle", "plugins_list", "consent",
                 # Board 7's four-step onboarding ladder: advance, back, and
                 # the presence-mode toggle the presence step reuses the switch for.
                 "onboard_next", "onboard_back", "onboard_toggle",
@@ -337,7 +334,7 @@ def test_every_key_the_panel_can_press_has_a_handler(wiring):
                            "tl_snap_thumb",
                            "l18_clear", "l18_export", "cn_toggle", "hp_read",
                            "tl_safe", "cn_allow", "cn_deny", "ac_lang",
-                           "ac_motion", "ac_scale", "pl_toggle", "in_pick",
+                           "ac_motion", "ac_scale", "pl_toggle", "pl_prev", "pl_next", "in_pick",
                            # board 15's gesture "ubah" cells, by prefix
                            "ac_gest_edit",
                            "more", "more_back",
@@ -349,7 +346,7 @@ def test_every_key_the_panel_can_press_has_a_handler(wiring):
                            # board 15's contrast slots, by their prefix
                            "ac_contrast",
                            # board 11's routine controls, by prefix
-                           "rt_toggle", "rt_delete", "rt_builder_create",
+                           "rt_toggle", "rt_delete", "rt_builder_create", "rt_prev", "rt_next",
                            # board 13's form-fill apply button, by prefix
                            "hp_form_apply",
                            # board 16's phone pairing controls, by prefix
@@ -361,7 +358,7 @@ def test_every_key_the_panel_can_press_has_a_handler(wiring):
                            # so they have no entry in `actions` — but they are
                            # real controls and must be named here so a new one
                            # cannot be added silently.
-                           "nav"}
+                           "nav", "panel_back", "panel_close", "tl_quick"}
         # `p6*` replaced `permx` when board 6 replaced 06a on the privacy page:
         # the four rows keep the `p6:` prefix, its two buttons are `p6_clear`
         # and `p6_export`, and the history page keeps its own `clear`/`export`.

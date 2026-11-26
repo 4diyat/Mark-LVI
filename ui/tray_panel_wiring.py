@@ -415,23 +415,14 @@ def erase_local(shell: "AmbientShell") -> bool:
 
 
 def set_permission(shell: "AmbientShell", key: str, on: bool) -> bool:
-    """A board 06a switch. Only the two that are real can ever reach here.
+    """No UI permission switch may claim to gate built-in actions.
 
-    `screen` is disabled in the panel (always on when asked) and `microphone` is
-    disabled too (a device either exists or it does not), so this handles the
-    two plugin-backed ones and refuses anything else by name rather than
-    silently doing nothing.
+    `file_controller` and `computer_control` are discovered by action_loader,
+    not plugin_loader. Writing plugin settings for them has no effect on their
+    execution, so refuse rather than present a false security control.
     """
-    from memory import config_manager
-
-    plugin = {"files": "file_controller", "apps": "computer_control"}.get(key)
-    if plugin is None:
-        _say(shell, f"Izin {key!r} bukan pengaturan di build ini.")
-        return False
-    ok = bool(config_manager.save_plugin_enabled(plugin, bool(on)))
-    _say(shell, f"Izin {key}: {'aktif' if on else 'mati'}." if ok else
-               f"Izin {key} tidak bisa disimpan.")
-    return ok
+    _say(shell, f"Izin {key!r} bukan pengaturan yang tersedia di build ini.")
+    return False
 
 
 def set_theme(shell: "AmbientShell", name: str) -> bool:
@@ -465,7 +456,8 @@ def send_command(shell: "AmbientShell", text: str) -> bool:
     if not str(text or "").strip():
         return False
     try:
-        submit_from_bar(shell, text)
+        if submit_from_bar(shell, text) is False:
+            return False
     except Exception as e:                          # noqa: BLE001
         _say(shell, f"Perintah tidak terkirim — {type(e).__name__}: {e}")
         return False
@@ -497,13 +489,16 @@ def actions_for(shell: "AmbientShell") -> dict:
         "memory_clear": lambda: pages_actions.memory_clear(shell),
         "routines_pause": lambda: pages_actions.routines_pause(shell),
         "routine_create": lambda: pages_actions.routine_create(shell),
-        "routine_toggle": lambda i: pages_actions.routine_toggle(shell, i),
-        "routine_delete": lambda i: pages_actions.routine_delete(shell, i),
+        "routine_toggle": lambda rid, on: pages_actions.routine_toggle(shell, rid, on),
+        "routine_delete": lambda rid: pages_actions.routine_delete(shell, rid),
         "tools_copy": lambda: pages_actions.tools_copy(shell),
         "tools_layout": lambda i: pages_actions.tools_layout(shell, i),
         "tools_clear": lambda: pages_actions.tools_clear(shell),
         "tools_safe": lambda: pages_actions.tools_mark_safe(shell),
-        "plugin_toggle": lambda index: pages_actions.plugin_toggle(shell, index),
+        "plugins_list": lambda: (shell.get_plugins() if callable(
+            getattr(shell, "get_plugins", None)) else None),
+        "plugin_toggle": lambda name, on, permissions: pages_actions.plugin_toggle(
+            shell, name, on, permissions),
         "consent": lambda allowed: pages_actions.consent_answer(shell, allowed),
         # Board 7's four-step onboarding ladder: advance, back, and the
         # presence-mode toggle the presence step reuses the consent switch for.
@@ -520,7 +515,7 @@ def actions_for(shell: "AmbientShell") -> dict:
         "voice_auth_enroll": lambda: pages_actions.voice_auth_enroll(shell),
         "voice_auth_delete": lambda: pages_actions.voice_auth_delete(shell),
         "form_fill_apply": lambda: pages_actions.form_fill_apply(shell),
-        # Board 16's phone pairing: mint a code, pair a device, disconnect.
+        # Board 16's unavailable phone controls refuse direct calls as well.
         "phone_make_code": lambda: pages_actions.phone_make_code(shell),
         "phone_pair": lambda: pages_actions.phone_pair(shell),
         "phone_unpair": lambda: pages_actions.phone_unpair(shell),
