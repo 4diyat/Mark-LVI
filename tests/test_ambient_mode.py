@@ -536,7 +536,7 @@ def shell(monkeypatch):
         from ui import lifecycle
         from memory import config_manager as cm
 
-        state = {"tray_ok": True, "mode": "ambient", "bubble_shown": True,
+        state = {"tray_ok": True, "mode": "bubble", "bubble_shown": True,
                  "orb_started": 0, "bar_started": 0, "notices": 0}
         tray_mod = importlib.import_module("ui.tray")
         monkeypatch.setattr(tray_mod.TrayIcon, "start",
@@ -626,7 +626,8 @@ def test_ambient_without_a_tray_still_has_a_surface(monkeypatch):
         assert shell._tray is None
         assert started["orb"] == 1, "no tray, and no orb either"
         assert started["bar"] == 1, "the command bar is the fallback, not a window"
-        assert started["bubble"] == 1, "the face is the other fallback"
+        assert started["bubble"] == 0, \
+            "the face is opt-in (ui_mode bubble); it is not a fallback surface"
     finally:
         for name in list(sys.modules):
             if name == "ui" or name.startswith("ui."):
