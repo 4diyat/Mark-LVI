@@ -48,4 +48,7 @@ def interface_visible(shell) -> bool:
     the feature switched off. With no window, "visible" means the face.
     """
     bubble = getattr(shell, "_bubble", None)
-    return bool(getattr(bubble, "visible", False))
+    surface = getattr(shell, "_main_surface", None)
+    window = getattr(surface, "window", None)
+    return bool(getattr(bubble, "visible", False) or
+                (window is not None and window.isVisible()))

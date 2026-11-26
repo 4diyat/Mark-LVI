@@ -264,17 +264,15 @@ def paint_consent(panel, snap) -> None:
         labels[f"cn_step:{seg}"].setStyleSheet(
             f"background:{accent if lit else idle};border-radius:2px;")
 
+    panel._buttons["cn_toggle"].setVisible(step == PRESENCE)
     if step == MIC:
         labels["cn_when"].setText(_t("ui.page.consent.mic.when"))
         labels["cn_what_header"].setText(_t("ui.page.consent.what"))
         for i in range(3):
             labels[f"cn_point:{i}"].setText(_t(f"ui.page.consent.point{i + 1}"))
         labels["cn_ack"].setText(_t("ui.page.consent.ack"))
-        given = flow.is_done(MIC)
-        panel._buttons["cn_toggle"].setChecked(given)
-        panel._buttons["cn_allow"].setText(
-            _t("ui.page.consent.allow") if not given else _t("ui.page.consent.done"))
-        panel._buttons["cn_deny"].setText(_t("ui.page.consent.deny"))
+        panel._buttons["cn_allow"].setText(_t("ui.page.consent.next"))
+        panel._buttons["cn_deny"].setText(_t("ui.page.consent.back"))
     elif step == PRESENCE:
         labels["cn_when"].setText(_t("ui.page.consent.presence.body"))
         labels["cn_what_header"].setText("")
@@ -283,8 +281,8 @@ def paint_consent(panel, snap) -> None:
         picked = getattr(panel, "_onboarding_picked", None)
         mode_key = picked or ""
         labels["cn_ack"].setText(
-            _t("ui.page.consent.presence.selected", mode=_t(
-                f"ui.page.consent.presence.{mode_key}" if mode_key else "active")))
+            _t("ui.page.consent.presence.selected", mode=_t(f"ui.page.consent.presence.{mode_key}"))
+            if mode_key else _t("ui.page.consent.presence.pick"))
         panel._buttons["cn_allow"].setText(_t("ui.page.consent.next"))
         panel._buttons["cn_deny"].setText(_t("ui.page.consent.back"))
     elif step == WELCOME:
@@ -298,9 +296,12 @@ def paint_consent(panel, snap) -> None:
     else:  # done: the summary reads the record back.
         labels["cn_when"].setText("")
         labels["cn_what_header"].setText(_t("ui.page.consent.done.name"))
-        lines = flow.summary_lines()
+        mode = flow.presence_mode
+        lines = [_t("ui.page.consent.summary.mic"),
+                 _t("ui.page.consent.presence.selected", mode=_t(f"ui.page.consent.presence.{mode}")) if mode else _t("ui.page.consent.presence.pick"),
+                 _t("ui.page.consent.summary.note")]
         for i in range(3):
-            labels[f"cn_point:{i}"].setText(lines[i] if i < len(lines) else "")
+            labels[f"cn_point:{i}"].setText(lines[i])
         labels["cn_ack"].setText("")
         panel._buttons["cn_allow"].setText(_t("ui.page.consent.finish"))
         panel._buttons["cn_deny"].setText(_t("ui.page.consent.back"))

@@ -228,16 +228,19 @@ def show_exchange(shell: "AmbientShell", line: str) -> None:
 
 
 def show_panel_exchange(shell, line: str) -> None:
-    """Forward only explicit conversation lines, never system diagnostics."""
-    panel = getattr(shell, "_panel", None)
+    """Forward explicit conversation to both home and compact panel."""
     name = str(getattr(shell, "_assistant_name", "") or "")
-    if panel is None:
-        return
+    main = getattr(shell, "_main_surface", None)
+    if main is not None and line.startswith(("SYS:", "ERR:", "NET:")):
+        main.show_feedback(line)
     if line.startswith("You: "):
-        panel.add_message("user", line[5:])
+        role, text = "user", line[5:]
     elif name and line.startswith(name + ": "):
-        panel._assistant_label = name
-        panel.add_message("assistant", line[len(name) + 2:])
+        role, text = "assistant", line[len(name) + 2:]
+    else:
+        return
+    from ui.conversation_state import publish
+    publish(shell, role, text)
 
 
 def _note(shell, text: str) -> None:
@@ -272,18 +275,40 @@ def start_pause_hotkey(shell: "AmbientShell") -> str:
     """
     from core.hotkey import HotkeyTap
 
-    tap = HotkeyTap(lambda: toggle_gestures(shell), chord=PAUSE_CHORD)
+    from ui.qt_thread import run_on_qt_thread
+    tap = HotkeyTap(lambda: run_on_qt_thread(getattr(shell, '_ui_thread_id', None),
+                                             lambda: toggle_gestures(shell)), chord=PAUSE_CHORD)
     try:
         scope = tap.start()
     except Exception as exc:                        # noqa: BLE001
         _note(shell, f"gesture pause shortcut unavailable — "
                      f"{type(exc).__name__}: {exc}")
-        return "window"
+        scope = "window"
     shell._pause_hotkey = tap
+    if scope != "global":
+        _install_pause_fallback(shell)
     return scope
 
 
+def _install_pause_fallback(shell):
+    window = getattr(getattr(shell, '_voice_overlay', None), '_window', None)
+    if window is None:
+        return
+    try:
+        from PyQt6.QtGui import QKeySequence, QShortcut
+        shortcut = QShortcut(QKeySequence('Ctrl+Alt+G'), window)
+        shortcut.activated.connect(lambda: toggle_gestures(shell))
+        shell._pause_shortcut = shortcut
+    except Exception as exc:  # noqa: BLE001
+        _note(shell, f"gesture pause shortcut unavailable: {exc}")
+
+
 def stop_pause_hotkey(shell: "AmbientShell") -> None:
+    shortcut = getattr(shell, '_pause_shortcut', None)
+    if shortcut is not None:
+        shortcut.setEnabled(False)
+        shortcut.deleteLater()
+        shell._pause_shortcut = None
     tap = getattr(shell, "_pause_hotkey", None)
     if tap is None:
         return

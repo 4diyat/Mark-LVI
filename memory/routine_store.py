@@ -157,6 +157,42 @@ class RoutineStore:
                     return toggled
             return None
 
+    @staticmethod
+    def _same_displayed(current: Routine, expected: Routine) -> bool:
+        # The scheduler may stamp last_fired while the user reads the card.
+        # That is not an edit to the command, schedule, or enabled state.
+        return (current.id == expected.id and current.name == expected.name and
+                current.schedule == expected.schedule and current.payload == expected.payload and
+                current.enabled == expected.enabled)
+
+    def remove_if_unchanged(self, expected: Routine) -> bool:
+        """Remove only the routine the user reviewed, atomically within this process."""
+        with self._lock:
+            rows = self._load()
+            for index, row in enumerate(rows):
+                if row.id == expected.id:
+                    if not self._same_displayed(row, expected):
+                        return False
+                    del rows[index]
+                    self._write(rows)
+                    return True
+            return False
+
+    def set_enabled_if_unchanged(self, expected: Routine, enabled: bool) -> Routine | None:
+        """Change only the reviewed routine; preserve a concurrent scheduler stamp."""
+        with self._lock:
+            rows = self._load()
+            for index, row in enumerate(rows):
+                if row.id == expected.id:
+                    if not self._same_displayed(row, expected):
+                        return None
+                    updated = Routine(row.id, row.name, row.schedule, row.payload,
+                                      bool(enabled), row.last_fired)
+                    rows[index] = updated
+                    self._write(rows)
+                    return updated
+            return None
+
     def mark_fired(self, routine_id: str, when: str) -> Routine | None:
         """Record that a routine fired on `when` (ISO date), so it does not
         re-fire the same day. Returns the updated routine or None."""

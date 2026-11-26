@@ -35,6 +35,11 @@ def _t(key: str, **fields) -> str:
     return _i18n_t(key, **fields)
 
 
+def open_workspace(shell: "AmbientShell") -> bool:
+    from ui.design_workspace import open_workspace as open_desktop
+    return open_desktop(shell)
+
+
 def memory_forget(shell: "AmbientShell") -> bool:
     """Board 10's "Lupakan": delete the memory the detail page is showing."""
     from ui import pages_memory
@@ -211,35 +216,40 @@ def onboard_next(shell: "AmbientShell") -> bool:
     if flow is None:
         return False
     step = flow.current
+    if step == "mic":
+        # The stored consent flag is not enforced by the audio runtime and is
+        # not an OS permission. This informational step must not write it.
+        _finish_onboarding(shell, flow.answer(False), "")
+        return True
     if step == "presence":
         picked = getattr(panel, "_onboarding_picked", None) if panel else None
         if not picked:  # never record a default the user did not choose
             _say(shell, _t("ui.page.consent.presence.pick"))
             return False
-        decision = str(picked)
+        from core import presence_mode
+        from ui.ambient_shell import apply_presence_mode
+        if not apply_presence_mode(shell, str(picked)) or presence_mode.current() != str(picked):
+            _say(shell, _t("ui.page.consent.presence.pick"))
+            return False
+        _finish_onboarding(shell, flow.answer(str(picked)), "")
+        return True
     else:
         checked = panel._buttons.get("cn_toggle") if panel else None
         decision = {"welcome": "next", "done": "finish",
                     "mic": bool(checked and checked.isChecked())}.get(step)
     new_flow, ok = answer_step(flow, decision)
     if ok:
-        _finish_onboarding(shell, new_flow, _t("ui.page.consent.done"))
+        _finish_onboarding(shell, new_flow, "")
     return ok
 
 
 def onboard_back(shell: "AmbientShell") -> bool:
     """Board 7: go back to the previous step, or skip the microphone step."""
-    from core.onboarding import MIC, Onboarding
+    from core.onboarding import Onboarding
 
     panel, flow = _onboarding_state(shell)
     if flow is None or flow.current_index <= 0:
         return False
-    if flow.current == MIC:  # a skip records a refused consent
-        from actions.onboarding import answer_step
-        new_flow, ok = answer_step(flow, False)
-        if ok:
-            _finish_onboarding(shell, new_flow, _t("ui.page.consent.deny"))
-        return ok
     new_flow = Onboarding(flow._done, flow._skipped, flow.presence_mode,
                           max(0, flow.current_index - 1))  # back, recorded nothing
     _finish_onboarding(shell, new_flow, "")

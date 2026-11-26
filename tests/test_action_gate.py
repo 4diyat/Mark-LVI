@@ -192,3 +192,22 @@ def test_the_result_reports_whether_a_human_is_needed():
     assert result.needs_human is True
     done = action_gate.check("web_search", lambda: "ok")
     assert done.needs_human is False
+
+
+def test_confirmation_shows_full_parameters_and_refuses_large_details(isolated):
+    ran = []
+    result = action_gate.check('send_message', lambda: ran.append(1),
+                               {'recipient': 'Ada', 'message': '<report>'})
+    assert not result.ran and ran == []
+    assert 'Ada' in isolated[0][2] and '<report>' in isolated[0][2]
+    confirm.resolve(isolated[0][0], False)
+    result = action_gate.check('send_message', lambda: ran.append(1),
+                               {'message': 'X' * 500})
+    assert not result.ran and 'complete action details' in result.message
+    assert ran == [] and len(isolated) == 1
+
+
+def test_confirmation_refuses_unrepresentable_parameters(isolated):
+    result = action_gate.check('send_message', lambda: 'sent', {'body': object()})
+    assert not result.ran and 'parameters' in result.message
+    assert not isolated

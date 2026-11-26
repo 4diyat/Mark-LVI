@@ -225,3 +225,23 @@ def test_a_shell_with_no_open_setup_still_answers(shell):
     shell.open_setup = None
     lifecycle.summon_settings(shell)
     assert any("api_keys.json" in ln for ln in lines)
+
+
+def test_delayed_api_key_notice_uses_single_argument(shell, no_key, monkeypatch):
+    """The delayed reminder must work with AmbientShell.notify's real signature."""
+    import ui.shell as shell_module
+    messages = []
+    shell.notify = lambda text: messages.append(text)
+    shell.open_setup = lambda: False
+    calls = 0
+
+    def tick(_seconds):
+        nonlocal calls
+        calls += 1
+        if calls == 305:
+            shell.mark_ready()
+
+    monkeypatch.setattr(shell_module.time, 'sleep', tick)
+    shell.wait_for_api_key()
+    assert len(messages) == 2
+    assert 'api_keys.json' in messages[-1]

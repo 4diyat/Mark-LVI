@@ -965,7 +965,9 @@ class DashboardServer:
             if "<script" in _html and "__NONCE__" not in _html:
                 print(f"[Dashboard] ⚠️  {_name} has an inline <script> with no "
                       f"nonce placeholder; CSP will block it.")
-        self.app                          = self._build_app()
+        # The optional dependency check must precede building the FastAPI app;
+        # otherwise a missing import raises NameError before serve() can report it.
+        self.app = self._build_app() if _DEPS_OK else None
 
     # ── one-time key management ───────────────────────────────────────────
 

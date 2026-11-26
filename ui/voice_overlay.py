@@ -135,7 +135,7 @@ def status_word(state: str) -> str:
 def footnote() -> str:
     """The artboard's footnote, verbatim. It is the overlay's key help."""
     return ("Glow tepi hanya saat overlay aktif · Esc keluar · "
-            "Ctrl+Alt+G menjeda gestur")
+            "Ctrl+Alt+G menjeda gestur saat overlay fokus")
 
 
 def camera_label(available: bool) -> str:
@@ -146,7 +146,7 @@ def camera_label(available: bool) -> str:
     rather than an indicator of one, and on a Linux box — where mediapipe is not
     installed — the second is the truth.
     """
-    return "KAMERA" if available else "KAMERA NONAKTIF"
+    return "LAYANAN GESTUR AKTIF" if available else "KAMERA TIDAK TERSEDIA"
 
 
 def lines_for(text: str, limit: int) -> list[str]:
@@ -197,6 +197,7 @@ class VoiceOverlay:
         self._timer = None
         self._error = ""
         self._hand = Hand()
+        self._has_hand = False
         self._transcript = ""
         self._answer = ""
         self._camera_available = False
@@ -256,6 +257,7 @@ class VoiceOverlay:
 
     def set_hand(self, sample) -> None:
         """The newest camera sample, or None. Never blocks, never raises."""
+        self._has_hand = sample is not None
         self._hand = hand_from_sample(sample)
         self._refresh()
 
@@ -277,6 +279,7 @@ class VoiceOverlay:
         waving would be answering a question they did not ask."""
         self._gestures_paused = bool(paused)
         if self._gestures_paused:
+            self._has_hand = False
             self._hand = Hand()
         self._refresh()
 
@@ -309,8 +312,10 @@ class VoiceOverlay:
             return True
         try:
             from PyQt6.QtCore import Qt
-            from PyQt6.QtWidgets import QWidget
+            from PyQt6.QtWidgets import QApplication, QWidget
 
+            if QApplication.instance() is None:
+                raise RuntimeError("QApplication is not available")
             window = QWidget()
             window.setWindowFlags(self.window_flags(Qt))
             window.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)

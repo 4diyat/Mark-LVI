@@ -39,9 +39,10 @@ WHY IT NEVER IMPORTS Qt
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from typing import Any, Callable, Mapping
 
-from core import audit_log, tool_risk
+from core import audit_log, i18n, tool_risk
 
 # The words an audit record can carry, in the vocabulary `core.outcome` already
 # uses so the log and the sentence the user hears cannot disagree.
@@ -102,11 +103,20 @@ def check(tool: str, run: Callable[[], Any], args: Mapping | None = None,
 
     if risk.level == tool_risk.RISKY and not self_gated:
         from core import confirm          # imported here: see the module docstring
-        title = (confirm_title or _default_title(risk))[:120]
-        detail = (confirm_detail or _default_detail(risk))[:300]
+        title = confirm_title or _default_title(risk)
+        try:
+            parameters = json.dumps(dict(args or {}), ensure_ascii=False, sort_keys=True,
+                                    separators=(', ', ': '), allow_nan=False)
+        except (TypeError, ValueError):
+            return Result(ran=False, level=risk.level,
+                          message='Cannot display the complete action parameters for confirmation. Nothing was done.',
+                          risk=risk)
+        label = "Parameter" if i18n.active_locale() == "id" else "Parameters"
+        detail = (confirm_detail or _default_detail(risk)) + f"\n{label}: {parameters}"
         message = confirm.request(key=name, title=title, detail=detail,
                                   run=lambda: _run_and_audit(name, risk.level, run))
-        _audit(name, risk.level, AWAITING, title)
+        if message.startswith('[CONFIRMATION_PENDING]'):
+            _audit(name, risk.level, AWAITING, title)
         outcome = on_decline(message) if on_decline is not None else message
         return Result(ran=False, level=risk.level, message=outcome, risk=risk)
 
@@ -119,7 +129,7 @@ def _default_title(risk: tool_risk.CallRisk) -> str:
 
 
 def _default_detail(risk: tool_risk.CallRisk) -> str:
-    return f"{risk.reason}. This cannot be undone by the assistant."
+    return f"{risk.reason}. Review the requested action before approving."
 
 
 def _run_and_audit(name: str, level: str, run: Callable[[], Any]) -> str:

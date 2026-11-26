@@ -381,7 +381,7 @@ def test_the_footers_keys_are_not_translated(bar):
     """
     footer_text = "".join(seg for seg, _x in bar.FOOTER)
     assert "↑↓" in footer_text and "↵" in footer_text
-    assert "Ctrl+Space" in footer_text
+    assert "Esc" in footer_text
 
 
 def test_the_bar_reads_none_of_the_retired_hud_palette(bar):

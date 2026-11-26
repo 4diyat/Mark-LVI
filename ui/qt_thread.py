@@ -131,7 +131,7 @@ def _flush_level(shell) -> None:
     """Paint the newest level. Qt thread only, at most one in flight."""
     shell._level_flush_queued = False
     level = shell._pending_level
-    for attr in ("_orb", "_bubble"):
+    for attr in ("_orb", "_bubble", "_main_surface"):
         target = getattr(shell, attr, None)
         callback = getattr(target, "set_audio_level", None)
         if callback is None:

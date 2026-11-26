@@ -145,9 +145,9 @@ def test_a_failing_save_does_not_stop_the_mode(lifecycle, monkeypatch):
 
 # ── the bar is a second door, and both are wired ──────────────────────────
 
-def test_the_bar_chord_is_ctrl_space_not_the_summon_chord(lifecycle):
+def test_the_bar_chord_is_distinct_from_push_to_talk_and_summon(lifecycle):
     """Two chords for two wishes: one brings the WINDOW back, one opens a line."""
-    assert lifecycle.BAR_CHORD == ("ctrl", "space")
+    assert lifecycle.BAR_CHORD == ("ctrl", "alt", "b")
     assert lifecycle.BAR_CHORD != lifecycle.SUMMON_CHORD
 
 

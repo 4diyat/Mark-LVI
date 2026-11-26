@@ -14,12 +14,9 @@ WHY THE MARSHALLING NEEDS A MODULE AT ALL
       * `prompt_reconfig()` — the asyncio loop, after `session_policy` says the
         key was rejected.
 
-    Qt may only create widgets on the thread that owns them, and
-    `QTimer.singleShot(0, ...)` is the same mechanism the confirmation banner
-    already uses (`ui/shell.py::show_confirm`) for exactly this reason. It is
-    safe to call from any thread as long as the receiving event loop is running
-    — which it is, because `main.py` starts the runner from inside
-    `_run_event_loop`.
+    Qt may only create widgets on their owner thread. The shared dispatcher
+    uses a queued signal to that thread; QTimer.singleShot from a worker without
+    an event loop cannot reliably deliver the request.
 
 WHY IT KEEPS ONE INSTANCE
     The screen is a gate, not a dialog: two of them is one too many, and the
@@ -55,12 +52,12 @@ def open_setup(shell) -> bool:
     and the caller is expected to say where the key file is instead.
     """
     try:
-        from PyQt6.QtCore import QTimer
-    except Exception as e:                          # noqa: BLE001
-        note(shell, f"no Qt: cannot open the setup screen — {type(e).__name__}: {e}")
-        return False
-    try:
-        QTimer.singleShot(0, lambda: build(shell))
+        from PyQt6.QtWidgets import QApplication
+        from ui import qt_thread
+        if QApplication.instance() is None or qt_thread._dispatcher is None:
+            note(shell, "no Qt dispatcher: cannot open the setup screen")
+            return False
+        qt_thread.run_on_qt_thread(shell._ui_thread_id, lambda: build(shell))
         return True
     except Exception as e:                          # noqa: BLE001
         note(shell, f"the setup screen could not be queued — {type(e).__name__}: {e}")

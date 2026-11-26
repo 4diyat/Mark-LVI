@@ -138,25 +138,15 @@ def test_a_second_question_reuses_the_banner_rather_than_stacking(qt):
 # ── the shell's side ──────────────────────────────────────────────────────
 
 def test_the_banner_is_built_on_the_qt_thread(qt):
-    """`core/confirm` calls `show` from an action's worker thread.
-
-    Qt may only build widgets on the thread that owns them. If `show_confirm`
-    builds the banner inline, the first confirmation of the session creates a
-    widget off the Qt thread — undefined behaviour that happens to work on X11
-    and crashes on Windows, the platform this ships on.
-
-    Read from the source because proving it by execution would need a real Qt
-    run loop with a real second thread, which is the one thing a headless CI
-    runner cannot give. What is asserted is the shape that makes it true: the
-    only path to the banner goes through a queued `singleShot`.
-    """
+    """Real worker-to-Qt delivery is exercised in test_confirmation_real_qt."""
     source = (ROOT / "ui" / "shell.py").read_text(encoding="utf-8")
     start = source.index("def show_confirm(")
     body = source[start:source.index("def _show_confirm_now", start)]
-    assert "QTimer.singleShot" in body, "the banner is built on the caller's thread"
-    assert "_show_confirm_now(" in body
-    assert body.count("_show_confirm_now(") == 1, (
-        "a direct call to the builder would defeat the queued one")
+    assert "ui.confirmation_flow import show" in body
+    flow = (ROOT / "ui" / "confirmation_flow.py").read_text(encoding="utf-8")
+    assert "run_on_qt_thread(shell._ui_thread_id, deliver)" in flow
+    assert "confirm.is_pending(token)" in flow
+
 
 
 def test_confirm_and_cancel_reach_core_confirm_with_the_token(qt, monkeypatch):

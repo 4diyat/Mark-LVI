@@ -273,6 +273,9 @@ def prefill(shell: "AmbientShell", text: str) -> bool:
     if field is None:
         return False
     try:
+        if str(field.text() or '').strip() or getattr(bar, 'sending', False):
+            field.setFocus()
+            return False
         field.setText(text)
         field.setFocus()
         return True
@@ -291,7 +294,7 @@ def tidy_windows(shell: "AmbientShell") -> bool:
     `computer_control`.
     """
     _say(shell, "Susun jendela belum ada di build ini — minta JARVIS lewat "
-                "perintah, atau pakai Ctrl+Shift+J untuk membuka bar.")
+                "perintah, atau buka bar perintah dari ruang kerja.")
     return False
 
 
@@ -434,9 +437,10 @@ def set_theme(shell: "AmbientShell", name: str) -> bool:
     small config update and not a rewrite of the whole file.
     """
     from memory import config_manager
-
     try:
-        config_manager.save_ui_theme(name)
+        if config_manager.save_ui_theme(name) is False:
+            _say(shell, "Tema tidak tersimpan.")
+            return False
     except Exception as e:                          # noqa: BLE001
         _say(shell, f"Tema tidak tersimpan — {type(e).__name__}: {e}")
         return False
@@ -446,9 +450,7 @@ def set_theme(shell: "AmbientShell", name: str) -> bool:
     _say(shell, f"Tema panel: {saved}.")
     return saved == str(name or "").strip().lower()
 
-
 # ── the field ────────────────────────────────────────────────────────────────
-
 def send_command(shell: "AmbientShell", text: str) -> bool:
     """Board 5's field. The same door the command bar uses, on purpose."""
     from ui.ambient_shell import submit_from_bar
@@ -488,6 +490,7 @@ def actions_for(shell: "AmbientShell") -> dict:
         "theme": lambda name: set_theme(shell, name),
         "command": lambda text: send_command(shell, text),
         # ── the board pages (ui/pages_actions.py) ────────────────────────
+        "open_workspace": lambda: pages_actions.open_workspace(shell),
         "memory_forget": lambda: pages_actions.memory_forget(shell),
         "memory_clear": lambda: pages_actions.memory_clear(shell),
         "routines_pause": lambda: pages_actions.routines_pause(shell),
@@ -568,6 +571,8 @@ def open_panel(shell: "AmbientShell", point=None) -> bool:
         panel = TrayPanel(actions_for(shell), app=getattr(shell, "_app", None),
                           logger=lambda line: _say(shell, line))
         shell._panel = panel
+        from ui.tray_command_delivery import configure
+        configure(panel, shell)
     if not panel.open(point):
         _say(shell, f"Panel baki tidak bisa dibuka ({panel.error}).")
         return False

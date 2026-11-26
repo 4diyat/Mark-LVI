@@ -279,6 +279,10 @@ def test_a_surface_that_raises_does_not_kill_the_app(monkeypatch):
 
     import ui.tray as tray_module
     monkeypatch.setattr(tray_module, "TrayIcon", Boom)
+    # This test has no QApplication; isolate the unrelated Qt surfaces.
+    for name in ("start_orb", "start_command_bar", "start_toast", "start_voice_overlay",
+                 "start_summon_hotkey"):
+        monkeypatch.setattr(lifecycle, name, lambda _shell: False)
 
     shell = Shell()
     lifecycle.start_interface(shell)      # must not raise
@@ -322,6 +326,8 @@ def test_the_remaining_surfaces_still_come_up_after_one_fails(monkeypatch):
     monkeypatch.setattr(orb_module, "OrbOverlay", Boom)
     monkeypatch.setattr(lifecycle, "start_command_bar",
                         lambda shell: started.append("bar") or True)
+    for name in ("start_toast", "start_voice_overlay", "start_summon_hotkey"):
+        monkeypatch.setattr(lifecycle, name, lambda _shell: False)
 
     lifecycle.start_interface(Shell())    # must not raise
     assert "bar" in started, (

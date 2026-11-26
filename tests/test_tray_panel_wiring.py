@@ -147,6 +147,9 @@ def test_find_a_file_opens_the_bar_and_prefills_a_request(wiring, monkeypatch):
         def setText(self, text):
             self.value = text
 
+        def text(self):
+            return self.value
+
         def setFocus(self):
             self.focused = True
 
@@ -292,7 +295,7 @@ def test_every_key_the_panel_can_press_has_a_handler(wiring):
             # store write reached by a click, and each has a test of its own
             # below; this set is what proves the panel's buttons have somewhere
             # to land at all.
-                "memory_forget", "memory_clear", "routines_pause",
+                "memory_forget", "memory_clear", "open_workspace", "routines_pause",
                 "routine_create", "routine_toggle", "routine_delete",
                 "tools_copy",
                 "tools_clear", "tools_safe", "tools_layout", "plugin_toggle", "plugins_list", "consent",
@@ -337,7 +340,7 @@ def test_every_key_the_panel_can_press_has_a_handler(wiring):
                            "ac_motion", "ac_scale", "pl_toggle", "pl_prev", "pl_next", "in_pick",
                            # board 15's gesture "ubah" cells, by prefix
                            "ac_gest_edit",
-                           "more", "more_back",
+                           "more", "more_back", "more_workspace",
                            # board 14's voice-verification controls, by the
                            # object names the security page gives them
                            "va_toggle", "va_enroll", "va_delete",

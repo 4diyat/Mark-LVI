@@ -34,6 +34,7 @@ WHAT IT DRAWS
 from __future__ import annotations
 
 from dataclasses import dataclass
+import threading
 from typing import Callable
 
 # The drawing half: tokens, geometry, the risk rows and `paint_bar`. Imported
@@ -111,8 +112,15 @@ class CommandBar:
 
     def __init__(self, on_submit: Callable[[str], None] | None = None,
                  on_close: Callable[[], None] | None = None,
-                 placeholder: str = "Perintah atau pertanyaan…"):
+                 placeholder: str = "Perintah atau pertanyaan…",
+                 asynchronous: bool = False, on_sent=None):
         self._on_submit = on_submit
+        self._on_sent = on_sent
+        self._asynchronous = asynchronous
+        self._owner = threading.get_ident()
+        self.sending = False
+        self._audit_running = self._audit_reload = False
+        self._audit_state = "done"
         self._on_close = on_close
         self._placeholder = placeholder
         self._window = None
@@ -123,7 +131,7 @@ class CommandBar:
         self._recall = -1
         self._error = ""
         # Audit results are read-only and refreshed whenever the bar opens.
-        self._rows: list[Row] = default_rows()
+        self._rows: list[Row] = [] if asynchronous else default_rows()
         self._hint: str = ""
 
     # ── what happened ────────────────────────────────────────────────────────
@@ -160,7 +168,8 @@ class CommandBar:
         knows, the hotkey's owner knows — so it is given, not guessed.
         """
         self._ledger.capture(previous if previous is not None else _active_window())
-        self.set_rows(default_rows())
+        if not self._asynchronous:
+            self.set_rows(default_rows())
         if not self._build():
             return False
         try:
@@ -168,9 +177,13 @@ class CommandBar:
             self._window.raise_()
             self._window.activateWindow()
             self._field.setFocus()
-            self._field.clear()
+            if not self._asynchronous:
+                self._field.clear()
             self._recall = -1
             self._open = True
+            if self._asynchronous:
+                from ui.command_bar_delivery import refresh_audit
+                refresh_audit(self)
             return True
         except Exception as e:                      # noqa: BLE001
             self._error = f"{type(e).__name__}: {e}"
@@ -225,6 +238,9 @@ class CommandBar:
         "nothing happened" and "the assistant has it".
         """
         raw = self._field.text() if text is None and self._field is not None else text
+        if self._asynchronous:
+            from ui.command_bar_delivery import send
+            return send(self, raw)
         line = flatten(raw)
         if not line:
             self.close()
@@ -261,7 +277,7 @@ class CommandBar:
         different one is worse than a key that stops responding, and Down past
         the newest correctly gives the empty field back.
         """
-        if not self._history:
+        if self.sending or not self._history:
             return ""
         if step < 0:
             # -1 + 1 == 0: the first walk older lands on the newest line, so
@@ -323,6 +339,7 @@ class CommandBar:
 
             window._rows = self._rows
             window._hint = self._hint
+            window._audit_state = self._audit_state
             window._field = field
             self._window, self._field = window, field
             return True
@@ -361,10 +378,17 @@ class CommandBar:
         window = self._window
         if window is not None:
             try:
+                window._hint = self._hint
                 window.update()
             except Exception as e:                  # noqa: BLE001
                 print(f"[JARVIS] Command bar: hint not repainted — "
                       f"{type(e).__name__}: {e}")
+
+    def set_audit_state(self, state):
+        self._audit_state = state
+        if self._window is not None:
+            self._window._audit_state = state
+            self._window.update()
 
     def _on_key(self, event) -> None:
         """Esc closes and hands focus back; Up/Down recall."""
