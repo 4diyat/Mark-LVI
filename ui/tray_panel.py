@@ -4,8 +4,8 @@ WHY A PANEL AT ALL, WHEN THERE IS ALREADY A MENU
     `ui/tray.py` draws a `QMenu`: seven items, one line each. That is the right
     thing for "bring it back" and "quit" and the wrong thing for everything the
     mockups actually ask of this corner of the screen — a mode you switch with
-    three visible segments, the quick actions WITH their chords, today's
-    suggestion, the permission switches, the task history with an Urungkan
+    three visible segments, quick actions, the conversation, permission
+    controls and the task history with an Urungkan
     button. None of that fits a menu item, and a menu that tried would be a
     list of eight submenus.
 
@@ -14,8 +14,8 @@ WHY A PANEL AT ALL, WHEN THERE IS ALREADY A MENU
     LEFT click opens, which is what board 5 draws.
 
 WHAT EACH BOARD BECOMES, IN ORDER
-      * board 5  — the default page: segments, four quick actions, the quota
-        line, three permission toggles, the command field.
+      * board 5  — segments, quick drafts, session chat, permission status
+        and the command field.
       * board 05a — the same page with Fokus lit, plus the hold strip: toasts are
         held, counted and shown later. The strip is drawn from the snapshot, so
         the number is the number `core.presence_mode` holds.
@@ -49,6 +49,9 @@ from __future__ import annotations
 
 from typing import Callable, Mapping
 
+from ui.panel_target import PanelSearchMixin
+from ui.page_registry import PanelNavigationMixin
+
 from ui.tray_theme import THEMES, _rgba, resolve_theme  # noqa: F401
 from ui.tray_paint import (  # noqa: F401 — re-exported for the smoke tool
     apply_style, mark_segments, paint, paint_history, paint_permissions,
@@ -59,18 +62,18 @@ from ui.tray_pages import (
     build_history, build_main, build_permissions, panel_position,
 )
 from ui.tray_panel_model import (
-    ALL_QUICK_KEYS, MODE_LABELS, MODE_ORDER, NAV_ORDER, NAV_PAGES, PERMISSIONS,
+    ALL_QUICK_KEYS, LEGACY_QUICK_KEYS, MODE_LABELS, MODE_ORDER, NAV_ORDER, NAV_PAGES, PERMISSIONS,
     Snapshot, _t, snapshot,
 )
 
 
-class TrayPanel:
+class TrayPanel(PanelNavigationMixin, PanelSearchMixin):
     """One 460×660 panel, three pages, two palettes.
 
     `actions` maps a key to a callable, exactly like `TrayIcon`'s dictionary:
 
         presence_set(mode)   the user pressed a segment
-        quick(key)           one of ALL_QUICK_KEYS
+        quick(key)           focus actions or legacy tool actions
         permission(key, on)  one of PERMISSIONS (never a `fixed` one)
         undo()               board 08a's Urungkan
         history_export()     board 08a's Ekspor log
@@ -99,8 +102,11 @@ class TrayPanel:
         self._logger = logger
         self._window = None
         self._field = None
+        self._conversation = None
+        self._messages = []
         self._pages: dict = {}
         self._page = PAGE_MAIN
+        self._page_history: list[str] = []
         self._snapshot: Snapshot = Snapshot()
         self._notes: list[str] = []
         # Board 7's onboarding ladder lives ON THE PANEL, not in a store: the
@@ -140,8 +146,6 @@ class TrayPanel:
     def theme(self) -> str:
         return self._theme
 
-    # ── board 10's target, and board 12's hits ───────────────────────────────
-
     @property
     def target(self) -> tuple[str, str]:
         """The `(category, key)` the memory detail page is showing."""
@@ -165,14 +169,6 @@ class TrayPanel:
             self.set_page("memory_one")
         return opened
 
-    def run_search(self, query: str) -> int:
-        """Board 12's file search, run on the click path. Returns how many hits."""
-        return self._view.run_search(query, refresh=self.refresh)
-
-    @property
-    def hits(self) -> tuple:
-        """The last search's results, for `pages_paint.paint_tools`."""
-        return self._view.hits
 
     @property
     def snapshot(self) -> Snapshot:
@@ -189,8 +185,6 @@ class TrayPanel:
                 self._notes.append(f"Tray panel: logger failed — {type(e).__name__}: {e}")
                 return
         print(f"[JARVIS] {line}")
-
-    # ── lifecycle ────────────────────────────────────────────────────────────
 
     def refresh(self) -> Snapshot:
         """Re-read the world and put it on the widgets. Safe before `build()`:
@@ -246,8 +240,13 @@ class TrayPanel:
                 self._note(f"close handler failed — {type(e).__name__}: {e}")
 
     def stop(self) -> None:
+        self._view.cancel_search()
+        if getattr(self, "_search_timer", None) is not None:
+            self._search_timer.stop()
+            self._search_timer = None
         window, self._window = self._window, None
         self._field = None
+        self._conversation = None
         self._labels.clear()
         self._buttons.clear()
         self._pages = {}
@@ -276,17 +275,6 @@ class TrayPanel:
         except Exception as e:                       # noqa: BLE001
             self._note(f"no screen geometry — {type(e).__name__}: {e}")
             return 0, 0
-
-    # ── pages ────────────────────────────────────────────────────────────────
-
-    def set_page(self, page: str) -> bool:
-        """Switch pages. Unknown pages are refused, not stored."""
-        name = str(page or "").strip().lower()
-        if name not in PAGES:
-            return False
-        self._page = name
-        self._show_page()
-        return True
 
     def set_theme(self, theme: str) -> bool:
         """Dark ↔ light ↔ auto. `_base_theme` resolves the setting; `_theme`
@@ -357,6 +345,7 @@ class TrayPanel:
             return cb(*args)
         except Exception as e:                       # noqa: BLE001
             self._note(f"{key!r} failed — {type(e).__name__}: {e}")
+            return False
 
     def _local_action(self, key: str):
         """Handlers the panel owns. The boundary is "does it need the shell":
@@ -408,7 +397,10 @@ class TrayPanel:
         "Akhiri fokus sekarang", "Jeda semua penjadwalan". A panel that refused
         the second list would have three rows that answer False.
         """
-        if key not in ALL_QUICK_KEYS:
+        from ui.tray_pages import prepare_quick_draft
+        if key in {"chat", "summarize", "analyze", "create"}:
+            return prepare_quick_draft(self, key)
+        if key not in ALL_QUICK_KEYS and key not in LEGACY_QUICK_KEYS:
             return False
         self._call("quick", key)
         return True
@@ -418,13 +410,27 @@ class TrayPanel:
         line = " ".join(str(raw or "").split())
         if not line:
             return False
-        self._call("command", line)
+        if "command" not in self._actions:
+            self._note("no handler for command")
+            return False
+        result = self._call("command", line)
+        if result is False:
+            return False
+        self.add_message("user", line)
         if self._field is not None:
             try:
                 self._field.clear()
             except Exception as e:                   # noqa: BLE001
                 self._note(f"could not clear the field — {type(e).__name__}: {e}")
         return True
+
+    def add_message(self, role: str, text: str) -> None:
+        from ui.tray_pages import add_message
+        add_message(self, role, text)
+
+    def _render_conversation(self) -> None:
+        from ui.tray_pages import render_conversation
+        render_conversation(self)
 
     def _field_text(self) -> str:
         try:
@@ -473,8 +479,6 @@ class TrayPanel:
         and a search box that forgets what you typed is a search box you stop
         using.
         """
-        # The header is on every page: the assistant's name is the one thing
-        # that must never be ambiguous about WHICH window this is.
         self._labels["title"] = _placed(window, QLabel, 24, 22, 200, 24,
                                         _t("ui.panel.title"))
         self._labels["subtitle"] = _placed(window, QLabel, 24, 46, 412, 20, "")
@@ -486,8 +490,6 @@ class TrayPanel:
         self._buttons["theme"] = theme_button
         self._labels["theme"] = theme_button
 
-        # Segments, board 5. One button per mode with the active one filled —
-        # a segmented control, not three checkboxes and not a dropdown.
         for index, mode in enumerate(MODE_ORDER):
             # The artboard's own three words. A mode label is not translated
             button = QPushButton(_t(f"ui.panel.mode.{mode}") or MODE_LABELS[mode],
@@ -508,9 +510,9 @@ class TrayPanel:
             self._buttons[f"nav:{key}"] = button
 
         # Board 05a's hold strip. Hidden entirely outside Fokus: a strip that
-        # says "0 tertahan" in a mode that holds nothing is noise. Sits below
-        # the nav segments (y=112–140) so the two controls never overlap.
-        self._labels["held"] = _placed(window, QLabel, 32, 144, 396, 96, "")
+        # says "0 tertahan" in a mode that holds nothing is noise. It sits
+        # between the permission cards and the command field.
+        self._labels["held"] = _placed(window, QLabel, 24, 545, 412, 45, "")
         self._labels["held"].hide()
 
         page = QWidget(window)
@@ -528,6 +530,8 @@ class TrayPanel:
         from ui.pages_build import build_board_pages
 
         build_board_pages(self, window)
+        from ui.pages_build import build_panel_controls
+        build_panel_controls(self, window)
 
     def _load_saved_theme(self) -> None:
         """Start from the saved setting, once, when the window is first built.
@@ -545,8 +549,6 @@ class TrayPanel:
         except Exception as e:                       # noqa: BLE001
             self._note(f"saved theme not applied — {type(e).__name__}: {e}")
 
-    # ── painting ─────────────────────────────────────────────────────────────
-
     def _paint(self, snap: Snapshot) -> None:
         paint(self, snap)
 
@@ -559,8 +561,6 @@ class TrayPanel:
     def _style(self) -> None:
         apply_style(self)
 
-
-    # ── keys ─────────────────────────────────────────────────────────────────
 
     def _on_key(self, event) -> None:
         """Esc closes. The pages are buttons, not keys."""

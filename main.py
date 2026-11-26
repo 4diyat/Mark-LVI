@@ -628,7 +628,7 @@ class JarvisLive:
         # reconnect: a dropped connection is not news about Wayland.
         self._platform_notes_shown = False
         self.ui             = ui
-        self._asst_name     = "JARVI    S"   # updated each session from config
+        self._asst_name     = "JARVIS"   # updated each session from config
         self.session              = None
         self.audio_in_queue       = None
         self.out_queue            = None
@@ -1356,6 +1356,7 @@ class JarvisLive:
 
     def _on_text_command(self, text: str):
         if not self._loop or not self.session:
+            self.ui.write_log("SYS: The session is not ready; your command was not sent.")
             return
         # Board 14a: the risk dialog says where the request came from. This is
         # the typed door; the input transcription marks the spoken one.
@@ -1537,11 +1538,14 @@ class JarvisLive:
         try:
             from memory.config_manager import load_api_keys
             _cfg = load_api_keys()
-            self._asst_name = (_cfg.get("assistant_name") or "JARVIS").strip()
+            self._asst_name = (_cfg.get("assistant_name") or "JARVIS").strip() or "JARVIS"
             _user_name = (_cfg.get("user_name") or "").strip()
         except Exception:
             self._asst_name = "JARVIS"
             _user_name = ""
+
+        # The UI parses speaker prefixes using the same name as this session.
+        self.ui._assistant_name = self._asst_name
 
         memory     = load_memory()
         mem_str    = format_memory_for_prompt(memory)
@@ -3640,7 +3644,8 @@ def main():
     # window, or a Gemini session on its way to finding out it is redundant.
     _instance = _claim_single_instance(options.link)   # noqa: F841 — held for the process
     shell = _make_application(qt_argv)
-    ui = AmbientShell(face_path=_face_path(), app=shell)
+    from memory.config_manager import get_assistant_name
+    ui = AmbientShell(face_path=_face_path(), assistant_name=get_assistant_name(), app=shell)
     ui._launch = options
     # The file to launch at login, recorded here because this is the only place
     # that knows it. `ui/window.py` used to derive it from `__file__` and got

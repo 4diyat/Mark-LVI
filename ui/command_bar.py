@@ -24,16 +24,12 @@ WHAT IT DOES NOT DO
     that could execute would be a second dispatcher with its own copy of the
     risk policy.
 
-WHAT IT DID NOT DRAW, AND NOW DOES
-    Until board 3 was implemented this window was a translucent box with a
-    `QLineEdit` floating in it: no fill, no border, no caret, no hint row, no
-    result rows. Board 3 draws all of them, plus a footer that says what the
-    keys do. Everything drawn here comes from `design/new-ui-proposal/02-command-bar.png` —
-    the gradient, the 16 px radius, the 2 px cyan rule, the three result rows
-    with their 3 px dots, and the `Esc` chip — and the three rows are FED BY
-    `core.tool_risk`, so "aman · langsung", "sedang · bisa diurungkan" and
-    "berisiko · konfirmasi" are read from the same classifier the gate uses
-    rather than typed into a label.
+WHAT IT DRAWS
+    The command field and a read-only view of recent audit outcomes. Those
+    outcomes are refreshed on open; risk classification is not an execution
+    result and must not be displayed as one. Enter sends the typed field, not
+    any of the audit rows.
+
 """
 from __future__ import annotations
 
@@ -126,9 +122,7 @@ class CommandBar:
         self._history: list[str] = []
         self._recall = -1
         self._error = ""
-        # The three result rows and the context line are BOARD 3's, and they
-        # are built from `core.tool_risk` rather than from a literal in a
-        # painter. A caller that has a real list calls `set_rows`.
+        # Audit results are read-only and refreshed whenever the bar opens.
         self._rows: list[Row] = default_rows()
         self._hint: str = ""
 
@@ -166,6 +160,7 @@ class CommandBar:
         knows, the hotkey's owner knows — so it is given, not guessed.
         """
         self._ledger.capture(previous if previous is not None else _active_window())
+        self.set_rows(default_rows())
         if not self._build():
             return False
         try:
@@ -319,7 +314,7 @@ class CommandBar:
             _style_field(field)
             g = GEOMETRY
             field.setGeometry(g["title"][0], g["title"][1] - 22,
-                              BAR_WIDTH - g["title"][0] * 2, 28)
+                              g["esc"][0] - g["title"][0] - 16, 28)
             # Enter sends, Esc closes, Up/Down walk the history. Bound on the
             # widget rather than through QShortcut: a shortcut needs the window
             # to have focus, and the whole point is that it just got it.

@@ -290,21 +290,35 @@ def test_the_bar_is_the_artboards_geometry_not_an_invented_one(bar):
     assert g["footer_rule"][1] + g["footer"][3] <= bar.BAR_HEIGHT
 
 
-def test_the_three_rows_come_from_the_risk_policy(bar):
-    """The artboard's three states are `safe`/`medium`/`risky`, and this module
-    must ASK for them rather than print them beside a hardcoded colour.
+def test_rows_use_recorded_outcomes_not_risk_or_mockup_examples(bar, monkeypatch):
+    from core import audit_log
+    from types import SimpleNamespace
 
-    `to_row` goes through `core.tool_risk.classify`, the same call the gate
-    makes, so a row that says "berisiko" and an action that runs unasked is a
-    contradiction this code cannot express.
-    """
-    from core import risk_policy
+    entries = [
+        {"tool": "first", "level": "risky", "outcome": "done", "detail": "ok"},
+        {"tool": "second", "level": "safe", "outcome": "unverified", "detail": "pending"},
+        {"tool": "third", "level": "medium", "outcome": "failed", "detail": "error"},
+        {"tool": "fourth", "level": "safe", "outcome": "requested"},
+    ]
+    monkeypatch.setattr(audit_log, "shared", lambda: SimpleNamespace(entries=lambda _n: entries))
+    rows = bar.default_rows()
+    assert [r.label for r in rows] == ["third", "second", "first"]
+    assert [r.dot for r in rows] == [bar.RED, bar.YELLOW, bar.GREEN]
+    assert [r.level for r in rows] == ["failed", "unverified", "done"]
 
-    for row in bar.default_rows():
-        assert row.level in risk_policy.LEVELS, row
-    levels = {row.level for row in bar.default_rows()}
-    assert levels == {"safe", "medium", "risky"}, (
-        f"board 3 draws one row per level; these are {levels}")
+
+def test_the_command_bar_refreshes_audit_results_each_time_it_opens(bar, monkeypatch):
+    from core import audit_log
+    from types import SimpleNamespace
+
+    entries = []
+    monkeypatch.setattr(audit_log, "shared", lambda: SimpleNamespace(entries=lambda _n: entries))
+    instance = bar.CommandBar()
+    assert instance.open() and instance.rows == []
+    instance.close()
+    entries.append({"tool": "open_app", "outcome": "unverified"})
+    assert instance.open() and instance.rows[0].label == "open_app"
+    assert instance.rows[0].dot == bar.YELLOW
 
 
 def test_a_row_is_classified_by_the_tool_it_names(bar):

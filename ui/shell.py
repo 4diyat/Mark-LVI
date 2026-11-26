@@ -133,14 +133,14 @@ class AmbientShell:
         # by creating it there. Everything that touches a widget is marshalled
         # onto it — see `_on_qt_thread`.
         self._ui_thread_id = threading.get_ident()
+        from ui.qt_thread import init_dispatcher
+        init_dispatcher()
 
         # The newest audio level and whether a flush is already queued. Both are
         # written from the audio threads; a stale float is harmless and a queue
         # of them is not.
         self._pending_level = 0.0
         self._level_flush_queued = False
-
-    # ── what main.py asks about ──────────────────────────────────────────────
 
     @property
     def ambient(self) -> bool:
@@ -367,6 +367,7 @@ class AmbientShell:
         from ui import voice_wiring
 
         voice_wiring.show_exchange(self, line)
+        voice_wiring.show_panel_exchange(self, line)
 
         # The notification body is the last thing the assistant SAID. The log
         # mixes status words with answers, so only a line that came from the

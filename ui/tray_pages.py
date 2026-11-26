@@ -40,31 +40,16 @@ from ui.tray_panel_model import (ALL_QUICK_KEYS, PERMISSIONS,
 # geometry; the panel imports it so the two cannot disagree.
 PANEL_W, PANEL_H = 460, 660
 
-# ── board 5's geometry, as numbers you can check ───────────────────────────
-#
-# WHY A TABLE AND NOT THE SAME NUMBERS INSIDE THE BUILDER
-#     Every value below is read off `design/new-ui-proposal/05-tray-panel.png` and nothing
-#     else. Written inline in `build_main()` they were unverifiable: four of
-#     them had drifted from the artboard (the suggestion card was never drawn,
-#     its two lines sat 8 px high, and the whole IZIN block sat 18-26 px high
-#     with no toggle column), and no test could tell, because a call to
-#     `setGeometry` is not a fact anyone can assert against a drawing.
-#
-#     As a dict, `tests/test_tray_geometry.py` can compare it with `build.py`
-#     itself — so the next drift fails a test instead of surviving a review.
-#
-# THE ONE DELIBERATE DIFFERENCE
-#     `PANEL_H` is 660 and the artboard is 640. That is not drift and it is not
-#     in this table: `DESIGN-ambient.md` records the decision ("tiga baris izin
-#     + input butuh 20 px ekstra"), and the values below already sit in the
-#     taller panel — which is why the input is at y=596 rather than 576.
+# Shared page geometry. The main page uses a compact two-column card grid and
+# a conversation view; secondary-page coordinates retain their existing layout.
 GEOMETRY = {
     # section headers: (x, y, w, h)
     "quick_header":      (24, 140, 200, 16),
     "suggestion_header": (24, 366, 200, 16),
     "perm_header":       (24, 478, 200, 16),
-    # the four quick rows: first y, height, pitch
-    "quick_row_y": 154, "quick_row_h": 40, "quick_pitch": 48,
+    # The main page: two columns, two rows.
+    "quick_row_y": 154, "quick_row_h": 52, "quick_pitch": 60,
+    "quick_x": 24, "quick_column_pitch": 210, "quick_width": 202,
     # the suggestion card the artboard draws and this panel did not
     "suggestion_card":     (24, 380, 412, 62),
     "suggestion_bar":      (24, 392, 3, 38),
@@ -238,7 +223,7 @@ PALETTES = {
     "dark": {
         "base": "#0c0d11", "panel": "#101820", "card": "#14181c",
         "line": "#1c2028", "line_accent": "#243040",
-        "text": "#ffffff", "muted": "#5e636c",
+        "text": "#ffffff", "muted": "#aabbd0",
         "accent": "#3486fe", "amber": "#ff9a40", "on_accent": "#0c0d11",
     },
     "light": {
@@ -294,76 +279,52 @@ def panel_position(screen, size=(PANEL_W, PANEL_H), point=None) -> tuple[int, in
 
 
 def build_main(panel, page) -> None:
-    """Board 5, built from `GEOMETRY` — see the table's own note on why.
-
-    The permission rows are a text label plus a DOT TOGGLE at x=396, not one
-    wide button. That is the artboard's shape: a 40x22 track with a knob on
-    the left when off and on the right when on. A full-width pill was the
-    earlier version and it read as a menu row, not a switch.
-    """
-    from PyQt6.QtWidgets import QLabel, QLineEdit, QPushButton
+    """Build the main panel's quick cards, session chat and controls."""
+    from PyQt6.QtWidgets import QLabel, QLineEdit, QPushButton, QTextEdit
 
     panel._pages = {PAGE_MAIN: page}
     g = GEOMETRY
 
     panel._labels["quick_header"] = _at(
         page, QLabel, *g["quick_header"], _t("ui.panel.section.quick"))
-    # FOUR ROWS ARE BUILT FOR THE LONGEST LIST AND REUSED, because the panel is
-    # 460 px and the artboard gives the block exactly four rows. Building them
-    # per mode would rebuild the page on a mode change; three keys in Fokus and
-    # four in Aktif would then need the fourth widget to disappear, which moves
-    # every section under it.
-    #
-    # So: one button per ROW INDEX, and `paint_quick` decides what each row says
-    # and which action it runs for the mode in force. The widget count is the
-    # layout's, not the mode's.
-    # ONE WIDGET PER ACTION, and the two modes' lists share this block. Fokus
-    # draws three rows where Aktif draws four, so the fourth keeps its geometry
-    # and is hidden in Fokus — a hidden widget, not a rebuilt page, because
-    # rebuilding on a mode change moves every section below it by 48 px.
+    # Build once; paint_quick places only the actions for the current mode.
     for index, key in enumerate(ALL_QUICK_KEYS):
-        y = g["quick_row_y"] + index * g["quick_pitch"]
+        y = g["quick_row_y"] + (index // 2) * g["quick_pitch"]
         button = QPushButton("", page)
-        button.setGeometry(24, y, 412, g["quick_row_h"])
+        button.setGeometry(g["quick_x"] + (index % 2) * g["quick_column_pitch"],
+                           y, g["quick_width"], g["quick_row_h"])
         button.clicked.connect(lambda _checked=False, k=key: panel.press_quick(k))
         button.hide()                       # `paint_quick` shows the live ones
         panel._buttons[f"quick:{key}"] = button
 
-    # THE SUGGESTION CARD. The artboard draws a 412x62 card with an amber bar
-    # down its left edge — amber because a suggestion is the one thing on this
-    # page the user did not ask for. Neither existed before: the text floated
-    # on the panel background and the card was simply missing.
-    panel._labels["suggestion_header"] = _at(
-        page, QLabel, *g["suggestion_header"], _t("ui.panel.section.suggestion"))
-    panel._labels["suggestion_card"] = _at(
-        page, QLabel, *g["suggestion_card"], "")
-    panel._labels["suggestion_card"].setStyleSheet(
-        f"background:{PALETTES['dark']['card']};"
-        f"border:1px solid {PALETTES['dark']['line']};border-radius:12px;")
-    panel._labels["suggestion_bar"] = _at(
-        page, QLabel, *g["suggestion_bar"], "")
-    panel._labels["suggestion_bar"].setStyleSheet(
-        f"background:{PALETTES['dark']['amber']};border-radius:1.5px;")
-    panel._labels["suggestion"] = _at(
-        page, QLabel, *g["suggestion_title"], "")
-    panel._labels["quota"] = _at(page, QLabel, *g["suggestion_quota"], "")
-    panel._labels["quota_held"] = _at(page, QLabel, *g["quota_held"], "")
+    # Keep the existing snapshot fields for focus/quota consumers, but do not
+    # invent a suggestion or a conversation from the static mockup.
+    for key in ("suggestion_header", "suggestion_card", "suggestion_bar",
+                "suggestion", "quota", "quota_held"):
+        panel._labels[key] = _at(page, QLabel, 0, 0, 1, 1, "")
+        panel._labels[key].hide()
+
+    chat = QTextEdit(page)
+    chat.setGeometry(24, 284, 412, 194)
+    chat.setReadOnly(True)
+    chat.setAccessibleName(_t("ui.panel.chat.title"))
+    panel._conversation = chat
+    panel._render_conversation()
 
     panel._labels["perm_header"] = _at(
-        page, QLabel, *g["perm_header"], _t("ui.panel.section.permissions"))
+        page, QLabel, 24, 486, 200, 16, _t("ui.panel.section.permissions"))
     for index, (key, name, _sub) in enumerate(PERMISSIONS[:3]):
-        y = g["perm_row_y"] + index * g["perm_pitch"]
-        # The label is the switch: clicking the word "Mikrofon" toggles it.
-        # A 26 px row with a separate 40 px dot is below the 44 px touch
-        # target, so the row has to be the target — the dot is the readout.
+        y = 510
+        # Fixed states are read-only; mutable ones remain clickable.
         button = QPushButton(_t(name), page)
         button.setCheckable(True)
-        button.setGeometry(24, y, 360, g["perm_row_h"])
+        button.setGeometry(24 + index * 140, y, 132, 36)
         button.setStyleSheet("text-align:left;padding-left:0;border:none;")
         button.clicked.connect(
             lambda checked=False, k=key: panel.press_permission(k, checked))
         panel._buttons[f"perm:{key}"] = button
-        dot = _at(page, QLabel, g["perm_toggle_x"], y + 4, 40, 22, "")
+        dot = _at(page, QLabel, 0, 0, 1, 1, "")
+        dot.hide()
         dot.setStyleSheet(
             f"background:{PALETTES['dark']['card']};"
             f"border:1px solid {PALETTES['dark']['line']};border-radius:11px;")
@@ -379,8 +340,57 @@ def build_main(panel, page) -> None:
     send = QPushButton(_t("ui.panel.command.send"), page)
     send.setGeometry(*g["send"])
     send.setStyleSheet("border-radius:18px;padding:0;")
-    send.clicked.connect(panel.submit_command)
+    send.clicked.connect(lambda _checked=False: panel.submit_command())
     panel._buttons["send"] = send
+
+
+def prepare_quick_draft(panel, key: str) -> bool:
+    """Focus the input, prefilling only an empty draft. Never send on click."""
+    field = panel._field
+    if field is None or key not in {"chat", "summarize", "analyze", "create"}:
+        return False
+    if key != "chat" and not str(field.text() or "").strip():
+        field.setText(_t(f"ui.panel.card.{key}.prompt"))
+    field.setFocus()
+    return True
+
+
+def add_message(panel, role: str, text: str) -> None:
+    """Append a real exchange on the Qt thread; never persist it to disk."""
+    if role not in ("user", "assistant") or not str(text or "").strip():
+        return
+    panel._messages.append((role, str(text).strip()))
+    del panel._messages[:-100]
+    panel._render_conversation()
+
+
+def render_conversation(panel) -> None:
+    from html import escape
+
+    view = getattr(panel, "_conversation", None)
+    if view is None:
+        return
+    pal = PALETTES[panel._theme]
+    if not panel._messages:
+        body = f'<p style="color:{pal["muted"]}">{escape(_t("ui.panel.chat.empty"))}</p>'
+    else:
+        parts = []
+        for role, text in panel._messages:
+            align = "right" if role == "user" else "left"
+            name = (_t("ui.panel.chat.you") if role == "user"
+                    else str(getattr(panel, "_assistant_label", "JARVIS")))
+            background = pal["accent"] if role == "user" else pal["base"]
+            foreground = pal["on_accent"] if role == "user" else pal["text"]
+            content = escape(text).replace("\n", "<br>")
+            parts.append(
+                f'<table align="{align}" width="90%" cellpadding="7" '
+                f'bgcolor="{background}"><tr><td style="color:{foreground}">'
+                f'<b>{escape(name)}</b><br>{content}</td></tr></table><br>')
+        body = "".join(parts)
+    view.setHtml(body)
+    bar = view.verticalScrollBar()
+    if bar is not None:
+        bar.setValue(bar.maximum())
 
 
 def build_history(panel, page) -> None:
@@ -445,6 +455,7 @@ def build_permissions(panel, page) -> None:
     The four permissions are the SAME `PERMISSIONS` rows as board 5, so a switch
     means the same thing on every page.
     """
+    from PyQt6.QtCore import Qt
     from PyQt6.QtWidgets import QLabel, QPushButton
     page.hide()
     panel._pages[PAGE_PRIVACY] = page
@@ -463,23 +474,25 @@ def build_permissions(panel, page) -> None:
             f"background:{PALETTES['dark']['card']};"
             f"border:1px solid {PALETTES['dark']['line']};border-radius:12px;")
         panel._labels[f"p6_card:{key}"] = card
-        # The ROW is the click target (a 40 px switch is under the 44 px touch
-        # target), and the track at x=378 is the readout — the same split board
-        # 5 uses, so a permission is toggled the same way on both pages.
+        # The entire card is the click target. The readouts above it must be
+        # transparent to mouse input so clicking the switch also toggles it.
         button = QPushButton(_t(name), page)
         button.setCheckable(True)
-        button.setGeometry(card_x + 20, y,
-                           g["p6_toggle_x"] - card_x - 20, card_h)
-        button.setStyleSheet("text-align:left;padding-left:24px;border:none;")
+        button.setGeometry(card_x, y, card_w, card_h)
         button.clicked.connect(
             lambda checked=False, k=key: panel.press_permission(k, checked))
         panel._buttons[f"p6:{key}"] = button
-        panel._labels[f"p6_sub:{key}"] = _at(
-            page, QLabel, g["p6_name"][0], y + g["p6_sub_off"][1], 300, 18, _t(sub))
+        sub_label = _at(page, QLabel, g["p6_name"][0],
+                        y + g["p6_sub_off"][1], 300, 18, _t(sub))
+        sub_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        panel._labels[f"p6_sub:{key}"] = sub_label
+        status = _at(page, QLabel, 275, y + 12, 94, 22, "")
+        status.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        status.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        panel._labels[f"p6_status:{key}"] = status
         track = _at(page, QLabel, g["p6_toggle_x"], y + g["p6_toggle_dy"], 40, 22, "")
-        track.setStyleSheet(
-            f"background:{PALETTES['dark']['card']};"
-            f"border:1px solid {PALETTES['dark']['line']};border-radius:11px;")
+        track.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        track.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         panel._labels[f"perm_dot:{key}"] = track
 
     panel._labels["p6_log_header"] = _at(

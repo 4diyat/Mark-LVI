@@ -227,6 +227,19 @@ def show_exchange(shell: "AmbientShell", line: str) -> None:
         set_answer(shell, text)
 
 
+def show_panel_exchange(shell, line: str) -> None:
+    """Forward only explicit conversation lines, never system diagnostics."""
+    panel = getattr(shell, "_panel", None)
+    name = str(getattr(shell, "_assistant_name", "") or "")
+    if panel is None:
+        return
+    if line.startswith("You: "):
+        panel.add_message("user", line[5:])
+    elif name and line.startswith(name + ": "):
+        panel._assistant_label = name
+        panel.add_message("assistant", line[len(name) + 2:])
+
+
 def _note(shell, text: str) -> None:
     """`lifecycle.note`, imported at call time to keep the arrow one-way."""
     try:

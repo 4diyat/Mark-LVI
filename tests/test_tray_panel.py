@@ -89,20 +89,15 @@ def test_the_panel_opens_at_board_5_with_the_mode_it_found(panel_module, clean_s
     assert panel._labels["subtitle"].text() == "Panel baki · mengikuti posisi taskbar"
 
 
-def test_the_four_quick_actions_are_the_artboards_and_carry_their_chords(
-        panel_module, clean_state):
+def test_the_four_quick_actions_match_the_new_design(panel_module, clean_state):
     tray_panel, _pages, model = panel_module
     panel = tray_panel.TrayPanel({})
     panel.open()
-
-    # The catalogue is the source; these are translated at paint time.
     assert [model._t(row[1]) for row in model.QUICK_ACTIONS] == [
-        "Tangkap layar", "Dikte", "Cari berkas", "Susun jendela"]
-    # The chord is on the row, not in a tooltip: a quick action whose shortcut
-    # is invisible is one the user retypes.
-    for key, name, chord in model.QUICK_ACTIONS:
+        "Chat dengan JARVIS", "Ringkas Dokumen", "Analisis Data", "Buat Konten"]
+    for key, name, description in model.QUICK_ACTIONS:
         text = panel._buttons[f"quick:{key}"].text()
-        assert model._t(name) in text and chord in text
+        assert model._t(name) in text and model._t(description) in text
 
 
 def test_pressing_a_quick_action_reaches_the_handler_once(panel_module, clean_state):
@@ -370,18 +365,16 @@ def test_a_fact_about_the_machine_is_drawn_as_disabled_not_as_a_switch(
     assert any("not a setting" in line for line in panel.notes)
 
 
-def test_the_two_real_switches_are_enabled_and_reach_the_handler(
-        panel_module, clean_state):
-    tray_panel, _pages, model = panel_module
+def test_builtin_action_access_is_not_exposed_as_a_plugin_switch(panel_module, clean_state):
+    tray_panel, _pages, _model = panel_module
     permission = Recorder(answer=True)
     panel = tray_panel.TrayPanel({"permission": permission})
     panel.open()
-
-    assert panel._buttons["p6:files"].isEnabled() is True
-    assert panel.press_permission("files", True) is True
-    assert permission.calls == [("files", True)]
-    assert panel.press_permission("apps", False) is True
-    assert permission.calls[-1] == ("apps", False)
+    for key in ("files", "apps"):
+        assert not panel._buttons[f"p6:{key}"].isEnabled()
+        assert panel.snapshot.permissions[key]["on"] is None
+        assert not panel.press_permission(key, True)
+    assert permission.calls == []
 
 
 def test_board_6_draws_all_four_explicit_permissions(panel_module, clean_state):
