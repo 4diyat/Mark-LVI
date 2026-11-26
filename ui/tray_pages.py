@@ -394,46 +394,8 @@ def render_conversation(panel) -> None:
 
 
 def build_history(panel, page) -> None:
-    from PyQt6.QtWidgets import QLabel, QPushButton
-    page.hide()
-    panel._pages[PAGE_HISTORY] = page
-
-    panel._labels["history_count"] = _at(page, QLabel, 24, 46, 412, 20, "")
-    # Four rows at board 08a's pitch, each with its own label and its own
-    # Urungkan button. Four, not a scroll area: the panel is a glance, and
-    # a scroll inside a 660 px popup is a scroll nobody performs.
-    for index in range(4):
-        y = 80 + index * 96
-        # THE STATUS DOT the artboard draws at (46, y+26): a 10 px disc whose
-        # colour is the row's state — amber while the row can still be
-        # undone, the accent once it is settled. It is a readout, not a
-        # button: the row's affordance is the Urungkan button below it.
-        dot = QLabel(page)
-        dot.setGeometry(41, y + 21, 10, 10)
-        dot.setStyleSheet(
-            f"background:{PALETTES['dark']['line']};border-radius:5px;")
-        panel._labels[f"history_dot:{index}"] = dot
-        panel._labels[f"history:{index}"] = _at(page, QLabel, 60, y + 12, 240, 22, "")
-        panel._labels[f"history_meta:{index}"] = _at(
-            page, QLabel, 60, y + 40, 240, 18, "")
-        button = QPushButton(_t("ui.panel.undo"), page)
-        button.setGeometry(300, y + 48, 120, 26)
-        button.clicked.connect(panel.press_undo)
-        button.hide()
-        panel._buttons[f"undo:{index}"] = button
-
-    panel._labels["audit_header"] = _at(
-        page, QLabel, 24, 486, 200, 16, _t("ui.panel.section.audit"))
-    panel._labels["audit"] = _at(page, QLabel, 40, 506, 396, 84, "")
-
-    export = QPushButton(_t("ui.panel.history.export"), page)
-    export.setGeometry(24, 612, 200, 36)
-    export.clicked.connect(lambda: panel._call("history_export"))
-    panel._buttons["export"] = export
-    clear = QPushButton(_t("ui.panel.history.clear"), page)
-    clear.setGeometry(236, 612, 200, 36)
-    clear.clicked.connect(lambda: panel._call("history_clear"))
-    panel._buttons["clear"] = clear
+    from ui.history_panel import build_history as build
+    build(panel, page)
 
 
 def build_permissions(panel, page) -> None:

@@ -41,11 +41,11 @@ penemuan warna baru.
 | 5 | `04-security-permissions.png` | 6 + 14 | Keamanan & izin: tingkat risiko + log aktivitas | gelap | ✅ `build_permissions`, halaman keamanan + verifikasi suara; mode tamu sengaja **tidak** ditampilkan (pemilik) |
 | 6 | `05-tray-panel.png` | 5 | Panel baki penuh (460×660) | gelap | ✅ `tray_panel` + `pages_*` |
 | 7 | `05-onboarding.png` | 7 + 22 | Onboarding: izin mikrofon + presensi | gelap | ✅ 4-langkah `core.onboarding` + installer dependensi (board 22) |
-| 8 | `06-task-history.png` | 8 | Riwayat tugas: status per baris + undo | gelap | ✅ `build_history` + `core.undo` |
+| 8 | `06-task-history.png` | 8 | Riwayat tugas: status per baris + undo | gelap | Sebagian: daftar urungkan sesi berpaginasi dan tiga entri audit terbaru; bukan riwayat tugas penuh |
 | 9 | `07-memory-personal.png` | 9 + 10 | Memori personal + detail memori | gelap | ✅ list **scroll** + detail jujur (3 bidang tidak disimpan). Diperbaiki pada sesi ini |
 | 10 | `08-routines-suggestions.png` | 11 | Rutinitas & saran proaktif | gelap | Sebagian: rutinitas tersimpan, scheduler dan pembuatan harian dengan perintah; **engine saran proaktif belum ada** |
 | 11 | `09-tools-clipboard.png` | 12 | Alat cepat & clipboard cerdas | gelap | ✅ sebagian: clipboard + cari berkas nyata; susun jendela — UI ada (`window_layout`), perilaku OS belum |
-| 12 | `10-help-dictation.png` | 13 | Dikte · baca layar · isi form | gelap | ✅ **isi form dengan tinjau dulu** (`core/form_fill.py` + adapter); dikte/baca-layar adalah panel deskripsi |
+| 12 | `10-help-dictation.png` | 13 | Dikte · baca layar · isi form | gelap | Sebagian: tiga kartu bantuan jujur dan tautan ke input suara; pembaca layar dan pengisian form di panel belum tersedia |
 | 13 | `11-language-accessibility.png` | 15 | Bahasa & aksesibilitas | gelap | Sebagian: bahasa dan kontras tinggi panel; ukuran teks, animasi dan rebind gestur belum tersambung ke renderer/controller |
 | 14 | `12-plugins-phone.png` | 16 | Plugin & pasangan ponsel | gelap | Sebagian: daftar registry plugin dengan pagination dan tinjauan izin; pairing ponsel di panel **belum tersedia** (simulasi lokal dinonaktifkan) |
 | 15 | `13-gesture-map.png` | 19 | Peta gestur (6 gestur) | gelap | ✅ permukaan dokumentasi (`paint_gestures`) |
@@ -94,6 +94,7 @@ adalah teks.
 | Mode tamu | Dihapus dari panel, wiring, dan kedua katalog: mode tamu membutuhkan SELURUH permukaan berhenti membaca memori & riwayat, dan tidak ada yang melakukannya. Pemilik: jika tidak bisa, jangan digambar. |
 | Susun jendela (board 12) | UI tiga thumbnail ada, perilaku OS di belakangnya belum — lihat prioritas 3. |
 | Engine saran proaktif (board 11) | Kartu saran digambar, engine belum — lihat prioritas 4. |
+| Form dan baca layar (board 13) | Belum tersedia di panel. Adapter lama dinonaktifkan: ia tidak memverifikasi halaman aktif dan tidak meminta tinjauan pengguna. Input suara di Alat menuju asisten, bukan mengetik ke aplikasi lain. |
 | Pairing dan handoff ponsel (board 16) | Tidak tersedia di panel; `PairingSession` lokal bukan koneksi ponsel. Dashboard jarak jauh memiliki jalur tersendiri yang belum terhubung ke kartu ini. |
 | Wajah floating (face bubble) | Simpanan lama yang sengaja dipertahankan **hanya opt-in**: `ui_mode` `"bubble"`. `python main.py` di mode `hud`/`ambient` menunjukkan board 1 (orb + panel + toast) **tanpa** avatar — avatar tidak ada di 22 mockup. |
 
@@ -172,3 +173,24 @@ tidak melindungi proses aplikasi lain atau penyunting eksternal. Scheduler
 menandai rutinitas saat diambil, bukan saat pengiriman terbukti berhasil;
 pengiriman yang gagal tidak diulang. Jadwal lain selain harian belum tersedia
 dari formulir.
+
+## Pembaruan halaman Riwayat
+
+Halaman Riwayat menampilkan daftar urungkan sesi dan tiga entri audit terbaru,
+bukan daftar semua tugas atau status verifikasi yang tidak tersedia. Baris
+berpaginasi, dan hanya item terbaru memiliki tombol urungkan. Identitas entri
+diperiksa secara atomik sebelum urungkan, sehingga perubahan stack tidak
+mengalihkan aksi ke item lain. Operasi undo berjalan pada worker; hasilnya
+adalah laporan callback, bukan verifikasi independen. Mengosongkan daftar
+memerlukan konfirmasi dan hanya berjalan jika snapshot stack tidak berubah.
+Ini melupakan kemampuan undo, bukan menghapus audit atau membatalkan perubahan.
+
+## Pembaruan halaman Bantuan
+
+Halaman Bantuan kini menampilkan tiga kartu sesuai tema dan menyediakan tautan
+ke Alat untuk input suara. Input tersebut menuju sesi asisten, bukan dikte ke
+aplikasi lain; membacakan layar dan mengisi form belum tersedia pada panel.
+Kontrol yang belum tersedia dinonaktifkan. Adapter form lama juga menolak
+pemanggilan langsung: sebelumnya URL tidak diperiksa terhadap halaman aktif,
+selector ditebak, tidak ada tinjauan pengguna, dan operasi browser dapat
+memblokir thread Qt. Kebijakan murni `core.form_fill` bukan integrasi browser.

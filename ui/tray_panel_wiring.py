@@ -472,14 +472,17 @@ def actions_for(shell: "AmbientShell") -> dict:
     reports it, but the report is not a substitute for the wiring existing.
     """
     from ui import pages_actions
+    from core import undo as undo_core
 
     return {
         "presence_set": lambda mode: set_presence(shell, mode),
         "quick": lambda key: quick_action(shell, key),
         "permission": lambda key, on: set_permission(shell, key, on),
         "undo": lambda: undo_last(shell),
+        "undo_guarded": undo_core.undo_if_current,
         "history_export": lambda: export_history(shell),
         "history_clear": lambda: clear_history(shell),
+        "history_clear_guarded": undo_core.clear_if_unchanged,
         "erase": lambda: erase_local(shell),
         "export_audit": lambda: export_audit(shell),
         "theme": lambda name: set_theme(shell, name),

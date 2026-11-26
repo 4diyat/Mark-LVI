@@ -333,30 +333,8 @@ def mark_nav(panel) -> None:
 
 
 def paint_history(panel, snap) -> None:
-    labels = panel._labels
-    labels["history_count"].setText(snap.history_subtitle)
-    rows = list(snap.history)[:4]
-    pal = PALETTES[panel._theme]
-    for index in range(4):
-        row = rows[index] if index < len(rows) else None
-        labels[f"history:{index}"].setText(str(row["label"]) if row else "")
-        labels[f"history_meta:{index}"].setText(
-            _t("ui.panel.history.state.undoable") if row else "")
-        # The status dot: amber while the row can still be undone, the
-        # accent once it is settled — the artboard's own two states.
-        dot_label = labels.get(f"history_dot:{index}")
-        if dot_label is not None:
-            colour = pal["amber"] if (row and row.get("undoable")) else pal["accent"]
-            dot_label.setStyleSheet(f"background:{colour};border-radius:5px;")
-        button = panel._buttons[f"undo:{index}"]
-        # Only the OLDEST row may carry the button, because undo is a
-        # stack and `undo_last()` reverses the oldest entry. Two buttons
-        # for one operation would be two buttons that always do the same
-        # thing, in the two places a user would least expect it.
-        show = bool(row) and index == len(rows) - 1 and snap.can_undo
-        button.setVisible(show)
-    labels["audit"].setText(
-        "\n".join(snap.audit) or _t("ui.panel.audit.empty"))
+    from ui.history_panel import paint_history as paint
+    paint(panel, snap)
 
 
 
@@ -460,7 +438,7 @@ def show_page(panel) -> None:
     main = getattr(panel, "_page", "") == "main"
     for key in ("title", "subtitle"):
         widget = panel._labels[key]
-        visible = (main or panel._page in ("memory", "tools", "access", "routines", "plugins")
+        visible = (main or panel._page in ("memory", "tools", "access", "routines", "plugins", "help")
                    or (key == "title" and panel._page == "history"))
         widget.setVisible(visible)
         if visible:

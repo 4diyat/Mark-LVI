@@ -260,10 +260,10 @@ def test_the_history_page_lists_the_undo_stack_newest_first(panel_module, clean_
 
     assert panel._labels["history:0"].text() == "Susun jendela 2 kolom"
     assert panel._labels["history:1"].text() == "Ringkas 14 baris terpilih"
-    assert panel._labels["history_count"].text() == "Hari ini · 2 bisa diurungkan"
+    assert panel._labels["history_count"].text() == "2 bisa diurungkan dalam sesi ini"
 
 
-def test_urungkan_is_offered_once_and_only_on_the_oldest_row(panel_module, clean_state):
+def test_urungkan_is_offered_once_and_only_on_the_newest_row(panel_module, clean_state):
     from core import undo
 
     tray_panel, _pages, _model = panel_module
@@ -279,7 +279,7 @@ def test_urungkan_is_offered_once_and_only_on_the_oldest_row(panel_module, clean
     panel.set_page("history")
 
     visible = [i for i in range(4) if panel._buttons[f"undo:{i}"].isVisible()]
-    assert visible == [1], "exactly one row may carry the button — undo is a stack"
+    assert visible == [0], "exactly one row may carry the button — undo is a stack"
 
     assert panel.press_undo() is True
     assert undo.can_undo() is True

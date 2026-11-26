@@ -308,30 +308,26 @@ def paint_consent(panel, snap) -> None:
     labels["cn_card"].setStyleSheet(f"background:{PALETTES[panel._theme]['card']};border-radius:12px;")
 
 def paint_help(panel, snap) -> None:
-    """Board 13: three panels, and the form strip that reports review status."""
+    """Capabilities are described without implying unavailable actions work."""
     labels = _labels(panel)
-    labels["hp_dictate_header"].setText(_t("ui.page.help.dictate"))
-    labels["hp_dictate"].setText(_t("ui.page.help.dictate.note"))
-    labels["hp_read_header"].setText(_t("ui.page.help.read"))
-    labels["hp_read"].setText(_t("ui.page.help.read.note"))
-    panel._buttons["hp_read"].setText(_t("ui.page.help.read.act"))
-    labels["hp_form_header"].setText(_t("ui.page.help.form"))
+    pal = PALETTES[panel._theme]
+    for key in ("dictate", "read", "form"):
+        labels[f"hp_{key}_card"].setStyleSheet(
+            f"background:{pal['card']};border:1px solid {pal['line']};border-radius:12px;")
+        labels[f"hp_{key}_header"].setText(_t(f"ui.page.help.{key}"))
+    labels["hp_dictate"].setText(_t("ui.page.help.voice_note"))
+    labels["hp_read"].setText(_t("ui.page.help.read_unavailable"))
+    labels["hp_form_note"].setText(_t("ui.page.help.form_unavailable"))
+    labels["hp_preview"].setText(_t("ui.page.help.preview_unavailable"))
     for index in range(3):
-        labels[f"hp_form_label:{index}"].setText(_t(f"ui.page.help.form_field{index + 1}"))
-    labels["hp_form_url_label"].setText(_t("ui.page.help.form_url"))
-    panel._buttons["hp_form_apply"].setText(_t("ui.page.help.form_apply"))
-    labels["hp_preview"].setText(_form_fill_preview(panel))
-
-def _form_fill_preview(panel) -> str:
-    """The preview strip's sentence, driven by the form-fill state."""
-    state = getattr(panel, "_form_fill", {})
-    status = state.get("status")
-    if status == "applied":
-        return _t("ui.page.help.form_applied")
-    if status == "failed":
-        return _t("ui.page.help.form_failed", detail=state.get("detail", ""))
-    return _t("ui.page.help.form_reviewed" if status == "reviewed"
-              else "ui.page.help.preview")
+        text = _t(f"ui.page.help.form_field{index + 1}")
+        labels[f"hp_form_label:{index}"].setText(text)
+        panel._inputs[f"hp_form_input:{index}"].setAccessibleName(text)
+        panel._inputs[f"hp_form_input:{index}"].setEnabled(False)
+    panel._buttons["hp_dictate_tools"].setText(_t("ui.page.help.open_tools"))
+    for key in ("hp_read", "hp_form_apply"):
+        panel._buttons[key].setText(_t("ui.page.help.not_available"))
+        panel._buttons[key].setEnabled(False)
 
 
 # ── boards 14, 15, 16, 18, 21, 22 ────────────────────────────────────────────
