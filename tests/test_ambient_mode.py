@@ -393,6 +393,76 @@ def test_the_launch_path_has_no_window_to_show():
     assert "_win" not in body, "the launch path still reaches for a window"
 
 
+def test_start_toast_wires_the_toast_stack_to_the_shell(monkeypatch):
+    """Board 1's toast surface is built and handed to the shell.
+
+    THE MISSING HALF OF THE LAUNCH PATH. `shell.notify` pushes to
+    `shell._toaster`, but nothing ever created the stack — so the 340 px
+    card in `01-ambient-main.png` could not appear on a real run. `start_toast`
+    is the surface's start, in the same shape as `start_orb`.
+    """
+    import ui.toast_stack as ts
+
+    from ui import ambient_shell
+
+    class _Fake:
+        def __init__(self, *a, **k):
+            self.started = False
+
+        def start(self):
+            self.started = True
+            return True
+
+    fake = _Fake()
+    monkeypatch.setattr(ts, "ToastStack", lambda *a, **k: fake)
+
+    class _Shell:
+        pass
+
+    shell = _Shell()
+    assert ambient_shell.start_toast(shell) is True
+    assert shell._toaster is fake and fake.started
+
+
+def test_a_toast_that_cannot_start_leaves_the_shell_without_one(monkeypatch):
+    """A desktop that cannot draw a 340 px window still gets the others."""
+    import ui.toast_stack as ts
+
+    from ui import ambient_shell
+
+    class _Bad:
+        def __init__(self, *a, **k):
+            self.started = False
+
+        def start(self):
+            return False
+
+    monkeypatch.setattr(ts, "ToastStack", lambda *a, **k: _Bad())
+
+    class _Shell:
+        pass
+
+    shell = _Shell()
+    assert ambient_shell.start_toast(shell) is False
+    assert getattr(shell, "_toaster", None) is None
+
+
+def test_the_launch_path_starts_the_toast_stack():
+    """`start_interface` builds the toast surface — without it, `shell.notify`
+    pushes to a stack that was never created."""
+    body = _launch_body()
+    assert "start_toast(shell)" in body
+
+
+def test_quit_stops_the_toast_stack():
+    """The stack owns a window and a timer; quitting without stopping it
+    leaves a 340 px window on screen after the process is gone."""
+    source = LIFECYCLE.read_text(encoding="utf-8")
+    start = source.index("def quit_app(")
+    body = source[start:]
+    assert '"_toaster"' in body, "quit_app does not stop the toast window"
+
+
 def test_the_tray_is_attempted_first_and_its_failure_is_named():
     """On a desktop with no notification area, silence is the failure mode.
 
