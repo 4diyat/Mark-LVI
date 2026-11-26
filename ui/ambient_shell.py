@@ -68,6 +68,31 @@ def start_orb(shell: "JarvisUI") -> bool:
     return True
 
 
+def start_toast(shell: "JarvisUI") -> bool:
+    """Board 1's toast stack: the 340 px card in the top-left corner.
+
+    WHY THIS IS A SEPARATE START, AND WHY IT WAS MISSING. `shell.notify`
+    pushes to `shell._toaster`, and nothing ever created the stack — so the
+    toast that `01-ambient-main.png` draws could not appear on a real run even
+    though the painter, the queue and the window all existed. This is the
+    surface's start, in the same shape as `start_orb`: built and hidden, and
+    a failure is survivable (notifications still reach the OS).
+    """
+    from ui.toast_stack import ToastStack
+
+    try:
+        stack = ToastStack()
+        if not stack.start():
+            _note(shell, f"Toast unavailable ({stack.error}); "
+                        "notifications go to the OS only.")
+            return False
+        shell._toaster = stack
+        return True
+    except Exception as e:                          # noqa: BLE001
+        _note(shell, f"Toast stack unavailable — {type(e).__name__}: {e}")
+        return False
+
+
 # Ctrl+Space: the chord the artboard promises, and the one thing about this
 # feature a user is told. Kept next to the bar's own code rather than in
 # `core.hotkey`, because that module's DEFAULT_CHORD is push-to-talk's.

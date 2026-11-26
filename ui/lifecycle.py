@@ -35,13 +35,10 @@ def watch_for_another_launch(shell: "AmbientShell", interval_ms: int = 800) -> N
     """Answer a SECOND launch by bringing the surfaces forward.
 
     `core/single_instance.py` makes a second launch a request — "come to the
-    front" — written to a small file, rather than a second assistant holding
-    the microphone. This is the other half of that: a timer on the Qt thread
-    that notices the request.
-
-    A timer rather than a socket for the reason given in that module: the
-    asking process may be anything, on any of three platforms, and may already
-    be gone. Polling a file costs one `exists()` every 800 ms.
+    front" — written to a small file. This is the other half: a Qt-thread timer
+    that notices it. A timer rather than a socket because the asking process
+    may be anything on any platform and may already be gone; polling a file
+    costs one `exists()` every 800 ms.
     """
     try:
         from PyQt6.QtCore import QTimer
@@ -144,24 +141,18 @@ from ui.ambient_shell import (                      # noqa: F401
     BAR_CHORD, apply_presence_mode, current_presence, cycle_presence_mode,
     open_command_bar,
     presence_label, start_bar_hotkey, start_command_bar, start_orb,
-    stop_bar_hotkey, submit_from_bar, toggle_command_bar,
+    start_toast, stop_bar_hotkey, submit_from_bar, toggle_command_bar,
 )
 
 
 def start_interface(shell: "AmbientShell") -> None:
     """Bring up every surface this machine can hold, and say what it could not.
 
-    THE ORDER IS THE PRIORITY ORDER, most capable last.
-        The tray is the only surface that can always get the user back, so it
-        is created first and its failure is the one that matters. The face is
-        next (it is the most information-dense). The orb is last because a
-        machine that cannot draw a 96 px window can still hold an icon.
-
-    A FAILED SURFACE IS NOT AN ERROR STATE.
-        Each one degrades on its own and reports why. An assistant with a
-        tray and nothing else is a working ambient install — that is what
-        phase 1 shipped. What must never happen is a build where NOTHING came
-        up: that is a process the user has to find in Task Manager.
+    The order is the priority order, most capable last: the tray first (the
+    only surface that can always get the user back), the face next, the orb
+    last (a machine that cannot draw a 146 px window can still hold an icon).
+    A failed surface is not an error state — each degrades on its own and
+    reports why; what must never happen is a build where NOTHING came up.
     """
     # A LINK IS AN INSTRUCTION TO THE RUNNING APP, so it is answered before the
     # surfaces exist: `jarvis://hide` on an install with no orb must not be
@@ -199,6 +190,13 @@ def start_interface(shell: "AmbientShell") -> None:
             started.append("bar")
     except Exception as e:                          # noqa: BLE001
         note(shell, f"the bar surface failed to start — {type(e).__name__}: {e}")
+
+    # BOARD 1'S TOAST STACK — built hidden, so the first notify has a surface.
+    try:
+        if start_toast(shell):
+            started.append("toast")
+    except Exception as e:                          # noqa: BLE001
+        note(shell, f"the toast surface failed to start — {type(e).__name__}: {e}")
 
     # BOARD 6 IS BUILT HERE AND SHOWN LATER: a 1280x720 frame up during
     # start-up would be the first thing the user saw. Not appended to
@@ -550,7 +548,7 @@ def quit_app(shell: "AmbientShell", code: int = 0) -> None:
     """
     for attr, stop_name in (("_panel", "stop"), ("_orb", "stop"),
                             ("_bubble", "stop"), ("_tray", "stop"),
-                            ("_command_bar", "close")):
+                            ("_command_bar", "close"), ("_toaster", "stop")):
         target = getattr(shell, attr, None)
         if target is None:
             continue

@@ -542,6 +542,10 @@ def test_no_surface_at_all_is_said_out_loud(monkeypatch, qt, capsys):
     from ui import lifecycle, tray_panel_wiring
     lifecycle.start_orb = lambda s: False
     lifecycle.start_command_bar = lambda s: False
+    # The toast stack is a startup surface too — a desktop with no surface
+    # must have it fail as well, otherwise it succeeding would make
+    # "no surface at all" unreachable.
+    lifecycle.start_toast = lambda s: False
     # The panel is a startup surface too (phase 2 auto-opens it), so a desktop
     # with no surface must have its panel fail as well — otherwise the panel
     # succeeding would make "no surface at all" unreachable.
