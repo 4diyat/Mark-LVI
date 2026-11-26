@@ -166,7 +166,7 @@ def test_the_package_has_exactly_the_mockup_modules():
         # the admin pages share; it is not page logic.
         "pages_paint_util.py",
         # Clipboard page rendering and guarded session-only actions.
-        "clipboard_view.py", "plugin_panel.py",
+        "clipboard_view.py", "plugin_panel.py", "history_panel.py",
     }
     present = {p.name for p in _modules()}
     assert present == expected, (

@@ -449,48 +449,9 @@ def install_mode(shell: "AmbientShell", index: int) -> bool:
 
 
 def form_fill_apply(shell: "AmbientShell") -> bool:
-    """Board 13's review-and-apply button."""
-    from actions.browser_form import fill_form_to_page
-    from core.form_fill import FormFillError, FormFillPlan
-
-    panel = getattr(shell, "_panel", None)
-    if panel is None:
-        return False
-
-    def _read(key: str) -> str:
-        edit = panel._inputs.get(key)
-        try:
-            return str(edit.text() or "").strip() if edit is not None else ""
-        except Exception:                          # noqa: BLE001
-            return ""
-
-    values = {f"hp_form_input:{i}": _read(f"hp_form_input:{i}") for i in range(3)}
-    url = _read("hp_form_url")
-    if not url:
-        _say(shell, _t("ui.page.help.form_no_url"))
-        return False
-    fields = {f"#field{i}": v for i, v in enumerate(values.values())}
-    try:
-        plan = FormFillPlan.build(url, fields).review()
-    except FormFillError as e:
-        panel._form_fill = {"status": "failed", "detail": str(e), "values": {}}
-        panel.refresh()
-        _say(shell, str(e))
-        return False
-
-    failed = [r for r in fill_form_to_page(
-        plan.page_url, {e.selector: e.value for e in plan.entries}) if not r.ok]
-    panel._form_fill = {
-        "status": "failed" if failed else "applied",
-        "detail": "; ".join(r.detail for r in failed),
-        "values": values,
-    }
-    panel.refresh()
-    if failed:
-        _say(shell, _t("ui.page.help.form_failed", detail=panel._form_fill["detail"]))
-        return False
-    _say(shell, _t("ui.page.help.form_applied"))
-    return True
+    """The panel has no reviewed, same-page form filling integration."""
+    _say(shell, _t("ui.page.help.form_unavailable"))
+    return False
 
 
 def _phone_unavailable(shell) -> bool:

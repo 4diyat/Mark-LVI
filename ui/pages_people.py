@@ -435,73 +435,47 @@ def build_consent(panel, page) -> None:
 
 
 def build_help(panel, page) -> None:
-    """Board 13, transcribed from `b13()`.
-
-    THREE PANELS AND A PREVIEW STRIP. The artboard draws DIKTE (412x88 at 106),
-    PEMBACA LAYAR (412x116 at 246 with a "Bacakan" pill at (44,330)), and ISI
-    FORM (three 412x32 field rows at 432/488/544) over a cyan preview strip at
-    578. Dictation and screen reading are real chords this build binds; form
-    filling has no backend, so the three field rows are drawn at the artboard's
-    coordinates and the strip says the preview is not applied to anything.
-
-    THE FORM ROWS CARRY NO INVENTED VALUES. The artboard fills them with "PT
-    Sinar Abadi", "FB-2026-0912", "Rp 12.400.000" — example data for a feature
-    that does not exist. Each row shows its label and says the value would be
-    proposed, never applied, because there is nothing to propose from.
-    """
+    """Help cards: voice tools and honest unavailable screen/form controls."""
     from PyQt6.QtWidgets import QLabel, QLineEdit, QPushButton
-
-    from ui.tray_pages import _at
 
     page.hide()
     panel._pages["help"] = page
+    for key, y, height in (("dictate", 82, 132), ("read", 226, 124),
+                           ("form", 362, 260)):
+        panel._labels[f"hp_{key}_card"] = _at(page, QLabel, 24, y, 412, height, "")
+        panel._labels[f"hp_{key}_header"] = _at(page, QLabel, 42, y + 12, 374, 20, "")
 
-    panel._labels["hp_dictate_header"] = at(page, QLabel, text_box(24, 92, 10, width=300), "")
-    panel._labels["hp_dictate_card"] = _at(page, QLabel, 24, 106, 412, 88, "")
-    panel._labels["hp_dictate"] = _at(page, QLabel, 44, 128, 372, 44, "")
+    panel._labels["hp_dictate"] = _at(page, QLabel, 42, 118, 374, 46, "")
+    panel._labels["hp_dictate"].setWordWrap(True)
+    button = QPushButton("", page)
+    button.setGeometry(42, 174, 168, 28)
+    button.clicked.connect(lambda: panel._call("page", "tools"))
+    panel._buttons["hp_dictate_tools"] = button
 
-    panel._labels["hp_read_header"] = at(page, QLabel, text_box(24, 232, 10, width=300), "")
-    panel._labels["hp_read_card"] = _at(page, QLabel, 24, 246, 412, 116, "")
-    panel._labels["hp_read"] = _at(page, QLabel, 44, 262, 372, 60, "")
-    # "Bacakan" is the screen reader the artboard draws. This build has the
-    # screenshot chord and no speech synthesiser, so the pill names the chord
-    # it can actually trigger rather than promising a voice it does not have.
-    panel._buttons["hp_read"] = QPushButton("", page)
-    panel._buttons["hp_read"].setGeometry(44, 330, 120, 26)
-    panel._buttons["hp_read"].clicked.connect(lambda: panel._call("quick", "screenshot"))
+    panel._labels["hp_read"] = _at(page, QLabel, 42, 262, 374, 40, "")
+    panel._labels["hp_read"].setWordWrap(True)
+    button = QPushButton("", page)
+    button.setGeometry(42, 309, 168, 28)
+    button.setEnabled(False)
+    panel._buttons["hp_read"] = button
 
-    panel._labels["hp_form_header"] = at(page, QLabel, text_box(24, 396, 10, width=300), "")
+    panel._labels["hp_form_note"] = _at(page, QLabel, 42, 398, 374, 40, "")
+    panel._labels["hp_form_note"].setWordWrap(True)
     for index in range(3):
-        y = 432 + index * 56
-        panel._labels[f"hp_form_label:{index}"] = _at(
-            page, QLabel, 24, y - 12, 300, 16, "")
-        # The field row is an editable QLineEdit, not a label: the value the
-        # plan will send is typed here, then reviewed in the strip before the
-        # apply button sends it to the browser. (A QLineEdit is an input, so
-        # the conformance audit's ALLOWED_GAPS carries the three row coords.)
+        y = 442 + index * 35
+        panel._labels[f"hp_form_label:{index}"] = _at(page, QLabel, 42, y, 120, 28, "")
         field = QLineEdit(page)
-        field.setGeometry(24, y, 412, 32)
+        field.setGeometry(164, y, 252, 28)
         field.setObjectName(f"hp_form_input:{index}")
+        field.setEnabled(False)
         panel._inputs[f"hp_form_input:{index}"] = field
 
-    # The preview strip: cyan at 12% opacity in the artboard. It starts by
-    # saying nothing has been applied, and flips to the review/applied status
-    # once the builder below is used.
-    panel._labels["hp_preview"] = _at(page, QLabel, 24, 578, 412, 34, "")
-
-    # THE BUILDER: a page URL field and a review-and-apply button, sitting in
-    # the band under the preview strip. Board 13's form filling is review-first:
-    # the plan is built, reviewed, and only then applied into the browser.
-    panel._labels["hp_form_url_label"] = at(page, QLabel, text_box(24, 616, 10, width=200), "")
-    url_edit = QLineEdit(page)
-    url_edit.setGeometry(24, 630, 300, 24)
-    url_edit.setObjectName("hp_form_url")
-    panel._inputs["hp_form_url"] = url_edit
-    apply_button = QPushButton("", page)
-    apply_button.setGeometry(328, 630, 108, 24)
-    apply_button.setObjectName("hp_form_apply")
-    apply_button.clicked.connect(lambda: panel._call("form_fill_apply"))
-    panel._buttons["hp_form_apply"] = apply_button
+    panel._labels["hp_preview"] = _at(page, QLabel, 42, 548, 374, 30, "")
+    panel._labels["hp_preview"].setWordWrap(True)
+    button = QPushButton("", page)
+    button.setGeometry(42, 583, 168, 28)
+    button.setEnabled(False)
+    panel._buttons["hp_form_apply"] = button
 
 
 __all__ = ["GESTURES", "build_consent", "build_gestures", "build_help",

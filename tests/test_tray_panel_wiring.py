@@ -286,8 +286,8 @@ def test_every_key_the_panel_can_press_has_a_handler(wiring):
 
         actions = wiring.actions_for(FakeShell())
         assert set(actions) == {
-            "presence_set", "quick", "permission", "undo", "history_export",
-            "history_clear", "erase", "export_audit", "command", "theme",
+            "presence_set", "quick", "permission", "undo", "undo_guarded", "history_export",
+            "history_clear", "history_clear_guarded", "erase", "export_audit", "command", "theme",
             # The thirteen board pages (`ui/pages_actions.py`). Each one is a
             # store write reached by a click, and each has a test of its own
             # below; this set is what proves the panel's buttons have somewhere
@@ -324,7 +324,7 @@ def test_every_key_the_panel_can_press_has_a_handler(wiring):
         assert panel.open() is True
         pressed = {key.split(":", 1)[0] for key in panel._buttons}
         assert pressed <= {"mode", "quick", "perm", "p6", "p6_export",
-                           "p6_clear", "undo", "export", "clear", "erase",
+                           "p6_clear", "undo", "history_prev", "history_next", "export", "clear", "erase",
                            "send", "theme",
                            # the board pages' controls, by their real
                            # prefixes — this set is what makes a NEW control
@@ -332,7 +332,7 @@ def test_every_key_the_panel_can_press_has_a_handler(wiring):
                            "mem_add", "mem_clear", "mem_open", "m1_back",
                            "m1_forget", "m1_export", "rt_pause", "tl_clear", "tl_copy",
                            "tl_snap_thumb",
-                           "l18_clear", "l18_export", "cn_toggle", "hp_read",
+                           "l18_clear", "l18_export", "cn_toggle", "hp_read", "hp_dictate_tools",
                            "tl_safe", "cn_allow", "cn_deny", "ac_lang",
                            "ac_motion", "ac_scale", "pl_toggle", "pl_prev", "pl_next", "in_pick",
                            # board 15's gesture "ubah" cells, by prefix

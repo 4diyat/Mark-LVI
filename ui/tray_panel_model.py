@@ -262,6 +262,7 @@ class Snapshot:
     can_hear: bool = True
     permissions: dict = field(default_factory=dict)
     history: tuple = ()
+    history_available: bool = True
     audit: tuple = ()
     voice_auth: str = "off"
 
@@ -295,7 +296,7 @@ class Snapshot:
         """
         _title, sub = PAGE_TITLES.get(self.page, PAGE_TITLES["main"])
         if sub == "ui.panel.history.subtitle":
-            return _t(sub, count=self.undoable)
+            return self.history_subtitle
         if sub in _COUNTED_SUBTITLES:
             return _t(sub, **_COUNTED_SUBTITLES[sub]())
         if sub is not None:
@@ -329,6 +330,8 @@ class Snapshot:
 
     @property
     def history_subtitle(self) -> str:
+        if not self.history_available:
+            return _t("ui.panel.history.unavailable")
         undoable = sum(1 for row in self.history if row.get("undoable"))
         return _t("ui.panel.history.subtitle", count=undoable)
 
@@ -371,18 +374,15 @@ def _permissions() -> dict:
     }
 
 
-def _history() -> tuple:
-    """The undoable work, newest first, in board 08a's shape.
-
-    `core.undo.history()` is already newest-first — it returns
-    `reversed(_stack)` — so this must not reverse it again. (Reversing twice is
-    the harmless-looking bug that puts the row the user just created at the
-    bottom of a list they scroll from the top.)
-    """
+def _history() -> tuple | None:
+    """The undo stack and entry identities, atomically captured newest first."""
     from core import undo
 
-    return tuple({"label": str(label), "undoable": True}
-                 for label in (_safe(undo.history, []) or []))
+    entries = _safe(undo.history_with_tokens, None)
+    if entries is None:
+        return None
+    return tuple({"token": token, "label": str(label), "undoable": True}
+                 for token, label in entries)
 
 
 def _audit() -> tuple:
@@ -467,6 +467,7 @@ def snapshot(page: str = "main") -> Snapshot:
 
     used, limit = _quota()
     perms = _permissions()
+    history = _history()
     return Snapshot(
         mode=_mode(),
         page=str(page or "main"),
@@ -478,7 +479,8 @@ def snapshot(page: str = "main") -> Snapshot:
         can_undo=bool(_safe(undo.can_undo, False)),
         can_hear=bool(perms["microphone"]["on"]),
         permissions=perms,
-        history=_history(),
+        history=history or (),
+        history_available=history is not None,
         audit=_audit(),
         voice_auth=str(_safe(voice_auth.status, "off") or "off"),
     )
