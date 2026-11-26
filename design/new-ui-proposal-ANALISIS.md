@@ -11,6 +11,12 @@
 > (`docs/mockups/`, 22 artboard + generatornya) pensiun pada 2026-11-25:
 > `design/new-ui-proposal/` adalah SATU-SATUNYA sumber visual.
 
+> **Koreksi status:** mockup 04, 07, 08, 09 dan lainnya menggambarkan
+> jendela desktop lebar dengan sidebar, bukan hanya panel baki. Ruang kerja
+> desktop dan Memori mulai diimplementasikan; halaman desktop lain belum.
+> Tanda ✅ pada tabel historis di bawah hanya merujuk permukaan ringkas,
+> bukan bukti kesesuaian atau selesainya seluruh desain desktop.
+
 ## 1. Ringkasan teknis
 
 - **17 gambar**, semuanya `.png`.
@@ -42,7 +48,7 @@ penemuan warna baru.
 | 6 | `05-tray-panel.png` | 5 | Panel baki penuh (460×660) | gelap | ✅ `tray_panel` + `pages_*` |
 | 7 | `05-onboarding.png` | 7 + 22 | Onboarding: izin mikrofon + presensi | gelap | ✅ 4-langkah `core.onboarding` + installer dependensi (board 22) |
 | 8 | `06-task-history.png` | 8 | Riwayat tugas: status per baris + undo | gelap | Sebagian: daftar urungkan sesi berpaginasi dan tiga entri audit terbaru; bukan riwayat tugas penuh |
-| 9 | `07-memory-personal.png` | 9 + 10 | Memori personal + detail memori | gelap | ✅ list **scroll** + detail jujur (3 bidang tidak disimpan). Diperbaiki pada sesi ini |
+| 9 | `07-memory-personal.png` | 9 + 10 | Memori personal + detail memori | gelap | Sebagian: jendela desktop dengan sidebar dan daftar fakta nyata; sumber/keyakinan tidak tersedia, hapus massal belum didukung |
 | 10 | `08-routines-suggestions.png` | 11 | Rutinitas & saran proaktif | gelap | Sebagian: rutinitas tersimpan, scheduler dan pembuatan harian dengan perintah; **engine saran proaktif belum ada** |
 | 11 | `09-tools-clipboard.png` | 12 | Alat cepat & clipboard cerdas | gelap | ✅ sebagian: clipboard + cari berkas nyata; susun jendela — UI ada (`window_layout`), perilaku OS belum |
 | 12 | `10-help-dictation.png` | 13 | Dikte · baca layar · isi form | gelap | Sebagian: tiga kartu bantuan jujur dan tautan ke input suara; pembaca layar dan pengisian form di panel belum tersedia |
@@ -57,9 +63,9 @@ penemuan warna baru.
 
 Urutan berdasarkan **gap antara gambar dan kenyataan**, terbesar dulu:
 
-1. **Board 9/10 — memori (`07-memory-personal.png`)** — SELESAI pada sesi ini:
-   list scroll, header hitung store, kartu kosong yang jujur, detail tanpa
-   persentase. Acuan gambar sudah terpenuhi.
+1. **Board 9/10 — memori (`07-memory-personal.png`)** — sebagian: ruang
+   desktop, list scroll, hitung fakta dan detail jujur; visual dan interaksi
+   belum sepenuhnya setara mockup, dan penghapusan massal belum tersedia.
 2. **Board 18 — tema terang izin (`16-light-theme.png`)** — kartu dan teks
    sudah diverifikasi dengan render Qt offscreen dalam tema terang dan gelap.
    Verifikasi interaksi pada desktop asli tetap diperlukan.

@@ -309,9 +309,11 @@ class TrayPanel(PanelNavigationMixin, PanelSearchMixin):
         caller, not here: `ui/` must not import `config_manager` on the click
         path. With no handler wired the cycle still happens — the palette
         change is visible either way, reported through `_note`, never raised."""
+        previous = self._requested
         name = self.cycle_theme()
-        self._call("theme", name)
-        return name
+        if self._call("theme", name) is False:
+            self.set_theme(previous)
+        return self._requested
 
     def cycle_theme(self) -> str:
         """auto -> dark -> light -> auto. Cycles rather than segments: the
@@ -410,6 +412,9 @@ class TrayPanel(PanelNavigationMixin, PanelSearchMixin):
         line = " ".join(str(raw or "").split())
         if not line:
             return False
+        if getattr(self, '_async_command', False):
+            from ui.tray_command_delivery import send
+            return send(self, line)
         if "command" not in self._actions:
             self._note("no handler for command")
             return False

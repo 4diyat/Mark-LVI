@@ -93,6 +93,7 @@ TESTED = {
     "core/window_tile.py":    "tests/test_window_tile.py",
     "memory/config_manager.py": "tests/test_config.py",
     "memory/memory_manager.py": "tests/test_memory.py",
+    "memory/routine_store.py": "tests/test_routines.py",
 }
 
 

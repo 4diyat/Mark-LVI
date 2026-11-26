@@ -55,7 +55,7 @@ def start_orb(shell: "JarvisUI") -> bool:
     # BOARD 4: "KLIK KIRI — buka panel baki", "KLIK KANAN — menu cepat".
     # The left click used to open the command bar, which is a different surface
     # (board 3, one line) and left the 460x660 panel reachable only from the
-    # tray icon. The bar keeps its own chord — Ctrl+Space, below — so nothing is
+    # tray icon. The bar keeps its own chord — Ctrl+Alt+B, below — so nothing is
     # orphaned by this, and the panel already has a command field of its own.
     orb = OrbOverlay(
         mode=mode,
@@ -93,10 +93,8 @@ def start_toast(shell: "JarvisUI") -> bool:
         return False
 
 
-# Ctrl+Space: the chord the artboard promises, and the one thing about this
-# feature a user is told. Kept next to the bar's own code rather than in
-# `core.hotkey`, because that module's DEFAULT_CHORD is push-to-talk's.
-BAR_CHORD = ("ctrl", "space")
+# Keep the bar chord distinct from Ctrl+Space push-to-talk.
+BAR_CHORD = ("ctrl", "alt", "b")
 
 
 def toggle_orb_panel(shell: "JarvisUI") -> bool:
@@ -162,6 +160,7 @@ def open_quick_menu(shell: "JarvisUI") -> bool:
             menu.addAction(label).triggered.connect(
                 lambda _checked=False, p=page: _open_panel_page(shell, p))
         menu.addSeparator()
+        menu.addAction(_t_main_home()).triggered.connect(lambda: _open_main(shell))
         menu.addAction("Keluar").triggered.connect(lambda: _quit_from_menu(shell))
 
         # BESIDE THE ORB, NOT AT THE CURSOR. The cursor is already on the orb
@@ -173,6 +172,16 @@ def open_quick_menu(shell: "JarvisUI") -> bool:
     except Exception as e:                          # noqa: BLE001
         _note(shell, f"menu cepat gagal ({type(e).__name__}: {e})")
         return False
+
+
+def _t_main_home():
+    from ui.tray_panel_model import _t
+    return _t("ui.main.open")
+
+
+def _open_main(shell):
+    from ui.main_surface import open_main
+    return open_main(shell)
 
 
 def _qpoint(point):
@@ -223,7 +232,7 @@ def _quit_from_menu(shell: "JarvisUI") -> None:
 
 
 def start_bar_hotkey(shell: "JarvisUI") -> str:
-    """Bind Ctrl+Space to the bar. Returns the scope actually achieved.
+    """Bind Ctrl+Alt+B to the bar. Returns the scope actually achieved.
 
     Separate from the summon chord: that one brings the WINDOW back, this one
     opens a line without it. Two chords because they answer two different
@@ -231,7 +240,9 @@ def start_bar_hotkey(shell: "JarvisUI") -> str:
     """
     from core.hotkey import HotkeyTap
 
-    tap = HotkeyTap(lambda: toggle_command_bar(shell), chord=BAR_CHORD)
+    from ui.qt_thread import run_on_qt_thread
+    tap = HotkeyTap(lambda: run_on_qt_thread(getattr(shell, '_ui_thread_id', None),
+                                             lambda: toggle_command_bar(shell)), chord=BAR_CHORD)
     try:
         scope = tap.start()
     except Exception as e:                          # noqa: BLE001
@@ -250,7 +261,7 @@ def stop_bar_hotkey(shell: "JarvisUI") -> None:
 
 
 def toggle_command_bar(shell: "JarvisUI") -> None:
-    """Ctrl+Space: open the bar, or close it if it is already up."""
+    """Ctrl+Alt+B: open the bar, or close it if it is already up."""
     bar = getattr(shell, "_command_bar", None)
     if bar is not None and bar.is_open:
         bar.close()
@@ -258,21 +269,29 @@ def toggle_command_bar(shell: "JarvisUI") -> None:
     open_command_bar(shell)
 
 
+def _make_live_command_bar(shell):
+    from ui.command_bar import CommandBar
+    def submit(text):
+        callback = getattr(shell, 'on_text_command', None)
+        return callback(text) if callable(callback) else False
+    def accepted(text):
+        from ui.conversation_state import publish
+        publish(shell, 'user', text)
+    return CommandBar(on_submit=submit, asynchronous=True, on_sent=accepted)
+
+
 def start_command_bar(shell: "JarvisUI") -> bool:
     """Create the bar, unshown, and its chord. False if the chord cannot bind.
 
     The bar is built now and opened later: building a window on the first
-    keystroke would put Qt's construction cost on the user's first Ctrl+Space,
+    keystroke would put Qt's construction cost on the user's first Ctrl+Alt+B,
     which is the one moment the feature is being judged.
     """
-    from ui.command_bar import CommandBar
-
-    bar = CommandBar(on_submit=lambda text: submit_command_bar(shell, text))
+    bar = _make_live_command_bar(shell)
     shell._command_bar = bar
     scope = start_bar_hotkey(shell)
     if scope != "global":
-        _note(shell, "the command bar shortcut only works while the orb or the "
-                    "interface has focus — this desktop offers no global hook.")
+        _note(shell, "command bar global shortcut unavailable; open it from the workspace instead.")
     return bar is not None
 
 
@@ -290,8 +309,7 @@ def open_command_bar(shell: "JarvisUI") -> bool:
     """
     bar = getattr(shell, "_command_bar", None)
     if bar is None:
-        from ui.command_bar import CommandBar
-        bar = CommandBar(on_submit=lambda text: submit_command_bar(shell, text))
+        bar = _make_live_command_bar(shell)
         shell._command_bar = bar
     if not bar.open(None):
         _note(shell, f"Command bar unavailable ({bar.error}).")
@@ -306,6 +324,9 @@ def submit_command_bar(shell: "JarvisUI", text: str) -> bool:
     panel = getattr(shell, "_panel", None)
     if panel is not None:
         panel.add_message("user", text)
+    main = getattr(shell, "_main_surface", None)
+    if main is not None:
+        main.add_message("user", text)
     return True
 
 

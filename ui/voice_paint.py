@@ -103,8 +103,7 @@ def paint_frame(painter, size, overlay) -> None:
         # The level bars are a listening readout: an overlay that is not
         # active draws neither them nor the edge, which is the same promise
         # the footnote's first line makes about the glow.
-        if active:
-            _paint_waveform(painter, overlay)
+        # No microphone level reaches this overlay: don't draw a fake meter.
     except Exception as exc:                        # noqa: BLE001
         # A failed repaint costs a frame. Letting it escape would take down the
         # event loop of a window whose only job is to be seen.
@@ -133,6 +132,8 @@ def _paint_camera(painter, overlay) -> None:
         painter.drawText(QPointF(x + 16, y + 44), _model.PAUSED_WORD)
         return
 
+    if not overlay._camera_available or not getattr(overlay, '_has_hand', False):
+        return
     hand = overlay.hand
     palm = _hand.hand_point(hand)
     pose = _hand.pose_of(hand)
@@ -241,7 +242,7 @@ def _paint_waveform(painter, overlay) -> None:
     are a fixed shape: 4 px wide, 12 px pitch, centred on the transcript row,
     in the accent cyan at 80 % opacity.
     """
-    QPointF, _QRectF, Qt, QColor, QPen, _QRadial = _qt()
+    _QPointF, QRectF, Qt, QColor, QPen, _QRadial = _qt()
     base_x, base_y = _model.WAVEFORM_AT
     colour = QColor(CYAN)
     colour.setAlphaF(_model.WAVEFORM_ALPHA)
@@ -250,8 +251,7 @@ def _paint_waveform(painter, overlay) -> None:
     for index, height in enumerate(_model.WAVEFORM_BARS):
         bar_x = base_x + index * _model.WAVEFORM_PITCH
         top = base_y - height / 2.0
-        painter.drawRect(QPointF(bar_x, top),
-                         _model.WAVEFORM_WIDTH, height)
+        painter.drawRect(QRectF(bar_x, top, _model.WAVEFORM_WIDTH, height))
 
 
 def _half_width(painter, text: str) -> float:

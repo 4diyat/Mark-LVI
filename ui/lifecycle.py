@@ -2,16 +2,15 @@
 
 WHAT CHANGED, AND WHY THIS FILE IS SHORTER THAN IT WAS
     This module used to move a WINDOW between "on screen" and "in the tray".
-    That is gone with `ui/window.py`: the mockup draws no window, and a
-    full-screen HUD next to an ambient orb is two different products sharing a
-    process. Summon now means "bring every ambient surface forward" — the orb
-    and the face — and dismiss means "let them settle back".
+    That old HUD is gone with `ui/window.py`. The current proposal also draws
+    wide desktop screens; `ui/design_workspace.py` implements these separately
+    from the ambient surfaces. Summon still brings the orb and face forward;
+    the compact panel opens the new workspace.
 
     The functions that only existed to serve a window went with it:
     `set_interface_mode` (switching into `hud`), `raise_window` (showing a
     window), and `window_needs_attention` (opening one when something was
-    wrong). A surface that does not exist cannot be shown, and a fallback to
-    "show the window" in a build with no window is not a fallback.
+    wrong). These legacy HUD functions have not been reintroduced.
 
 THE ONE RULE THAT SURVIVES ALL OF IT
     An interface the user cannot reach is worse than no interface. Everything
@@ -212,18 +211,13 @@ def start_interface(shell: "AmbientShell") -> None:
     except Exception as e:                          # noqa: BLE001
         note(shell, f"the voice overlay failed to start — {type(e).__name__}: {e}")
 
-    # THE TRAY PANEL, OPENED AT STARTUP. The panel is built lazily on the
-    # tray-icon click path, so without this the surfaces visible at launch are
-    # only the orb, the bar and the toast — none of which the phase-2 board
-    # redesign touched. Opening it here is what makes the new-design boards
-    # visible on launch. `--hidden` skips it (see `tray_panel_wiring.start_panel`),
-    # and a failure is reported through the same channel as every other surface.
+    # The wide ambient home is the startup surface; tray remains separate.
     try:
-        from ui import tray_panel_wiring
-        if tray_panel_wiring.start_panel(shell):
-            started.append("panel")
+        from ui.main_surface import start_main
+        if start_main(shell):
+            started.append("main")
     except Exception as e:                          # noqa: BLE001
-        note(shell, f"the tray panel failed to start — {type(e).__name__}: {e}")
+        note(shell, f"the main surface failed to start — {type(e).__name__}: {e}")
 
     # `--hidden`: still BUILT (nothing built means nothing to summon), just not
     # shown — a login entry must not pop a face onto someone's screen.
@@ -258,7 +252,9 @@ def start_summon_hotkey(shell: "AmbientShell") -> str:
     """Bind Ctrl+Shift+J to `summon`. Returns the scope actually achieved."""
     from core.hotkey import HotkeyTap
 
-    tap = HotkeyTap(lambda: summon(shell), chord=SUMMON_CHORD)
+    from ui.qt_thread import run_on_qt_thread
+    tap = HotkeyTap(lambda: run_on_qt_thread(getattr(shell, '_ui_thread_id', None),
+                                             lambda: summon(shell)), chord=SUMMON_CHORD)
     try:
         scope = tap.start()
     except Exception as e:                          # noqa: BLE001
@@ -266,8 +262,7 @@ def start_summon_hotkey(shell: "AmbientShell") -> str:
         return "window"
     shell._summon_hotkey = tap
     if scope != "global":
-        note(shell, "the summon shortcut only works while a JARVIS surface has "
-                    "focus — this desktop offers no global key hook.")
+        note(shell, "global summon shortcut unavailable; use the tray or workspace.")
     return scope
 
 
@@ -343,6 +338,11 @@ def summon(shell: "AmbientShell") -> None:
     bubble = getattr(shell, "_bubble", None)
     if bubble is not None and getattr(bubble, "available", False):
         _set_bubble_visible(shell, True)
+    try:
+        from ui.main_surface import open_main
+        open_main(shell)
+    except Exception as e:                          # noqa: BLE001
+        note(shell, f"could not show the main surface — {type(e).__name__}: {e}")
     orb = getattr(shell, "_orb", None)
     if orb is not None:
         try:
@@ -549,7 +549,7 @@ def quit_app(shell: "AmbientShell", code: int = 0) -> None:
     not keep the process alive after Quit — an assistant that ignores Quit is
     one somebody ends with Task Manager.
     """
-    for attr, stop_name in (("_panel", "stop"), ("_orb", "stop"),
+    for attr, stop_name in (("_desktop_workspace", "close"), ("_main_surface", "close"), ("_panel", "stop"), ("_orb", "stop"),
                             ("_bubble", "stop"), ("_tray", "stop"),
                             ("_command_bar", "close"), ("_toaster", "stop")):
         target = getattr(shell, attr, None)

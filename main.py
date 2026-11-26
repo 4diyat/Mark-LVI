@@ -593,7 +593,7 @@ def _keep_context_of(exc: BaseException) -> bool:
 
 def _exception_details(exc: BaseException) -> str:
     """Include TaskGroup causes; str(ExceptionGroup) hides the real error."""
-    parts = [str(exc)]
+    parts = [f"{type(exc).__name__}: {exc}"]
     for child in getattr(exc, "exceptions", ()):
         parts.append(_exception_details(child))
     return " | ".join(parts)
@@ -633,6 +633,9 @@ class JarvisLive:
         self.audio_in_queue       = None
         self.out_queue            = None
         self._loop                     = None
+        self._conn_backoff             = 0
+        from core.retry_control import RetryControl
+        self._retry_control = RetryControl()
         self._is_speaking         = False
         self._speaking_lock       = threading.Lock()
         self._phone_active        = False   # True while phone mic is streaming; pauses PC mic
@@ -684,6 +687,9 @@ class JarvisLive:
         self.ui.on_push_to_talk   = self.set_push_to_talk
         self.ui.ptt_hold          = self._on_ptt
         self.ui.on_text_command   = self._on_text_command
+        self.ui.get_session_connected = lambda: self.session is not None
+        self.ui.get_retry_state = self._retry_control.snapshot
+        self.ui.on_retry_connection = self._retry_control.request
         self.ui.on_remote_clicked = self._make_remote_key
         self.ui.on_interrupt      = self.interrupt
         self.ui.on_voice_change   = self._on_voice_change     # voice picker → rebuild session
@@ -1357,24 +1363,26 @@ class JarvisLive:
     def _on_text_command(self, text: str):
         if not self._loop or not self.session:
             self.ui.write_log("SYS: The session is not ready; your command was not sent.")
-            return
-        # Board 14a: the risk dialog says where the request came from. This is
-        # the typed door; the input transcription marks the spoken one.
+            return False
         from core import input_source
         input_source.mark("typed")
-        # Respect wake-word sleep: a typed command must not be answered while
-        # asleep either (the sleep gate is not just for the mic). Wake first with
-        # "Hey Jarvis" or the WAKE NOW button.
         if self._wake_enabled and not self._awake:
             self.ui.write_log("SYS: I'm asleep — say 'Hey Jarvis' or tap WAKE NOW first.")
-            return
-        asyncio.run_coroutine_threadsafe(
+            return False
+        future = asyncio.run_coroutine_threadsafe(
             self.session.send_client_content(
                 turns={"role": "user", "parts": [{"text": text}]},
                 turn_complete=True
-            ),
-            self._loop
-        )
+            ), self._loop)
+
+        def report_failure(done):
+            try:
+                done.result()
+            except Exception as exc:
+                self.ui.write_log(f"ERR: The command could not be sent: {type(exc).__name__}: {exc}")
+
+        future.add_done_callback(report_failure)
+        return future  # completion means the send finished, not that the action succeeded
 
     def _tail_active(self) -> bool:
         """True while the speakers may still be finishing our last sentence."""
@@ -3090,6 +3098,7 @@ class JarvisLive:
             self._dashboard = None
 
         while True:
+            network_error = False
             try:
                 self._ensure_executor()
                 print("[JARVIS] Connecting...")
@@ -3136,6 +3145,7 @@ class JarvisLive:
                     session.send_client_content = _send_and_arm
 
                     self.session          = session
+                    self._conn_backoff    = 0
                     self.audio_in_queue   = asyncio.Queue(maxsize=playback_buffer.MAX_SLICES)
                     self.out_queue        = asyncio.Queue(maxsize=200)
                     self._turn_done_event = asyncio.Event()
@@ -3317,10 +3327,11 @@ class JarvisLive:
                 # ladder step — one unknown error must not cost the user their
                 # model for the day.
                 self._conn_backoff = verdict.delay
-                if _session_policy.looks_like_network(err_str):
-                    self.ui.write_log(
-                        f"NET: Connection failed — retrying in {verdict.delay}s. "
-                        "(a VPN may be required)")
+                network_error = _session_policy.looks_like_network(err_str)
+                if network_error:
+                    from core import i18n
+                    self.ui.write_log("NET: " + i18n.label(
+                        "ui.main.network_retry", seconds=verdict.delay))
             finally:
                 self.session = None
                 # Only save if there was a real conversation (≥3 turns)
@@ -3335,7 +3346,7 @@ class JarvisLive:
 
             delay = getattr(self, "_conn_backoff", 3)
             print(f"[JARVIS] Reconnecting in {delay}s...")
-            await asyncio.sleep(delay)
+            await self._retry_control.wait(delay, allow_manual=network_error)
 
 @dataclass
 class LaunchOptions:

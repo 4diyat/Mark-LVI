@@ -328,3 +328,23 @@ def test_two_schedulers_claim_a_due_routine_only_once(tmp_path):
     assert not errors
     assert all(not thread.is_alive() for thread in threads)
     assert fired == ['r1']
+
+
+def test_guarded_routine_changes_require_reviewed_snapshot_and_preserve_fire_stamp(tmp_path):
+    from dataclasses import replace
+    from memory.routine_store import RoutineStore
+
+    store = RoutineStore(tmp_path / 'routines.json')
+    original = _routine('reviewed')
+    store.add(original)
+    store.mark_fired(original.id, '2026-01-02')
+    updated = store.set_enabled_if_unchanged(original, False)
+    assert updated is not None and not updated.enabled and updated.last_fired == '2026-01-02'
+    assert not store.remove_if_unchanged(original)  # enabled state changed
+    changed = replace(updated, payload='different command')
+    store.update(changed)
+    assert store.set_enabled_if_unchanged(updated, True) is None
+    assert not store.remove_if_unchanged(updated)
+    assert store.get(original.id) == changed
+    assert store.remove_if_unchanged(changed)
+    assert store.get(original.id) is None

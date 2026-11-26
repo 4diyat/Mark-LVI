@@ -78,6 +78,11 @@ def build_more(panel, page) -> None:
             lambda _checked=False, k=key: panel._call("page", k))
         panel._buttons[f"more:{key}"] = button
 
+    workspace = QPushButton("", page)
+    workspace.setGeometry(238, 508, 198, 62)
+    workspace.clicked.connect(lambda: panel._call("open_workspace"))
+    panel._buttons["more_workspace"] = workspace
+
     back = QPushButton("", page)
     back.setGeometry(*g["more_back"])
     back.clicked.connect(lambda _checked=False: panel.go_back())

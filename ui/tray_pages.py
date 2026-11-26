@@ -280,6 +280,7 @@ def panel_position(screen, size=(PANEL_W, PANEL_H), point=None) -> tuple[int, in
 
 def build_main(panel, page) -> None:
     """Build the main panel's quick cards, session chat and controls."""
+    from PyQt6.QtCore import Qt
     from PyQt6.QtWidgets import QLabel, QLineEdit, QPushButton, QTextEdit
 
     panel._pages = {PAGE_MAIN: page}
@@ -342,6 +343,11 @@ def build_main(panel, page) -> None:
     send.setStyleSheet("border-radius:18px;padding:0;")
     send.clicked.connect(lambda _checked=False: panel.submit_command())
     panel._buttons["send"] = send
+    status = QLabel(page)
+    status.setGeometry(24, 637, 410, 20)
+    status.setTextFormat(Qt.TextFormat.PlainText)
+    status.setStyleSheet("color:#c5d9ec; font-size:10px; background:transparent;")
+    panel._labels["command_status"] = status
 
 
 def prepare_quick_draft(panel, key: str) -> bool:

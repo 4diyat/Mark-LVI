@@ -180,6 +180,8 @@ def _paint_more(panel) -> None:
         if button is not None:
             button.setText("")
             button.setAccessibleName(_t(PAGE_LABEL[key]))
+    panel._buttons["more_workspace"].setText(_t("ui.workspace.open"))
+    panel._buttons["more_workspace"].setEnabled(callable(panel._actions.get("open_workspace")))
     panel._buttons["more_back"].setText(_t("ui.page.more.back"))
 
 

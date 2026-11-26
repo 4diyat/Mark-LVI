@@ -2,11 +2,9 @@
 
 WHAT THIS PACKAGE IS NOW
     It used to be a full-screen window with a desktop workspace inside it. The
-    design proposal (`design/new-ui-proposal/`) draws 22 boards,
-    numbered 1-22, and not one of them is a window: an orb, a toast, a command
-    bar, a tray panel, a risk confirmation, a history list, a permissions page
-    and a light theme among them. So the window is gone and this package is
-    those surfaces.
+    design proposal (`design/new-ui-proposal/`) includes an ambient main
+    surface, a compact tray panel and wide desktop pages. The legacy window is
+    gone; `main_surface.py` and `design_workspace.py` are the new surfaces.
 
     Not every artboard has a surface yet. The ones that do are listed below; the
     ones that do not are named in `design/new-ui-proposal-ANALISIS.md`, which is the
@@ -18,7 +16,7 @@ WHAT THIS PACKAGE IS NOW
     | `orb_paint.py`    | the ONE orb painter, at any size                  |
     | `orb_overlay.py`  | the 96 px desktop ring and its hit test           |
     | `face_bubble.py`  | the 260 px floating face (kept by owner request)  |
-    | `command_bar.py`  | Ctrl+Space, one line, Esc gives focus back        |
+    | `command_bar.py`  | Ctrl+Alt+B when globally available, Esc gives focus back        |
     | `command_paint.py`| board 3's box: the drawing, its tokens, its rows   |
     | `toast_queue.py`  | three at a time, the rest queued and counted      |
     | `confirm_banner.py`| the trusted-UI gate in front of risky actions    |

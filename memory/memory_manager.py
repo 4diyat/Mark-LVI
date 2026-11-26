@@ -396,10 +396,14 @@ def search_memory(query: str, limit: int = 8) -> str:
     return head + "\n" + "\n".join(lines) + more
 
 
-def all_entries_for_ui() -> list[dict]:
+def all_entries_for_ui(*, strict: bool = False) -> list[dict]:
     """Flat list for the memory panel: what JARVIS knows, and when it learned it.
     Sorted newest first so the panel opens on what changed most recently."""
-    memory = load_memory()
+    memory = load_memory(strict=strict)
+    if strict:
+        for category in _empty_memory():
+            if not isinstance(memory[category], dict):
+                raise RuntimeError(f"Cannot read memory category {category}")
     rows = []
     for cat, items in memory.items():
         if not isinstance(items, dict):
@@ -435,6 +439,25 @@ def forget(key: str, category: str = "notes") -> str:
             save_memory(memory)
             return f"Forgotten: {category}/{key}"
         return f"Not found: {category}/{key}"
+
+
+def forget_if_unchanged(row: dict) -> bool:
+    """Delete exactly the displayed fact, refusing a changed or missing value."""
+    category, key = row.get("category"), row.get("key")
+    if not isinstance(category, str) or not isinstance(key, str) or not key:
+        return False
+    with _lock:
+        memory = load_memory(strict=True)
+        entries = memory.get(category)
+        if not isinstance(entries, dict) or key not in entries:
+            return False
+        entry = entries[key]
+        updated = entry.get("updated", "") if isinstance(entry, dict) else ""
+        if _entry_value(entry) != row.get("value") or updated != row.get("updated", ""):
+            return False
+        del entries[key]
+        _write_atomic(memory)
+        return True
 
 
 forget_memory = forget

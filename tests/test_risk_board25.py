@@ -208,7 +208,10 @@ def test_enter_answers_yes(qt):
     banner = confirm_banner.build_confirm_window()
     banner.answered.connect(answered.append)
     banner.keyPressEvent(_key_event(Qt.Key.Key_Return))
-    assert answered == [True], "Enter did not confirm"
+    assert answered == [False], "Enter without explicit confirm focus must cancel"
+    banner._confirm_button.setFocus()
+    banner.keyPressEvent(_key_event(Qt.Key.Key_Return))
+    assert answered[-1] is True, "Enter on the confirm button did not confirm"
 
 
 def test_the_initial_focus_is_still_the_SAFE_answer(qt):
@@ -267,7 +270,7 @@ def test_the_origin_line_is_on_the_dialog_and_filled_from_the_store(qt, indonesi
         text = banner._origin_label.text()
         assert "ketik" in text.lower(), text
         assert "14:31" in text, text
-        assert "audit log" in text.lower(), text
+        assert "audit log" not in text.lower(), "audit persistence is not guaranteed"
     finally:
         input_source.reset()
 

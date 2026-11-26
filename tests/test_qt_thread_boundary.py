@@ -100,13 +100,11 @@ def test_a_foreign_thread_never_runs_widget_work_in_place():
         sys.modules.pop("PyQt6.QtCore", None)
 
 
-def test_without_qt_the_call_still_happens():
+def test_without_qt_the_call_still_happens(monkeypatch):
     """A headless test and a broken install both get here. Dropping the state
     would leave the surfaces permanently showing the first word."""
-    sys.modules.pop("PyQt6", None)
+    monkeypatch.setitem(sys.modules, "PyQt6.QtCore", None)
     ran = []
-    for name in ("PyQt6.QtCore",):
-        sys.modules.pop(name, None)
     qt_thread.run_on_qt_thread(0, lambda: ran.append("kept"))
     assert ran == ["kept"]
 

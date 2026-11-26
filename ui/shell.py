@@ -4,9 +4,10 @@ WHY THIS REPLACED `JarvisUI` RATHER THAN SHRINKING IT
     `ui/window.py` was 3,797 lines and `JarvisUI` was its facade. Between them
     they built a full-screen HUD, a desktop workspace with an MDI area, a chat
     log, an image editor, a code editor, an SSH panel, a trading terminal, a
-    floating-document system and a metrics thread. The proposal set (`design/new-ui-proposal/`) draws none of that. It draws
-    five things: an orb, a toast, a command bar, a tray panel, and a risk
-    confirmation.
+    floating-document system and a metrics thread. That legacy HUD is gone.
+    The current proposal also includes wide desktop screens; their incremental
+    implementation lives in `ui/design_workspace.py`, alongside the ambient
+    orb, toast, command bar, compact tray and risk confirmation.
 
     So the window is gone, and what remains is exactly this file. The old
     facade could not simply be trimmed: `main.py` talks to ~30 attributes on
@@ -34,8 +35,7 @@ WHAT A CALLER CAN EXPECT FROM THE ATTRIBUTES IT SETS
     them, plugins may replace them, and nothing reads them except the surface
     that fires them. That is deliberate: the window used to relay each one
     through a Qt signal because a widget had to be touched on the Qt thread.
-    With no widget, there is nothing to relay, and a plain attribute is the
-    whole of what those properties were ever doing.
+    These callbacks are wired to the surfaces that need them.
 """
 from __future__ import annotations
 
@@ -232,7 +232,7 @@ class AmbientShell:
                 reason = _t("ui.setup.waiting")
                 _note(reason)
                 try:
-                    self.notify(reason, "API key")
+                    self.notify(reason)
                 except Exception as e:              # noqa: BLE001
                     _note_once("api-key-notice",
                                f"API key notice not shown: {type(e).__name__}: {e}")
@@ -305,7 +305,7 @@ class AmbientShell:
         """The half of `set_state` that touches widgets. Qt thread only."""
         for attr, method in (("_tray", "set_state"),
                              ("_bubble", "set_state"),
-                             ("_orb", "set_state")):
+                             ("_orb", "set_state"), ("_main_surface", "set_state")):
             target = getattr(self, attr, None)
             callback = getattr(target, method, None)
             if callback is None:
@@ -401,20 +401,9 @@ class AmbientShell:
         self.notify(f"{str(title or '').strip()}: {str(text or '').strip()}"[:240])
 
     def show_confirm(self, token: str, title: str, detail: str) -> None:
-        """Raise the trusted-UI gate. Called from `core/confirm`, possibly off
-        the Qt thread.
-
-        `core/confirm` calls this from whatever thread the action runs on, and
-        Qt may only build widgets on the thread that owns them. So the banner is
-        created inside `singleShot(0, ...)` — a queued call that lands on the
-        event loop instead of in the middle of an audio callback.
-        """
-        try:
-            from PyQt6.QtCore import QTimer
-        except Exception as e:                      # noqa: BLE001
-            _note(f"no Qt: cannot ask about '{title}' — {type(e).__name__}: {e}")
-            return
-        QTimer.singleShot(0, lambda: self._show_confirm_now(token, title, detail))
+        """Queue the trusted gate on Qt, ignoring stale requests."""
+        from ui.confirmation_flow import show
+        show(self, token, title, detail)
 
     def _show_confirm_now(self, token: str, title: str, detail: str) -> None:
         """Build and place the banner on the Qt thread.
@@ -442,7 +431,7 @@ class AmbientShell:
             # so the line describes the request, not the repaint.
             from datetime import datetime
 
-            banner.set_origin(when=datetime.now().strftime("%H:%M"))
+            banner.set_origin(when=datetime.now().strftime("%H:%M"), source="")
             banner.adjustSize()
             banner.show()
             banner.raise_()
@@ -456,14 +445,9 @@ class AmbientShell:
             self.notify(f"Konfirmasi tidak bisa ditampilkan: {title}")
 
     def hide_confirm(self, token: str) -> None:
-        """Take the banner down. Safe to call for a token that is not up."""
-        banner = self._confirm_banner
-        if banner is None or token != self._confirm_token:
-            return
-        try:
-            banner.hide()
-        except Exception as e:                      # noqa: BLE001
-            _note(f"the confirmation could not be hidden — {type(e).__name__}: {e}")
+        """Hide only this request, on the Qt thread."""
+        from ui.confirmation_flow import hide
+        hide(self, token)
 
     def _resolve_answered(self, accepted: bool) -> None:
         """CONFIRM or CANCEL, from the banner, on the Qt thread.
@@ -475,6 +459,9 @@ class AmbientShell:
         without knowing what it was about.
         """
         token, self._confirm_token = self._confirm_token, ""
+        timer = getattr(self, "_confirm_expiry_timer", None)
+        if timer is not None:
+            timer.stop()
         banner = self._confirm_banner
         if banner is not None:
             try:

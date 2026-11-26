@@ -44,7 +44,8 @@ assert not panel.notes, panel.notes
 def test_help_action_refuses_direct_calls_without_touching_browser(monkeypatch):
     from ui import pages_actions
     calls = []
-    monkeypatch.setattr('actions.browser_form.fill_form_to_page',
+    from actions import browser_form
+    monkeypatch.setattr(browser_form, 'fill_form_to_page',
                         lambda *args: calls.append(args) or [])
     monkeypatch.setattr(pages_actions, '_say', lambda *_: None)
     edit = type('Edit', (), {'text': lambda self: 'https://example.com'})()

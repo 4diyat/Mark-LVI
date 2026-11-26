@@ -142,14 +142,14 @@ def test_the_footnote_is_the_artboards_sentence_verbatim():
     """It is the only place the key bindings are written down on screen."""
     assert voice_overlay.footnote() == (
         "Glow tepi hanya saat overlay aktif · Esc keluar · "
-        "Ctrl+Alt+G menjeda gestur")
+        "Ctrl+Alt+G menjeda gestur saat overlay fokus")
 
 
 def test_the_camera_tile_admits_when_it_has_no_camera():
     overlay = voice_overlay.VoiceOverlay()
-    assert voice_overlay.frame_words(overlay)["camera"] == "KAMERA NONAKTIF"
+    assert voice_overlay.frame_words(overlay)["camera"] == "KAMERA TIDAK TERSEDIA"
     overlay.set_camera_available(True)
-    assert voice_overlay.frame_words(overlay)["camera"] == "KAMERA"
+    assert voice_overlay.frame_words(overlay)["camera"] == "LAYANAN GESTUR AKTIF"
 
 
 # ── the hand on the tile ────────────────────────────────────────────────────
@@ -318,30 +318,18 @@ def test_an_active_overlay_draws_the_two_pixel_edge_and_the_glow():
 
     edge_call = next(args for name, args, _ in painter.calls if name == "drawRect")
     rect = edge_call[0]
-    assert abs(rect.w - (1280 - 2)) < 0.01 and abs(rect.x - 1.0) < 0.01, (
+    width = rect.width() if callable(getattr(rect, "width", None)) else rect.w
+    x = rect.x() if callable(getattr(rect, "x", None)) else rect.x
+    assert abs(width - (1280 - 2)) < 0.01 and abs(x - 1.0) < 0.01, (
         "the border must sit inside the frame, or half of it is off screen")
 
 
-def test_the_active_overlay_draws_the_artboards_five_level_bars():
-    """b04() draws five level bars at the right end of the transcript pill.
-
-    The artboard's own loop is `for i, h in enumerate((8, 16, 26, 14, 6))`.
-    The overlay drew the pill's words but never the bars, so the listening
-    level readout was absent. This checks the shape, not a pixel: five bars,
-    the artboard's heights, drawn only while the overlay is active.
-    """
+def test_the_overlay_does_not_draw_a_fabricated_audio_meter():
+    """No audio levels are wired here, so fixed bars would falsely imply input."""
     overlay = voice_overlay.VoiceOverlay(state="listening")
     overlay.show()
     painter = _paint(overlay)
-
-    bars = [args for name, args, _ in painter.calls
-            if name == "drawRect" and len(args) == 3
-            and 0 < args[1] <= 30 and 0 < args[2] <= 30]
-    assert len(bars) == 5, f"expected five level bars, drew {len(bars)}"
-
-    heights = sorted(round(b[2]) for b in bars)
-    assert heights == sorted(voice_overlay.WAVEFORM_BARS), (
-        f"bar heights {heights} != the artboard's {sorted(voice_overlay.WAVEFORM_BARS)}")
+    assert sum(name == "drawRect" for name, _, _ in painter.calls) == 1
 
 
 def test_the_transcript_pill_is_drawn_behind_the_words():
@@ -360,11 +348,13 @@ def test_the_transcript_pill_is_drawn_behind_the_words():
 
     pills = [args for name, args, _ in painter.calls
              if name == "drawRoundedRect" and len(args) == 3
-             and abs(args[0].w - voice_overlay.PILL_W) < 1
-             and abs(args[0].h - voice_overlay.PILL_H) < 1]
+             and abs((args[0].width() if callable(getattr(args[0], "width", None)) else args[0].w) - voice_overlay.PILL_W) < 1
+             and abs((args[0].height() if callable(getattr(args[0], "height", None)) else args[0].h) - voice_overlay.PILL_H) < 1]
     assert len(pills) == 1, "the transcript pill was not drawn"
     rect = pills[0][0]
-    assert (rect.x, rect.y) == tuple(voice_overlay.PILL_AT), (
+    x = rect.x() if callable(getattr(rect, "x", None)) else rect.x
+    y = rect.y() if callable(getattr(rect, "y", None)) else rect.y
+    assert (x, y) == tuple(voice_overlay.PILL_AT), (
         "the pill is not at the artboard's position")
     assert abs(pills[0][1] - voice_overlay.PILL_RADIUS) < 1, (
         "the pill does not use the artboard's corner radius")
@@ -390,7 +380,7 @@ def test_the_frame_draws_the_words_the_artboard_draws():
     words = painter.drawn_words()
 
     assert "MENDENGARKAN" in words
-    assert "KAMERA" in words
+    assert "LAYANAN GESTUR AKTIF" in words
     assert "ringkas tabel ini" in words
     assert "plafon" in words
     assert "Glow tepi hanya saat overlay aktif" in words

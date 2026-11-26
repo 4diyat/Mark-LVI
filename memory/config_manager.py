@@ -921,7 +921,7 @@ def get_ui_theme() -> str:
     return value if value in THEMES else "auto"
 
 
-def save_ui_theme(theme: str) -> None:
+def save_ui_theme(theme: str) -> bool:
     """Persist the panel theme, collapsing anything unknown to 'auto'.
 
     Collapsing rather than rejecting, for the same reason `save_ui_language`
@@ -929,7 +929,7 @@ def save_ui_theme(theme: str) -> None:
     not leave the user with a panel that cannot be painted.
     """
     value = (theme or "auto").strip().lower()
-    set_config_values(ui_theme=value if value in THEMES else "auto")
+    return set_config_values(ui_theme=value if value in THEMES else "auto")
 
 
 def get_gesture_os_enabled() -> bool:

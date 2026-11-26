@@ -39,7 +39,7 @@ LINE_ACC = "#243040"
 CYAN = "#3486fe"
 AMBER = "#ff9a40"
 TEXT = "#ffffff"
-MUTED = "#5e636c"
+MUTED = "#a6bbcb"
 # Board 2's risk dots: the mockup's honest language, one colour per verdict —
 # green = verified, yellow = unverified, red = failed. They are copied from
 # `ui/theme.py`'s palette (the single writer of colours) rather than read from
@@ -147,7 +147,7 @@ def to_row(label: str, tool: str, args: dict | None = None,
     return Row(str(label), state, level, dot, str(subtitle or ""))
 
 
-def default_rows() -> list[Row]:
+def default_rows(*, strict=False) -> list[Row]:
     """Recent recorded outcomes, newest first; never mock up completed work.
 
     The audit can contain request/confirmation events as well as outcomes.
@@ -156,9 +156,11 @@ def default_rows() -> list[Row]:
     """
     try:
         from core import audit_log
-        entries = audit_log.shared().entries(50)
+        entries = audit_log.shared().entries(50, strict=True) if strict else audit_log.shared().entries(50)
     except Exception as exc:  # noqa: BLE001
         print(f"[JARVIS] Command bar: audit unavailable — {type(exc).__name__}: {exc}")
+        if strict:
+            raise
         return []
     from ui.tray_panel_model import _t
 
@@ -215,7 +217,7 @@ def shown_rows(rows: list[Row]) -> list[Row]:
 #: `KEYS_HINT` in `ui/confirm_banner.py` gives: "Esc", "Ctrl+Space", "↑↓" and
 #: "↵" are the names PRINTED ON KEYBOARDS, and a translation of them is a
 #: legend for keys the user does not own.
-FOOTER = (("↑↓ riwayat", 26), ("↵ kirim", 146), ("Ctrl+Space tutup", 246))
+FOOTER = (("↑↓ riwayat", 26), ("↵ kirim", 146), ("Esc tutup", 246))
 
 
 def _style_field(field) -> None:
@@ -357,8 +359,12 @@ def paint_bar(painter, window) -> None:
     if not rows:
         from ui.tray_panel_model import _t
         painter.setPen(QColor(MUTED))
-        _text(painter, 26, 115, w - 52, 24,
-              _t("ui.command.outcome.empty"), 11)
+        state = getattr(window, "_audit_state", "done")
+        from ui.hud_pages import tr
+        label = (tr('Memuat log audit…', 'Loading audit log…') if state == 'loading' else
+                 tr('Log audit tidak dapat dibaca.', 'Audit log could not be read.') if state == 'error' else
+                 _t("ui.command.outcome.empty"))
+        _text(painter, 26, 115, w - 52, 24, label, 11)
     for index, row in enumerate(rows):
         y = g["rows_y"] + index * g["rows_pitch"]
         hx, hy, hw, hh = g["row_hl"]
