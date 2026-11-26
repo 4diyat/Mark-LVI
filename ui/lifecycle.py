@@ -148,11 +148,8 @@ from ui.ambient_shell import (                      # noqa: F401
 def start_interface(shell: "AmbientShell") -> None:
     """Bring up every surface this machine can hold, and say what it could not.
 
-    The order is the priority order, most capable last: the tray first (the
-    only surface that can always get the user back), the face next, the orb
-    last (a machine that cannot draw a 146 px window can still hold an icon).
-    A failed surface is not an error state — each degrades on its own and
-    reports why; what must never happen is a build where NOTHING came up.
+    Order is priority, most capable last; a failed surface is not an error
+    state — it degrades and reports why. What must never happen: NOTHING up.
     """
     # A LINK IS AN INSTRUCTION TO THE RUNNING APP, so it is answered before the
     # surfaces exist: `jarvis://hide` on an install with no orb must not be
@@ -175,11 +172,18 @@ def start_interface(shell: "AmbientShell") -> None:
             started.append("tray")
     except Exception as e:                          # noqa: BLE001
         note(shell, f"the tray surface failed to start — {type(e).__name__}: {e}")
+    # THE FACE IS OPTIONAL: only ui_mode "bubble" shows it (board 1 = orb+panel+toast).
     try:
-        if start_bubble(shell):
-            started.append("face")
-    except Exception as e:                          # noqa: BLE001
-        note(shell, f"the face surface failed to start — {type(e).__name__}: {e}")
+        from memory.config_manager import get_ui_mode
+        face_on = get_ui_mode() == "bubble"
+    except Exception:                              # noqa: BLE001
+        face_on = False
+    if face_on:
+        try:
+            if start_bubble(shell):
+                started.append("face")
+        except Exception as e:                    # noqa: BLE001
+            note(shell, f"the face surface failed to start — {type(e).__name__}: {e}")
     try:
         if start_orb(shell):
             started.append("orb")
@@ -541,10 +545,9 @@ def summon_settings(shell: "AmbientShell") -> None:
 def quit_app(shell: "AmbientShell", code: int = 0) -> None:
     """Stop every surface, then quit the application.
 
-    `os._exit` is the last resort and it is here on purpose: a surface that
-    fails to stop must not be able to keep the process alive after the user
-    asked it to quit. An assistant that ignores Quit is one somebody ends with
-    Task Manager, and then they stop trusting the tray.
+    `os._exit` is the last resort on purpose: a surface that fails to stop must
+    not keep the process alive after Quit — an assistant that ignores Quit is
+    one somebody ends with Task Manager.
     """
     for attr, stop_name in (("_panel", "stop"), ("_orb", "stop"),
                             ("_bubble", "stop"), ("_tray", "stop"),

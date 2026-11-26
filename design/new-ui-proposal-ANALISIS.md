@@ -94,6 +94,7 @@ adalah teks.
 | Susun jendela (board 12) | UI tiga thumbnail ada, perilaku OS di belakangnya belum — lihat prioritas 3. |
 | Engine saran proaktif (board 11) | Kartu saran digambar, engine belum — lihat prioritas 4. |
 | Handoff ponsel (board 16) | Pairing selesai, transfer konteks (memori + riwayat) belum — lihat prioritas 5. |
+| Wajah floating (face bubble) | Simpanan lama yang sengaja dipertahankan **hanya opt-in**: `ui_mode` `"bubble"`. `python main.py` di mode `hud`/`ambient` menunjukkan board 1 (orb + panel + toast) **tanpa** avatar — avatar tidak ada di 22 mockup. |
 
 ## 5. Aturan refaktor ke depan (dari analisis ini)
 

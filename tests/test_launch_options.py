@@ -232,6 +232,10 @@ def test_hidden_does_not_show_the_face_at_login(monkeypatch):
     lifecycle = _launch_lifecycle(
         monkeypatch, "watch_for_another_launch", "start_summon_hotkey",
         "start_orb", "start_command_bar")
+    # The face is opt-in (ui_mode "bubble"); the flag is what this test is
+    # about, so the mode is chosen first and the flag decides visibility.
+    from memory import config_manager as cm
+    monkeypatch.setattr(cm, "get_ui_mode", lambda: "bubble")
     shown = {"tray": 0, "face_built": 0}
 
     class _Window:
@@ -274,6 +278,8 @@ def test_show_puts_the_face_up(monkeypatch):
     lifecycle = _launch_lifecycle(
         monkeypatch, "watch_for_another_launch", "start_summon_hotkey",
         "start_orb", "start_command_bar")
+    from memory import config_manager as cm
+    monkeypatch.setattr(cm, "get_ui_mode", lambda: "bubble")
     seen = []
     monkeypatch.setattr(lifecycle, "start_tray", lambda shell: True)
     monkeypatch.setattr(lifecycle, "start_bubble", lambda shell: seen.append(1) or True)

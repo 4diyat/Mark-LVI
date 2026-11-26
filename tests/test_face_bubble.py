@@ -413,19 +413,22 @@ class _FakeBubble:
         self.state = state
 
 
-def _shell(monkeypatch, qt, tray_ok=True, bubble_ok=True):
+def _shell(monkeypatch, qt, tray_ok=True, bubble_ok=True, mode="ambient"):
     """A real `AmbientShell`, with the surfaces replaced by recorders.
 
     The real construction of each surface has its own test above; this fixture
     is for the LIFECYCLE — what `start_interface`, `summon` and `dismiss` do to
-    them, which only needs the calls to mean something.
+    them, which only needs the calls to mean something. `mode` is the
+    `ui_mode` the launch path reads; the face is opt-in since board 1.
     """
     import importlib
     tray_mod = importlib.import_module("ui.tray")
+    from memory import config_manager as cm
     from ui import lifecycle
 
     state = {"tray_ok": tray_ok, "bubble_ok": bubble_ok, "tray_starts": 0,
-             "orb_starts": 0, "bar_starts": 0}
+             "orb_starts": 0, "bar_starts": 0, "mode": mode}
+    monkeypatch.setattr(cm, "get_ui_mode", lambda: state["mode"])
 
     def _tray_start(self):
         state["tray_starts"] += 1
@@ -469,8 +472,22 @@ def test_every_surface_is_started(shell):
     assert shell.state["tray_starts"] == 1
     assert shell.state["orb_starts"] == 1
     assert shell.state["bar_starts"] == 1
-    assert shell._bubble is not None
     assert shell.ambient is True
+
+
+def test_the_face_is_shown_only_in_its_own_mode(monkeypatch, qt):
+    """Board 1's ambient desktop is orb + panel + toast.
+
+    The floating face is a legacy surface kept for owners who ask for it, and
+    a fresh launch in `ambient` (or the `hud` default) must NOT show it — that
+    is what made `python main.py` look like the old interface instead of the
+    new-UI board 1.
+    """
+    shell = _shell(monkeypatch, qt, mode="ambient")
+    assert shell._bubble is None
+
+    bubble_shell = _shell(monkeypatch, qt, mode="bubble")
+    assert bubble_shell._bubble is not None
 
 
 def test_a_failed_face_degrades_to_the_tray_not_to_a_window(monkeypatch, qt):
@@ -504,8 +521,9 @@ def test_the_orb_starts_even_when_the_face_cannot(monkeypatch, qt):
     assert shell.state["orb_starts"] == 1
 
 
-def test_the_face_steps_aside_and_comes_back(shell):
+def test_the_face_steps_aside_and_comes_back(monkeypatch, qt):
     """Summon shows the face, dismiss hides it — and the orb is never hidden."""
+    shell = _shell(monkeypatch, qt, mode="bubble")
     bubble = shell._bubble._window
     shell.dismiss()
     assert bubble.shown is False, "the face stayed up after a dismiss"
