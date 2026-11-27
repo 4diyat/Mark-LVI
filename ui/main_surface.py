@@ -81,8 +81,7 @@ class MainSurface:
         panel_layout = QVBoxLayout(panel)
         panel_layout.setContentsMargins(20, 18, 20, 20)
         panel_layout.setSpacing(14)
-        header = QHBoxLayout()
-        brand = QVBoxLayout()
+        header, brand = QHBoxLayout(), QVBoxLayout()
         brand.setSpacing(0)
         logo = heading(str(getattr(self.shell, '_assistant_name', '') or 'JARVIS'), 'brand')
         font_id = QFontDatabase.addApplicationFont(str(Path(__file__).resolve().parent.parent /
@@ -145,6 +144,7 @@ class MainSurface:
                                          'Stop the orb and waveform animation.'))
         self.reduce_motion.toggled.connect(self.set_reduced_motion)
         right.addWidget(self.reduce_motion, 0, Qt.AlignmentFlag.AlignHCenter)
+        from ui.voice_mode_button import install; install(self, right)
         root.addLayout(right, 45)
         self.window.setStyleSheet(STYLE)
         self.navigate('orb')
@@ -356,7 +356,6 @@ class MainSurface:
     def hide_system_card(self):
         self.home_content.setMinimumHeight(0)
 
-
     def update_metrics(self, cpu, ram):
         self.modules.update_values(cpu, ram)
         self.system_card.update_values(cpu, ram)
@@ -370,10 +369,14 @@ class MainSurface:
     def set_reduced_motion(self, reduced):
         self.orb.set_reduced_motion(reduced)
         self.wave.set_reduced_motion(reduced)
+        overlay = getattr(self.shell, '_voice_overlay', None)
+        if overlay is not None:
+            from ui.voice_orb import set_reduced_motion
+            set_reduced_motion(overlay, reduced)
 
     def set_state(self, state):
         key = str(state or '').strip().lower().replace(' ', '_')
-        valid = {'initialising', 'listening', 'thinking', 'processing', 'speaking', 'sleeping', 'no_mic'}
+        valid = {'initialising', 'idle', 'listening', 'thinking', 'processing', 'speaking', 'sleeping', 'no_mic'}
         self.state = key if key in valid else 'unknown'
         self.orb.set_state(self.state)
         self.refresh_mic()
@@ -395,7 +398,7 @@ class MainSurface:
                 QTimer.singleShot(0, lambda: self.home_scroll.verticalScrollBar().setValue(0))
         self._last_connection = connection
         self.avatar.set_connected(connection)
-        enabled = self.state in {'listening', 'thinking', 'processing', 'speaking', 'sleeping'} and connection is not False
+        enabled = self.state in {'idle', 'listening', 'thinking', 'processing', 'speaking', 'sleeping'} and connection is not False
         if connection is False:
             label = tr('Menunggu sesi…', 'Waiting for session…')
         elif muted and enabled:

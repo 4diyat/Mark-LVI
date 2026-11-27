@@ -141,7 +141,7 @@ def test_lines_for_survives_empty_and_garbage():
 def test_the_footnote_is_the_artboards_sentence_verbatim():
     """It is the only place the key bindings are written down on screen."""
     assert voice_overlay.footnote() == (
-        "Glow tepi hanya saat overlay aktif · Esc keluar · "
+        "Esc tutup tampilan · Mikrofon mengikuti pengaturan sesi · "
         "Ctrl+Alt+G menjeda gestur saat overlay fokus")
 
 
@@ -308,28 +308,32 @@ def test_an_inactive_overlay_draws_no_edge_and_no_glow():
     assert "drawRect" not in painter.names(), "no border while hidden"
 
 
-def test_an_active_overlay_draws_the_two_pixel_edge_and_the_glow():
+def test_an_active_overlay_draws_a_rounded_edge_and_glow():
     overlay = voice_overlay.VoiceOverlay(state="listening")
     overlay.show()
     painter = _paint(overlay)
-    names = painter.names()
-    assert "fillRect" in names, "the radial glow is missing"
-    assert "drawRect" in names, "the 2 px edge is missing"
-
-    edge_call = next(args for name, args, _ in painter.calls if name == "drawRect")
-    rect = edge_call[0]
-    width = rect.width() if callable(getattr(rect, "width", None)) else rect.w
-    x = rect.x() if callable(getattr(rect, "x", None)) else rect.x
-    assert abs(width - (1280 - 2)) < 0.01 and abs(x - 1.0) < 0.01, (
-        "the border must sit inside the frame, or half of it is off screen")
+    assert "fillRect" in painter.names()
+    edges = [args for name, args, _ in painter.calls
+             if name == "drawRoundedRect" and len(args) == 3
+             and abs((args[0].width() if callable(getattr(args[0], "width", None)) else args[0].w) - 1270) < 1]
+    assert len(edges) == 1 and edges[0][1] == 22
 
 
-def test_the_overlay_does_not_draw_a_fabricated_audio_meter():
-    """No audio levels are wired here, so fixed bars would falsely imply input."""
-    overlay = voice_overlay.VoiceOverlay(state="listening")
+def test_live_dots_follow_audio_and_keep_only_a_dim_zero_baseline():
+    overlay = voice_overlay.VoiceOverlay(state='listening')
     overlay.show()
-    painter = _paint(overlay)
-    assert sum(name == "drawRect" for name, _, _ in painter.calls) == 1
+    from ui import voice_paint
+    from tests.fakepainter import RecordingPainter
+    silent = RecordingPainter()
+    voice_paint._paint_live_levels(silent, overlay)
+    assert sum(name == 'drawRoundedRect' for name, _, _ in silent.calls) == 6
+    overlay.set_audio_level(.5)
+    assert overlay._audio_level == .5
+    measured = RecordingPainter()
+    voice_paint._paint_live_levels(measured, overlay)
+    assert sum(name == 'drawRoundedRect' for name, _, _ in measured.calls) > 6
+    overlay.set_audio_level(float('nan'))
+    assert overlay._audio_level == 0
 
 
 def test_the_transcript_pill_is_drawn_behind_the_words():
@@ -383,8 +387,8 @@ def test_the_frame_draws_the_words_the_artboard_draws():
     assert "LAYANAN GESTUR AKTIF" in words
     assert "ringkas tabel ini" in words
     assert "plafon" in words
-    assert "Glow tepi hanya saat overlay aktif" in words
-    assert "Esc keluar" in words and "Ctrl+Alt+G" in words
+    assert "Mikrofon mengikuti pengaturan sesi" in words
+    assert "Esc tutup tampilan" in words and "Ctrl+Alt+G" in words
 
 
 def test_the_orange_never_appears_on_the_overlay():

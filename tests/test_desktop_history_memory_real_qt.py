@@ -94,6 +94,11 @@ history.refresh(); wait(history)
 assert history.audit_rows is None and history.undo_rows == []
 assert audit_path.read_text() == '{broken\n'
 # Memory is the same store and the same reusable desktop window.
+def answer_both(first, second):
+    def answer_first():
+        QTimer.singleShot(0, lambda: QApplication.activeModalWidget().done(second.value))
+        QApplication.activeModalWidget().done(first.value)
+    QTimer.singleShot(0, answer_first)
 desktop.buttons['memory'].click(); wait(mem)
 assert desktop.current_page() == 'memory' and len(mem.memory_cards) == 2
 card = next(c for c in mem.memory_cards if c.row['key'] == 'name')
@@ -101,7 +106,7 @@ assert card.value.text() == '<b>Ada</b>' and card.value.textFormat() == Qt.TextF
 card.expand.click(); assert card.details.isVisible()
 row = card.row
 memory.update_memory({'notes': {'name': 'updated'}})
-QTimer.singleShot(0, lambda: QApplication.activeModalWidget().done(QMessageBox.StandardButton.Yes.value))
+answer_both(QMessageBox.StandardButton.Yes, QMessageBox.StandardButton.Yes)
 mem.confirm_forget(row); wait(mem)
 assert 'changed' in mem.status.text().lower()
 assert memory.load_memory(strict=True)['notes']['name']['value'] == 'updated'
@@ -109,7 +114,9 @@ mem.refresh(); wait(mem)
 card = next(c for c in mem.memory_cards if c.row['key'] == 'name')
 QTimer.singleShot(0, lambda: QApplication.activeModalWidget().done(QMessageBox.StandardButton.No.value))
 mem.confirm_forget(card.row); assert memory.load_memory(strict=True)['notes']['name']['value'] == 'updated'
-QTimer.singleShot(0, lambda: QApplication.activeModalWidget().done(QMessageBox.StandardButton.Yes.value))
+answer_both(QMessageBox.StandardButton.Yes, QMessageBox.StandardButton.No)
+mem.confirm_forget(card.row); assert memory.load_memory(strict=True)['notes']['name']['value'] == 'updated'
+answer_both(QMessageBox.StandardButton.Yes, QMessageBox.StandardButton.Yes)
 mem.confirm_forget(card.row); wait(mem)
 assert 'name' not in memory.load_memory(strict=True)['notes']
 assert not mem.clear_button.isEnabled()

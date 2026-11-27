@@ -60,7 +60,7 @@ from ui.tray_panel_model import _t
 # of silently becoming "listening".
 KNOWN_STATES = frozenset({
     "INITIALISING", "THINKING", "PROCESSING", "SPEAKING", "LISTENING",
-    "SLEEPING", "NO MIC",
+    "SLEEPING", "NO MIC", "IDLE",
 })
 
 
@@ -71,6 +71,7 @@ class AmbientShell:
     #: answers the question instead of raising inside `set_state`. `None`
     #: means "every thread", which collapses the marshal to a direct call.
     _ui_thread_id = None
+    _state_lock = threading.RLock()
     """Everything JARVIS has on screen when there is no window.
 
     Construct it once, on the Qt thread, after the QApplication exists. Every
@@ -101,6 +102,7 @@ class AmbientShell:
         self._muted = False
         self._state = "INITIALISING"
         self._voice_auth_state = "off"
+        self._voice_mode_active = False
         self._pending_state: str | None = None
         self._ambient = True
         self._ready = False
@@ -155,6 +157,7 @@ class AmbientShell:
     @muted.setter
     def muted(self, value: bool) -> None:
         self._muted = bool(value)
+        from ui import voice_wiring; run_on_qt_thread(self._ui_thread_id, lambda: voice_wiring.sync(self))
         # Muting is the one state the orb shows in amber: a microphone that is
         # off is the only warning this widget has, and the design reserves
         # amber for warnings.
@@ -282,12 +285,20 @@ class AmbientShell:
             case runs inline — `ui/qt_thread.py` is where that rule lives.
         """
         word = str(state or "").strip().upper() or "INITIALISING"
-        self._state = word            # plain assignment: readable from anywhere
-        run_on_qt_thread(self._ui_thread_id, lambda: self._apply_state(word))
+        with self._state_lock:
+            self._state = word
+        run_on_qt_thread(self._ui_thread_id, lambda: self._apply_state(self._state))
         # Notification policy is thread-safe and consults config each call;
         # it does not touch a widget, so it needs no queue.
         from ui.notify_bridge import announce
         announce(self, word)
+
+    def compare_set_state(self, expected: str, new: str) -> bool:
+        with self._state_lock:
+            if self._state != expected or (new == 'IDLE' and not getattr(self, '_voice_mode_active', False)):
+                return False
+            self.set_state(new)
+            return True
 
     def set_voice_auth_state(self, state: str) -> None:
         """The voice-verification gate's status, for the panel's snapshot.
@@ -311,7 +322,7 @@ class AmbientShell:
             if callback is None:
                 continue
             try:
-                callback(word.lower())
+                callback('voice_idle' if attr == '_tray' and word == 'IDLE' else word.lower())
             except Exception as e:                  # noqa: BLE001
                 _note(f"{attr} could not show '{word}' — {type(e).__name__}: {e}")
 

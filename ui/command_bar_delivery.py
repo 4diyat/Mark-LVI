@@ -41,6 +41,7 @@ def send(bar, raw):
     from ui.command_delivery import dispatch
     if bar.sending:
         return False
+    bar.set_retry()
     line = ' '.join(str(raw or '').split())
     if not line:
         return False
@@ -49,6 +50,7 @@ def send(bar, raw):
         return False
     if not callable(bar._on_submit):
         bar.set_hint(tr('Sesi belum siap; draf disimpan.', 'Session not ready; draft retained.'))
+        bar.set_retry(line)
         return False
     marker = object()
     bar._send_marker = marker
@@ -69,7 +71,9 @@ def send(bar, raw):
                 except Exception as exc:  # noqa: BLE001
                     print(f'[JARVIS] Command history update failed: {exc}')
         elif result is False:
-            bar.set_hint(tr('Tidak terkirim; draf disimpan.', 'Not sent; draft retained.'))
+            bar.set_hint(tr('Tidak terkirim: sesi menolak.', 'Not sent: session rejected.'))
+            if ' '.join(bar._field.text().split()) == text:
+                bar.set_retry(text)
         else:
             bar.set_hint(tr('Pengiriman tidak pasti; draf disimpan. Jangan kirim ulang sembarangan.',
                             'Delivery uncertain; draft retained. Do not retry blindly.'))

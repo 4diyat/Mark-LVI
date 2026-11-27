@@ -107,7 +107,11 @@ with tempfile.TemporaryDirectory() as tmp:
     workspace.refresh(); wait()
     row = workspace.memory_cards[0].row
     def answer(button):
-        QTimer.singleShot(0, lambda: QApplication.activeModalWidget().done(button.value))
+        def first():
+            if button == QMessageBox.StandardButton.Yes:
+                QTimer.singleShot(0, lambda: QApplication.activeModalWidget().done(button.value))
+            QApplication.activeModalWidget().done(button.value)
+        QTimer.singleShot(0, first)
     answer(QMessageBox.StandardButton.No)
     workspace.confirm_forget(row)
     assert memory.all_entries_for_ui(strict=True)

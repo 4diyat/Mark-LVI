@@ -2,7 +2,7 @@
 import threading
 
 from PyQt6.QtCore import QSize, Qt
-from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QMessageBox, QPushButton, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from ui.hud_icons import icon
 from ui.hud_pages import heading, tr
@@ -170,16 +170,15 @@ class MemoryPage(QWidget):
     def confirm_forget(self, row):
         if self._busy or self._loading:
             return
-        dialog = QMessageBox(self.dialog_parent)
-        dialog.setIcon(QMessageBox.Icon.Warning)
-        dialog.setTextFormat(Qt.TextFormat.PlainText)
-        dialog.setWindowTitle(_t('ui.workspace.forget_title'))
-        dialog.setText(_t('ui.workspace.forget_confirm', field_name=str(row.get('key') or '')))
-        dialog.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        dialog.button(QMessageBox.StandardButton.Yes).setText(tr('Lupakan', 'Forget'))
-        dialog.button(QMessageBox.StandardButton.No).setText(tr('Batal', 'Cancel'))
-        dialog.setDefaultButton(QMessageBox.StandardButton.No)
-        if dialog.exec() != QMessageBox.StandardButton.Yes:
+        from ui.desktop_confirm import confirm_twice
+        key = str(row.get('key') or '')
+        if not confirm_twice(
+                self.dialog_parent, _t('ui.workspace.forget_title'),
+                _t('ui.workspace.forget_confirm', field_name=key),
+                tr('Konfirmasi terakhir', 'Final confirmation'),
+                tr('Hapus memori ini sekarang? Tindakan ini tidak dapat diurungkan.\n',
+                   'Delete this memory now? This cannot be undone.\n') + key,
+                tr('Lupakan', 'Forget'), tr('Batal', 'Cancel')):
             return
         self._busy = True
         self.refresh_button.setEnabled(False)

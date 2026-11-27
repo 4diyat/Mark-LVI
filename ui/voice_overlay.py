@@ -14,16 +14,11 @@ WHAT THIS IS, AND WHY IT IS NOT THE ORB
     its click target must stay small.
 
 WHY THE CAMERA TILE IS DRAWN BY A PAINTER AND NOT BY A WIDGET PER LANDMARK
-    The tile is 300×200 and holds a hand skeleton: 21 dots and a palm, redrawn
-    while a gesture is happening. Qt can do that with 22 child widgets, and the
-    22 children would each have to be positioned, styled, and recreated on every
-    mode change. One `paintEvent` draws all of it from a `(x, y, pinch)` tuple,
-    which is also the only shape a test can check without a display.
-
-    The hand is drawn from the SAME tuple `core.workspace_gesture.hand_sample`
-    publishes, on purpose: if the drawing and the OS pointer disagreed about
-    which way is up, the user would see their hand mirrored and the click would
-    land somewhere else. `_finger_joints` is the one place that mapping lives.
+    The tile draws the detector's 21 landmarks in one paint event instead of
+    creating a widget per joint. The tracking worker publishes recent mirrored
+    coordinates separately from its pointer/pose sample; an absent or stale hand
+    is never replaced by a fabricated skeleton. A temporary camera preview is
+    displayed only when tracking is enabled and the voice view is visible.
 
 WHAT THE EDGE GLOW MEANS, AND WHAT IT DOES NOT
     The artboard's footnote is a contract: the glow is there ONLY while the
@@ -41,8 +36,8 @@ WHAT IS UNPROVEN HERE, SAID HERE
       `docs/verification.md`, not assumed.
     * The camera is `core.hand_gesture` / `core.workspace_gesture`, which refuse
       to start off Windows (mediapipe is a Windows-only dependency here). On
-      this machine the tile shows the idle hand and says "KAMERA NONAKTIF"
-      rather than pretending a camera it cannot open.
+      this machine the tile reports an unavailable camera rather than drawing
+      a hand from a camera it cannot open.
 """
 from __future__ import annotations
 
@@ -57,15 +52,15 @@ from ui.voice_hand import (                     # noqa: E402 — after the docst
 
 EDGE_PX = 2                 # the cyan border, in artboard pixels
 EDGE_OPACITY = 0.45
-GLOW_MAX_OPACITY = 0.22     # radial edge gradient, artboard stop at 1.0
+GLOW_MAX_OPACITY = 0.10     # restrained edge glow
 GLOW_INNER = 0.68           # the gradient is transparent until 68% of the radius
 CAMERA_RADIUS = 12
-LABEL_AT = (40, 62)                 # "MENDENGARKAN"
-ORB_AT = (640, 300)
-ORB_RADIUS = 44
-TRANSCRIPT_AT = (640, 394)
-ANSWER_AT = (640, 416)
-FOOTNOTE_AT = (40, 690)
+LABEL_AT = (1020, 72)
+ORB_AT = (640, 286)
+ORB_RADIUS = 124
+TRANSCRIPT_AT = (640, 555)
+ANSWER_AT = (640, 583)
+FOOTNOTE_AT = (320, 690)
 # The five level bars artboard `b04()` draws at the right end of the transcript
 # pill — `for i, h in enumerate((8, 16, 26, 14, 6))` — the listening level
 # readout. The first number is the x of the left bar; each bar is 4 px wide
@@ -81,9 +76,9 @@ WAVEFORM_ALPHA = 0.8
 # line. The overlay drew the pill's words but never the pill itself, so the
 # transcript floated on the desktop. The pill is the transcript's surface, so
 # it is drawn whenever the words are.
-PILL_AT = (320, 376)
+PILL_AT = (320, 518)
 PILL_W = 640
-PILL_H = 84
+PILL_H = 112
 PILL_RADIUS = 26
 
 # Redrawn at 12 fps like the orb: the transcript does not move between tokens
@@ -92,7 +87,7 @@ FRAME_MS = 83
 
 # `idle` is not "hidden": hidden is a separate axis, because a hidden overlay
 # that thought it was listening would still draw a glow if they were one flag.
-STATES = ("idle", "listening", "speaking")
+STATES = ("idle", "voice_idle", "listening", "thinking", "speaking")
 
 
 def edge_alpha(active: bool, state: str = "listening") -> float:
@@ -108,7 +103,7 @@ def edge_alpha(active: bool, state: str = "listening") -> float:
         return 0.0
     if str(state).strip().lower() == "speaking":
         return GLOW_MAX_OPACITY
-    if str(state).strip().lower() == "idle":
+    if str(state).strip().lower() in ("idle", "voice_idle"):
         return GLOW_MAX_OPACITY * 0.5
     return GLOW_MAX_OPACITY * 0.8
 
@@ -128,13 +123,14 @@ def status_word(state: str) -> str:
         line by line, which is the property the design cut was for.
     """
     return {"listening": "MENDENGARKAN",
+            "thinking": "BERPIKIR",
             "speaking": "BERBICARA",
-            "idle": "SIAGA"}.get(str(state).strip().lower(), "SIAGA")
+            "idle": "SIAGA", "voice_idle": "SIAGA · MIKROFON AKTIF"}.get(str(state).strip().lower(), "SIAGA")
 
 
 def footnote() -> str:
     """The artboard's footnote, verbatim. It is the overlay's key help."""
-    return ("Glow tepi hanya saat overlay aktif · Esc keluar · "
+    return ("Esc tutup tampilan · Mikrofon mengikuti pengaturan sesi · "
             "Ctrl+Alt+G menjeda gestur saat overlay fokus")
 
 
@@ -181,10 +177,9 @@ class VoiceOverlay:
     imported inside `start()`, so this module is importable on a machine with no
     display and every rule below is testable there.
 
-    `on_close` is called when the user presses Esc. It is a callback rather than
-    an internal `hide()` because closing the overlay is what tells the
-    assistant to stop listening, and that is a decision the owner of this
-    object makes — not a widget.
+    `on_close` is called when the user presses Esc. The owner clears its
+    explicit voice-mode flag; microphone and wake-word settings remain as they
+    were, as the footer explains.
     """
 
     def __init__(self, on_close: Callable[[], None] | None = None,
@@ -200,6 +195,7 @@ class VoiceOverlay:
         self._has_hand = False
         self._transcript = ""
         self._answer = ""
+        self._audio_level = 0.0
         self._camera_available = False
         self._gestures_paused = False
 
@@ -245,7 +241,7 @@ class VoiceOverlay:
     # ── state, all cheap and idempotent ──────────────────────────────────────
 
     def set_state(self, state: str) -> None:
-        """Idle / listening / speaking. An unknown word is `idle`, not a crash.
+        """Idle / listening / thinking / speaking. Unknown words fall back to `idle`.
 
         The audio thread and the model both call this, sometimes out of order;
         a state machine that rejected an unexpected word would raise inside a
@@ -273,6 +269,12 @@ class VoiceOverlay:
         self._camera_available = bool(available)
         self._refresh()
 
+    def set_audio_level(self, level) -> None:
+        from ui.voice_mode_button import audio_level
+        from ui.voice_orb import audio
+        audio(self, audio_level(level))
+        self._refresh()
+
     def set_gestures_paused(self, paused: bool) -> None:
         """Ctrl+Alt+G. Pausing gestures does NOT close the overlay: the user is
         still talking to it, and taking the transcript away because they stopped
@@ -286,27 +288,10 @@ class VoiceOverlay:
     # ── lifecycle ────────────────────────────────────────────────────────────
 
     def start(self, active: bool = True) -> bool:
-        """Build the overlay, and show it only if it was asked to be shown.
+        """Build hidden when requested; a visible overlay intercepts input.
 
-        `active=False` MEANS HIDDEN, NOT "build it and show it anyway".
-            This used to call `window.show()` unconditionally and then set
-            `self._active = False`. The two disagreed: the window was on
-            screen with the flag saying it was not. `start_voice_overlay`
-            calls this with `active=False` on every launch — "built now and
-            shown later" — so a 1280×720 frameless, always-on-top window sat
-            at (0, 0) over the desktop from the first second, and its 12 fps
-            timer painted into it.
-
-            A VISIBLE WINDOW THAT IS NOT TRANSPARENT FOR INPUT TAKES THE
-            CLICKS. `window_flags` deliberately omits `WindowTransparentForInput`
-            because Esc has to reach the overlay while it is up. A window that
-            is up but not listening therefore swallows every click in its
-            rectangle — the tray panel behind it never gets one. That is
-            "the surfaces are visible and nothing responds", which is the
-            report this fixes.
-
-        Same contract as the orb: a surface that fails to build must not turn
-        the assistant's state update into an exception on the caller's thread.
+        Like the main orb, failure to build must not break the assistant. Both
+        the overlay and the shared orb's timers remain stopped while hidden.
         """
         if self._window is not None:
             return True
@@ -319,12 +304,17 @@ class VoiceOverlay:
             window = QWidget()
             window.setWindowFlags(self.window_flags(Qt))
             window.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-            window.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+            window.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, False)
             window.setWindowTitle(_assistant_name())
             window.setGeometry(0, 0, *REFERENCE)
 
             canvas = _build_canvas(window, self)
             canvas.setGeometry(0, 0, *REFERENCE)
+            try:
+                from ui.voice_mode_button import install_escape
+                self._escape_shortcut = install_escape(window, self.handle_escape)
+            except Exception as exc:  # noqa: BLE001 — canvas still handles Escape
+                print(f"[JARVIS] Voice overlay: escape shortcut unavailable: {exc}")
 
             self._window, self._canvas = window, canvas
             self._active = bool(active)
@@ -332,6 +322,8 @@ class VoiceOverlay:
             # into a hidden window is 12 fps of work whose only effect is to
             # keep the Qt thread busy.
             if self._active:
+                from ui.voice_orb import visibility
+                visibility(self, True)
                 window.show()
                 self._start_timer()
             return True
@@ -342,8 +334,13 @@ class VoiceOverlay:
             return False
 
     def stop(self) -> None:
+        from ui.voice_preview import clear
+        clear(self)
+        from ui.voice_orb import visibility
+        visibility(self, False)
         self._stop_timer()
         window, self._window = self._window, None
+        self._voice_orb = None
         self._canvas = None
         self._active = False
         if window is None:
@@ -372,11 +369,19 @@ class VoiceOverlay:
         if window is None:
             return
         try:
+            from ui.voice_orb import visibility
+            visibility(self, visible)
             if visible:
                 window.show()
                 self._start_timer()
                 window.raise_() if hasattr(window, "raise_") else None
+                if hasattr(window, 'activateWindow'):
+                    window.activateWindow()
+                if hasattr(window, 'setFocus'):
+                    window.setFocus()
             else:
+                from ui.voice_preview import clear
+                clear(self)
                 window.hide()
                 self._stop_timer()
         except Exception as exc:                    # noqa: BLE001
@@ -440,7 +445,8 @@ class VoiceOverlay:
 
             timer = QTimer()
             timer.setInterval(FRAME_MS)
-            timer.timeout.connect(self._refresh)
+            from ui.voice_orb import tick
+            timer.timeout.connect(lambda: tick(self))
             timer.start()
             self._timer = timer
         except Exception as exc:                    # noqa: BLE001
@@ -503,6 +509,7 @@ def _build_canvas(parent, owner: "VoiceOverlay"):
                 from PyQt6.QtGui import QPainter
 
                 painter = QPainter(self)
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
                 try:
                     paint_frame(painter, REFERENCE, owner)
                 finally:
@@ -522,7 +529,13 @@ def _build_canvas(parent, owner: "VoiceOverlay"):
                       f"{type(exc).__name__}: {exc}")
             super().keyPressEvent(event)
 
-    return _VoiceCanvas(parent)
+    canvas = _VoiceCanvas(parent)
+    try:
+        from ui.voice_orb import attach
+        attach(owner, canvas)
+    except Exception as exc:  # noqa: BLE001 — retain the painted fallback
+        print(f"[JARVIS] Voice overlay: shared orb unavailable — {exc}")
+    return canvas
 
 
 def _Qt_Escape():                                   # noqa: N802 — mirrors Qt's name

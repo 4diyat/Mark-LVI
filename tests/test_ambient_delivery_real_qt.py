@@ -38,6 +38,7 @@ spin(lambda: not bar._audit_running)
 bar._field.setText('keep me'); shell.on_text_command = lambda text: False
 assert bar.submit(); spin(lambda: not bar.sending)
 assert bar._field.text() == 'keep me' and 'Not sent' in bar.hint
+assert bar._retry_button.isVisible()
 bar.close(); assert ambient_shell.open_command_bar(shell); assert bar._field.text() == 'keep me'
 assert not tray_panel_wiring.prefill(shell, 'overwrite') and bar._field.text() == 'keep me'
 # A pending future does not block the UI or permit duplicate sends.
@@ -45,7 +46,8 @@ future = Future(); calls = []
 def deliver(text):
     calls.append((text, threading.get_ident())); return future
 shell.on_text_command = deliver
-assert bar.submit(); spin(lambda: len(calls) == 1)
+bar._retry_button.click(); spin(lambda: len(calls) == 1)
+assert not bar._retry_button.isVisible()
 assert not bar.submit() and not bar._field.isEnabled()
 fired = []; QTimer.singleShot(0, lambda: fired.append(True)); app.processEvents(); assert fired
 future.set_result(None); spin(lambda: not bar.sending)
@@ -56,6 +58,7 @@ future = Future(); shell.on_text_command = lambda text: future
 bar._field.setText('uncertain'); assert bar.submit()
 future.set_exception(RuntimeError('connection lost')); spin(lambda: not bar.sending)
 assert bar._field.text() == 'uncertain' and 'uncertain' in bar.hint and 'do not retry' in bar.hint.lower()
+assert not bar._retry_button.isVisible()
 bar._field.setText('x' * 2001); assert not bar.submit() and len(bar._field.text()) == 2001
 # Strict corrupt audit is unavailable, not an empty log.
 Path(sys.argv[1], 'audit.jsonl').write_text('{bad\n', encoding='utf8')

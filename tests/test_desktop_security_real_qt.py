@@ -48,15 +48,22 @@ sec.filter.setCurrentIndex(sec.filter.findData('unverified'))
 assert len(sec.audit_cards) == 25
 assert sec.export_button.isEnabled()
 # Explicit cancellation makes no file; export reads all, not only the filter.
+def answer_both(first, second):
+    def answer_first():
+        QTimer.singleShot(0, lambda: QApplication.activeModalWidget().done(second.value))
+        QApplication.activeModalWidget().done(first.value)
+    QTimer.singleShot(0, answer_first)
 out = Path(os.environ['JARVIS_STATE_DIR']) / 'export.json'
 QFileDialog.getSaveFileName = lambda *args: (str(out), 'JSON')
 QTimer.singleShot(0, lambda: QApplication.activeModalWidget().done(QMessageBox.StandardButton.No.value))
 sec.choose_export(); assert not out.exists()
-QTimer.singleShot(0, lambda: QApplication.activeModalWidget().done(QMessageBox.StandardButton.Yes.value))
+answer_both(QMessageBox.StandardButton.Yes, QMessageBox.StandardButton.No)
+sec.choose_export(); assert not out.exists()
+answer_both(QMessageBox.StandardButton.Yes, QMessageBox.StandardButton.Yes)
 sec.choose_export(); wait()
 assert len(json.loads(out.read_text())) == 55 and '55 records' in sec.export_status.text()
 out.write_text('keep', encoding='utf8')
-QTimer.singleShot(0, lambda: QApplication.activeModalWidget().done(QMessageBox.StandardButton.Yes.value))
+answer_both(QMessageBox.StandardButton.Yes, QMessageBox.StandardButton.Yes)
 sec.choose_export(); wait()
 assert out.read_text() == 'keep' and 'not overwritten' in sec.export_status.text()
 # A concurrent refresh queues a second read; Qt remains responsive while storage blocks.

@@ -47,8 +47,8 @@ def test_the_action_registry_path_goes_through_the_gate():
     value = keywords["self_gated"]
     assert isinstance(value, ast.Call), "self_gated must be computed per call"
     assert getattr(value.func, "id", "") == "action_gate_self_gated"
-    assert [getattr(a, "id", "") for a in value.args] == ["name"], (
-        "self_gated must be asked about THIS tool, not a fixed name")
+    assert [getattr(a, "id", "") for a in value.args] == ["name", "args"], (
+        "self_gated must be decided for this tool AND these arguments")
 
 
 def test_the_run_callable_is_the_registry_call():
@@ -134,7 +134,7 @@ def test_a_shutdown_call_is_parked_before_anything_runs():
 def test_the_arguments_are_what_decide_not_the_tool_name():
     volume = action_gate.check("computer_settings", lambda: "ok",
                                {"action": "volume_up"})
-    assert volume.ran is True
+    assert volume.ran is False  # Headless confirmation is unavailable; fail closed.
     assert volume.level == tool_risk.MEDIUM
 
 
@@ -147,6 +147,6 @@ def test_the_audit_log_names_the_call_that_was_asked_about(tmp_path, monkeypatch
         action_gate.check("computer_settings", lambda: "ok", {"action": "mute"})
         entries = audit_log.shared().entries()
         assert entries[0]["tool"] == "computer_settings:mute"
-        assert [e["outcome"] for e in entries] == ["requested", "done"]
+        assert [e["outcome"] for e in entries] == ["requested", "held"]
     finally:
         audit_log.reset_shared()

@@ -117,21 +117,69 @@ def test_no_mic_is_not_listening():
     assert voice_wiring.should_show("NO MIC") is False
 
 
-def test_the_overlay_has_exactly_the_three_states_the_artboard_draws():
+def test_the_overlay_maps_voice_states():
     assert voice_wiring.overlay_state("LISTENING") == "listening"
     assert voice_wiring.overlay_state("SPEAKING") == "speaking"
-    assert voice_wiring.overlay_state("THINKING") == "idle"
+    assert voice_wiring.overlay_state("THINKING") == "thinking"
+
+
+def test_thinking_keeps_a_voice_overlay_but_does_not_open_one_for_text():
+    shell = FakeShell()
+    overlay = FakeOverlay()
+    shell._voice_overlay = overlay
+    shell._state = 'THINKING'
+    voice_wiring.sync(shell)
+    assert not overlay.active
+    shell._state = 'LISTENING'
+    assert voice_wiring.activate_voice_mode(shell)
+    shell._state = 'THINKING'
+    voice_wiring.sync(shell)
+    assert overlay.active and overlay.state == 'thinking'
+
+
+def test_voice_mode_is_opt_in_and_rejects_muted_or_missing_mic():
+    shell, overlay = FakeShell(), FakeOverlay()
+    shell._voice_overlay = overlay
+    shell._state = 'LISTENING'
+    voice_wiring.sync(shell)
+    assert not overlay.active
+    shell.muted = True
+    assert not voice_wiring.activate_voice_mode(shell) and not overlay.active
+    shell.muted = False
+    shell._state = 'NO MIC'
+    assert not voice_wiring.activate_voice_mode(shell) and not overlay.active
+    shell._state = 'LISTENING'
+    assert voice_wiring.activate_voice_mode(shell)
+    voice_wiring._on_close(shell)
+    assert not shell._voice_mode_active
+    voice_wiring.sync(shell)
+    assert not overlay.active
 
 
 # ── applying it ─────────────────────────────────────────────────────────────
 
-def test_sync_shows_on_listening_and_hides_again_on_idle():
+def test_idle_keeps_overlay_visible_to_disclose_the_active_microphone():
+    shell, overlay = FakeShell(), FakeOverlay()
+    shell._voice_overlay = overlay
+    shell._state = 'LISTENING'
+    assert voice_wiring.activate_voice_mode(shell)
+    shell._state = 'IDLE'
+    voice_wiring.sync(shell)
+    assert overlay.active and overlay.state == 'voice_idle'
+    shell._state = 'SLEEPING'
+    voice_wiring.sync(shell)
+    assert not overlay.active
+
+
+def test_sync_shows_on_listening_and_hides_again_on_sleep():
     shell = FakeShell()
     overlay = FakeOverlay()
     shell._voice_overlay = overlay
 
     shell._state = "LISTENING"
     voice_wiring.sync(shell)
+    assert overlay.active is False
+    assert voice_wiring.activate_voice_mode(shell)
     assert overlay.active is True
     assert overlay.state == "listening"
 
@@ -146,6 +194,7 @@ def test_sync_is_idempotent_so_a_chatty_thread_cannot_flicker_the_screen():
     overlay = FakeOverlay()
     shell._voice_overlay = overlay
     shell._state = "LISTENING"
+    assert voice_wiring.activate_voice_mode(shell)
     for _ in range(20):
         voice_wiring.sync(shell)
     assert overlay.active is True
@@ -175,18 +224,17 @@ def test_a_failing_overlay_never_breaks_the_call_that_set_the_state():
 
 
 def test_the_close_callback_esc_invokes_is_the_one_the_wiring_installs():
-    """The surface stores `on_close` and calls it from `handle_escape`; the
-    wiring must hand it the function that stops the microphone, or the
-    footnote's "Esc keluar" becomes "Esc hides the picture"."""
+    """Escape closes the view without changing microphone/wake settings."""
     from ui.voice_overlay import VoiceOverlay
 
     calls = []
     wiring_side = voice_wiring._on_close
     shell = FakeShell()
-    overlay = VoiceOverlay(on_close=lambda: shell.request_sleep())
+    shell._voice_mode_active = True
+    overlay = VoiceOverlay(on_close=lambda: voice_wiring._on_close(shell))
     overlay.show()
     assert overlay.handle_escape() is True
-    assert shell.slept == 1, "Esc must reach the shell, not only the window"
+    assert shell.slept == 0 and not shell._voice_mode_active
     assert callable(wiring_side), "the wiring must still expose the callback"
     calls.append(overlay.active)
     assert calls == [False]
@@ -228,19 +276,15 @@ def test_an_overlay_that_cannot_build_is_reported_and_not_recorded():
 
 # ── Esc ─────────────────────────────────────────────────────────────────────
 
-def test_escape_stops_the_listening_and_not_only_the_drawing():
-    """The footnote says "Esc keluar". If only the frame went away, the
-    microphone would still be open — the one thing the user was preventing."""
+def test_escape_ends_voice_mode_without_reconfiguring_the_session():
     from ui.voice_overlay import VoiceOverlay
 
     shell = FakeShell()
-    # The REAL surface, not a fake: this test is about the closure the surface
-    # actually gets handed. On this machine the window cannot open, but the
-    # callback is decided at construction and does not need one.
-    shell._voice_overlay = VoiceOverlay(on_close=lambda: shell.request_sleep())
-    shell._voice_overlay.handle_escape()       # nothing to close — a no-op
-    shell._voice_overlay._on_close()           # the callback Esc invokes
-    assert shell.slept == 1
+    shell._voice_mode_active = True
+    shell._voice_overlay = VoiceOverlay(on_close=lambda: voice_wiring._on_close(shell))
+    shell._voice_overlay.show()
+    assert shell._voice_overlay.handle_escape()
+    assert shell.slept == 0 and not shell._voice_mode_active
 
 
 def test_escape_survives_a_shell_that_cannot_sleep():

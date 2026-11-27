@@ -28,9 +28,8 @@ WHAT THE OVERLAY SHOWS, AND WHERE IT COMES FROM
 
 WHAT IT DOES NOT DO
     It does not listen, and it does not send anything. Esc closes the overlay
-    and, through `on_close`, asks the session to stop listening — which is what
-    the footnote promises. It never raises: every path prints and carries on,
-    because a decoration must not take down a call.
+    without changing microphone or wake-word settings; the footer says so. It
+    never raises, because a decoration must not take down a call.
 """
 from __future__ import annotations
 
@@ -47,9 +46,8 @@ from ui.hand_feed import (                      # noqa: F401 — re-exported
 if TYPE_CHECKING:                                    # pragma: no cover
     from ui.shell import AmbientShell
 
-# The states the overlay covers the screen for. Deliberately NOT "thinking":
-# the user's words are already in, the answer is not out yet, and a full-screen
-# frame that appears after the question and before the answer reads as a hang.
+# States that may open the overlay. Thinking keeps an already-visible voice
+# overlay open, but must not open one for a text-only tool call.
 SHOWN_STATES = frozenset({"listening", "speaking"})
 
 
@@ -66,9 +64,11 @@ def should_show(state: str) -> bool:
 def overlay_state(state: str) -> str:
     """The shell's word → the overlay's three states."""
     word = str(state or "").strip().lower()
-    if word in SHOWN_STATES:
+    if word in SHOWN_STATES or word == "thinking":
         return word
-    return "idle"
+    if word == 'processing':
+        return 'thinking'
+    return "voice_idle" if word == 'idle' else "idle"
 
 
 def start_voice_overlay(shell: "AmbientShell") -> bool:
@@ -86,35 +86,58 @@ def start_voice_overlay(shell: "AmbientShell") -> bool:
         return False
     shell._voice_overlay = overlay
 
-    # THE CAMERA IS STARTED WITH THE SURFACE THAT SHOWS IT, and for the same
-    # reason: the tile exists to show what the camera sees, and a camera started
-    # only when a window appears would have to warm up on the user's first
-    # pinch. On this platform it refuses (mediapipe is Windows-only here) and
-    # the tile says so — the feed's failure is not the overlay's failure.
+    # Camera tracking is opt-in in voice mode. A separately enabled, saved OS
+    # gesture setting still starts its existing global tracking at launch.
     feed = HandFeed(shell)
-    feed.start()
     shell._hand_feed = feed
+    if gesture_bridge_enabled():
+        feed.start()
+    from ui.voice_gesture_controls import install
+    install(shell)
 
     # The chord from the footnote, bound with the surface it acts on.
     start_pause_hotkey(shell)
     return True
 
 
-def _on_close(shell: "AmbientShell") -> None:
-    """Esc was pressed. The overlay is already hidden; stop listening.
-
-    THE FOOTNOTE SAYS "Esc keluar", and "keluar" from a listening overlay has to
-    mean the assistant stops listening — otherwise the frame disappears while
-    the microphone stays open, which is the one outcome a user pressing Esc is
-    trying to prevent.
-
-    `request_sleep` rather than a lower-level call: it is the same path the
-    tray's Sleep control uses, so there is one definition of "stop listening".
-    """
+def activate_voice_mode(shell: "AmbientShell") -> bool:
+    """Show the voice surface only after an explicit request, without unmuting."""
+    overlay = getattr(shell, '_voice_overlay', None)
+    state = str(getattr(shell, '_state', '') or '').strip().lower()
+    connected = getattr(shell, 'get_session_connected', None)
     try:
-        shell.request_sleep()
+        if callable(connected) and not connected():
+            return False
+    except Exception:  # noqa: BLE001 — unavailable connection status is not readiness
+        return False
+    if (overlay is None or not getattr(overlay, 'available', True) or getattr(shell, 'muted', False)
+            or state not in {'listening', 'idle', 'thinking', 'processing', 'speaking'}):
+        return False
+    main = getattr(shell, '_main_surface', None)
+    control = getattr(main, 'reduce_motion', None)
+    if control is not None:
+        from ui.voice_orb import set_reduced_motion
+        set_reduced_motion(overlay, control.isChecked())
+    shell._voice_mode_active = True
+    sync(shell)
+    return bool(overlay.active)
+
+
+def _on_close(shell: "AmbientShell") -> None:
+    """Exit the presentation without changing wake-word or microphone settings.
+
+    The footer says that the microphone follows session settings; closing a
+    visual mode must not silently disable the user's wake-word configuration.
+    """
+    shell._voice_mode_active = False
+    from ui.voice_gesture_controls import close_voice
+    close_voice(shell)
+    try:
+        compare = getattr(shell, 'compare_set_state', None)
+        if callable(compare):
+            compare('IDLE', 'LISTENING')
     except Exception as exc:                        # noqa: BLE001
-        _note(shell, f"could not stop listening after Esc — "
+        _note(shell, f"could not refresh state after voice mode closed — "
                      f"{type(exc).__name__}: {exc}")
 
 
@@ -135,11 +158,24 @@ def sync(shell: "AmbientShell") -> None:
         # bookkeeping. The word `set_state` wrote is the one this needs.
         state = getattr(shell, "_state", "") or ""
         overlay.set_state(overlay_state(state))
-        if should_show(state):
+        # Voice presentation is opt-in; a background listening/speaking state
+        # must never cover the screen on its own.
+        mode = bool(getattr(shell, '_voice_mode_active', False))
+        valid = str(state).strip().lower() in {'listening', 'speaking', 'thinking', 'processing', 'idle'}
+        if mode and valid and not getattr(shell, 'muted', False):
             if not overlay.active:
                 overlay.show()
-        elif overlay.active:
-            overlay.hide()
+        else:
+            if mode:
+                shell._voice_mode_active = False
+            if overlay.active:
+                overlay.hide()
+                from ui.voice_gesture_controls import close_voice
+                close_voice(shell)
+            if mode and str(state).strip().lower() == 'idle':
+                compare = getattr(shell, 'compare_set_state', None)
+                if callable(compare):
+                    compare('IDLE', 'LISTENING')
     except Exception as exc:                        # noqa: BLE001
         _note(shell, f"voice overlay did not follow the state — "
                      f"{type(exc).__name__}: {exc}")
@@ -329,7 +365,13 @@ def toggle_gestures(shell: "AmbientShell") -> bool:
     if overlay is None:
         return False
     try:
-        return bool(overlay.handle_toggle_gestures())
+        paused = bool(overlay.handle_toggle_gestures())
+        feed = getattr(shell, '_hand_feed', None)
+        if paused and feed is not None:
+            feed._pump_bridge(None)
+        from ui.voice_gesture_controls import refresh
+        refresh(shell)
+        return paused
     except Exception as exc:                        # noqa: BLE001
         _note(shell, f"gesture pause did not apply — "
                      f"{type(exc).__name__}: {exc}")
@@ -338,6 +380,7 @@ def toggle_gestures(shell: "AmbientShell") -> bool:
 
 def stop_voice_overlay(shell: "AmbientShell") -> None:
     """Take the chord, the camera and the window down at quit. Never raises."""
+    shell._voice_mode_active = False
     stop_pause_hotkey(shell)
     feed = getattr(shell, "_hand_feed", None)
     if feed is not None:

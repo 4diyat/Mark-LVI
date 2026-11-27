@@ -24,7 +24,7 @@ from dataclasses import dataclass
 
 # The artboard is 1280×720; these are its numbers, not a scale factor.
 REFERENCE = (1280, 720)
-CAMERA = (940, 40, 300, 200)        # x, y, w, h — corner tile
+CAMERA = (40, 485, 250, 175)        # lower-left gesture tile
 
 
 @dataclass(frozen=True)

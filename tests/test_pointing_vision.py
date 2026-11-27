@@ -130,3 +130,13 @@ def test_live_tool_routes_pointed_screen_without_silent_fallback():
     assert captures == ["pointed"]
     assert obj._pending_vision is None
     assert obj._vision_busy is False
+    # Disabling safe gated tools must also prevent this formerly direct path.
+    from core import tool_permissions
+    tool_permissions.set_allowed('safe', False)
+    try:
+        response = asyncio.run(env["_execute_tool"](obj, call))
+        assert 'disabled' in response['response']['result']
+        assert captures == ['pointed'] and obj._pending_vision is None
+        assert obj._vision_busy is False
+    finally:
+        tool_permissions.reset()

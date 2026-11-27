@@ -167,7 +167,7 @@ def test_the_package_has_exactly_the_mockup_modules():
         "pages_paint_util.py",
         # Clipboard page rendering and guarded session-only actions.
         "clipboard_view.py", "plugin_panel.py", "history_panel.py", "design_workspace.py", "main_surface.py",
-        "hud_metrics.py", "hud_orb.py", "hud_pages.py", "hud_icons.py", "hud_style.py", "desktop_navigation.py", "confirmation_flow.py", "command_delivery.py", "desktop_memory.py", "desktop_history.py", "desktop_security.py", "desktop_routines.py", "desktop_tools.py", "desktop_settings.py", "command_bar_delivery.py", "tray_command_delivery.py", "desktop_welcome.py", "desktop_appearance.py", "brand_art.py", "conversation_state.py",
+        "hud_metrics.py", "hud_orb.py", "hud_pages.py", "hud_icons.py", "hud_style.py", "desktop_navigation.py", "confirmation_flow.py", "command_delivery.py", "desktop_memory.py", "desktop_history.py", "desktop_security.py", "desktop_routines.py", "desktop_tools.py", "desktop_settings.py", "command_bar_delivery.py", "tray_command_delivery.py", "desktop_welcome.py", "desktop_appearance.py", "brand_art.py", "conversation_state.py", "desktop_confirm.py", "mic_guidance.py", "command_suggestions.py", "command_accessibility.py", "command_layout.py", "voice_mode_button.py", "voice_orb.py", "voice_gesture_controls.py", "voice_orb_art.py", "voice_preview.py",
     }
     present = {p.name for p in _modules()}
     assert present == expected, (

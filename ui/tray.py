@@ -258,7 +258,8 @@ class TrayIcon:
     def _tooltip(self) -> str:
         # Short. Windows truncates tray tooltips at 127 characters and a tooltip
         # is a glance, not a status bar.
-        return f"JARVIS — {self._state}"
+        state = 'idle (microphone active)' if self._state == 'voice_idle' else self._state
+        return f"JARVIS — {state}"
 
     # ── internals ────────────────────────────────────────────────────────────
 

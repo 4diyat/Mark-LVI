@@ -62,20 +62,29 @@ def test_a_medium_action_without_a_known_undo_is_held_for_a_human():
     assert result.level == risk_policy.RISKY
 
 
-def test_a_call_whose_undo_is_real_runs_without_asking():
-    """`file_controller.delete` pushes `_restore_from_trash`; asking first would
-    be asking about something the user can already walk back."""
-    result = action_gate.check("file_controller", lambda: "Moved to Trash",
+def test_a_reversible_medium_call_is_held_for_confirmation(isolated):
+    ran = []
+    result = action_gate.check("file_controller", lambda: ran.append(1) or "Moved to Trash",
                                {"action": "delete"})
-    assert result.ran is True
+    assert result.ran is False and result.needs_human and not ran
     assert result.level == risk_policy.MEDIUM
     assert result.risk.reversible is True
+    confirm.resolve(isolated[0][0], False)
+    assert not ran
+
+
+def test_self_gated_tool_still_confirms_medium_subaction(isolated):
+    ran = []
+    result = action_gate.check("computer_settings", lambda: ran.append(1),
+                               {"action": "volume_up"}, self_gated=True)
+    assert result.level == risk_policy.MEDIUM and not result.ran
+    assert result.needs_human and len(isolated) == 1 and not ran
 
 
 def test_the_level_follows_the_arguments_not_just_the_tool():
     """One tool, two answers: reading a folder versus shutting the machine down."""
     assert action_gate.check("computer_settings", lambda: "ok",
-                             {"action": "volume_up"}).ran is True
+                             {"action": "screenshot"}).ran is True
     shutdown = action_gate.check("computer_settings", lambda: "bye",
                                  {"action": "shutdown"})
     assert shutdown.ran is False
@@ -131,15 +140,14 @@ def test_a_failed_prefix_is_recorded_as_failed():
     assert [e["outcome"] for e in _entries()] == ["requested", "failed"]
 
 
-def test_a_tool_that_gates_itself_is_not_asked_about_twice():
-    """Four actions already call `core.confirm` with a sentence written for the
-    specific operation. A second banner for one shutdown teaches the user to
-    dismiss both."""
-    r = action_gate.check("code_helper", lambda: "started", {"action": "run"},
-                          self_gated=True)
-    assert r.ran is True
+def test_a_tool_that_gates_itself_is_not_asked_about_twice(isolated):
+    def ask():
+        return confirm.request('code_run', 'Run?', 'Execute this file?', lambda: 'done')
+    r = action_gate.check("code_helper", ask, {"action": "run"}, self_gated=True)
+    assert r.ran is False and r.needs_human
     assert r.level == risk_policy.RISKY
-    assert [e["outcome"] for e in _entries()] == ["requested", "done"]
+    assert len(isolated) == 1
+    assert [e['outcome'] for e in _entries()] == ['requested', 'awaiting', 'awaiting']
 
 
 def test_without_the_declaration_the_same_call_is_parked():
@@ -150,8 +158,8 @@ def test_without_the_declaration_the_same_call_is_parked():
 
 def test_the_audit_line_names_the_sub_action():
     """`computer_settings` alone says nothing about what was asked for."""
-    action_gate.check("computer_settings", lambda: "ok", {"action": "volume_up"})
-    assert _entries()[0]["tool"] == "computer_settings:volume_up"
+    action_gate.check("computer_settings", lambda: "ok", {"action": "screenshot"})
+    assert _entries()[0]["tool"] == "computer_settings:screenshot"
 
 
 def test_an_audit_failure_does_not_stop_the_action(monkeypatch):

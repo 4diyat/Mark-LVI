@@ -125,6 +125,8 @@ class CommandBar:
         self._placeholder = placeholder
         self._window = None
         self._field = None
+        self._retry_button = None
+        self._retry_draft = ''
         self._ledger = FocusLedger()
         self._open = False
         self._history: list[str] = []
@@ -173,6 +175,8 @@ class CommandBar:
         if not self._build():
             return False
         try:
+            from ui.command_layout import fit_screen
+            fit_screen(self)
             self._window.show()
             self._window.raise_()
             self._window.activateWindow()
@@ -183,6 +187,10 @@ class CommandBar:
             self._open = True
             if self._asynchronous:
                 from ui.command_bar_delivery import refresh_audit
+                from ui.hud_pages import tr
+                if not self._hint:
+                    self.set_hint(tr('Aktivitas audit terbaru · status bukan bukti hasil.',
+                                     'Recent audit activity · status is not proof of outcome.'))
                 refresh_audit(self)
             return True
         except Exception as e:                      # noqa: BLE001
@@ -318,36 +326,75 @@ class CommandBar:
             window.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
             window.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, False)
             window.setWindowTitle(_assistant_name())
-            # 640 × 184 from the artboard: one line, one hint row, no scroll.
+            # The input, recent outcomes and delivery feedback fit in a fixed panel.
             window.setFixedSize(BAR_WIDTH, BAR_HEIGHT)
 
             field = QLineEdit(window)
             field.setPlaceholderText(self._placeholder)
+            if hasattr(field, 'setToolTip'):
+                from ui.tray_panel_model import _t
+                field.setToolTip('Enter: ' + _t('ui.command.footer.send') + ' · Esc: ' +
+                                 _t('ui.command.footer.close') + ' · ↑↓: ' + _t('ui.command.footer.history'))
             # The field is TRANSPARENT and sits exactly on the title line, so
             # the drawing and the text control are one thing rather than a
             # styled box with an unstyled control on top of it. `paint_bar`
-            # draws the caret only while the field is empty.
+            # lets QLineEdit draw its own caret.
             _style_field(field)
             g = GEOMETRY
-            field.setGeometry(g["title"][0], g["title"][1] - 22,
-                              g["esc"][0] - g["title"][0] - 16, 28)
+            field.setGeometry(*g["title"])
             # Enter sends, Esc closes, Up/Down walk the history. Bound on the
             # widget rather than through QShortcut: a shortcut needs the window
             # to have focus, and the whole point is that it just got it.
             field.returnPressed.connect(self.submit)
             window.keyPressEvent = self._on_key
 
+            if self._asynchronous:
+                from PyQt6.QtWidgets import QPushButton
+                from ui.hud_pages import tr
+                from ui.command_suggestions import install
+                self._suggestions = install(field, window)
+                retry = QPushButton(tr('Coba lagi', 'Try again'), window)
+                retry.setGeometry(BAR_WIDTH - 153, 147, 120, 22)
+                retry.setStyleSheet('QPushButton { color:#f7dce0; background:#553039; border:1px solid #e07986; border-radius:5px; }')
+                retry.clicked.connect(lambda _checked=False: self.retry())
+                retry.hide()
+                field.textChanged.connect(self._retry_text_changed)
+                self._retry_button = retry
+
             window._rows = self._rows
             window._hint = self._hint
             window._audit_state = self._audit_state
             window._field = field
             self._window, self._field = window, field
+            if self._asynchronous:
+                from ui.command_accessibility import install, update
+                install(window)
+                update(window, self._rows)
             return True
         except Exception as e:                      # noqa: BLE001
             self._window = None
             self._field = None
             self._error = f"{type(e).__name__}: {e}"
             return False
+
+    def set_retry(self, text: str = '') -> None:
+        """Offer retry only after a definite rejection, never uncertain delivery."""
+        self._retry_draft = text
+        if self._retry_button is not None:
+            self._retry_button.setVisible(bool(text))
+        if self._window is not None:
+            self._window._retry_visible = bool(text)
+            self._window.update()
+
+    def _retry_text_changed(self, text: str) -> None:
+        if self._retry_draft and ' '.join(str(text).split()) != self._retry_draft:
+            self.set_retry()
+
+    def retry(self) -> bool:
+        if (not self._retry_draft or self.sending or self._field is None or
+                ' '.join(self._field.text().split()) != self._retry_draft):
+            return False
+        return self.submit()
 
     # ── what the box says ────────────────────────────────────────────────────
 
@@ -363,6 +410,9 @@ class CommandBar:
         if window is not None:
             try:
                 window._rows = self._rows
+                if hasattr(window, '_audit_accessible_labels'):
+                    from ui.command_accessibility import update
+                    update(window, self._rows)
                 window.update()
             except Exception as e:                  # noqa: BLE001
                 print(f"[JARVIS] Command bar: rows not repainted — "

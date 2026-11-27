@@ -120,6 +120,15 @@ def _trim_to_limit(memory: dict) -> dict:
     return memory
 
 def _write_atomic(memory: dict) -> None:
+    """Replace only outside guest mode, atomically with guest activation."""
+    from core.guest_mode import GuestModeError, storage_guard
+    with storage_guard() as allowed:
+        if not allowed:
+            raise GuestModeError('Long-term memory is disabled in guest mode.')
+        _write_atomic_allowed(memory)
+
+
+def _write_atomic_allowed(memory: dict) -> None:
     """Replace only after a complete write in the same directory."""
     MEMORY_PATH.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(prefix=".memory-", suffix=".tmp", dir=MEMORY_PATH.parent)
@@ -171,6 +180,9 @@ def _recursive_update(target: dict, updates: dict) -> bool:
 
 
 def update_memory(memory_update: dict) -> dict:
+    from core.guest_mode import GuestModeError, active
+    if active():
+        raise GuestModeError('Long-term memory is disabled in guest mode.')
     if not isinstance(memory_update, dict) or not memory_update:
         return load_memory()
     with _lock:

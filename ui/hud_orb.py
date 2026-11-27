@@ -53,7 +53,7 @@ class OrbCore(QWidget):
         self.timer.start(80)
 
     def tick(self):
-        self.phase += .03
+        self.phase = (self.phase + .09) % (2 * math.pi)
         if time.monotonic() - self.last_sample > .3:
             self.level = 0.0
             if any(self.samples):
@@ -128,11 +128,14 @@ class OrbCore(QWidget):
                        QPointF(cx+outer*math.cos(angle), cy+outer*math.sin(angle)))
         if not self.art.isNull():
             p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-            art_r = r / .80
+            # A gentle breathing effect is decorative; only the outer ring
+            # represents actual recent audio samples.
+            art_r = (r / .80) * (1.0 + .05 * math.sin(self.phase))
             p.drawImage(QRectF(cx-art_r, cy-art_r, art_r*2, art_r*2), self.art)
             p.end()
             return
-        # Vector fallback keeps the visualizer usable if the artwork is unavailable.
+        # The fallback breathes too; the audio-sample ring remains independent.
+        r *= 1.0 + .05 * math.sin(self.phase)
         sphere = QRadialGradient(cx-r*.26, cy-r*.38, r*1.55)
         sphere.setColorAt(0, colour(27, 119, 237))
         sphere.setColorAt(.44, colour(7, 54, 129))

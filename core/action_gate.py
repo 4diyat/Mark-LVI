@@ -15,7 +15,7 @@ WHY A GATE AND NOT FOUR CALLS AT EVERY TOOL
 
         1. classify          (tool_risk.classify — per call)
         2. record the intent (audit "requested")
-        3. run, or park it   (risky goes to core.confirm, unless it already gates)
+        3. run, or park it   (medium and risky go to core.confirm; risky may self-gate)
         4. record the outcome (audit: done / unverified / failed / ...)
 
     Steps 2 and 4 are separate on purpose. A log that records only what finished
@@ -23,12 +23,11 @@ WHY A GATE AND NOT FOUR CALLS AT EVERY TOOL
     confirmation is exactly the case where that question matters.
 
 WHY SOME TOOLS ARE LEFT ALONE
-    Four actions already call `core.confirm.request` themselves, with a title
-    and a detail written for the specific operation ("Run build.py?" rather than
-    "code_helper:run"). Gating them again here would put two banners on screen
-    for one shutdown, and the second one teaches the user to dismiss both. So a
-    site declares `self_gated=True` when it owns its own confirmation, and the
-    gate records the decision without asking a second time.
+    Some specific risky operations call `core.confirm.request` themselves,
+    with a title and detail for that operation. Gating those again would put
+    two banners on screen. The caller must only declare `self_gated=True` after
+    verifying the particular operation and arguments, not just the tool name.
+    Medium calls always go through this gate.
 
 WHY IT NEVER IMPORTS Qt
     Everything here runs on whatever thread the agent loop is on. The trusted UI
@@ -62,7 +61,7 @@ class Result:
     @property
     def needs_human(self) -> bool:
         """True when a person still has to press something."""
-        return self.risk.level == tool_risk.RISKY and not self.ran
+        return not self.ran and '[confirmation_pending]' in self.message.lower()
 
 
 def _audit(tool: str, level: str, outcome: str, detail: str = "") -> None:
@@ -101,7 +100,22 @@ def check(tool: str, run: Callable[[], Any], args: Mapping | None = None,
     name = risk.audit_name
     _audit(name, risk.level, REQUESTED, confirm_title or "")
 
-    if risk.level == tool_risk.RISKY and not self_gated:
+    def denied():
+        from core import tool_permissions
+        if tool_permissions.is_allowed(risk.level):
+            return None
+        message = f"Blocked: {risk.level} tools are disabled for this session. Nothing was done."
+        _audit(name, risk.level, HELD, message)
+        return message
+
+    reason = denied()
+    if reason:
+        return Result(ran=False, level=risk.level, message=reason, risk=risk)
+
+    # The legacy self-gated declaration applies to the tool's risky operation,
+    # not every reversible sub-action of that tool. Medium calls must still
+    # receive their own trusted confirmation.
+    if risk.level == tool_risk.MEDIUM or (risk.level == tool_risk.RISKY and not self_gated):
         from core import confirm          # imported here: see the module docstring
         title = confirm_title or _default_title(risk)
         try:
@@ -113,15 +127,28 @@ def check(tool: str, run: Callable[[], Any], args: Mapping | None = None,
                           risk=risk)
         label = "Parameter" if i18n.active_locale() == "id" else "Parameters"
         detail = (confirm_detail or _default_detail(risk)) + f"\n{label}: {parameters}"
-        message = confirm.request(key=name, title=title, detail=detail,
-                                  run=lambda: _run_and_audit(name, risk.level, run))
+        with confirm.guard_requests(denied):
+            message = confirm.request(key=name, title=title, detail=detail,
+                                      run=lambda: _run_and_audit(name, risk.level, run))
         if message.startswith('[CONFIRMATION_PENDING]'):
             _audit(name, risk.level, AWAITING, title)
+        else:
+            _audit(name, risk.level, HELD, message[:200])
         outcome = on_decline(message) if on_decline is not None else message
         return Result(ran=False, level=risk.level, message=outcome, risk=risk)
 
-    return Result(ran=True, level=risk.level,
-                  message=_run_and_audit(name, risk.level, run), risk=risk)
+    # Internal confirmations need the same permission recheck on acceptance.
+    # This context is local to the current worker, never a model-supplied flag.
+    from core import confirm
+    reason = denied()
+    if reason:
+        return Result(ran=False, level=risk.level, message=reason, risk=risk)
+    with confirm.guard_requests(denied):
+        message = _run_and_audit(name, risk.level, run, self_gated=self_gated)
+    # Self-gated wrappers may run to request confirmation, but the underlying
+    # operation is still pending. Do not mistake that for a completed action.
+    internally_gated = self_gated and risk.level == tool_risk.RISKY
+    return Result(ran=not internally_gated, level=risk.level, message=message, risk=risk)
 
 
 def _default_title(risk: tool_risk.CallRisk) -> str:
@@ -132,7 +159,8 @@ def _default_detail(risk: tool_risk.CallRisk) -> str:
     return f"{risk.reason}. Review the requested action before approving."
 
 
-def _run_and_audit(name: str, level: str, run: Callable[[], Any]) -> str:
+def _run_and_audit(name: str, level: str, run: Callable[[], Any],
+                   *, self_gated: bool = False) -> str:
     """Run one action and record what happened, including when it exploded.
 
     An exception is recorded and turned into a sentence rather than propagated:
@@ -149,7 +177,9 @@ def _run_and_audit(name: str, level: str, run: Callable[[], Any]) -> str:
     lowered = message.lower()
     # `core.outcome` marks its results with bracketed tags; mirroring them here
     # keeps the audit vocabulary identical to the sentence the user hears.
-    if "[unverified" in lowered or lowered.startswith("unverified"):
+    if self_gated and level == tool_risk.RISKY:
+        outcome = AWAITING if "[confirmation_pending]" in lowered else HELD
+    elif "[unverified" in lowered or lowered.startswith("unverified"):
         outcome = UNVERIFIED
     elif "[failed" in lowered or lowered.startswith("failed"):
         outcome = FAILED

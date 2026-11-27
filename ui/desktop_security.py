@@ -2,7 +2,7 @@
 import threading
 
 from PyQt6.QtCore import QSize, Qt
-from PyQt6.QtWidgets import (QBoxLayout, QComboBox, QFileDialog, QFrame, QHBoxLayout,
+from PyQt6.QtWidgets import (QBoxLayout, QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout,
                              QLabel, QMessageBox, QPushButton, QScrollArea, QVBoxLayout, QWidget)
 
 from ui.hud_icons import icon
@@ -18,6 +18,7 @@ class SecurityPage(QWidget):
         self.open_memory = open_memory
         self.owner = threading.get_ident()
         self.loading = self.exporting = self.reload_requested = False
+        self.guest_enabling = False
         self.records = None
         self.audit_cards = []
         self._build()
@@ -37,7 +38,7 @@ class SecurityPage(QWidget):
         self.risk_counts = {}
         for key, title, note, color in (
             ('safe', tr('Rendah', 'Low'), tr('Klasifikasi dasar kebijakan', 'Base policy classification'), '#64d59d'),
-            ('medium', tr('Sedang', 'Medium'), tr('Perubahan; perlu dukungan urungkan', 'Changes; undo support required'), '#efb75d'),
+            ('medium', tr('Sedang', 'Medium'), tr('Perubahan; konfirmasi pada gerbang', 'Changes; confirmation at the gate'), '#efb75d'),
             ('risky', tr('Berisiko', 'Risky'), tr('Memerlukan persetujuan manusia', 'Requires human approval'), '#f47e7e'),
         ):
             card = QFrame(); card.setObjectName('securityRisk')
@@ -57,26 +58,62 @@ class SecurityPage(QWidget):
         explanation = heading(tr('Jumlah adalah entri kebijakan, bukan kemampuan aktif. Risiko akhir bergantung pada parameter; fitur lain tidak selalu memakai gerbang ini.',
                                  'Counts are policy entries, not active capabilities. Risk depends on parameters; other features do not necessarily use this gate.'), 'desktopHint')
         explanation.setWordWrap(True); side.addWidget(explanation)
+        side.addWidget(heading(tr('PERMINTAAN TERCATAT', 'RECORDED REQUESTS'), 'desktopEyebrow'))
+        self.activity_counts = heading('—', 'desktopMuted')
+        self.activity_counts.setWordWrap(True); side.addWidget(self.activity_counts)
+        activity_note = heading(tr('Dihitung dari 50 catatan audit terbaru, hanya status requested. Log bisa tidak lengkap; ini bukan jumlah semua aktivitas.',
+                                   'Counted from the 50 latest audit records, requested status only. The log may be incomplete; this is not all activity.'), 'desktopHint')
+        activity_note.setWordWrap(True); side.addWidget(activity_note)
+        side.addWidget(heading(tr('IZIN TOOL DI GERBANG', 'GATED TOOL PERMISSIONS'), 'desktopEyebrow'))
+        controls_note = heading(tr('Berlaku selama sesi ini untuk tool yang melewati gerbang, bukan izin OS atau semua fitur. Aksi yang sudah berjalan tidak dihentikan.',
+                                   'For this session, applies to tools using the gate, not OS permissions or all features. Already-running actions are not stopped.'), 'desktopHint')
+        controls_note.setWordWrap(True); side.addWidget(controls_note)
+        from core import tool_permissions
+        self.permission_checks = {}
+        for level, label in (('safe', tr('Rendah', 'Low')), ('medium', tr('Sedang', 'Medium')),
+                             ('risky', tr('Tinggi', 'High'))):
+            check = QCheckBox(tr('Izinkan tool: ', 'Allow tools: ') + label)
+            check.setChecked(tool_permissions.is_allowed(level))
+            check.toggled.connect(lambda allowed, key=level: self._permission_changed(key, allowed))
+            self.permission_checks[level] = check; side.addWidget(check)
         side.addWidget(heading(tr('IZIN DAN KONTROL', 'PERMISSIONS AND CONTROLS'), 'desktopEyebrow'))
-        self._static_card(side, tr('Mode tamu', 'Guest mode'),
-                          tr('Tidak tersedia; aplikasi tidak menjanjikan sesi tanpa penyimpanan.',
-                             'Unavailable; the application does not promise a memory-free session.'), 'circle-dot')
-        self._static_card(side, tr('Akses layar', 'Screen access'),
-                          tr('Izin sistem tidak diketahui. Tidak ada sakelar umum; fitur tangkapan layar lain mungkin tetap dapat bekerja.',
-                             'OS permission is unknown. No global switch is available; other screenshot features may still work.'), 'layout-grid')
-        self._static_card(side, tr('Akses kamera', 'Camera access'),
-                          tr('Izin sistem tidak diketahui. Tidak ada sakelar umum untuk semua fitur kamera.',
-                             'OS permission is unknown. No global switch covers every camera feature.'), 'circle-dot')
+        guest = QFrame(); guest.setObjectName('securityInfo')
+        guest_box = QVBoxLayout(guest); guest_box.setContentsMargins(14, 12, 14, 12)
+        guest_box.addWidget(heading(tr('Mode tamu', 'Guest mode'), 'desktopCardTitle'))
+        guest_hint = heading(tr('Tidak menulis riwayat percakapan atau memori JARVIS setelah aktif. Log, alat, plugin dan layanan AI masih dapat menyimpan data.',
+                                'After activation, JARVIS conversation history and memory are not written. Logs, tools, plugins and AI services may still store data.'), 'desktopMuted')
+        guest_hint.setWordWrap(True); guest_box.addWidget(guest_hint)
+        self.guest_status = heading('', 'desktopHint'); self.guest_status.setWordWrap(True); guest_box.addWidget(self.guest_status)
+        self.guest_button = QPushButton(tr('Aktifkan mode tamu', 'Enable guest mode'))
+        self.guest_button.setObjectName('workspaceButton'); self.guest_button.clicked.connect(self._enable_guest)
+        guest_box.addWidget(self.guest_button); side.addWidget(guest)
+        self._update_guest()
+        vision_note = heading(tr('Hanya tangkapan vision bawaan (termasuk pemantau kamera); bukan izin OS. Fitur lain, plugin dan aplikasi eksternal tidak diblokir. Akses yang sudah berjalan tidak dihentikan.',
+                                 'Built-in vision captures only (including the camera monitor); not OS permissions. Other features, plugins and external apps are not blocked. Already-running access is not stopped.'), 'desktopHint')
+        vision_note.setWordWrap(True); side.addWidget(vision_note)
+        from core import vision_access
+        self.vision_checks = {}
+        for kind, label in (('screen', tr('Izinkan vision layar', 'Allow screen vision')),
+                            ('camera', tr('Izinkan vision kamera', 'Allow camera vision'))):
+            check = QCheckBox(label); check.setChecked(vision_access.is_allowed(kind))
+            check.toggled.connect(lambda allowed, key=kind: vision_access.set_allowed(key, allowed))
+            self.vision_checks[kind] = check; side.addWidget(check)
         mic = QFrame(); mic.setObjectName('securityInfo')
         mbox = QVBoxLayout(mic); mbox.setContentsMargins(14, 12, 14, 12)
         mbox.addWidget(heading(tr('Mikrofon sesi', 'Session microphone'), 'desktopCardTitle'))
         self.mic_status = heading('', 'desktopMuted'); self.mic_status.setWordWrap(True); mbox.addWidget(self.mic_status)
+        self.mic_help = QPushButton(tr('Panduan mikrofon', 'Microphone guide'))
+        self.mic_help.setObjectName('workspaceButton')
+        self.mic_help.clicked.connect(self._open_mic_help)
+        mbox.addWidget(self.mic_help)
         side.addWidget(mic)
         side.addStretch()
         self.columns.addWidget(left, 4)
         self.columns.setAlignment(left, Qt.AlignmentFlag.AlignTop)
 
-        right = QFrame(); right.setObjectName('securityPanel'); right.setMinimumHeight(480)
+        # Keep the audit list readable alongside the policy cards; on compact
+        # windows the outer page scrolls and the columns stack vertically.
+        right = QFrame(); right.setObjectName('securityPanel'); right.setMinimumHeight(650)
         panel = QVBoxLayout(right); panel.setContentsMargins(20, 20, 20, 20); panel.setSpacing(12)
         header = QHBoxLayout(); header.addWidget(heading(tr('Log aktivitas', 'Activity log'), 'desktopSubheading'), 1)
         self.filter = QComboBox(); self.filter.setObjectName('securityFilter')
@@ -121,6 +158,67 @@ class SecurityPage(QWidget):
         self._reset_filter([])
         self.render()
 
+    def _update_guest(self):
+        from core import guest_mode
+        active = guest_mode.active()
+        self.guest_button.setEnabled(not active and not self.guest_enabling)
+        self.guest_status.setText(tr('Aktif hingga aplikasi ditutup.', 'Active until the application closes.') if active else
+                                  tr('Mengaktifkan…', 'Enabling…') if self.guest_enabling else
+                                  tr('Tidak aktif. Konteks sesi yang sudah ada tidak dihapus.',
+                                     'Not active. Existing session context is not erased.'))
+
+    def _enable_guest(self):
+        from core import guest_mode
+        if guest_mode.active() or self.guest_enabling:
+            return
+        box = QMessageBox(self.dialog_parent)
+        from ui.desktop_confirm import style_dialog
+        style_dialog(box)
+        box.setIconPixmap(icon('shield', '#64baff', 44).pixmap(QSize(44, 44)))
+        box.setTextFormat(Qt.TextFormat.PlainText)
+        title = tr('Aktifkan mode tamu?', 'Enable guest mode?')
+        box.setWindowTitle(title)
+        box.setText(title)
+        box.setInformativeText(tr('Riwayat percakapan dan memori JARVIS tidak ditulis setelah aktif; ini berlaku sampai aplikasi ditutup. Konteks sebelumnya tetap ada. Log, alat, plugin, dan layanan AI masih dapat menyimpan data.',
+                                  'JARVIS conversation history and memory will not be written after activation until the app closes. Existing context remains. Logs, tools, plugins and AI services may still store data.'))
+        box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        box.button(QMessageBox.StandardButton.Yes).setText(tr('Aktifkan', 'Enable'))
+        box.button(QMessageBox.StandardButton.No).setText(tr('Batal', 'Cancel'))
+        box.setDefaultButton(QMessageBox.StandardButton.No)
+        if box.exec() != QMessageBox.StandardButton.Yes:
+            return
+        self.guest_enabling = True
+        self._update_guest()
+        def completed():
+            self.guest_enabling = False
+            self._update_guest()
+        def activate():
+            guest_mode.enable()
+            run_on_qt_thread(self.owner, completed)
+        try:
+            threading.Thread(target=activate, name='enable-guest', daemon=True).start()
+        except RuntimeError as exc:
+            self.guest_enabling = False
+            self.guest_status.setText(tr('Mode tamu gagal diaktifkan.', 'Could not enable guest mode.'))
+            self.guest_button.setEnabled(True)
+            print(f'[JARVIS] Guest mode unavailable: {exc}')
+
+    def _open_mic_help(self):
+        from ui.mic_guidance import open_mic_guide
+        open_mic_guide(self.shell)
+
+    def _permission_changed(self, level, allowed):
+        from core import tool_permissions
+        tool_permissions.set_allowed(level, bool(allowed))
+        def record():
+            from core import audit_log
+            audit_log.record('tool_permission:' + level, 'safe', 'changed',
+                             'allowed' if allowed else 'blocked')
+        try:
+            threading.Thread(target=record, name='tool-permission-audit', daemon=True).start()
+        except RuntimeError as exc:
+            print(f'[JARVIS] Permission audit unavailable: {exc}')
+
     def _static_card(self, layout, title, description, glyph):
         card = QFrame(); card.setObjectName('securityInfo')
         row = QHBoxLayout(card); row.setContentsMargins(14, 12, 14, 12)
@@ -151,6 +249,16 @@ class SecurityPage(QWidget):
         self.filter.setCurrentIndex(max(0, idx)); self.filter.blockSignals(False)
 
     def refresh(self):
+        self._update_guest()
+        from core import tool_permissions, vision_access
+        for kind, check in self.vision_checks.items():
+            check.blockSignals(True)
+            check.setChecked(vision_access.is_allowed(kind))
+            check.blockSignals(False)
+        for level, check in self.permission_checks.items():
+            check.blockSignals(True)
+            check.setChecked(tool_permissions.is_allowed(level))
+            check.blockSignals(False)
         if self.loading:
             self.reload_requested = True
             return
@@ -185,6 +293,14 @@ class SecurityPage(QWidget):
         self.records = records
         for key, label in self.risk_counts.items():
             label.setText(str(counts[key]) if key in counts else '—')
+        if records is None:
+            self.activity_counts.setText('—')
+        else:
+            from core.audit_activity import request_counts
+            activity = request_counts(records)
+            self.activity_counts.setText(tr('Aman', 'Safe') + f" {activity['safe']}  ·  " +
+                                         tr('Sedang', 'Medium') + f" {activity['medium']}  ·  " +
+                                         tr('Berisiko', 'Risky') + f" {activity['risky']}")
         if policy_error or audit_error:
             print(f'[JARVIS] Security read unavailable: policy={policy_error}, audit={audit_error}')
         self.refresh_button.setEnabled(True)
@@ -224,16 +340,15 @@ class SecurityPage(QWidget):
                                              'jarvis-audit.json', 'JSON (*.json)')
         if not path:
             return
-        dialog = QMessageBox(self.dialog_parent); dialog.setIcon(QMessageBox.Icon.Warning)
-        dialog.setTextFormat(Qt.TextFormat.PlainText)
-        dialog.setWindowTitle(tr('Ekspor log audit?', 'Export audit log?'))
-        dialog.setText(tr('Ekspor seluruh log audit ke berkas baru ini? Log dapat berisi informasi sensitif.\n',
-                          'Export the entire audit log to this new file? It may contain sensitive information.\n') + path)
-        dialog.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        dialog.button(QMessageBox.StandardButton.Yes).setText(tr('Ekspor', 'Export'))
-        dialog.button(QMessageBox.StandardButton.No).setText(tr('Batal', 'Cancel'))
-        dialog.setDefaultButton(QMessageBox.StandardButton.No)
-        if dialog.exec() == QMessageBox.StandardButton.Yes:
+        from ui.desktop_confirm import confirm_twice
+        if confirm_twice(
+                self.dialog_parent, tr('Ekspor log audit?', 'Export audit log?'),
+                tr('Ekspor seluruh log audit ke berkas baru ini? Log dapat berisi informasi sensitif.\n',
+                   'Export the entire audit log to this new file? It may contain sensitive information.\n') + path,
+                tr('Konfirmasi terakhir', 'Final confirmation'),
+                tr('Ekspor log sensitif ke lokasi ini sekarang?\n',
+                   'Export the sensitive log to this location now?\n') + path,
+                tr('Ekspor', 'Export'), tr('Batal', 'Cancel')):
             self.export_to(path)
 
     def export_to(self, path):
