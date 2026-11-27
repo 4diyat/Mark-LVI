@@ -1,17 +1,8 @@
-"""Board 13 adapter — drive a reviewed form-fill plan into the browser session.
+"""Legacy form adapter retained for compatibility, with writes disabled.
 
-`core.form_fill.FormFillPlan` is the policy: it validates the page, builds the
-field plan, and enforces "review before apply".  This module is the I/O edge
-that turns an *approved* plan into real typing inside the existing
-`actions.browser_control._BrowserSession`, which already owns Playwright and
-the per-browser event loop.
-
-WHY THE SPLIT.  The policy is pure and fully tested with a fake driver.  The
-browser is the one thing that cannot be tested without a real page, so the
-only logic worth unit-testing here is `parse_fill_results` — a pure function
-that turns the session's textual report back into `FieldResult`s.  The I/O
-function, `fill_form_to_page`, is deliberately thin: it asks the session to
-fill, and hands the report to the parser.
+The former session path did not verify the destination, bypassed the current
+browser policy, and offered no real review. Parsing remains useful to callers;
+no adapter call may write until a safe reviewed integration exists.
 """
 from __future__ import annotations
 
@@ -52,23 +43,8 @@ def parse_fill_results(report: str, selectors: list[str]) -> list[FieldResult]:
 
 
 def fill_form_to_page(page_url: str, fields: dict[str, str]) -> list[FieldResult]:
-    """Fill `fields` into the active browser session for `page_url`.
-
-    Returns one `FieldResult` per requested selector.  If no browser session
-    exists, every field is reported as failed with a single clear reason — the
-    board says "open a browser first" rather than pretending a fill happened.
-    """
-    from actions.browser_control import _registry
-
-    selectors = list(fields)
-    if not _registry.has():
-        return [FieldResult(s, False, "no browser session") for s in selectors]
-    session = _registry.get()
-    try:
-        report = session.run(session.fill_form(fields), timeout=60)
-    except Exception as exc:                          # noqa: BLE001
-        return [FieldResult(s, False, f"fill failed: {exc}") for s in selectors]
-    return parse_fill_results(str(report), selectors)
+    """Fail closed: the legacy adapter cannot verify the active page or consent."""
+    return [FieldResult(selector, False, "form filling is unavailable") for selector in fields]
 
 
 __all__ = ["fill_form_to_page", "parse_fill_results"]

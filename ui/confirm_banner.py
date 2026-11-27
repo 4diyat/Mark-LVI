@@ -39,7 +39,7 @@ LINE = "#1c2028"
 LINE_ACC = "#243040"
 AMBER = "#ff9a40"
 TEXT = "#ffffff"
-MUTED = "#5e636c"
+MUTED = "#b5c6d5"
 AMBER_BG = "#0C1B26"
 #: `FONT` in the sheet is 'Space Grotesk','Segoe UI',Arial — a fallback chain,
 #: because Space Grotesk is not installed on every machine.
@@ -57,7 +57,7 @@ FONT = "Space Grotesk, Segoe UI, Arial"
 # every keyboard that has them; translating them produces a legend for keys the
 # user does not own. The artboard writes them in a monospace face for the same
 # reason: they are key names, not prose.
-CANNOT_UNDO = "Tindakan ini tidak bisa diurungkan."
+CANNOT_UNDO = "Tindakan ini mungkin tidak bisa diurungkan."
 KEYS_HINT = "Enter · Esc"
 
 # WHERE THE COMMAND CAME FROM LIVES IN `core/input_source`, not here.
@@ -201,7 +201,7 @@ class ConfirmBanner(_HudOverlay):
         never = QLabel(CANNOT_UNDO)
         never.setTextFormat(Qt.TextFormat.PlainText)
         never.setWordWrap(True)
-        never.setFont(QFont(FONT, 7))
+        never.setFont(QFont(FONT, 10))
         never.setStyleSheet(f"color: {MUTED}; background: transparent;")
         lay.addWidget(never)
         self._never_label = never
@@ -214,7 +214,7 @@ class ConfirmBanner(_HudOverlay):
         dtl = QLabel(detail)
         dtl.setTextFormat(Qt.TextFormat.PlainText)
         dtl.setWordWrap(True)
-        dtl.setFont(QFont(FONT, 7))
+        dtl.setFont(QFont(FONT, 10))
         dtl.setStyleSheet(f"color: {MUTED}; background: transparent;")
         dtl.setVisible(bool(detail))
         lay.addWidget(dtl)
@@ -226,7 +226,7 @@ class ConfirmBanner(_HudOverlay):
         # "who asked for this?" — not "what is JARVIS about to do", which the
         # title already says.
         self._origin_header = QLabel(_t("ui.confirm.origin").upper())
-        self._origin_header.setFont(QFont(FONT, 7, QFont.Weight.DemiBold))
+        self._origin_header.setFont(QFont(FONT, 9, QFont.Weight.DemiBold))
         self._origin_header.setStyleSheet(
             f"color: {MUTED}; background: transparent;")
         lay.addWidget(self._origin_header)
@@ -234,7 +234,7 @@ class ConfirmBanner(_HudOverlay):
         self._origin_label = QLabel("")
         self._origin_label.setTextFormat(Qt.TextFormat.PlainText)
         self._origin_label.setWordWrap(True)
-        self._origin_label.setFont(QFont(FONT, 7))
+        self._origin_label.setFont(QFont(FONT, 10))
         self._origin_label.setStyleSheet(
             f"color: {TEXT}; background: transparent;")
         lay.addWidget(self._origin_label)
@@ -282,7 +282,7 @@ class ConfirmBanner(_HudOverlay):
         # legend rather than prose. `setAlignment` on a label inside a vertical
         # layout is enough: no second row of buttons to hang it off.
         self._keys_label = QLabel(KEYS_HINT)
-        self._keys_label.setFont(QFont(FONT, 7))
+        self._keys_label.setFont(QFont(FONT, 9))
         self._keys_label.setAlignment(Qt.AlignmentFlag.AlignRight)
         self._keys_label.setStyleSheet(
             f"color: {MUTED}; background: transparent;")
@@ -311,7 +311,7 @@ class ConfirmBanner(_HudOverlay):
             event.accept()
             return
         if key in (_Qt.Key.Key_Return, _Qt.Key.Key_Enter):
-            self.answered.emit(True)
+            self.answered.emit(bool(self._confirm_button.hasFocus()))
             event.accept()
             return
         # Every other key belongs to whatever has focus — including the Tab
@@ -329,15 +329,12 @@ class ConfirmBanner(_HudOverlay):
         """The caption under "ASAL PERMINTAAN": who asked, when, and whether it
         is on the record.
 
-        THREE FACTS, AND EACH ONE IS TRUE. The source comes from what the entry
-        points recorded, the time from the request itself, and "tercatat di
-        audit log" from `core/confirm._audit`, which writes every decision. A
-        line that guessed any of the three would be worse than no line.
+        The caller can supply a known source and request time. Audit writing can
+        fail, so the banner does not assert that a record was persisted.
         """
         parts = [origin_text(source)]
         if when:
             parts.append(str(when))
-        parts.append(_t("ui.confirm.logged"))
         self._origin_label.setText(" · ".join(parts))
 
     def set_title(self, title: str, detail: str = "") -> None:

@@ -81,3 +81,22 @@ def build_board_pages(panel, window) -> None:
 
 
 __all__ = ["build_board_pages", "make_page", "page_keys"]
+
+
+def build_panel_controls(panel, window) -> None:
+    """Controls above the page stack, so every page has a way back."""
+    from PyQt6.QtWidgets import QPushButton
+    from ui.tray_panel_model import _t
+
+    back = QPushButton("‹", window)
+    back.setGeometry(374, 22, 28, 24)
+    back.setToolTip(_t("ui.panel.chat.back"))
+    back.clicked.connect(lambda _checked=False: panel.go_back())
+    panel._buttons["panel_back"] = back
+    close = QPushButton("×", window)
+    close.setGeometry(408, 22, 28, 24)
+    close.setToolTip(_t("ui.panel.chat.close"))
+    close.clicked.connect(lambda _checked=False: panel.close())
+    panel._buttons["panel_close"] = close
+    # The theme selector retains its own place in the main header.
+    panel._buttons["theme"].setGeometry(374, 22, 28, 24)

@@ -21,10 +21,18 @@ import tempfile
 import threading
 from pathlib import Path
 
-from core.routines import Routine
+from core.routines import Routine, is_due
 
 # Next to the other local data, gitignored like the voiceprint.
 ROUTINES_PATH = Path(__file__).resolve().parent / "routines.json"
+
+# Instances serving the UI and scheduler must share a transaction lock. This
+# protects threads in one process, not independent processes or external editors.
+_STORE_LOCK = threading.RLock()
+
+
+class RoutineStoreError(RuntimeError):
+    """A store could not be safely read; never overwrite it as if empty."""
 
 
 def default_store(path: Path | None = None) -> "RoutineStore":
@@ -42,7 +50,7 @@ class RoutineStore:
 
     def __init__(self, path: Path) -> None:
         self._path = Path(path)
-        self._lock = threading.RLock()
+        self._lock = _STORE_LOCK
 
     @property
     def path(self) -> Path:
@@ -52,20 +60,23 @@ class RoutineStore:
 
     def _load(self) -> list[Routine]:
         with self._lock:
-            if not self._path.exists():
-                return []
             try:
-                data = json.loads(self._path.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError):
-                # A corrupt file must not crash the scheduler or block the
-                # panel. Reported by returning empty, not raised: the session
-                # keeps running and the user sees no routines until they fix
-                # or delete the file.
+                raw = self._path.read_text(encoding="utf-8")
+            except FileNotFoundError:
                 return []
-            rows = data.get("routines") if isinstance(data, dict) else data
-            if not isinstance(rows, list):
-                return []
-            return [Routine.from_dict(r) for r in rows if isinstance(r, dict)]
+            except (OSError, UnicodeError) as exc:
+                raise RoutineStoreError("Cannot read routine store") from exc
+            try:
+                data = json.loads(raw)
+                rows = data.get("routines") if isinstance(data, dict) else data
+                if not isinstance(rows, list) or any(not isinstance(r, dict) for r in rows):
+                    raise ValueError("invalid routine list")
+                result = [Routine.from_dict(r) for r in rows]
+                if any(not r.id for r in result) or len({r.id for r in result}) != len(result):
+                    raise ValueError("missing or duplicate routine id")
+                return result
+            except (ValueError, TypeError, AttributeError) as exc:
+                raise RoutineStoreError("Invalid routine store") from exc
 
     def all(self) -> list[Routine]:
         """Every routine, in file order. A snapshot, not a live view."""
@@ -146,6 +157,42 @@ class RoutineStore:
                     return toggled
             return None
 
+    @staticmethod
+    def _same_displayed(current: Routine, expected: Routine) -> bool:
+        # The scheduler may stamp last_fired while the user reads the card.
+        # That is not an edit to the command, schedule, or enabled state.
+        return (current.id == expected.id and current.name == expected.name and
+                current.schedule == expected.schedule and current.payload == expected.payload and
+                current.enabled == expected.enabled)
+
+    def remove_if_unchanged(self, expected: Routine) -> bool:
+        """Remove only the routine the user reviewed, atomically within this process."""
+        with self._lock:
+            rows = self._load()
+            for index, row in enumerate(rows):
+                if row.id == expected.id:
+                    if not self._same_displayed(row, expected):
+                        return False
+                    del rows[index]
+                    self._write(rows)
+                    return True
+            return False
+
+    def set_enabled_if_unchanged(self, expected: Routine, enabled: bool) -> Routine | None:
+        """Change only the reviewed routine; preserve a concurrent scheduler stamp."""
+        with self._lock:
+            rows = self._load()
+            for index, row in enumerate(rows):
+                if row.id == expected.id:
+                    if not self._same_displayed(row, expected):
+                        return None
+                    updated = Routine(row.id, row.name, row.schedule, row.payload,
+                                      bool(enabled), row.last_fired)
+                    rows[index] = updated
+                    self._write(rows)
+                    return updated
+            return None
+
     def mark_fired(self, routine_id: str, when: str) -> Routine | None:
         """Record that a routine fired on `when` (ISO date), so it does not
         re-fire the same day. Returns the updated routine or None."""
@@ -163,4 +210,22 @@ class RoutineStore:
             return None
 
 
-__all__ = ["RoutineStore", "default_store", "ROUTINES_PATH"]
+    def claim_due(self, routine_id: str, now) -> Routine | None:
+        """Atomically recheck current state and mark one due routine fired."""
+        with self._lock:
+            routines = self._load()
+            for index, routine in enumerate(routines):
+                if routine.id != routine_id:
+                    continue
+                if not routine.enabled or not is_due(routine.schedule, now, routine.last_fired):
+                    return None
+                routines[index] = Routine(
+                    id=routine.id, name=routine.name, schedule=routine.schedule,
+                    payload=routine.payload, enabled=routine.enabled,
+                    last_fired=now.date().isoformat())
+                self._write(routines)
+                return routines[index]
+            return None
+
+
+__all__ = ["RoutineStoreError", "RoutineStore", "default_store", "ROUTINES_PATH"]

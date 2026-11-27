@@ -77,10 +77,11 @@ def gesture_context(shell: "AmbientShell", now: float | None = None):
     from core import gesture_os
 
     return gesture_os.Context(
-        os_mode=gesture_bridge_enabled(),
+        os_mode=gesture_bridge_enabled() or bool(getattr(getattr(shell, '_hand_feed', None),
+                                                         '_voice_desktop_control', False)),
         own_window_focused=_own_window_focused(shell),
         confirmation_open=_confirmation_open(),
-        modal_open=False,
+        modal_open=_modal_open(),
         now=time.monotonic() if now is None else now,
     )
 
@@ -114,24 +115,37 @@ def _confirmation_open() -> bool:
         return True
 
 
+def _modal_open() -> bool:
+    try:
+        from PyQt6.QtWidgets import QApplication
+    except ImportError:
+        return False  # headless, with no Qt dialogs
+    try:
+        return QApplication.instance() is not None and QApplication.activeModalWidget() is not None
+    except Exception:  # noqa: BLE001 — fail closed when modal state is unreadable
+        return True
+
+
 def _own_window_focused(shell) -> bool:
     """Whether one of this program's windows is the active window.
 
-    `False` when there is no window to ask — that is the ambient case, where the
-    overlay is a HUD and the desktop behind it is the user's.
+    QApplication only reports windows owned by this process. A dialog or any
+    JARVIS window taking focus must freeze the optional desktop pointer.
     """
-    window = getattr(shell, "_voice_overlay", None)
-    window = getattr(window, "_window", None)
-    if window is None:
+    try:
+        from PyQt6.QtWidgets import QApplication
+    except ImportError:
         return False
     try:
-        return bool(window.isActiveWindow())
+        if QApplication.instance() is None:
+            return False
+        return QApplication.activeWindow() is not None
     except Exception:                               # noqa: BLE001
-        return False
+        return True
 
 
-def poll_hand(shell: "AmbientShell", controller) -> None:
-    """One tick: read the newest sample and put it on the tile.
+def poll_hand(shell: "AmbientShell", controller):
+    """Read once for the tile and return the same sample to the OS bridge.
 
     WHY THE FIRST HAND AND NOT THE BEST ONE
         `WorkspaceHandController.sample()` returns the hands it can see, newest
@@ -156,19 +170,21 @@ def poll_hand(shell: "AmbientShell", controller) -> None:
     try:
         available = camera_state(controller)
         overlay.set_camera_available(available)
-        if not available or overlay.gestures_paused:
-            overlay.set_hand(None)
-            return
-        hands = controller.sample()
+        from ui.voice_preview import update
+        update(overlay, controller, available)
+        hands = controller.sample() if available and not overlay.gestures_paused else ()
         first = hands[0] if hands else None
-        if first is None:
-            overlay.set_hand(None)
-            return
-        # `sample()` hands back `(x, y, pinch, scroll, …)` per hand; the tile
-        # needs the first three and `hand_from_sample` absorbs the rest.
-        overlay.set_hand(tuple(first[:3]))
+        read_points = getattr(controller, 'landmarks', None)
+        overlay._gesture_points = read_points() if first is not None and callable(read_points) else ()
+        overlay.set_hand(tuple(first[:3]) if first is not None else None)
+        return first
     except Exception as exc:                        # noqa: BLE001
+        from ui.voice_preview import clear
+        clear(overlay)
+        overlay._gesture_points = ()
+        overlay.set_hand(None)
         _note(shell, f"hand not shown — {type(exc).__name__}: {exc}")
+        return None
 
 
 # ── the controller's owner ──────────────────────────────────────────────────
@@ -177,8 +193,8 @@ class HandFeed:
     """Owns the camera worker and the one timer that puts it on the tile.
 
     WHY THIS IS AN OBJECT AND NOT THREE FUNCTIONS
-        The worker has a lifetime: it is started when the overlay is built,
-        stopped when the program quits, and polled while it runs. Three separate
+        The worker has a lifetime: it is started by explicit tracking or a saved
+        OS setting, stopped when no longer needed, and polled while it runs. Three separate
         functions would need the controller passed between them and would make
         "who stops the camera" a question with three answers.
 
@@ -238,10 +254,14 @@ class HandFeed:
         Linux and macOS, and it is not a failure.
         """
         try:
+            if self._started:
+                return True
             if self._controller is None:
                 from core.workspace_gesture import WorkspaceHandController
 
                 self._controller = WorkspaceHandController()
+            if gesture_bridge_enabled() and not self._bridge.enabled:
+                self._bridge.enable()
             self._started = bool(self._controller.start())
             if not self._started:
                 return False
@@ -266,21 +286,25 @@ class HandFeed:
         where the reason matters. The pointer is second because a frame that
         draws nothing must still not move the cursor.
         """
-        poll_hand(self._shell, self._controller)
-        self._pump_bridge()
+        if getattr(self, '_voice_desktop_control', False):
+            tap = getattr(self._shell, '_pause_hotkey', None)
+            if getattr(tap, 'scope', 'window') != 'global':
+                self.stop()
+                message = 'Kontrol desktop dihentikan: pintasan jeda global tidak tersedia.'
+                _note(self._shell, message)
+                surface = getattr(self._shell, '_main_surface', None)
+                if surface is not None:
+                    surface.show_feedback(message)
+                return
+        sample = poll_hand(self._shell, self._controller)
+        self._pump_bridge(sample)
+        from ui.voice_gesture_controls import refresh
+        refresh(self._shell)
 
-    def _pump_bridge(self) -> None:
+    def _pump_bridge(self, sample=None) -> None:
         """Hand one sample to the policy and let it decide. Never raises."""
         try:
-            controller = self._controller
-            if controller is None or not camera_state(controller):
-                return
-            overlay = getattr(self._shell, "_voice_overlay", None)
-            paused = bool(getattr(overlay, "gestures_paused", False))
-            # PAUSED IS ALSO A STOP, not just a hidden tile: the policy releases
-            # a held button when the hand disappears, which is what Ctrl+Alt+G
-            # has to do to a drag the user was in the middle of.
-            sample = None if paused else (controller.sample() or (None,))[0]
+            # A loss, pause or camera error must release any held button.
             self._bridge.pump(sample, gesture_context(self._shell))
         except Exception as exc:                    # noqa: BLE001
             _note(self._shell, f"gesture not delivered — "
@@ -295,6 +319,7 @@ class HandFeed:
         definition of "let go".
         """
         self._stop_timer()
+        self._voice_desktop_control = False
         try:
             self._bridge.disable()
         except Exception as exc:                    # noqa: BLE001
@@ -310,6 +335,15 @@ class HandFeed:
                   f"{type(exc).__name__}: {exc}")
         finally:
             self._started = False
+            overlay = getattr(self._shell, '_voice_overlay', None)
+            if overlay is not None:
+                from ui.voice_preview import clear
+                clear(overlay)
+                overlay._gesture_points = ()
+                overlay.set_hand(None)
+                overlay.set_camera_available(False)
+                from ui.voice_gesture_controls import refresh
+                refresh(self._shell)
 
     def _start_timer(self) -> None:
         if self._timer is not None:
@@ -366,7 +400,9 @@ def set_gesture_os(shell: "AmbientShell", enabled: bool) -> bool:
     if not wanted:
         bridge.disable()
         return False
-    return bool(bridge.enable())
+    if not bridge.enable():
+        return False
+    return bool(feed.start())
 
 
 __all__ = [

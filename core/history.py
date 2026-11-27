@@ -119,6 +119,13 @@ def clean(text: str) -> str:
 
 
 def record(role: str, text: str) -> bool:
+    """Append a turn only outside guest mode, atomically with guest activation."""
+    from core.guest_mode import storage_guard
+    with storage_guard() as allowed:
+        return _record_allowed(role, text) if allowed else False
+
+
+def _record_allowed(role: str, text: str) -> bool:
     """Append one turn. True when it was written.
 
     Called from the session loop, so it is deliberately: no exception, no

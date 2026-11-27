@@ -97,6 +97,8 @@ def _compress(img_bytes: bytes, source_format: str = "PNG") -> tuple[bytes, str]
 
 
 def _capture_screen() -> tuple[bytes, str]:
+    from core.vision_access import require
+    require('screen')
 
     if not _MSS:
         raise RuntimeError("mss is not installed. Run: pip install mss")
@@ -195,6 +197,8 @@ def _get_camera_index() -> int:
 
 
 def _capture_camera() -> tuple[bytes, str]:
+    from core.vision_access import require
+    require('camera')
     from core import camera_lease
     if not camera_lease.acquire():
         raise RuntimeError("Camera is in use by live view or hand gesture control. Stop it first.")

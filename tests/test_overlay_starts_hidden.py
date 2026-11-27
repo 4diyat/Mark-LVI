@@ -122,6 +122,7 @@ def overlay_module():
     sys.modules["PyQt6"] = types.ModuleType("PyQt6")
     widgets = types.ModuleType("PyQt6.QtWidgets")
     widgets.QWidget = _Widget
+    widgets.QApplication = types.SimpleNamespace(instance=lambda: object())
     core = types.ModuleType("PyQt6.QtCore")
     core.QTimer = _Timer
     core.Qt = types.SimpleNamespace(

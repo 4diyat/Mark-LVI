@@ -129,11 +129,11 @@ class AuditLog:
 
     # ── reading, for the privacy page and for export ─────────────────────────
 
-    def entries(self, limit: int | None = None) -> list[dict[str, Any]]:
-        """Newest last, matching the file. Malformed lines are skipped, not fatal."""
+    def entries(self, limit: int | None = None, *, strict: bool = False) -> list[dict[str, Any]]:
+        """Newest last. Strict reads distinguish a missing log from a damaged one."""
         out: list[dict[str, Any]] = []
         try:
-            with open(self._path, encoding="utf-8") as fh:
+            with self._lock, open(self._path, encoding="utf-8") as fh:
                 for raw in fh:
                     raw = raw.strip()
                     if not raw:
@@ -141,10 +141,18 @@ class AuditLog:
                     try:
                         item = json.loads(raw)
                     except ValueError:
+                        if strict:
+                            raise ValueError("Malformed audit record") from None
                         continue
                     if isinstance(item, dict):
                         out.append(item)
-        except OSError:
+                    elif strict:
+                        raise ValueError("Invalid audit record")
+        except FileNotFoundError:
+            return []
+        except (OSError, UnicodeError):
+            if strict:
+                raise
             return []
         if limit is not None and limit >= 0:
             return out[-limit:] if limit else []

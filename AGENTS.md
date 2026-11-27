@@ -138,9 +138,9 @@ model.
   exactly what the work will do. `_install_with_confirmation` computes the
   accepted list once and passes it down, so the two cannot disagree.
 
-**File operations are NOT gated — they use `core/undo.py` instead.** That is a
-deliberate design (see its docstring: "act immediately, make it reversible"). The
-rule that follows from it:
+**File operations classified as medium go through the trusted confirmation
+gate as well as `core/undo.py`.** Reversibility does not replace approval. The
+undo requirements still apply:
 
 - If an operation has no reliable inverse, it must **decline** rather than run.
   `shutil.move` and `shutil.copy2` silently replace an existing destination, and

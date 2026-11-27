@@ -98,23 +98,19 @@ from core.action_loader        import discover_actions
 
 # ── Which actions own their confirmation ─────────────────────────────────────
 #
-# Four actions call `core.confirm.request` themselves, with a title and detail
-# written for the specific operation ("Run build.py?" rather than
-# "code_helper:run"). `core.action_gate` must not ask a second time: two banners
-# for one shutdown is how a user learns to dismiss both without reading them.
-#
-# A NAME LIST RATHER THAN A `TOOL` FLAG. The four were already gating before the
-# gate existed, and adding a key to their TOOL dict would put project
-# bookkeeping in a schema that is sent to the vendor. tests/test_action_gate.py
-# checks that every name here really does call confirm.request, so the list
-# cannot rot into a way to skip the gate.
+# Some operations already call `core.confirm.request` with specific details.
+# A tool name alone is not sufficient: a confirmation nested inside one action
+# does not protect its other actions. `core.self_gated` checks the arguments and
+# permits only known internally confirmed operations to bypass the outer gate.
+# The list is local bookkeeping, not part of the vendor's TOOL schema.
 SELF_GATED_ACTIONS = frozenset({"computer_settings", "code_helper", "dev_agent",
                                 "file_processor"})
 
 
-def action_gate_self_gated(name: str) -> bool:
-    """Whether this action is responsible for its own confirmation."""
-    return name in SELF_GATED_ACTIONS
+def action_gate_self_gated(name: str, args: dict | None = None) -> bool:
+    """Only skip the outer gate when this specific operation owns a gate."""
+    from core.self_gated import owns_confirmation
+    return name in SELF_GATED_ACTIONS and owns_confirmation(name, args)
 
 
 def _presence_bound() -> str:
@@ -593,7 +589,7 @@ def _keep_context_of(exc: BaseException) -> bool:
 
 def _exception_details(exc: BaseException) -> str:
     """Include TaskGroup causes; str(ExceptionGroup) hides the real error."""
-    parts = [str(exc)]
+    parts = [f"{type(exc).__name__}: {exc}"]
     for child in getattr(exc, "exceptions", ()):
         parts.append(_exception_details(child))
     return " | ".join(parts)
@@ -628,11 +624,14 @@ class JarvisLive:
         # reconnect: a dropped connection is not news about Wayland.
         self._platform_notes_shown = False
         self.ui             = ui
-        self._asst_name     = "JARVI    S"   # updated each session from config
+        self._asst_name     = "JARVIS"   # updated each session from config
         self.session              = None
         self.audio_in_queue       = None
         self.out_queue            = None
         self._loop                     = None
+        self._conn_backoff             = 0
+        from core.retry_control import RetryControl
+        self._retry_control = RetryControl()
         self._is_speaking         = False
         self._speaking_lock       = threading.Lock()
         self._phone_active        = False   # True while phone mic is streaming; pauses PC mic
@@ -684,6 +683,9 @@ class JarvisLive:
         self.ui.on_push_to_talk   = self.set_push_to_talk
         self.ui.ptt_hold          = self._on_ptt
         self.ui.on_text_command   = self._on_text_command
+        self.ui.get_session_connected = lambda: self.session is not None
+        self.ui.get_retry_state = self._retry_control.snapshot
+        self.ui.on_retry_connection = self._retry_control.request
         self.ui.on_remote_clicked = self._make_remote_key
         self.ui.on_interrupt      = self.interrupt
         self.ui.on_voice_change   = self._on_voice_change     # voice picker → rebuild session
@@ -1356,24 +1358,27 @@ class JarvisLive:
 
     def _on_text_command(self, text: str):
         if not self._loop or not self.session:
-            return
-        # Board 14a: the risk dialog says where the request came from. This is
-        # the typed door; the input transcription marks the spoken one.
+            self.ui.write_log("SYS: The session is not ready; your command was not sent.")
+            return False
         from core import input_source
         input_source.mark("typed")
-        # Respect wake-word sleep: a typed command must not be answered while
-        # asleep either (the sleep gate is not just for the mic). Wake first with
-        # "Hey Jarvis" or the WAKE NOW button.
         if self._wake_enabled and not self._awake:
             self.ui.write_log("SYS: I'm asleep — say 'Hey Jarvis' or tap WAKE NOW first.")
-            return
-        asyncio.run_coroutine_threadsafe(
+            return False
+        future = asyncio.run_coroutine_threadsafe(
             self.session.send_client_content(
                 turns={"role": "user", "parts": [{"text": text}]},
                 turn_complete=True
-            ),
-            self._loop
-        )
+            ), self._loop)
+
+        def report_failure(done):
+            try:
+                done.result()
+            except Exception as exc:
+                self.ui.write_log(f"ERR: The command could not be sent: {type(exc).__name__}: {exc}")
+
+        future.add_done_callback(report_failure)
+        return future  # completion means the send finished, not that the action succeeded
 
     def _tail_active(self) -> bool:
         """True while the speakers may still be finishing our last sentence."""
@@ -1537,11 +1542,14 @@ class JarvisLive:
         try:
             from memory.config_manager import load_api_keys
             _cfg = load_api_keys()
-            self._asst_name = (_cfg.get("assistant_name") or "JARVIS").strip()
+            self._asst_name = (_cfg.get("assistant_name") or "JARVIS").strip() or "JARVIS"
             _user_name = (_cfg.get("user_name") or "").strip()
         except Exception:
             self._asst_name = "JARVIS"
             _user_name = ""
+
+        # The UI parses speaker prefixes using the same name as this session.
+        self.ui._assistant_name = self._asst_name
 
         memory     = load_memory()
         mem_str    = format_memory_for_prompt(memory)
@@ -1745,15 +1753,18 @@ class JarvisLive:
             category = args.get("category", "notes")
             key      = args.get("key", "")
             value    = args.get("value", "")
-            try:
-                if not key or not value:
-                    raise ValueError("a key and value are required")
-                await asyncio.to_thread(update_memory, {category: {key: {"value": value}}})
-                result = {"result": "ok", "silent": True}
-            except Exception as e:
-                self.ui.write_log("ERR: Memory could not be saved; existing data was not replaced.")
-                print(f"[Memory] Save failed: {type(e).__name__}")
-                result = {"result": "Memory could not be saved. Tell the user it was not saved."}
+            from core import guest_mode
+            if guest_mode.active():
+                result = {"result": "Guest mode is active; this memory was not saved."}
+            elif not key or not value:
+                result = {"result": "A key and value are required; memory was not saved."}
+            else:
+                from core import action_gate as _gate
+                def _save():
+                    update_memory({category: {key: {"value": value}}})
+                    return "Memory saved."
+                verdict = await asyncio.to_thread(_gate.check, name, _save, args)
+                result = {"result": verdict.message}
             if not self.ui.muted:
                 self.ui.set_state("LISTENING")
             return types.FunctionResponse(id=fc.id, name=name, response=result)
@@ -1781,9 +1792,9 @@ class JarvisLive:
 
                 _verdict = await loop.run_in_executor(
                     None, lambda: _gate.check(name, _run_dispatch, args))
+                # A parked or refused action has not run: preserve the gate's
+                # message so the assistant cannot report a fabricated success.
                 result = _verdict.message or "Done."
-                if not _verdict.ran:
-                    result = ""
 
             elif name == "screen_process":
                 import time as _t_mod
@@ -1801,34 +1812,34 @@ class JarvisLive:
                     pointed = args.get("pointed") is True
                     if pointed and angle == "camera":
                         raise ValueError("Pointed analysis only supports the screen.")
-                    if angle == "camera":
-                        img_b, mime_t = await loop.run_in_executor(None, _capture_camera)
-                        self.ui.start_camera_stream()
-                        self._vision_cam_active = True
-                        print(f"[Vision] 📷 Camera: {len(img_b):,} bytes")
-                        _stall = "camera"
+                    from core import vision_gate
+                    capture = (_capture_camera if angle == 'camera' else
+                               _capture_pointed_screen if pointed else _capture_screen)
+                    captured, gate_message = await loop.run_in_executor(
+                        None, lambda: vision_gate.capture(args, capture))
+                    if captured is None:
+                        self._vision_busy = False
+                        self._vision_last_time = 0.0
+                        result = gate_message
                     else:
-                        if pointed:
-                            img_b, mime_t = await loop.run_in_executor(None, _capture_pointed_screen)
-                            user_text = ("The red ring marks the approximate location the user pointed at. "
-                                         "Use it only as a guide and say if the target is unclear.\n" + user_text)
-                            self.ui.write_log("SYS: Pointed screen captured for the current vision request.")
+                        img_b, mime_t = captured
+                        if angle == "camera":
+                            self.ui.start_camera_stream()
+                            self._vision_cam_active = True
+                            _stall = "camera"
                         else:
-                            img_b, mime_t = await loop.run_in_executor(None, _capture_screen)
-                        print(f"[Vision] 🖥️  Screen: {len(img_b):,} bytes")
-                        _stall = "screen"
-                    self._pending_vision = (img_b, mime_t, user_text, angle)
-                    # The image is attached to this same exchange, so there is
-                    # nothing to stall for and nothing to announce. Asking for an
-                    # acknowledgement here is what produced two spoken answers —
-                    # the model filled that turn by answering the question from
-                    # imagination, then answered it again once it could see.
-                    result = (
-                        f"[VISION_ACTIVE] {_stall.capitalize()} captured and attached to this "
-                        f"same exchange. Do not acknowledge and do not answer yet — the image "
-                        f"is arriving with this result. Reply once, from what you actually see "
-                        f"in it."
-                    )
+                            if pointed:
+                                user_text = ("The red ring marks the approximate location the user pointed at. "
+                                             "Use it only as a guide and say if the target is unclear.\n" + user_text)
+                                self.ui.write_log("SYS: Pointed screen captured for the current vision request.")
+                            _stall = "screen"
+                        self._pending_vision = (img_b, mime_t, user_text, angle)
+                        result = (
+                            f"[VISION_ACTIVE] {_stall.capitalize()} captured and attached to this "
+                            f"same exchange. Do not acknowledge and do not answer yet — the image "
+                            f"is arriving with this result. Reply once, from what you actually see "
+                            f"in it."
+                        )
 
             elif name == "close_camera":
                 self.ui.stop_camera_stream()
@@ -1888,7 +1899,7 @@ class JarvisLive:
                         name,
                         lambda: self._action_registry.run(name, args, _ctx),
                         args,
-                        self_gated=action_gate_self_gated(name),
+                        self_gated=action_gate_self_gated(name, args),
                     ))
                 r = _verdict.message
                 result = r or "Done."
@@ -1933,12 +1944,9 @@ class JarvisLive:
                             args,
                             plugin_level=self._plugin_registry.declared_level(name),
                         ))
+                    # Preserve pending/refusal messages; an empty result gives
+                    # the model no way to distinguish a held call from success.
                     result = _verdict.message or "Done."
-                    if not _verdict.ran:
-                        # A parked call did not run, so there is nothing to
-                        # report as done. The banner is up; the model has the
-                        # sentence to say.
-                        result = ""
                 else:
                     result = f"Unknown tool: {name}"
 
@@ -2004,6 +2012,8 @@ class JarvisLive:
     async def _listen_audio(self):
         print("[JARVIS] 🎤 Mic started")
         loop = asyncio.get_event_loop()
+        from core.voice_idle import VoiceIdle
+        idle = VoiceIdle()
 
         def callback(indata, frames, time_info, status):
             # ── Voice-verification gate ─────────────────────────────────────
@@ -2015,6 +2025,7 @@ class JarvisLive:
             # callback stays a cheap buffer push — the same discipline the
             # wake-word detector follows.
             if getattr(self, "_va_mode", "off") in ("gate", "enroll"):
+                idle.reset()
                 self._va_feed(indata, SEND_SAMPLE_RATE)
                 return
             # ── Wake-word gate ───────────────────────────────────────────────
@@ -2025,6 +2036,7 @@ class JarvisLive:
             # only a queue push, so the audio path is never slowed. When wake word
             # is off (default) or we're awake, this is a single boolean check.
             if self._wake_enabled and not self._awake:
+                idle.reset()
                 det = self._wake_detector
                 if det is not None:
                     # First frame after a detection still belongs to the
@@ -2046,6 +2058,7 @@ class JarvisLive:
             # the echo of what we are playing right now", sustained long enough
             # that a cough or a keystroke cannot trigger it.
             if jarvis_speaking:
+                idle.reset()
                 # Not streamed while talking, but still heard: talking over
                 # the answer stops it. The decision is in voice_interrupt.py.
                 from core.voice_interrupt import barge_in
@@ -2075,9 +2088,18 @@ class JarvisLive:
             # opens it, which is the whole point: nothing leaves the machine
             # unless you are holding the key.
             if self._ptt_enabled and not self._ptt_held:
+                idle.reset()
                 return
-            
+
             if not self.ui.muted and not self._phone_active:
+                level = _pcm_level(indata)
+                state = getattr(self.ui, '_state', '')
+                transition = idle.feed(level, state) if getattr(self.ui, '_voice_mode_active', False) else None
+                if not getattr(self.ui, '_voice_mode_active', False):
+                    idle.reset()
+                compare_set = getattr(self.ui, 'compare_set_state', None)
+                if transition and callable(compare_set):
+                    compare_set(state, transition)
                 data = indata.tobytes()
                 loop.call_soon_threadsafe(
                     _queue_mic_frame, self.out_queue,
@@ -2087,9 +2109,11 @@ class JarvisLive:
                 # the user's actual voice while listening. Purely cosmetic — any
                 # failure here must never disturb the mic.
                 try:
-                    self.ui.set_audio_level(_pcm_level(indata))
+                    self.ui.set_audio_level(level)
                 except Exception:
                     pass
+            else:
+                idle.reset()
 
         def _open_mic(dev):
             return sd.InputStream(
@@ -2134,6 +2158,8 @@ class JarvisLive:
                 if _mic_status.should_repeat_failure(self._deaf):
                     print(f"[JARVIS] 🎤 {_mic_problem}")
                     self.ui.set_state(_mic_status.NO_MIC)
+                    from ui.mic_guidance import report_denial
+                    report_denial(self.ui, _mic_problem)
                 self._deaf = True
                 await self._wait_for_microphone()
                 continue
@@ -2363,8 +2389,11 @@ class JarvisLive:
                             if full_in:
                                 self._last_out_logged = ""   # new exchange
                                 self.ui.write_log(f"You: {full_in}")
-                                self._session_log.append(f"User: {full_in}")
-                                keep_turn("user", full_in)
+                                from core.guest_mode import storage_guard
+                                with storage_guard() as allowed:
+                                    if allowed:
+                                        self._session_log.append(f"User: {full_in}")
+                                        keep_turn("user", full_in)
                                 if self._dashboard:
                                     asyncio.create_task(self._dashboard.broadcast({
                                         "type": "log", "speaker": "user",
@@ -2383,8 +2412,11 @@ class JarvisLive:
                             if full_out:
                                 self._last_out_logged = full_out
                                 self.ui.write_log(f"{self._asst_name}: {full_out}")
-                                self._session_log.append(f"{self._asst_name}: {full_out}")
-                                keep_turn("assistant", full_out)
+                                from core.guest_mode import storage_guard
+                                with storage_guard() as allowed:
+                                    if allowed:
+                                        self._session_log.append(f"{self._asst_name}: {full_out}")
+                                        keep_turn("assistant", full_out)
                                 if self._dashboard:
                                     asyncio.create_task(self._dashboard.broadcast({
                                         "type": "log", "speaker": "jarvis",
@@ -2709,6 +2741,10 @@ class JarvisLive:
 
     async def _save_session_summary(self) -> None:
         """Summarise the current session in 1-2 sentences and save to long_term.json."""
+        from core import guest_mode
+        if guest_mode.active():
+            self._session_log = []
+            return
         log = self._session_log
         if len(log) < 3:          # need at least one exchange to be worth saving
             return
@@ -3086,6 +3122,7 @@ class JarvisLive:
             self._dashboard = None
 
         while True:
+            network_error = False
             try:
                 self._ensure_executor()
                 print("[JARVIS] Connecting...")
@@ -3132,6 +3169,7 @@ class JarvisLive:
                     session.send_client_content = _send_and_arm
 
                     self.session          = session
+                    self._conn_backoff    = 0
                     self.audio_in_queue   = asyncio.Queue(maxsize=playback_buffer.MAX_SLICES)
                     self.out_queue        = asyncio.Queue(maxsize=200)
                     self._turn_done_event = asyncio.Event()
@@ -3313,10 +3351,11 @@ class JarvisLive:
                 # ladder step — one unknown error must not cost the user their
                 # model for the day.
                 self._conn_backoff = verdict.delay
-                if _session_policy.looks_like_network(err_str):
-                    self.ui.write_log(
-                        f"NET: Connection failed — retrying in {verdict.delay}s. "
-                        "(a VPN may be required)")
+                network_error = _session_policy.looks_like_network(err_str)
+                if network_error:
+                    from core import i18n
+                    self.ui.write_log("NET: " + i18n.label(
+                        "ui.main.network_retry", seconds=verdict.delay))
             finally:
                 self.session = None
                 # Only save if there was a real conversation (≥3 turns)
@@ -3331,7 +3370,7 @@ class JarvisLive:
 
             delay = getattr(self, "_conn_backoff", 3)
             print(f"[JARVIS] Reconnecting in {delay}s...")
-            await asyncio.sleep(delay)
+            await self._retry_control.wait(delay, allow_manual=network_error)
 
 @dataclass
 class LaunchOptions:
@@ -3640,7 +3679,8 @@ def main():
     # window, or a Gemini session on its way to finding out it is redundant.
     _instance = _claim_single_instance(options.link)   # noqa: F841 — held for the process
     shell = _make_application(qt_argv)
-    ui = AmbientShell(face_path=_face_path(), app=shell)
+    from memory.config_manager import get_assistant_name
+    ui = AmbientShell(face_path=_face_path(), assistant_name=get_assistant_name(), app=shell)
     ui._launch = options
     # The file to launch at login, recorded here because this is the only place
     # that knows it. `ui/window.py` used to derive it from `__file__` and got

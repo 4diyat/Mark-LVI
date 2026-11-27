@@ -7,14 +7,9 @@ THE SPLIT BETWEEN THIS MODULE AND `pages_admin`
     its hands can be told). The other half is about how the program is
     configured and what it can be trusted with.
 
-BOARDS THAT DRAW SOMETHING THIS BUILD DOES NOT HAVE
-    Board 11's routines: there is no scheduler. `actions/proactive.py` decides
-    WHEN to speak, and it has a persisted pause, but nothing stores "Briefing
-    pagi, setiap hari 06.30" — so the page lists the one routine that really
-    exists (the proactive check, with its real pause state) and says plainly
-    that scheduled routines are not built. Board 12's window layout and board
-    19's gesture map are drawings of things this build cannot do, and they say
-    so on the page as well as in `NOT-IN-MOCKUP.md`.
+BOARD 11 stores scheduled routines; its form accepts daily local time and a
+command, and pagination reaches every saved row. Board 12's window-layout
+preference does not arrange desktop windows.
 
 WHY THE DATA FUNCTIONS ARE SEPARATE FROM THE BUILDERS
     Every `*_rows()` here is importable and testable with no Qt, and the tests
@@ -54,7 +49,7 @@ def suggestion_paused() -> bool:
     return bool(_safe(read, False))
 
 
-def routines() -> list[dict]:
+def routines() -> list[dict] | None:
     """The scheduled routines this build stores and runs.
 
     THE STORE IS REAL NOW. `memory/routine_store.py` keeps the list and
@@ -76,7 +71,7 @@ def routines() -> list[dict]:
             "on": r.enabled,
         } for r in rows]
 
-    return _safe(read, []) or []
+    return _safe(read, None)
 
 
 
@@ -90,14 +85,13 @@ _SENSITIVE = (
 )
 
 
-def clipboard_text() -> str:
-    """What is on the clipboard, or "" when there is none / no module."""
-    def read():
+def clipboard_text() -> str | None:
+    """Clipboard text, empty string for no text, or None if it cannot be read."""
+    try:
         from actions import computer_control
-
         return str(computer_control.pyperclip.paste() or "")
-
-    return str(_safe(read, ""))
+    except Exception:  # unavailable clipboard is not an empty clipboard
+        return None
 
 
 def sensitive_kind(text: str) -> str:
@@ -116,38 +110,50 @@ def sensitive_kind(text: str) -> str:
     return ""
 
 
-def find_files(query: str, limit: int = 3) -> list[str]:
-    """Board 12's plain-language file search, answered by name matching.
+def find_files(query: str, limit: int = 3, *, cancel=None) -> list[str]:
+    """Match names in Documents, Downloads and Desktop; propagate scan errors.
 
-    WHAT THIS IS NOT: it does not understand "faktur bulan lalu yang belum
-    dibayar" — nothing in this build turns that sentence into a query. It
-    matches the words the user typed against file names, which is honest and
-    useful and is exactly what the page says it does.
+    Called on a worker. Cancellation is cooperative between filesystem calls;
+    an OS call that is already blocked cannot be interrupted here.
     """
+    import os
     from pathlib import Path
+    import stat
 
     words = [w for w in str(query or "").lower().split() if len(w) > 2]
-    if not words:
+    if not words or limit <= 0:
         return []
+    cancelled = cancel or (lambda: False)
+    def on_error(error):
+        raise error
 
-    def scan():
-        roots = [Path.home() / "Documents", Path.home() / "Downloads",
-                 Path.home() / "Desktop"]
-        hits = []
-        for root in roots:
-            if not root.is_dir():
-                continue
-            for path in root.rglob("*"):
-                if len(hits) >= limit:
+    hits = []
+    for root in (Path.home() / "Documents", Path.home() / "Downloads", Path.home() / "Desktop"):
+        if cancelled():
+            return hits
+        try:
+            mode = root.stat().st_mode
+        except (FileNotFoundError, NotADirectoryError):
+            continue
+        if not stat.S_ISDIR(mode):
+            continue
+        for directory, _dirs, files in os.walk(root, onerror=on_error):
+            if cancelled():
+                return hits
+            for name in files:
+                if cancelled():
                     return hits
-                if not path.is_file():
-                    continue
-                name = path.name.lower()
-                if all(word in name for word in words):
-                    hits.append(str(path))
-        return hits
-
-    return list(_safe(scan, []))
+                if all(word in name.lower() for word in words):
+                    path = Path(directory) / name
+                    try:
+                        mode = path.stat().st_mode
+                    except FileNotFoundError:
+                        continue  # changed while walking
+                    if stat.S_ISREG(mode):
+                        hits.append(str(path))
+                        if len(hits) >= limit:
+                            return hits
+    return hits
 
 
 # ── board 19: the gesture map ───────────────────────────────────────────────
@@ -210,16 +216,22 @@ def build_routines(panel, page) -> None:
 
     THE STORE IS REAL NOW, so the page draws up to three routine cards from
     `memory/routine_store.py` — each with its name, when, payload, a pause
-    toggle and a delete button — plus a builder strip that turns a schedule
-    phrase into a stored routine. The three suggestion cards at the bottom
-    keep the artboard's pitch and the sentence about the suggestion engine.
+    toggle and a delete button. The builder stores an explicit daily time and
+    command; pagination reaches additional rows. Suggestions are unavailable.
     """
+    from PyQt6.QtCore import Qt
     from PyQt6.QtWidgets import QLabel, QLineEdit, QPushButton
 
     from ui.tray_pages import _at
 
     page.hide()
     panel._pages["routines"] = page
+
+    def routine_action(action, index, *args):
+        ids = getattr(panel, "_routine_ids", ())
+        if index < len(ids) and ids[index]:
+            panel._call(action, ids[index], *args)
+        panel.refresh()  # also undo a checked state if the action failed
 
     # Three routine cards at pitch 96 from y=84, each 412x84. Toggle at
     # (378, y+30); a delete button sits left of it at (320, y+30).
@@ -229,41 +241,57 @@ def build_routines(panel, page) -> None:
         panel._labels[f"rt_name:{index}"] = _at(page, QLabel, 44, y + 18, 260, 20, "")
         panel._labels[f"rt_when:{index}"] = _at(page, QLabel, 44, y + 40, 260, 16, "")
         panel._labels[f"rt_what:{index}"] = _at(page, QLabel, 44, y + 58, 260, 16, "")
+        for part in ("name", "when", "what"):
+            panel._labels[f"rt_{part}:{index}"].setTextFormat(Qt.TextFormat.PlainText)
         toggle = QPushButton("", page)
         toggle.setGeometry(378, y + 30, 40, 22)
         toggle.setObjectName(f"rt_toggle:{index}")
-        toggle.clicked.connect(lambda _c=False, i=index: panel._call("routine_toggle", i))
+        toggle.clicked.connect(lambda checked=False, i=index:
+                               routine_action("routine_toggle", i, checked))
         panel._buttons[f"rt_toggle:{index}"] = toggle
         delete = QPushButton("", page)
         delete.setGeometry(320, y + 30, 40, 22)
         delete.setObjectName(f"rt_delete:{index}")
-        delete.clicked.connect(lambda _c=False, i=index: panel._call("routine_delete", i))
+        delete.clicked.connect(lambda _c=False, i=index: routine_action("routine_delete", i))
         panel._buttons[f"rt_delete:{index}"] = delete
 
-    # THE BUILDER STRIP: a one-line schedule field + a create button. It turns
-    # "setiap hari jam 07" into a stored routine (the builder is deliberately
-    # one line — board 11's artboard has no room for a multi-field form, and a
-    # schedule the owner can type in one line is one they can read back).
-    panel._labels["rt_builder_label"] = at(page, QLabel, text_box(24, 372, 10, width=200), "")
+    # A deliberately narrow schedule: local HH:MM every day, plus the
+    # actual command. No natural-language interpretation or guessed weekdays.
+    panel._labels["rt_builder_label"] = _at(page, QLabel, 24, 366, 412, 18, "")
     edit = QLineEdit(page)
-    edit.setGeometry(24, 388, 300, 26)
+    edit.setGeometry(24, 388, 106, 30)
     edit.setObjectName("rt_builder_edit")
     panel._inputs["rt_builder_edit"] = edit
+    command = QLineEdit(page)
+    command.setGeometry(138, 388, 208, 30)
+    command.setObjectName("rt_builder_command")
+    panel._inputs["rt_builder_command"] = command
     create = QPushButton("", page)
-    create.setGeometry(328, 388, 108, 26)
+    create.setGeometry(354, 388, 82, 30)
     create.setObjectName("rt_builder_create")
-    create.clicked.connect(lambda: panel._call("routine_create"))
+    create.clicked.connect(lambda _c=False: panel._call("routine_create"))
     panel._buttons["rt_builder_create"] = create
+    note = _at(page, QLabel, 24, 420, 412, 32, "")
+    note.setWordWrap(True)
+    panel._labels["rt_builder_note"] = note
 
-    # SARAN PROAKTIF at 432, three 412x58 cards at y=446, pitch 68.
-    panel._labels["rt_suggest_header"] = at(page, QLabel, text_box(24, 432, 10, width=240), "")
-    for index in range(3):
-        y = 446 + index * 68
-        panel._labels[f"rt_suggest_card:{index}"] = _at(page, QLabel, 24, y, 412, 58, "")
-    panel._labels["rt_suggest_note"] = at(page, QLabel, text_box(24, 464, 10, width=372), "")
-
-    # The artboard's footnote at 636 is below the panel's own 660 - 12 line,
-    # so it moves to the free band under the last card: same copy, same column.
+    status = _at(page, QLabel, 24, 452, 412, 18, "")
+    status.setTextFormat(Qt.TextFormat.PlainText)
+    panel._labels["rt_builder_status"] = status
+    edit.textChanged.connect(lambda _text: status.setText(""))
+    command.textChanged.connect(lambda _text: status.setText(""))
+    panel._labels["rt_suggest_header"] = _at(page, QLabel, 24, 478, 412, 18, "")
+    panel._labels["rt_suggest_note"] = _at(page, QLabel, 24, 498, 412, 30, "")
+    panel._labels["rt_suggest_note"].setWordWrap(True)
+    panel._labels["rt_more"] = _at(page, QLabel, 112, 575, 230, 18, "")
+    def move_page(delta):
+        panel._routine_page = getattr(panel, "_routine_page", 0) + delta
+        panel.refresh()
+    for key, x, delta in (("prev", 24, -1), ("next", 352, 1)):
+        button = QPushButton("", page)
+        button.setGeometry(x, 568, 84, 32)
+        button.clicked.connect(lambda _c=False, d=delta: move_page(d))
+        panel._buttons[f"rt_{key}"] = button
     panel._labels["rt_footnote"] = at(page, QLabel, text_box(24, 632, 10, width=412), "")
 
 
@@ -276,6 +304,7 @@ def build_tools(panel, page) -> None:
     at 420 with three 114x62 thumbnails at 452. Only the first two have
     backends; the third says so inside its own card.
     """
+    from PyQt6.QtCore import Qt, QTimer
     from PyQt6.QtWidgets import QLabel, QLineEdit, QPushButton
 
     from ui.tray_pages import _at
@@ -288,6 +317,7 @@ def build_tools(panel, page) -> None:
     panel._labels["tl_clip_header"] = _at(page, QLabel, 42, 88, 300, 18, "")
     panel._labels["tl_clip_box"] = _at(page, QLabel, 40, 108, 380, 54, "")
     panel._labels["tl_clip"] = _at(page, QLabel, 56, 116, 356, 18, "")
+    panel._labels["tl_clip"].setTextFormat(Qt.TextFormat.PlainText)
     panel._labels["tl_kind"] = _at(page, QLabel, 56, 136, 356, 18, "")
     for name, x, w in (("copy", 40, 110), ("safe", 158, 140), ("clear", 306, 114)):
         button = QPushButton("", page)
@@ -303,6 +333,11 @@ def build_tools(panel, page) -> None:
     field = QLineEdit(page)
     field.setGeometry(40, 276, 380, 40)
     field.returnPressed.connect(lambda: panel._call("tools_find", field.text()))
+    field.textChanged.connect(lambda _text: panel.invalidate_search())
+    timer = QTimer(page)
+    timer.setInterval(100)
+    timer.timeout.connect(panel.poll_search)
+    panel._search_timer = timer
     panel._fields["tl_find"] = field
     for index in range(3):
         panel._labels[f"tl_hit:{index}"] = _at(
@@ -320,7 +355,13 @@ def build_tools(panel, page) -> None:
         thumb.clicked.connect(
             lambda _checked=False, i=index: panel._call("tools_layout", i))
         panel._buttons[f"tl_snap_thumb:{index}"] = thumb
-    panel._labels["tl_snap_note"] = _at(page, QLabel, 40, 528, 380, 34, "")
+    panel._labels["tl_snap_note"] = _at(page, QLabel, 40, 528, 380, 46, "")
+    panel._labels["tl_snap_note"].setWordWrap(True)
+    for index, key in enumerate(("screenshot", "dictate")):
+        button = QPushButton("", page)
+        button.setGeometry(24 + 210 * index, 610, 202, 36)
+        button.clicked.connect(lambda _checked=False, k=key: panel.press_quick(k))
+        panel._buttons[f"tl_quick:{key}"] = button
 
 
 def build_gestures(panel, page) -> None:
@@ -394,73 +435,47 @@ def build_consent(panel, page) -> None:
 
 
 def build_help(panel, page) -> None:
-    """Board 13, transcribed from `b13()`.
-
-    THREE PANELS AND A PREVIEW STRIP. The artboard draws DIKTE (412x88 at 106),
-    PEMBACA LAYAR (412x116 at 246 with a "Bacakan" pill at (44,330)), and ISI
-    FORM (three 412x32 field rows at 432/488/544) over a cyan preview strip at
-    578. Dictation and screen reading are real chords this build binds; form
-    filling has no backend, so the three field rows are drawn at the artboard's
-    coordinates and the strip says the preview is not applied to anything.
-
-    THE FORM ROWS CARRY NO INVENTED VALUES. The artboard fills them with "PT
-    Sinar Abadi", "FB-2026-0912", "Rp 12.400.000" — example data for a feature
-    that does not exist. Each row shows its label and says the value would be
-    proposed, never applied, because there is nothing to propose from.
-    """
+    """Help cards: voice tools and honest unavailable screen/form controls."""
     from PyQt6.QtWidgets import QLabel, QLineEdit, QPushButton
-
-    from ui.tray_pages import _at
 
     page.hide()
     panel._pages["help"] = page
+    for key, y, height in (("dictate", 82, 132), ("read", 226, 124),
+                           ("form", 362, 260)):
+        panel._labels[f"hp_{key}_card"] = _at(page, QLabel, 24, y, 412, height, "")
+        panel._labels[f"hp_{key}_header"] = _at(page, QLabel, 42, y + 12, 374, 20, "")
 
-    panel._labels["hp_dictate_header"] = at(page, QLabel, text_box(24, 92, 10, width=300), "")
-    panel._labels["hp_dictate_card"] = _at(page, QLabel, 24, 106, 412, 88, "")
-    panel._labels["hp_dictate"] = _at(page, QLabel, 44, 128, 372, 44, "")
+    panel._labels["hp_dictate"] = _at(page, QLabel, 42, 118, 374, 46, "")
+    panel._labels["hp_dictate"].setWordWrap(True)
+    button = QPushButton("", page)
+    button.setGeometry(42, 174, 168, 28)
+    button.clicked.connect(lambda: panel._call("page", "tools"))
+    panel._buttons["hp_dictate_tools"] = button
 
-    panel._labels["hp_read_header"] = at(page, QLabel, text_box(24, 232, 10, width=300), "")
-    panel._labels["hp_read_card"] = _at(page, QLabel, 24, 246, 412, 116, "")
-    panel._labels["hp_read"] = _at(page, QLabel, 44, 262, 372, 60, "")
-    # "Bacakan" is the screen reader the artboard draws. This build has the
-    # screenshot chord and no speech synthesiser, so the pill names the chord
-    # it can actually trigger rather than promising a voice it does not have.
-    panel._buttons["hp_read"] = QPushButton("", page)
-    panel._buttons["hp_read"].setGeometry(44, 330, 120, 26)
-    panel._buttons["hp_read"].clicked.connect(lambda: panel._call("quick", "screenshot"))
+    panel._labels["hp_read"] = _at(page, QLabel, 42, 262, 374, 40, "")
+    panel._labels["hp_read"].setWordWrap(True)
+    button = QPushButton("", page)
+    button.setGeometry(42, 309, 168, 28)
+    button.setEnabled(False)
+    panel._buttons["hp_read"] = button
 
-    panel._labels["hp_form_header"] = at(page, QLabel, text_box(24, 396, 10, width=300), "")
+    panel._labels["hp_form_note"] = _at(page, QLabel, 42, 398, 374, 40, "")
+    panel._labels["hp_form_note"].setWordWrap(True)
     for index in range(3):
-        y = 432 + index * 56
-        panel._labels[f"hp_form_label:{index}"] = _at(
-            page, QLabel, 24, y - 12, 300, 16, "")
-        # The field row is an editable QLineEdit, not a label: the value the
-        # plan will send is typed here, then reviewed in the strip before the
-        # apply button sends it to the browser. (A QLineEdit is an input, so
-        # the conformance audit's ALLOWED_GAPS carries the three row coords.)
+        y = 442 + index * 35
+        panel._labels[f"hp_form_label:{index}"] = _at(page, QLabel, 42, y, 120, 28, "")
         field = QLineEdit(page)
-        field.setGeometry(24, y, 412, 32)
+        field.setGeometry(164, y, 252, 28)
         field.setObjectName(f"hp_form_input:{index}")
+        field.setEnabled(False)
         panel._inputs[f"hp_form_input:{index}"] = field
 
-    # The preview strip: cyan at 12% opacity in the artboard. It starts by
-    # saying nothing has been applied, and flips to the review/applied status
-    # once the builder below is used.
-    panel._labels["hp_preview"] = _at(page, QLabel, 24, 578, 412, 34, "")
-
-    # THE BUILDER: a page URL field and a review-and-apply button, sitting in
-    # the band under the preview strip. Board 13's form filling is review-first:
-    # the plan is built, reviewed, and only then applied into the browser.
-    panel._labels["hp_form_url_label"] = at(page, QLabel, text_box(24, 616, 10, width=200), "")
-    url_edit = QLineEdit(page)
-    url_edit.setGeometry(24, 630, 300, 24)
-    url_edit.setObjectName("hp_form_url")
-    panel._inputs["hp_form_url"] = url_edit
-    apply_button = QPushButton("", page)
-    apply_button.setGeometry(328, 630, 108, 24)
-    apply_button.setObjectName("hp_form_apply")
-    apply_button.clicked.connect(lambda: panel._call("form_fill_apply"))
-    panel._buttons["hp_form_apply"] = apply_button
+    panel._labels["hp_preview"] = _at(page, QLabel, 42, 548, 374, 30, "")
+    panel._labels["hp_preview"].setWordWrap(True)
+    button = QPushButton("", page)
+    button.setGeometry(42, 583, 168, 28)
+    button.setEnabled(False)
+    panel._buttons["hp_form_apply"] = button
 
 
 __all__ = ["GESTURES", "build_consent", "build_gestures", "build_help",

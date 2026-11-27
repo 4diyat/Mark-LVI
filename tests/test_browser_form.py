@@ -1,8 +1,7 @@
 """Tests for the board 13 form-fill adapter.
 
-`parse_fill_results` is pure and fully tested here.  `fill_form_to_page` is
-the I/O edge; its only testable branch without a real browser is the
-"no session" path, which we drive by monkeypatching the registry.
+`parse_fill_results` remains a pure parser. The legacy write adapter must
+refuse calls until there is a reviewed, destination-verified integration.
 """
 from actions.browser_form import fill_form_to_page, parse_fill_results
 from core.form_fill import FieldResult
@@ -44,9 +43,9 @@ def test_parse_tolerates_unmarked_lines():
 
 
 # -- fill_form_to_page (I/O edge, no browser) ----------------------------
-def test_fill_form_without_a_session_reports_every_field_failed(monkeypatch):
+def test_fill_form_adapter_reports_every_field_unavailable(monkeypatch):
     from actions.browser_control import _registry
 
     monkeypatch.setattr(_registry, "has", lambda browser_name=None: False)
     results = fill_form_to_page("https://example.com", {"#name": "A"})
-    assert results == [FieldResult("#name", False, "no browser session")]
+    assert results == [FieldResult("#name", False, "form filling is unavailable")]

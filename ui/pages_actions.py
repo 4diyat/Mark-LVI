@@ -35,6 +35,11 @@ def _t(key: str, **fields) -> str:
     return _i18n_t(key, **fields)
 
 
+def open_workspace(shell: "AmbientShell") -> bool:
+    from ui.design_workspace import open_workspace as open_desktop
+    return open_desktop(shell)
+
+
 def memory_forget(shell: "AmbientShell") -> bool:
     """Board 10's "Lupakan": delete the memory the detail page is showing."""
     from ui import pages_memory
@@ -101,56 +106,73 @@ def tools_copy(shell: "AmbientShell") -> bool:
     from ui import pages_people
     text = pages_people.clipboard_text()
     if not text:
-        _say(shell, "Clipboard kosong.")
+        _say(shell, "Clipboard tidak tersedia." if text is None else "Clipboard teks kosong.")
         return False
     return _clipboard_set(shell, text, "Disalin.", "Clipboard tidak bisa ditulis")
 
 
 def tools_layout(shell: "AmbientShell", index: int) -> bool:
-    """Board 12's susun-jendela: pick one of the three layout thumbnails."""
     from actions.window_layout import apply, choose
     modes = ("columns2", "columns3", "focus")
     try:
-        decision = choose(modes[int(index)])
-    except (IndexError, TypeError, ValueError):
+        index = int(index)
+        if not 0 <= index < len(modes):
+            return False
+        decision = choose(modes[index])
+    except (TypeError, ValueError):
         return False
     if not apply(decision):
         _say(shell, decision.reason)
         return False
     _refresh(shell)
-    _say(shell, decision.reason)
+    from ui.tray_panel_model import _t
+    _say(shell, _t("ui.page.tools.snap_saved"))
     return decision.allowed
 
 
 def tools_clear(shell: "AmbientShell") -> bool:
     """Board 12's "Bersihkan": empty the clipboard."""
-    return _clipboard_set(shell, "", "Clipboard dikosongkan.",
-                          "Clipboard tidak bisa dikosongkan.")
+    from ui import clipboard_view
+    return clipboard_view.clear_current(shell, _say, _clipboard_set)
 
 
 def tools_mark_safe(shell: "AmbientShell") -> bool:
     """Board 12's "Tandai aman" — a decision that lasts this session."""
-    panel = getattr(shell, "_panel", None)
-    if panel is None:
-        return False
-    panel._marked_safe = True
-    panel.refresh()
-    _say(shell, "Ditandai aman untuk sesi ini.")
-    return True
+    from ui import clipboard_view
+    return clipboard_view.mark_safe(shell, _say)
 
 
-def plugin_toggle(shell: "AmbientShell", index: int) -> bool:
-    """Board 16's switch for row `index`, through the loader's own store."""
+def plugin_toggle(shell: "AmbientShell", name: str, expected_on: bool,
+                  permissions: tuple[str, ...]) -> bool:
+    """Change the displayed plugin only if the reviewed registry state is current."""
     from ui import pages_admin
 
     try:
-        row = pages_admin.plugin_rows()[int(index)]
-    except (IndexError, TypeError, ValueError):
+        provider = getattr(shell, "get_plugins", None)
+        records = provider() if callable(provider) else None
+        matches = [row for row in records if isinstance(row, dict) and row.get("name") == name]
+        row = matches[0] if len(matches) == 1 else None
+        if (not row or row.get("valid") is not True
+                or bool(row.get("enabled")) != expected_on
+                or tuple(row.get("permissions") or ()) != permissions):
+            raise ValueError("plugin state changed or is unavailable")
+    except Exception as exc:  # noqa: BLE001
+        _say(shell, _t("ui.page.plugins.changed"))
+        print(f"[JARVIS] Plugin change refused: {type(exc).__name__}: {exc}")
         return False
-    ok = pages_admin.set_plugin(str(row["name"]), not row["on"])
-    _say(shell, f"Plugin {row['name']}: {'aktif' if not row['on'] else 'mati'}."
-         if ok else f"Plugin {row['name']} tidak bisa disimpan.")
-    return ok
+    if not pages_admin.set_plugin(name, not expected_on):
+        _say(shell, _t("ui.page.plugins.save_failed"))
+        return False
+    reconnect = getattr(shell, "on_plugins_changed", None)
+    try:
+        if callable(reconnect):
+            reconnect()
+        else:
+            _say(shell, _t("ui.page.plugins.reconnect_unavailable"))
+    except Exception as exc:  # noqa: BLE001
+        _say(shell, _t("ui.page.plugins.reconnect_unavailable"))
+        print(f"[JARVIS] Plugin reconnect failed: {type(exc).__name__}: {exc}")
+    return True
 
 
 def consent_answer(shell: "AmbientShell", allowed: bool) -> bool:
@@ -194,35 +216,40 @@ def onboard_next(shell: "AmbientShell") -> bool:
     if flow is None:
         return False
     step = flow.current
+    if step == "mic":
+        # The stored consent flag is not enforced by the audio runtime and is
+        # not an OS permission. This informational step must not write it.
+        _finish_onboarding(shell, flow.answer(False), "")
+        return True
     if step == "presence":
         picked = getattr(panel, "_onboarding_picked", None) if panel else None
         if not picked:  # never record a default the user did not choose
             _say(shell, _t("ui.page.consent.presence.pick"))
             return False
-        decision = str(picked)
+        from core import presence_mode
+        from ui.ambient_shell import apply_presence_mode
+        if not apply_presence_mode(shell, str(picked)) or presence_mode.current() != str(picked):
+            _say(shell, _t("ui.page.consent.presence.pick"))
+            return False
+        _finish_onboarding(shell, flow.answer(str(picked)), "")
+        return True
     else:
         checked = panel._buttons.get("cn_toggle") if panel else None
         decision = {"welcome": "next", "done": "finish",
                     "mic": bool(checked and checked.isChecked())}.get(step)
     new_flow, ok = answer_step(flow, decision)
     if ok:
-        _finish_onboarding(shell, new_flow, _t("ui.page.consent.done"))
+        _finish_onboarding(shell, new_flow, "")
     return ok
 
 
 def onboard_back(shell: "AmbientShell") -> bool:
     """Board 7: go back to the previous step, or skip the microphone step."""
-    from core.onboarding import MIC, Onboarding
+    from core.onboarding import Onboarding
 
     panel, flow = _onboarding_state(shell)
     if flow is None or flow.current_index <= 0:
         return False
-    if flow.current == MIC:  # a skip records a refused consent
-        from actions.onboarding import answer_step
-        new_flow, ok = answer_step(flow, False)
-        if ok:
-            _finish_onboarding(shell, new_flow, _t("ui.page.consent.deny"))
-        return ok
     new_flow = Onboarding(flow._done, flow._skipped, flow.presence_mode,
                           max(0, flow.current_index - 1))  # back, recorded nothing
     _finish_onboarding(shell, new_flow, "")
@@ -251,28 +278,33 @@ def language_set(shell: "AmbientShell", code: str) -> bool:
     from ui import pages_admin
     active = pages_admin.set_language(str(code))
     ok = active == str(code)
+    _refresh(shell)
     _say(shell, f"Bahasa: {active}." if ok else f"Bahasa {code!r} tidak tersedia.")
     return ok
 
 
 def text_scale_set(shell: "AmbientShell", scale: float) -> bool:
-    """Board 15's text size, stored and applied to the panel at once."""
-    from ui import pages_admin
-    ok = pages_admin.set_text_scale(float(scale))
-    _refresh(shell)
-    _say(shell, "Ukuran teks disimpan." if ok else "Ukuran teks tidak bisa disimpan.")
-    return ok
+    """The stored preference is not yet applied by the panel renderer."""
+    _say(shell, _t("ui.page.access.size.unavailable"))
+    return False
 
 
 def contrast_set(shell: "AmbientShell", level: str) -> bool:
     """Board 15's contrast level. High contrast is a modifier on the palette."""
     from memory import config_manager
 
-    high = str(level or "").strip().lower() == "high"
+    level = str(level or "").strip().lower()
+    if level not in ("standard", "high"):
+        _say(shell, "Pilihan kontras tidak dikenal.")
+        return False
+    high = level == "high"
     try:
         ok = config_manager.save_high_contrast(high)
     except Exception as e:                          # noqa: BLE001
         _say(shell, f"Kontras tidak tersimpan — {type(e).__name__}: {e}")
+        return False
+    if not ok:
+        _say(shell, "Kontras tidak tersimpan.")
         return False
     panel = getattr(shell, "_panel", None)
     if panel is not None:
@@ -286,29 +318,15 @@ def contrast_set(shell: "AmbientShell", level: str) -> bool:
 
 
 def motion_toggle(shell: "AmbientShell") -> bool:
-    """Board 15's motion switch. The orb reads the same flag on its next frame."""
-    from ui import pages_admin
-
-    wanted = not pages_admin.reduced_motion()
-    ok = pages_admin.set_reduced_motion(wanted)
-    _say(shell, ("Gerak dikurangi." if wanted else "Gerak aktif kembali.")
-         if ok else "Pilihan gerak tidak bisa disimpan.")
-    return ok
+    """No orb animation reads the persisted preference yet."""
+    _say(shell, _t("ui.page.access.motion.unavailable"))
+    return False
 
 
 def gesture_rebind(shell: "AmbientShell", index: int) -> bool:
-    """Board 15's gesture rebind: walk the action cycle for one gesture."""
-    from actions.gesture_binding import apply, cycle
-    from core.gesture_binding import GESTURES
-    if not 0 <= int(index) < len(GESTURES):  # the artboard draws three slots
-        return False
-    decision = cycle(GESTURES[int(index)])
-    if not apply(decision):
-        _say(shell, decision.reason)
-        return False
-    _refresh(shell)
-    _say(shell, decision.reason)
-    return decision.allowed
+    """Gesture controllers do not consume the saved binding table."""
+    _say(shell, _t("ui.page.access.gesture.unavailable"))
+    return False
 
 
 def _voice_auth_call(shell, method: str, *args, fail: str = "Verifikasi suara gagal") -> bool:
@@ -336,57 +354,67 @@ def voice_auth_enroll(shell: "AmbientShell") -> bool:
 
 
 def routine_create(shell: "AmbientShell") -> bool:
-    """Board 11's builder: turn the schedule field into a stored routine."""
-    from core.routines import Routine, parse_schedule_or_raise
+    """Save an explicit daily local time and non-empty assistant command."""
+    import re
+    from uuid import uuid4
+    from core.routines import Routine, Schedule
     from memory.routine_store import default_store
 
     panel = getattr(shell, "_panel", None)
-    phrase = ""
-    edit = panel._inputs.get("rt_builder_edit") if panel else None
-    try:
-        phrase = str(edit.text() or "").strip() if edit else ""
-    except Exception:                              # noqa: BLE001
-        phrase = ""
-    if not phrase:
-        _say(shell, "Masukkan jadwal, contoh: setiap hari jam 07")
+    if panel is None:
         return False
-    try:
-        sched = parse_schedule_or_raise(phrase)
-    except ValueError as e:
-        _say(shell, str(e))
+    time_field = panel._inputs.get("rt_builder_edit")
+    command_field = panel._inputs.get("rt_builder_command")
+    if time_field is None or command_field is None:
         return False
+    def report(key):
+        message = _t(key)
+        panel._labels["rt_builder_status"].setText(message)
+        _say(shell, message)
 
-    import uuid as _uuid
-    routine = Routine(
-        id=_uuid.uuid4().hex[:8],
-        name=_t("ui.page.routines.named"),
-        schedule=sched,
-        payload="",
-        enabled=True,
-    )
-    try:
-        default_store().add(routine)
-    except Exception as e:                          # noqa: BLE001
-        _say(shell, f"Rutinitas tidak tersimpan — {type(e).__name__}: {e}")
+    time_text = str(time_field.text() or "").strip()
+    command = str(command_field.text() or "").strip()
+    if not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", time_text):
+        report("ui.page.routines.invalid_time")
         return False
-    if panel is not None:
-        panel.refresh()
-    _say(shell, _t("ui.page.routines.created"))
+    if not command:
+        report("ui.page.routines.command_required")
+        return False
+    routine = Routine(id=uuid4().hex, name=command[:60],
+                      schedule=Schedule(time_text), payload=command, enabled=True)
+    try:
+        store = default_store()
+        if store.add(routine) != routine:
+            raise RuntimeError("duplicate routine id")
+    except Exception as exc:  # noqa: BLE001
+        report("ui.page.routines.create_failed")
+        _say(shell, f"Routine store: {type(exc).__name__}")
+        return False
+    try:
+        rows = store.all()
+        index = next(i for i, row in enumerate(rows) if row.id == routine.id)
+        panel._routine_page = index // 3
+    except Exception as exc:  # the write succeeded; do not claim it failed
+        _say(shell, f"Routine list refresh: {type(exc).__name__}")
+    time_field.clear()
+    command_field.clear()
+    panel.refresh()
+    report("ui.page.routines.created")
     return True
 
 
-def routine_toggle(shell: "AmbientShell", index: int) -> bool:
-    """Board 11's pause toggle for the routine at `index` in the store."""
+def routine_toggle(shell: "AmbientShell", routine_id: str, enabled: bool) -> bool:
+    """Change the routine identified by the painted row, not a moving index."""
     from memory.routine_store import default_store
-
-    routines = default_store().all()
-    if index < 0 or index >= len(routines):
-        _say(shell, "Tidak ada rutinitas di slot itu.")
+    if not isinstance(routine_id, str) or not routine_id:
         return False
-    toggled = default_store().set_enabled(routines[index].id,
-                                          not routines[index].enabled)
+    try:
+        toggled = default_store().set_enabled(routine_id, bool(enabled))
+    except Exception as exc:  # noqa: BLE001
+        _say(shell, f"Rutinitas tidak bisa diubah — {type(exc).__name__}.")
+        return False
     if toggled is None:
-        _say(shell, "Rutinitas tidak bisa diubah.")
+        _say(shell, "Rutinitas tidak ditemukan.")
         return False
     _refresh(shell)
     _say(shell, _t("ui.page.routines.resumed") if toggled.enabled
@@ -394,17 +422,18 @@ def routine_toggle(shell: "AmbientShell", index: int) -> bool:
     return True
 
 
-def routine_delete(shell: "AmbientShell", index: int) -> bool:
-    """Board 11's delete for the routine at `index` in the store."""
+def routine_delete(shell: "AmbientShell", routine_id: str) -> bool:
+    """Delete only the identity shown in the row at the time it was painted."""
     from memory.routine_store import default_store
-
-    routines = default_store().all()
-    if index < 0 or index >= len(routines):
-        _say(shell, "Tidak ada rutinitas di slot itu.")
+    if not isinstance(routine_id, str) or not routine_id:
         return False
-    removed = default_store().remove(routines[index].id)
+    try:
+        removed = default_store().remove(routine_id)
+    except Exception as exc:  # noqa: BLE001
+        _say(shell, f"Rutinitas tidak bisa dihapus — {type(exc).__name__}.")
+        return False
     if not removed:
-        _say(shell, "Rutinitas tidak bisa dihapus.")
+        _say(shell, "Rutinitas tidak ditemukan.")
         return False
     _refresh(shell)
     _say(shell, _t("ui.page.routines.deleted"))
@@ -430,110 +459,27 @@ def install_mode(shell: "AmbientShell", index: int) -> bool:
 
 
 def form_fill_apply(shell: "AmbientShell") -> bool:
-    """Board 13's review-and-apply button."""
-    from actions.browser_form import fill_form_to_page
-    from core.form_fill import FormFillError, FormFillPlan
-
-    panel = getattr(shell, "_panel", None)
-    if panel is None:
-        return False
-
-    def _read(key: str) -> str:
-        edit = panel._inputs.get(key)
-        try:
-            return str(edit.text() or "").strip() if edit is not None else ""
-        except Exception:                          # noqa: BLE001
-            return ""
-
-    values = {f"hp_form_input:{i}": _read(f"hp_form_input:{i}") for i in range(3)}
-    url = _read("hp_form_url")
-    if not url:
-        _say(shell, _t("ui.page.help.form_no_url"))
-        return False
-    fields = {f"#field{i}": v for i, v in enumerate(values.values())}
-    try:
-        plan = FormFillPlan.build(url, fields).review()
-    except FormFillError as e:
-        panel._form_fill = {"status": "failed", "detail": str(e), "values": {}}
-        panel.refresh()
-        _say(shell, str(e))
-        return False
-
-    failed = [r for r in fill_form_to_page(
-        plan.page_url, {e.selector: e.value for e in plan.entries}) if not r.ok]
-    panel._form_fill = {
-        "status": "failed" if failed else "applied",
-        "detail": "; ".join(r.detail for r in failed),
-        "values": values,
-    }
-    panel.refresh()
-    if failed:
-        _say(shell, _t("ui.page.help.form_failed", detail=panel._form_fill["detail"]))
-        return False
-    _say(shell, _t("ui.page.help.form_applied"))
-    return True
+    """The panel has no reviewed, same-page form filling integration."""
+    _say(shell, _t("ui.page.help.form_unavailable"))
+    return False
 
 
-def _phone_session(shell):
-    """The panel's pairing session, created on first use."""
-    from core.phone_pairing import PairingSession
-
-    panel = getattr(shell, "_panel", None)
-    if panel is None:
-        return None, None
-    session = getattr(panel, "_phone_pair", None)
-    if session is None:
-        session = PairingSession()
-        panel._phone_pair = session
-    return panel, session
+def _phone_unavailable(shell) -> bool:
+    # A local policy object is not a network pairing or a connected device.
+    _say(shell, _t("ui.page.plugins.phone_panel_unavailable"))
+    return False
 
 
 def phone_make_code(shell: "AmbientShell") -> bool:
-    """Board 16: mint a fresh one-time pairing code."""
-    panel, session = _phone_session(shell)
-    if session is None:
-        return False
-    session.mint_code()
-    panel.refresh()
-    code = session.pending_code
-    _say(shell, _t("ui.page.plugins.phone_code_shown", code=code.code,
-                  secs=int(code.expires_at - session._clock())))
-    return True
+    return _phone_unavailable(shell)
 
 
 def phone_pair(shell: "AmbientShell") -> bool:
-    """Board 16: pair a device against the pending code."""
-    panel, session = _phone_session(shell)
-    if session is None:
-        return False
-    code = session.pending_code
-    if code is None:
-        _say(shell, _t("ui.page.plugins.phone_no_code"))
-        return False
-    try:
-        device = session.consume_code(code.code, "Ponsel")
-    except Exception as e:                          # noqa: BLE001
-        panel.refresh()
-        _say(shell, _t("ui.page.plugins.phone_pair_failed", detail=str(e)))
-        return False
-    panel.refresh()
-    _say(shell, _t("ui.page.plugins.phone_paired_ok", name=device.name))
-    return True
+    return _phone_unavailable(shell)
 
 
 def phone_unpair(shell: "AmbientShell") -> bool:
-    """Board 16: disconnect the most recently paired device."""
-    panel, session = _phone_session(shell)
-    if session is None or not session.devices:
-        _say(shell, _t("ui.page.plugins.phone_idle"))
-        return False
-    removed = session.devices.pop()
-    if session.handoff_target == removed.name:
-        session.handoff_target = (session.devices[-1].name
-                                  if session.devices else None)
-    panel.refresh()
-    _say(shell, _t("ui.page.plugins.phone_unpaired"))
-    return True
+    return _phone_unavailable(shell)
 
 
 def installer_run(shell: "AmbientShell") -> bool:

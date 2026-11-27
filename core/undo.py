@@ -51,6 +51,7 @@ class _Entry:
     label:   str                    # human sentence, spoken back to the user
     undo:    Callable[[], str]      # returns a short result string
     at:      float = field(default_factory=time.monotonic)
+    token:   object = field(default_factory=object, repr=False)
 
 
 _stack: list[_Entry] = []
@@ -91,6 +92,35 @@ def history() -> list[str]:
     """Most recent first — used by the UI panel and the `undo` tool's list mode."""
     with _lock:
         return [e.label for e in reversed(_stack)]
+
+
+def history_with_tokens() -> list[tuple[object, str]]:
+    """One atomic newest-first snapshot; tokens identify entries, not labels."""
+    with _lock:
+        return [(entry.token, entry.label) for entry in reversed(_stack)]
+
+
+def undo_if_current(token: object) -> tuple[bool, str]:
+    """Undo only if the exact displayed entry is still the top of the stack."""
+    with _lock:
+        if not _stack or _stack[-1].token is not token:
+            return False, "changed"
+        entry = _stack.pop()
+    try:
+        detail = entry.undo() or ""
+    except Exception as exc:  # noqa: BLE001
+        return False, f"Could not undo '{entry.label}': {exc}"
+    return True, f"Undo attempted: {entry.label}." + (f" {detail}" if detail else "")
+
+
+def clear_if_unchanged(tokens: tuple[object, ...]) -> bool:
+    """Forget the stack only if it still matches the user's displayed snapshot."""
+    with _lock:
+        current = [entry.token for entry in reversed(_stack)]
+        if len(current) != len(tokens) or any(a is not b for a, b in zip(current, tokens)):
+            return False
+        _stack.clear()
+        return True
 
 
 def undo_last() -> str:

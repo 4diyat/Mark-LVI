@@ -271,13 +271,12 @@ def test_the_orb_opens_the_tray_panel_and_not_the_command_bar():
 
 
 def test_the_command_bar_is_still_reachable_by_chord():
-    """Moving the orb's left click must not orphan the bar: Ctrl+Space is what
-    board 3 promises, and it is bound separately."""
+    """Moving the orb's left click must not orphan the bar: The bar uses a distinct chord from push-to-talk."""
     from pathlib import Path
 
     source = (Path(__file__).resolve().parent.parent
               / "ui" / "ambient_shell.py").read_text(encoding="utf-8")
-    assert 'BAR_CHORD = ("ctrl", "space")' in source
+    assert 'BAR_CHORD = ("ctrl", "alt", "b")' in source
 
 
 # ── 4. the snap is wired into the release, not just available ─────────────

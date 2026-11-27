@@ -20,7 +20,7 @@ across.
 """
 from __future__ import annotations
 
-from ui.tray_pages import GEOMETRY, PALETTES, _at
+from ui.tray_pages import GEOMETRY, _at
 
 from ui.page_kit import BODY_TOP, CARD_H, MARGIN, ROW_PITCH, at
 from ui.page_registry import PAGES
@@ -44,13 +44,14 @@ def cells() -> list[tuple[int, int, int, int]]:
     for index in range(len(PAGES)):
         column, row = divmod(index, PER_COLUMN)
         x = MARGIN + column * (COL_W + COL_GAP)
-        y = BODY_TOP + row * ROW_PITCH
+        y = BODY_TOP + 14 + row * ROW_PITCH
         out.append((int(x), int(y), int(COL_W), int(CARD_H)))
     return out
 
 
 def build_more(panel, page) -> None:
     """The page that lists the pages."""
+    from PyQt6.QtCore import Qt
     from PyQt6.QtWidgets import QLabel, QPushButton
 
 
@@ -70,17 +71,21 @@ def build_more(panel, page) -> None:
             page, QLabel, rect[0] + 14, rect[1] + 10, rect[2] - 28, 16, "")
         panel._labels[f"more_name:{key}"] = _at(
             page, QLabel, rect[0] + 14, rect[1] + 30, rect[2] - 28, 22, "")
-        panel._labels[f"more_name:{key}"].setStyleSheet(
-            f"color:{PALETTES['dark']['text']};")
-        panel._labels[f"more_board:{key}"].setStyleSheet(
-            f"color:{PALETTES['dark']['muted']};")
+        for label in (panel._labels[f"more_name:{key}"],
+                      panel._labels[f"more_board:{key}"]):
+            label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         button.clicked.connect(
             lambda _checked=False, k=key: panel._call("page", k))
         panel._buttons[f"more:{key}"] = button
 
+    workspace = QPushButton("", page)
+    workspace.setGeometry(238, 508, 198, 62)
+    workspace.clicked.connect(lambda: panel._call("open_workspace"))
+    panel._buttons["more_workspace"] = workspace
+
     back = QPushButton("", page)
     back.setGeometry(*g["more_back"])
-    back.clicked.connect(lambda: panel._call("page", "main"))
+    back.clicked.connect(lambda _checked=False: panel.go_back())
     panel._buttons["more_back"] = back
 
 

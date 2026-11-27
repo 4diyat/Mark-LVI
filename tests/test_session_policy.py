@@ -255,3 +255,15 @@ def test_the_loop_no_longer_carries_its_own_quota_message():
     source = (ROOT / "main.py").read_text(encoding="utf-8")
     assert "Every live model is rate-limited" not in source
     assert "the previous model is out of quota" not in source
+
+
+def test_connection_backoff_is_initialized_before_first_failure():
+    """The first failed connection must not crash while deciding to retry."""
+    import ast
+    from pathlib import Path
+    tree = ast.parse((Path(__file__).resolve().parent.parent / "main.py").read_text())
+    cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "JarvisLive")
+    init = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == "__init__")
+    assert any(isinstance(n, ast.Assign) and isinstance(n.value, ast.Constant)
+               and n.value.value == 0 and any(isinstance(t, ast.Attribute)
+               and t.attr == "_conn_backoff" for t in n.targets) for n in ast.walk(init))

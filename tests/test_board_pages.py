@@ -411,11 +411,7 @@ def test_board_11_pause_button_flips_the_engines_flag(monkeypatch, tmp_path):
 
 
 def test_board_13_form_fill_refuses_an_unreviewed_url(monkeypatch):
-    """Board 13's apply button builds a plan through the pure policy.
-
-    With no URL in the field it says so and returns False without touching the
-    browser — the review-first gate the board's strip promises.
-    """
+    """No URL or other input can invoke the unavailable panel adapter."""
     from ui import pages_actions
 
     monkeypatch.setattr(pages_actions, "_say", lambda shell, text: None)
@@ -431,42 +427,15 @@ def test_board_13_form_fill_refuses_an_unreviewed_url(monkeypatch):
     assert pages_actions.form_fill_apply(Shell()) is False
 
 
-def test_board_13_form_fill_reviews_before_applying(monkeypatch):
-    """A reviewed plan is driven into the browser adapter.
-
-    The URL and three field values are read from the inputs, the plan is built
-    and reviewed (the "tinjau dulu" gate), then the adapter is called with the
-    reviewed plan's fields. A failed fill is reported and returns False.
-    """
+def test_board_13_form_fill_refuses_direct_application(monkeypatch):
+    """A policy review is not user review; no browser action is wired yet."""
     from ui import pages_actions
-
-    called = {}
-
-    def fake_fill(page_url, fields):
-        called["page_url"] = page_url
-        called["fields"] = fields
-        return [type("R", (), {"selector": k, "ok": True, "detail": "ok"})()
-                for k in fields]
-
-    monkeypatch.setattr("actions.browser_form.fill_form_to_page", fake_fill)
-    monkeypatch.setattr(pages_actions, "_say", lambda shell, text: None)
-
-    class Panel:
-        _inputs = {
-            "hp_form_url": type("E", (), {"text": lambda self: "https://x.test/f"})(),
-            "hp_form_input:0": type("E", (), {"text": lambda self: "Alice"})(),
-            "hp_form_input:1": type("E", (), {"text": lambda self: "42"})(),
-            "hp_form_input:2": type("E", (), {"text": lambda self: "100"})(),
-        }
-        def refresh(self):
-            pass
-
-    class Shell:
-        _panel = Panel()
-
-    assert pages_actions.form_fill_apply(Shell()) is True
-    assert called["page_url"] == "https://x.test/f"
-    assert called["fields"]["#field0"] == "Alice"
+    calls = []
+    monkeypatch.setattr("actions.browser_form.fill_form_to_page",
+                        lambda *args: calls.append(args))
+    monkeypatch.setattr(pages_actions, "_say", lambda *_: None)
+    assert pages_actions.form_fill_apply(object()) is False
+    assert calls == []
 
 
 # ── board 12: the clipboard is read, and the sensitive label is a pattern ───
@@ -506,13 +475,18 @@ def test_board_12_search_refreshes_the_page(panel_module, monkeypatch):
     from ui import pages_people
 
     monkeypatch.setattr(pages_people, "find_files",
-                        lambda query, limit=3: [f"{query}-1.pdf", f"{query}-2.pdf"])
+                        lambda query, *, cancel: [f"{query}-1.pdf", f"{query}-2.pdf"])
     panel = tray_panel.TrayPanel({})
     panel.open()
     panel.set_page("tools")
     tray_paint.paint(panel, panel.snapshot)
 
-    panel.run_search("faktur")
+    import time
+    assert panel.run_search("faktur")
+    deadline = time.monotonic() + 3
+    while panel.search_status == "searching" and time.monotonic() < deadline:
+        panel.poll_search()
+        time.sleep(0.005)
     assert panel.hits == ("faktur-1.pdf", "faktur-2.pdf")
     assert panel._labels["tl_hit:0"].text() == "faktur-1.pdf", (
         "the hits were stored and the page was not repainted")
@@ -694,52 +668,20 @@ def test_board_16_toggle_writes_the_loaders_store(monkeypatch):
     assert written == {"quick_notes": True}
 
 
-def test_board_16_phone_pairing_mints_and_pairs(monkeypatch):
-    """Board 16's pairing controls drive the pure policy end to end.
-
-    Generate mints a one-time code the policy will accept; pair consumes it and
-    records a device; unpair removes it. Each step repaints so the card and the
-    code box agree with the session's state.
-    """
+def test_board_16_phone_controls_refuse_simulated_pairing(monkeypatch):
     from ui import pages_actions
-
-    monkeypatch.setattr(pages_actions, "_say", lambda shell, text: None)
-
+    messages = []
+    monkeypatch.setattr(pages_actions, "_say", lambda shell, text: messages.append(text))
     class Panel:
-        def refresh(self):
-            pass
-
+        pass
     class Shell:
         _panel = Panel()
-
-    # Mint a code, then pair against it.
-    assert pages_actions.phone_make_code(Shell()) is True
-    assert pages_actions.phone_pair(Shell()) is True
-    session = Shell._panel._phone_pair
-    assert session.paired_names() == ["Ponsel"]
-
-    # Unpair drops the most recent device and returns the card to idle.
-    assert pages_actions.phone_unpair(Shell()) is True
-    assert session.paired_names() == []
-    # With no device left, another unpair says so and returns False.
-    assert pages_actions.phone_unpair(Shell()) is False
-
-
-def test_board_16_phone_pair_without_a_code_is_refused(monkeypatch):
-    """Pairing with no pending code says so and returns False."""
-    from ui import pages_actions
-
-    monkeypatch.setattr(pages_actions, "_say", lambda shell, text: None)
-
-    class Panel:
-        def refresh(self):
-            pass
-
-    class Shell:
-        _panel = Panel()
-
-    assert pages_actions.phone_pair(Shell()) is False
-    assert pages_actions.phone_unpair(Shell()) is False
+    shell = Shell()
+    assert not pages_actions.phone_make_code(shell)
+    assert not pages_actions.phone_pair(shell)
+    assert not pages_actions.phone_unpair(shell)
+    assert not hasattr(shell._panel, "_phone_pair")
+    assert len(messages) == 3
 
 
 def test_board_16_rows_report_manifest_facts_not_provenance(panel_module):
@@ -1083,3 +1025,160 @@ def test_mark_safe_belongs_to_the_text_not_the_page(panel_module, monkeypatch):
     assert panel._marked_safe is False, (
         "the mark followed the clipboard to text it was never given for")
     assert "Terdeteksi" in panel._labels["tl_kind"].text()
+
+
+def test_clipboard_read_failure_is_not_shown_as_empty_or_safe(panel_module, monkeypatch):
+    tray_panel, _ = panel_module
+    from ui import pages_people
+    monkeypatch.setattr(pages_people, 'clipboard_text', lambda: None)
+    panel = tray_panel.TrayPanel({})
+    assert panel.open() and panel.set_page('tools')
+    assert panel._labels['tl_clip'].text() == 'Clipboard tidak tersedia'
+    assert panel._labels['tl_kind'].text() == ''
+    for name in ('copy', 'safe', 'clear'):
+        assert not panel._buttons[f'tl_{name}'].isEnabled()
+
+
+def test_clipboard_empty_is_not_called_scanned_or_markable(panel_module, monkeypatch):
+    tray_panel, _ = panel_module
+    from ui import pages_people
+    monkeypatch.setattr(pages_people, 'clipboard_text', lambda: '')
+    panel = tray_panel.TrayPanel({})
+    assert panel.open() and panel.set_page('tools')
+    assert panel._labels['tl_clip'].text() == 'Clipboard teks kosong'
+    assert panel._labels['tl_kind'].text() == ''
+    for name in ('copy', 'safe', 'clear'):
+        assert not panel._buttons[f'tl_{name}'].isEnabled()
+
+
+def test_mark_safe_refuses_changed_or_unavailable_clipboard(panel_module, monkeypatch):
+    tray_panel, _ = panel_module
+    from ui import pages_people, pages_actions
+    current = {'text': '1234 5678 9012 3456'}
+    monkeypatch.setattr(pages_people, 'clipboard_text', lambda: current['text'])
+    messages = []
+    monkeypatch.setattr(pages_actions, '_say', lambda _shell, message: messages.append(message))
+    panel = tray_panel.TrayPanel({})
+    assert panel.open() and panel.set_page('tools')
+    shell = type('Shell', (), {'_panel': panel})()
+    current['text'] = 'sk-abcdefghijklmnop'
+    assert not pages_actions.tools_mark_safe(shell)
+    assert not panel._marked_safe
+    assert panel._marked_text == current['text']
+    assert pages_actions.tools_mark_safe(shell)
+    assert panel._marked_safe
+    current['text'] = None
+    assert not pages_actions.tools_mark_safe(shell)
+    assert not panel._marked_safe
+
+
+def test_clipboard_read_failure_is_distinct_from_empty(monkeypatch):
+    from actions import computer_control
+    from ui.pages_people import clipboard_text
+    class Broken:
+        def paste(self):
+            raise OSError('clipboard unavailable')
+    monkeypatch.setattr(computer_control, 'pyperclip', Broken())
+    assert clipboard_text() is None
+
+
+def test_clear_does_not_erase_a_clipboard_that_changed_since_display(panel_module, monkeypatch):
+    tray_panel, _ = panel_module
+    from ui import pages_people, pages_actions
+    current = {'text': 'displayed text'}
+    monkeypatch.setattr(pages_people, 'clipboard_text', lambda: current['text'])
+    written = []
+    monkeypatch.setattr(pages_actions, '_clipboard_set', lambda *args: written.append(args) or True)
+    monkeypatch.setattr(pages_actions, '_say', lambda *_: None)
+    panel = tray_panel.TrayPanel({})
+    assert panel.open() and panel.set_page('tools')
+    shell = type('Shell', (), {'_panel': panel})()
+    current['text'] = 'new clipboard text'
+    assert not pages_actions.tools_clear(shell)
+    assert not written
+    assert panel._marked_text == current['text']
+    assert pages_actions.tools_clear(shell)
+    assert len(written) == 1
+
+
+def test_tools_search_statuses_are_visible_and_not_misreported(panel_module, monkeypatch):
+    import time
+    tray_panel, _ = panel_module
+    from ui import pages_people
+    monkeypatch.setattr(pages_people, 'clipboard_text', lambda: None)
+    def fail(query, *, cancel):
+        raise PermissionError('denied')
+    monkeypatch.setattr(pages_people, 'find_files', fail)
+    panel = tray_panel.TrayPanel({})
+    assert panel.open() and panel.set_page('tools')
+    assert 'Enter' in panel._labels['tl_hit:0'].text()
+    assert not panel.run_search('ab')
+    assert '3+' in panel._labels['tl_hit:0'].text()
+    assert panel.run_search('valid')
+    deadline = time.monotonic() + 3
+    while panel.search_status == 'searching' and time.monotonic() < deadline:
+        panel.poll_search()
+        time.sleep(0.005)
+    assert panel.search_status == 'error'
+    assert panel._labels['tl_hit:0'].text() == 'Pencarian tidak tersedia'
+    assert panel.hits == ()
+
+
+def test_back_follows_navigation_and_returns_to_an_ancestor(panel_module):
+    tray_panel, _ = panel_module
+    panel = tray_panel.TrayPanel({})
+    assert panel.open()
+    assert panel.set_page('more')
+    assert panel.set_page('memory')
+    assert panel.set_page('memory_one')
+    # A successful delete returns directly to memory; Back must not reopen
+    # the now-deleted detail page.
+    assert panel.set_page('memory')
+    assert panel.go_back() and panel.page == 'more'
+    assert panel.go_back() and panel.page == 'main'
+    assert not panel.go_back()
+    assert not panel.set_page('not-a-page')
+    assert panel.page == 'main'
+
+
+def test_contrast_refuses_failed_save_and_invalid_level(monkeypatch):
+    from ui import pages_actions
+    from memory import config_manager
+    applied, messages = [], []
+    monkeypatch.setattr(config_manager, 'save_high_contrast', lambda high: False)
+    monkeypatch.setattr(pages_actions, '_say', lambda _shell, text: messages.append(text))
+    panel = type('Panel', (), {'set_high_contrast': lambda self, high: applied.append(high)})()
+    shell = type('Shell', (), {'_panel': panel})()
+    assert not pages_actions.contrast_set(shell, 'high')
+    assert not applied
+    assert not pages_actions.contrast_set(shell, 'invalid')
+    assert not applied
+    assert messages
+
+
+def test_routine_builder_does_not_create_a_job_without_a_command(panel_module, monkeypatch):
+    tray_panel, _ = panel_module
+    from ui import pages_actions
+    from memory import routine_store
+    writes = []
+    monkeypatch.setattr(pages_actions, '_say', lambda *_: None)
+    panel = tray_panel.TrayPanel({})
+    assert panel.open() and panel.set_page('routines')
+    monkeypatch.setattr(routine_store, 'default_store', lambda: writes.append('opened'))
+    panel._inputs['rt_builder_edit'].setText('07:00')
+    shell = type('Shell', (), {'_panel': panel})()
+    assert not pages_actions.routine_create(shell)
+    assert not writes
+    assert panel._inputs['rt_builder_edit'].text() == '07:00'
+
+
+def test_routine_store_unavailable_is_not_reported_as_empty(panel_module, monkeypatch):
+    tray_panel, _ = panel_module
+    from ui import pages_people
+    monkeypatch.setattr(pages_people, 'routines', lambda: None)
+    panel = tray_panel.TrayPanel({})
+    assert panel.open() and panel.set_page('routines')
+    assert panel._labels['rt_name:0'].text() == 'Rutinitas tidak tersedia'
+    assert 'Tidak diketahui' in panel._labels['subtitle'].text()
+    assert not panel._buttons['rt_toggle:0'].isVisible()
+    assert not panel._buttons['rt_delete:0'].isVisible()

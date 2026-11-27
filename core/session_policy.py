@@ -107,7 +107,8 @@ def looks_like_quota(message: str) -> bool:
 def looks_like_network(message: str) -> bool:
     return _has(message,
                 "timeouterror", "timed out", "getaddrinfo", "cancellederror",
-                "connectionrefusederror", "oserror", "cannot connect",
+                "connectionrefusederror", "connectionreseterror", "connectionabortederror",
+                "oserror", "cannot connect",
                 "connection reset", "connection aborted", "network is unreachable",
                 "temporary failure in name resolution", "ssl", "handshake")
 

@@ -9,11 +9,11 @@ WHY IT IS ITS OWN FILE
     touches is either `page_kit` geometry or its own small store, so it has no
     reason to live beside the plugin and installer pages.
 
-WHAT IT DOES NOT CHANGE
-    The coordinates are `b15()`'s, unchanged and still compared by
-    `tests/test_board_conformance.py`. The three slots the artboard draws that
-    this build cannot fill (Campur, high contrast, gesture rebinding) still say
-    so in place, per the owner's fidelity ruling.
+LIMITATIONS
+    Language and panel contrast work. Text scaling, reduced motion and custom
+    gesture bindings are unavailable until their renderers/controllers consume
+    the stored preferences; their controls must not claim otherwise.
+
 """
 from __future__ import annotations
 

@@ -147,6 +147,9 @@ def test_find_a_file_opens_the_bar_and_prefills_a_request(wiring, monkeypatch):
         def setText(self, text):
             self.value = text
 
+        def text(self):
+            return self.value
+
         def setFocus(self):
             self.focused = True
 
@@ -232,17 +235,14 @@ def test_erasing_local_data_empties_the_audit_and_says_what_it_did_not_touch(
 
 # ── permissions and guest mode ─────────────────────────────────────────────
 
-def test_a_real_switch_writes_plugin_enablement(wiring, monkeypatch):
+def test_builtin_action_permissions_do_not_write_ineffective_plugin_flags(wiring, monkeypatch):
     from memory import config_manager
-
     written = []
     monkeypatch.setattr(config_manager, "save_plugin_enabled",
                         lambda name, on: written.append((name, on)) or True)
-
-    assert wiring.set_permission(FakeShell(), "files", False) is True
-    assert written == [("file_controller", False)]
-    assert wiring.set_permission(FakeShell(), "apps", True) is True
-    assert written[-1] == ("computer_control", True)
+    assert wiring.set_permission(FakeShell(), "files", False) is False
+    assert wiring.set_permission(FakeShell(), "apps", True) is False
+    assert written == []
 
 
 def test_a_switch_with_nothing_behind_it_is_refused_by_name(wiring):
@@ -289,16 +289,16 @@ def test_every_key_the_panel_can_press_has_a_handler(wiring):
 
         actions = wiring.actions_for(FakeShell())
         assert set(actions) == {
-            "presence_set", "quick", "permission", "undo", "history_export",
-            "history_clear", "erase", "export_audit", "command", "theme",
+            "presence_set", "quick", "permission", "undo", "undo_guarded", "history_export",
+            "history_clear", "history_clear_guarded", "erase", "export_audit", "command", "theme",
             # The thirteen board pages (`ui/pages_actions.py`). Each one is a
             # store write reached by a click, and each has a test of its own
             # below; this set is what proves the panel's buttons have somewhere
             # to land at all.
-                "memory_forget", "memory_clear", "routines_pause",
+                "memory_forget", "memory_clear", "open_workspace", "routines_pause",
                 "routine_create", "routine_toggle", "routine_delete",
                 "tools_copy",
-                "tools_clear", "tools_safe", "tools_layout", "plugin_toggle", "consent",
+                "tools_clear", "tools_safe", "tools_layout", "plugin_toggle", "plugins_list", "consent",
                 # Board 7's four-step onboarding ladder: advance, back, and
                 # the presence-mode toggle the presence step reuses the switch for.
                 "onboard_next", "onboard_back", "onboard_toggle",
@@ -327,7 +327,7 @@ def test_every_key_the_panel_can_press_has_a_handler(wiring):
         assert panel.open() is True
         pressed = {key.split(":", 1)[0] for key in panel._buttons}
         assert pressed <= {"mode", "quick", "perm", "p6", "p6_export",
-                           "p6_clear", "undo", "export", "clear", "erase",
+                           "p6_clear", "undo", "history_prev", "history_next", "export", "clear", "erase",
                            "send", "theme",
                            # the board pages' controls, by their real
                            # prefixes — this set is what makes a NEW control
@@ -335,12 +335,12 @@ def test_every_key_the_panel_can_press_has_a_handler(wiring):
                            "mem_add", "mem_clear", "mem_open", "m1_back",
                            "m1_forget", "m1_export", "rt_pause", "tl_clear", "tl_copy",
                            "tl_snap_thumb",
-                           "l18_clear", "l18_export", "cn_toggle", "hp_read",
+                           "l18_clear", "l18_export", "cn_toggle", "hp_read", "hp_dictate_tools",
                            "tl_safe", "cn_allow", "cn_deny", "ac_lang",
-                           "ac_motion", "ac_scale", "pl_toggle", "in_pick",
+                           "ac_motion", "ac_scale", "pl_toggle", "pl_prev", "pl_next", "in_pick",
                            # board 15's gesture "ubah" cells, by prefix
                            "ac_gest_edit",
-                           "more", "more_back",
+                           "more", "more_back", "more_workspace",
                            # board 14's voice-verification controls, by the
                            # object names the security page gives them
                            "va_toggle", "va_enroll", "va_delete",
@@ -349,7 +349,7 @@ def test_every_key_the_panel_can_press_has_a_handler(wiring):
                            # board 15's contrast slots, by their prefix
                            "ac_contrast",
                            # board 11's routine controls, by prefix
-                           "rt_toggle", "rt_delete", "rt_builder_create",
+                           "rt_toggle", "rt_delete", "rt_builder_create", "rt_prev", "rt_next",
                            # board 13's form-fill apply button, by prefix
                            "hp_form_apply",
                            # board 16's phone pairing controls, by prefix
@@ -361,7 +361,7 @@ def test_every_key_the_panel_can_press_has_a_handler(wiring):
                            # so they have no entry in `actions` — but they are
                            # real controls and must be named here so a new one
                            # cannot be added silently.
-                           "nav"}
+                           "nav", "panel_back", "panel_close", "tl_quick"}
         # `p6*` replaced `permx` when board 6 replaced 06a on the privacy page:
         # the four rows keep the `p6:` prefix, its two buttons are `p6_clear`
         # and `p6_export`, and the history page keeps its own `clear`/`export`.

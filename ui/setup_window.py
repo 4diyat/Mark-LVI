@@ -315,6 +315,8 @@ class SetupWindow:
                                   _t("ui.setup.title"))
         labels["subtitle"] = _placed(window, QLabel, 24, 60, 412, 40,
                                      _t("ui.setup.subtitle"))
+        labels["subtitle"].setWordWrap(True)
+        labels["title"].setStyleSheet("color:#f3f8ff;font-size:20px;font-weight:700;")
         # The only progress the screen can honestly show: one screen, one step.
         # A four-segment bar like board 7's would promise three more screens
         # that do not exist.
@@ -341,6 +343,14 @@ class SetupWindow:
         labels["result"].setWordWrap(True)
         labels["footer"] = _placed(window, QLabel, 24, SETUP_H - 88, 412, 60,
                                    _t("ui.setup.footer"))
+        labels["footer"].setWordWrap(True)
+        # Decoration only: this is not a session or microphone indicator.
+        try:
+            from ui.brand_art import brand_pixmap
+            labels["brand"] = _placed(window, QLabel, 180, 424, 100, 100, "")
+            labels["brand"].setPixmap(brand_pixmap(100))
+        except Exception as exc:  # noqa: BLE001
+            self._note(f"brand art unavailable: {exc}")
         # THE X BUTTON IS NOT A SKIP BUTTON, and Qt gives every window one.
         # Without this handler, closing the window hid it and left
         # `wait_for_api_key` waiting on a screen nobody could see — the exact

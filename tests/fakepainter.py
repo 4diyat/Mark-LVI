@@ -279,7 +279,10 @@ def install_fake_qt_gui() -> types.ModuleType:
 
     core = types.ModuleType("PyQt6.QtCore")
 
-    class Qt:                                   # the two enums the painter uses
+    class Qt:                                   # the enums the painters use
+        class PenStyle:
+            NoPen = 'none'
+
         class PenCapStyle:
             RoundCap = "round"
             SquareCap = "square"

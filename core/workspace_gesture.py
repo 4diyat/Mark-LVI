@@ -48,6 +48,19 @@ def _hand_measurement(points):
     return (max(0., min(1., 1 - x)), max(0., min(1., y)), pinch, scroll, distance / palm, claw)
 
 
+def preview_landmarks(points):
+    """Return mirrored 21-point coordinates, or nothing for invalid input."""
+    if len(points) != 21:
+        return ()
+    try:
+        values = [(float(p.x), float(p.y)) for p in points]
+        if not all(math.isfinite(v) for pair in values for v in pair):
+            return ()
+        return tuple((max(0., min(1., 1 - x)), max(0., min(1., y))) for x, y in values)
+    except (TypeError, ValueError, AttributeError, OverflowError):
+        return ()
+
+
 def hand_sample(points):
     """Public four-field sample; the worker also uses the raw pinch ratio."""
     measured = _hand_measurement(points)
@@ -133,6 +146,9 @@ class WorkspaceHandController:
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._sample = None
+        self._landmarks = None
+        self._preview = None
+        self._preview_enabled = False
         self._cancel_pending = False
         self._unseen_transitions = 0
         self._await_open = False
@@ -149,6 +165,7 @@ class WorkspaceHandController:
                 self.status = 'windows_only'
                 return False
             self._sample = None
+            self._landmarks = None
             self._cancel_pending = False
             self._unseen_transitions = 0
             self._await_open = False
@@ -163,10 +180,13 @@ class WorkspaceHandController:
         self._stop.set()
         with self._lock:
             self._sample = None
+            self._landmarks = None
+            self._preview = None
+            self._preview_enabled = False
             if self.status in ('active', 'starting'):
                 self.status = 'off'
 
-    def _publish(self, values):
+    def _publish(self, values, landmarks=None):
         """Preserve tracking interruptions even when newer frames arrive first."""
         with self._lock:
             if self._stop.is_set():
@@ -185,6 +205,35 @@ class WorkspaceHandController:
                     if self._unseen_transitions > 1:
                         self._cancel_pending = True
             self._sample = (now, values)
+            self._landmarks = (now, landmarks) if values and landmarks else None
+
+    def set_preview_enabled(self, enabled):
+        """Publish temporary camera frames only while the voice view is visible."""
+        with self._lock:
+            self._preview_enabled = bool(enabled)
+            if not enabled:
+                self._preview = None
+
+    def preview(self):
+        """Latest in-memory JPEG, or nothing if disabled, stopped or stale."""
+        with self._lock:
+            data = self._preview
+            if not self._preview_enabled or self._stop.is_set() or not data or time.monotonic() - data[0] > .35:
+                return b''
+            return data[1]
+
+    def _publish_preview(self, jpeg):
+        with self._lock:
+            if self._preview_enabled and not self._stop.is_set():
+                self._preview = (time.monotonic(), bytes(jpeg))
+
+    def landmarks(self):
+        """Latest real landmark coordinates, never stale or retained after stop."""
+        with self._lock:
+            data = self._landmarks
+            if self._stop.is_set() or not data or time.monotonic() - data[0] > .35:
+                return ()
+            return data[1]
 
     def sample(self):
         with self._lock:
@@ -237,11 +286,10 @@ class WorkspaceHandController:
                         pass
             hands = mp.solutions.hands.Hands(max_num_hands=2, min_detection_confidence=.75,
                                             min_tracking_confidence=.75)
-            with self._lock:
-                if self._stop.is_set():
-                    return
-                self.status = 'active'
+            if self._stop.is_set():
+                return
             failures = 0
+            last_preview = 0.0
             stabilizer = HandStabilizer()
             while not self._stop.is_set():
                 ok, frame = cap.read()
@@ -257,9 +305,31 @@ class WorkspaceHandController:
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 rgb.flags.writeable = False
                 result = hands.process(rgb)
-                values = [_hand_measurement(hand.landmark) for hand in (result.multi_hand_landmarks or [])]
+                # The camera image never leaves memory and is produced only for
+                # a visible voice view. A failed preview must not stop tracking.
+                now = time.monotonic()
+                with self._lock:
+                    wants_preview = self._preview_enabled
+                if wants_preview and now - last_preview >= .10:
+                    last_preview = now
+                    try:
+                        image = cv2.resize(cv2.flip(frame, 1), (224, 110))
+                        ok, encoded = cv2.imencode('.jpg', image, [cv2.IMWRITE_JPEG_QUALITY, 70])
+                        if ok:
+                            self._publish_preview(encoded.tobytes())
+                    except Exception:  # noqa: BLE001, S110 — preview is optional
+                        pass
+                detected = result.multi_hand_landmarks or []
+                values = [_hand_measurement(hand.landmark) for hand in detected]
                 values = stabilizer.update(v for v in values if v is not None)
-                self._publish(values)
+                # Show landmarks only when a single hand is unambiguous. No
+                # camera frame is required for the landmark data itself.
+                points = preview_landmarks(detected[0].landmark) if len(detected) == len(values) == 1 else ()
+                with self._lock:
+                    if self._stop.is_set():
+                        break
+                    self.status = 'active'
+                self._publish(values, points)
         except Exception as exc:
             self.error, self.status = str(exc), 'error'
         finally:

@@ -135,3 +135,19 @@ def test_the_outcome_vocabulary_is_closed():
     # Every word used must fit the shape the audit entry allows.
     for word in vocabulary:
         assert len(word) <= audit_log.MAX_DETAIL
+
+
+def test_strict_read_distinguishes_missing_invalid_and_unreadable(tmp_path):
+    missing = AuditLog(path=str(tmp_path / 'missing.jsonl'))
+    assert missing.entries(strict=True) == []
+    path = tmp_path / 'invalid.jsonl'
+    path.write_text('{broken\n', encoding='utf8')
+    log = AuditLog(path=str(path))
+    assert log.entries() == []
+    with pytest.raises(ValueError):
+        log.entries(strict=True)
+    assert path.read_text() == '{broken\n'
+    blocker = tmp_path / 'directory'
+    blocker.mkdir()
+    with pytest.raises(OSError):
+        AuditLog(path=str(blocker)).entries(strict=True)

@@ -38,6 +38,8 @@ from __future__ import annotations
 import secrets
 import threading
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Callable, Optional
 
@@ -57,10 +59,23 @@ class _Pending:
     detail:  str
     run:     Callable[[], str]
     at:      float
+    authorize: Optional[Callable[[], str | None]] = None
 
 
 _pending: Optional[_Pending] = None
 _lock = threading.Lock()
+_authorizer: ContextVar[Optional[Callable[[], str | None]]] = ContextVar('confirm_authorizer', default=None)
+
+
+@contextmanager
+def guard_requests(authorize):
+    """Attach a recheck to requests created by this call, including internal gates."""
+    token = _authorizer.set(authorize)
+    try:
+        yield
+    finally:
+        _authorizer.reset(token)
+
 
 # Callbacks include the opaque request ID, so queued UI events cannot act on
 # a different request. Both callbacks are marshalled onto the Qt thread.
@@ -124,7 +139,7 @@ def request(key: str, title: str, detail: str, run: Callable[[], str]) -> str:
             return ("Another action is already awaiting confirmation. "
                     "This action was not requested; resolve the existing confirmation first.")
         pending = _Pending(token=secrets.token_urlsafe(24), key=key, title=title,
-                           detail=detail, run=run, at=now)
+                           detail=detail, run=run, at=now, authorize=_authorizer.get())
         _pending = pending
 
     try:
@@ -185,6 +200,12 @@ def resolve(token: str, accepted: bool) -> None:
 
     def _worker():
         try:
+            if p.authorize is not None:
+                reason = p.authorize()
+                if reason:
+                    _log(f"SYS: Blocked — {p.title}. {reason}")
+                    _audit(p.title, "blocked")
+                    return
             result = p.run() or "Done."
             _log(f"SYS: Confirmed — {p.title}. {result}")
             _audit(p.title, "confirmed")

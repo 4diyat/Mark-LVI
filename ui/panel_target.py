@@ -19,6 +19,9 @@ THE ONE RULE THAT MATTERS
 """
 from __future__ import annotations
 
+import queue
+import threading
+
 
 class PanelTarget:
     """The panel's current selection: one memory, and one set of search hits."""
@@ -26,6 +29,13 @@ class PanelTarget:
     def __init__(self) -> None:
         self._target: tuple[str, str] = ("", "")
         self._hits: tuple = ()
+        self._search_status = "idle"
+        self._search_generation = 0
+        self._search_lock = threading.Lock()
+        self._search_pending = None
+        self._search_running_cancel = None
+        self._search_worker = None
+        self._search_results = queue.SimpleQueue()
 
     # ── board 10 ─────────────────────────────────────────────────────────────
 
@@ -83,21 +93,114 @@ class PanelTarget:
         """The last search's results, newest search whole. Empty before one."""
         return self._hits
 
-    def run_search(self, query: str, refresh=None) -> int:
-        """Run board 12's file search and count the hits.
+    @property
+    def search_status(self) -> str:
+        return self._search_status
 
-        `refresh` IS CALLED AND NOT ASSUMED. The search field's text does not
-        change, so nothing would repaint the page on its own: a panel that
-        stored the hits and did not repaint would show the PREVIOUS search's
-        files under the words the user just typed. That is the bug this
-        parameter exists to make impossible.
-        """
-        from ui import pages_people
+    @property
+    def search_worker_running(self) -> bool:
+        with self._search_lock:
+            return self._search_worker is not None
 
-        self._hits = tuple(pages_people.find_files(str(query)))
-        if refresh is not None:
-            refresh()
-        return len(self._hits)
+    def cancel_search(self) -> None:
+        """Invalidate in-flight results without waiting for filesystem calls."""
+        self._search_generation += 1
+        self._hits = ()
+        self._search_status = "idle"
+        with self._search_lock:
+            self._search_pending = None
+            if self._search_running_cancel is not None:
+                self._search_running_cancel.set()
+
+    def start_search(self, query: str) -> bool:
+        """Queue the newest search; at most one filesystem worker per panel."""
+        self.cancel_search()
+        text = str(query or "")
+        if not any(len(word) > 2 for word in text.split()):
+            self._search_status = "invalid"
+            return False
+        self._search_status = "searching"
+        cancel = threading.Event()
+        with self._search_lock:
+            self._search_pending = (self._search_generation, text, cancel)
+            if self._search_worker is None:
+                worker = threading.Thread(target=self._search_loop, daemon=True,
+                                          name="panel-file-search")
+                self._search_worker = worker
+                try:
+                    worker.start()
+                except Exception:  # thread creation failed, no work was started
+                    self._search_worker = None
+                    self._search_pending = None
+                    self._search_status = "error"
+                    return False
+        return True
+
+    def _search_loop(self) -> None:
+        """Background-only: no widget access, and pending searches coalesce."""
+        while True:
+            with self._search_lock:
+                job = self._search_pending
+                self._search_pending = None
+                if job is None:
+                    self._search_running_cancel = None
+                    self._search_worker = None
+                    return
+                generation, query, cancel = job
+                self._search_running_cancel = cancel
+            try:
+                from ui import pages_people
+                hits = tuple(pages_people.find_files(query, cancel=cancel.is_set))
+                status = "done"
+            except Exception:  # inaccessible filesystem is not an empty result
+                hits, status = (), "error"
+            if not cancel.is_set():
+                self._search_results.put((generation, status, hits))
+
+    def poll_search(self) -> bool:
+        """Apply completed work on the caller's UI thread; ignore stale jobs."""
+        changed = False
+        while True:
+            try:
+                generation, status, hits = self._search_results.get_nowait()
+            except queue.Empty:
+                return changed
+            if generation == self._search_generation and self._search_status == "searching":
+                self._hits, self._search_status = hits, status
+                changed = True
+
+
+class PanelSearchMixin:
+    """Qt-thread control of the panel search timer and display state."""
+
+    def run_search(self, query: str) -> bool:
+        """Start a bounded background search; results arrive through the Qt timer."""
+        started = self._view.start_search(query)
+        if started and getattr(self, "_search_timer", None) is not None:
+            self._search_timer.start()
+        self.refresh()
+        return started
+
+    def poll_search(self) -> None:
+        if self._view.poll_search():
+            self.refresh()
+        if self._view.search_status != "searching":
+            self._search_timer.stop()
+
+    def invalidate_search(self) -> None:
+        if self._view.search_status != "idle":
+            self._view.cancel_search()
+            self._search_timer.stop()
+            self.refresh()
+
+    @property
+    def search_status(self) -> str:
+        return self._view.search_status
+
+    @property
+    def hits(self) -> tuple:
+        """The last search's results, for `pages_paint.paint_tools`."""
+        return self._view.hits
 
 
 __all__ = ["PanelTarget"]

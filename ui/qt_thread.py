@@ -18,10 +18,8 @@ WHAT THE RULE ACTUALLY IS
     * already on the Qt thread → run inline. Queuing and waiting would be a
       deadlock with one participant, and queuing without waiting would reorder
       a fast NO MIC → LISTENING pair so the wrong word stayed on screen;
-    * anywhere else → `QTimer.singleShot(0, ...)`, which posts a queued call to
-      the receiver's loop. It is the mechanism `ui/shell.py::show_confirm` and
-      `ui/setup_screen.py::open_setup` already use, and it is safe from any
-      thread as long as that loop is running;
+    * anywhere else → a queued signal to a QObject created on the Qt thread.
+      A timer created on a Python worker has no Qt event loop to deliver it;
     * no Qt at all → run inline. A headless test and a broken install both get
       here, and "no Qt" is a normal state in this codebase. The surface's own
       guard decides what to do with the call.
@@ -34,6 +32,40 @@ WHY IT MUST NOT GROW A WAIT
 from __future__ import annotations
 
 import threading
+
+
+# Created on the Qt thread, after QApplication. Unlike QTimer.singleShot called
+# from a Python worker (which has no Qt event loop), this signal has a receiver
+# with main-thread affinity and is delivered by that receiver's event loop.
+_dispatcher = None
+
+
+def init_dispatcher() -> None:
+    global _dispatcher
+    if _dispatcher is not None:
+        return
+    try:
+        from PyQt6.QtCore import QCoreApplication, QObject, Qt, pyqtSignal, pyqtSlot
+        if QCoreApplication.instance() is None:
+            return
+
+        class Dispatcher(QObject):
+            queued = pyqtSignal(object)
+
+            def __init__(self):
+                super().__init__()
+                self.queued.connect(self.execute, Qt.ConnectionType.QueuedConnection)
+
+            @pyqtSlot(object)
+            def execute(self, work):
+                try:
+                    work()
+                except Exception as exc:  # noqa: BLE001
+                    print(f"[JARVIS] Qt dispatch failed: {type(exc).__name__}: {exc}")
+
+        _dispatcher = Dispatcher()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[JARVIS] Qt dispatcher unavailable: {type(exc).__name__}: {exc}")
 
 
 def is_qt_thread(owner: int | None) -> bool:
@@ -51,14 +83,17 @@ def is_qt_thread(owner: int | None) -> bool:
 def run_on_qt_thread(owner: int | None, work) -> None:
     """Run `work` on the Qt thread. Never blocks, never raises, never waits.
 
-    A failing import of Qt is the no-Qt case rather than an error, and a
-    `singleShot` that cannot be posted — Qt torn down during shutdown — falls
-    back to running inline. Losing the call would be worse than running it on
-    the wrong thread in a process that is already going away, and a report in
-    the log is the only useful thing a shutdown-time status change can leave.
+    With an initialized dispatcher, the work is always queued to its Qt
+    receiver. A missing Qt installation retains the headless fallback.
     """
     if is_qt_thread(owner):
         work()
+        return
+    if _dispatcher is not None:
+        try:
+            _dispatcher.queued.emit(work)
+        except RuntimeError as exc:
+            print(f"[JARVIS] Qt dispatcher stopped: {exc}")
         return
     try:
         from PyQt6.QtCore import QTimer
@@ -96,7 +131,7 @@ def _flush_level(shell) -> None:
     """Paint the newest level. Qt thread only, at most one in flight."""
     shell._level_flush_queued = False
     level = shell._pending_level
-    for attr in ("_orb", "_bubble"):
+    for attr in ("_orb", "_bubble", "_main_surface", "_voice_overlay"):
         target = getattr(shell, attr, None)
         callback = getattr(target, "set_audio_level", None)
         if callback is None:
